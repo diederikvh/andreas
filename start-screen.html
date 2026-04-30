@@ -1,0 +1,422 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Andreas · Start scherm</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="tokens.css" />
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; font-family: 'Archivo', system-ui, sans-serif; }
+
+  body {
+    min-height: 100vh; padding: 40px 24px 80px;
+    background: #1a1a1d; color: #e8e8e5;
+    display: flex; flex-direction: column; align-items: center; gap: 32px;
+  }
+
+  .page-head {
+    width: 100%; max-width: 1320px;
+    display: flex; justify-content: space-between; align-items: flex-end;
+    padding-bottom: 24px; border-bottom: 1px solid rgba(255,255,255,.1);
+  }
+  .page-head h1 { font-family: 'Archivo', sans-serif; font-weight: 900; font-size: 38px; letter-spacing: -0.035em; margin: 0; }
+  .page-head .crumb { font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; opacity: 0.6; margin-bottom: 6px; }
+  .page-head .note { font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.08em; opacity: 0.55; max-width: 380px; text-align: right; line-height: 1.5; }
+
+  .stage-controls {
+    display: flex; gap: 8px; align-items: center;
+    font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase;
+  }
+  .stage-controls .seg {
+    display: flex; gap: 0; border: 1px solid rgba(255,255,255,.15); border-radius: 6px; overflow: hidden;
+  }
+  .stage-controls .seg button {
+    background: transparent; color: #9a9a94; border: 0; padding: 8px 14px;
+    font: inherit; cursor: pointer; transition: all .2s;
+    border-right: 1px solid rgba(255,255,255,.08);
+  }
+  .stage-controls .seg button:last-child { border-right: 0; }
+  .stage-controls .seg button.active { background: #d4ff3a; color: #0a0a0b; }
+  .stage-controls .seg button:hover:not(.active) { background: rgba(255,255,255,.04); color: #f2f2ef; }
+
+  .frame-row { display: flex; justify-content: center; align-items: flex-start; gap: 48px; flex-wrap: wrap; }
+  .frame-col { display: flex; flex-direction: column; align-items: center; gap: 14px; }
+  .frame-label { font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; opacity: 0.55; }
+
+  .phone {
+    width: 390px; height: 820px; border-radius: 46px; position: relative; overflow: hidden;
+  }
+  .phone.nacht {
+    background: #0a0a0b;
+    box-shadow: 0 40px 80px -40px rgba(212,255,58,.12), 0 0 0 8px #17171a, 0 0 0 9px #2a2a2d;
+  }
+  .phone.dag {
+    background: #f5f1e8;
+    box-shadow: 0 40px 80px -40px rgba(201,69,58,.18), 0 0 0 8px #e0d9c6, 0 0 0 9px #b8ad94;
+  }
+  .phone-notch { position: absolute; top: 14px; left: 50%; transform: translateX(-50%); width: 110px; height: 28px; background: #000; border-radius: 999px; z-index: 20; }
+  .phone.dag .phone-notch { background: #1a1410; }
+
+  .status { position: absolute; top: 20px; left: 24px; right: 24px; display: flex; justify-content: space-between; font-family: 'Archivo', sans-serif; font-weight: 700; font-size: 12px; z-index: 15; }
+  .phone.nacht .status { color: #f2f2ef; }
+  .phone.dag .status { color: #1a1410; }
+
+  .app { position: absolute; inset: 0; padding-top: 48px; display: flex; flex-direction: column; overflow: hidden; }
+
+  /* ===================== STAGE 1 · SPLASH ===================== */
+  .splash {
+    position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  }
+  .splash .big-cross {
+    width: 96px; height: 96px; position: relative;
+    animation: cross-in 1.1s cubic-bezier(.65,0,.35,1) both;
+  }
+  .splash .big-cross::before,
+  .splash .big-cross::after {
+    content: ""; position: absolute; top: 50%; left: 50%; width: 96px; height: 17px;
+    background: currentColor; border-radius: 1px;
+  }
+  .splash .big-cross::before { transform: translate(-50%, -50%) rotate(45deg); }
+  .splash .big-cross::after  { transform: translate(-50%, -50%) rotate(-45deg); }
+  .phone.nacht .splash .big-cross { color: #d4ff3a; }
+  .phone.dag   .splash .big-cross { color: #c9453a; }
+
+  .splash .splash-word {
+    font-family: 'Archivo', sans-serif; font-weight: 900; font-size: 28px; letter-spacing: -0.02em;
+    margin-top: 26px; text-transform: uppercase;
+    animation: word-in 1.1s cubic-bezier(.65,0,.35,1) .25s both;
+  }
+  .phone.nacht .splash .splash-word { color: #f2f2ef; }
+  .phone.dag   .splash .splash-word { color: #1a1410; }
+
+  .splash .splash-tag {
+    position: absolute; bottom: 64px; left: 0; right: 0; text-align: center;
+    font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase;
+    animation: word-in 1.1s cubic-bezier(.65,0,.35,1) .55s both;
+  }
+  .phone.nacht .splash .splash-tag { color: #5a5a55; }
+  .phone.dag   .splash .splash-tag { color: #8a7e6b; }
+
+  @keyframes cross-in {
+    0%   { transform: scale(0.4) rotate(-30deg); opacity: 0; }
+    100% { transform: scale(1) rotate(0); opacity: 1; }
+  }
+  @keyframes word-in {
+    0%   { transform: translateY(8px); opacity: 0; }
+    100% { transform: translateY(0); opacity: 1; }
+  }
+
+  /* ===================== STAGE 2 · MODE-KEUZE ===================== */
+  .mode-pick {
+    position: absolute; inset: 0; padding: 56px 24px 28px;
+    display: flex; flex-direction: column;
+  }
+  .mp-kicker {
+    font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 0.16em; text-transform: uppercase;
+  }
+  .phone.nacht .mp-kicker { color: #d4ff3a; }
+  .phone.dag   .mp-kicker { color: #c9453a; }
+
+  .mp-title {
+    font-family: 'Archivo', sans-serif; font-weight: 900; font-size: 38px; line-height: 0.95; letter-spacing: -0.035em;
+    margin: 10px 0 8px;
+  }
+  .phone.nacht .mp-title { color: #f2f2ef; }
+  .phone.dag   .mp-title { color: #1a1410; }
+  .mp-title em { font-style: normal; font-family: 'Archivo', serif; font-weight: 400; }
+  .phone.nacht .mp-title em { color: #ff4d2e; }
+  .phone.dag   .mp-title em { color: #2d4a3e; }
+
+  .mp-sub {
+    font-family: 'JetBrains Mono', monospace; font-size: 12px; letter-spacing: 0.02em; line-height: 1.5;
+    margin-top: 10px; max-width: 92%;
+  }
+  .phone.nacht .mp-sub { color: #9a9a94; }
+  .phone.dag   .mp-sub { color: #5a4e3f; }
+
+  .mp-tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 28px; }
+  .mp-tile {
+    aspect-ratio: 1/1.15; border-radius: 18px; padding: 16px; cursor: pointer;
+    display: flex; flex-direction: column; justify-content: space-between;
+    border: 0; font: inherit; text-align: left; position: relative; overflow: hidden;
+    transition: transform .2s cubic-bezier(.65,0,.35,1);
+  }
+  .mp-tile:hover { transform: translateY(-2px); }
+  .mp-tile:active { transform: translateY(0); }
+  .mp-tile.is-nacht { background: #0a0a0b; box-shadow: inset 0 0 0 1.5px #2a2a2d; color: #f2f2ef; }
+  .mp-tile.is-dag   { background: #d9d1bf; color: #1a1410; }
+  .phone.dag .mp-tile.is-nacht { box-shadow: inset 0 0 0 1.5px rgba(0,0,0,.08); }
+
+  .mp-tile .mt-glyph { width: 36px; height: 36px; position: relative; align-self: flex-start; }
+  .mp-tile.is-nacht .mt-glyph::before {
+    content: ""; position: absolute; inset: 0; border-radius: 50%;
+    box-shadow: inset -10px 0 0 0 #d4ff3a;
+  }
+  .mp-tile.is-dag .mt-glyph::before {
+    content: ""; position: absolute; inset: 6px; border-radius: 50%;
+    background: #c9453a;
+  }
+  .mp-tile.is-dag .mt-glyph::after {
+    content: ""; position: absolute; inset: 0; border-radius: 50%;
+    box-shadow: inset 0 0 0 2.5px #c9453a;
+    opacity: 0.35;
+  }
+
+  .mp-tile .mt-name {
+    font-family: 'Archivo', sans-serif; font-weight: 900; font-size: 30px; letter-spacing: -0.035em; line-height: 0.9;
+    text-transform: uppercase;
+  }
+  .mp-tile .mt-meta {
+    font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase;
+    margin-top: 6px; opacity: 0.65;
+  }
+
+  .mp-foot {
+    margin-top: auto; padding-top: 18px; text-align: center;
+    font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase;
+  }
+  .phone.nacht .mp-foot { color: #5a5a55; }
+  .phone.dag   .mp-foot { color: #8a7e6b; }
+
+  /* ===================== STAGE 3 · WELKOM ===================== */
+  .welkom {
+    position: absolute; inset: 0; padding: 56px 24px 28px;
+    display: flex; flex-direction: column;
+  }
+  .welkom-logo { display: flex; align-items: center; gap: 6px; }
+  .welkom-logo .wl-cross { width: 17px; height: 17px; position: relative; flex-shrink: 0; }
+  .welkom-logo .wl-cross::before,
+  .welkom-logo .wl-cross::after {
+    content: ""; position: absolute; top: 50%; left: 50%; width: 17px; height: 4.2px;
+    background: currentColor; border-radius: 0.5px;
+  }
+  .welkom-logo .wl-cross::before { transform: translate(-50%, -50%) rotate(45deg); }
+  .welkom-logo .wl-cross::after  { transform: translate(-50%, -50%) rotate(-45deg); }
+  .welkom-logo .wl-word {
+    font-family: 'Archivo', sans-serif; font-weight: 900; font-size: 16px; letter-spacing: -0.01em; text-transform: uppercase;
+  }
+  .phone.nacht .welkom-logo { color: #d4ff3a; }
+  .phone.dag   .welkom-logo { color: #c9453a; }
+  .phone.nacht .welkom-logo .wl-word { color: #f2f2ef; }
+  .phone.dag   .welkom-logo .wl-word { color: #1a1410; }
+
+  .w-kicker {
+    font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 0.16em; text-transform: uppercase;
+    margin-top: 36px;
+  }
+  .phone.nacht .w-kicker { color: #d4ff3a; }
+  .phone.dag   .w-kicker { color: #c9453a; }
+
+  .w-title {
+    font-family: 'Archivo', sans-serif; font-weight: 900; font-size: 36px; line-height: 0.95; letter-spacing: -0.035em;
+    margin: 10px 0 0;
+  }
+  .phone.nacht .w-title { color: #f2f2ef; }
+  .phone.dag   .w-title { color: #1a1410; }
+  .w-title em { font-style: normal; font-family: 'Archivo', serif; font-weight: 400; }
+  .phone.nacht .w-title em { color: #ff4d2e; }
+  .phone.dag   .w-title em { color: #2d4a3e; }
+
+  .w-sub {
+    font-family: 'JetBrains Mono', monospace; font-size: 12px; letter-spacing: 0.02em; line-height: 1.5;
+    margin-top: 12px;
+  }
+  .phone.nacht .w-sub { color: #9a9a94; }
+  .phone.dag   .w-sub { color: #5a4e3f; }
+
+  .w-fields { margin-top: 32px; display: flex; flex-direction: column; gap: 14px; }
+  .w-field { display: flex; flex-direction: column; gap: 6px; }
+  .w-field label {
+    font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase;
+  }
+  .phone.nacht .w-field label { color: #5a5a55; }
+  .phone.dag   .w-field label { color: #8a7e6b; }
+
+  .w-field input {
+    background: transparent; border: 0; border-bottom: 1.5px solid;
+    padding: 10px 0;
+    font-family: 'Archivo', sans-serif; font-weight: 700; font-size: 22px; letter-spacing: -0.015em;
+    outline: none;
+  }
+  .phone.nacht .w-field input { color: #f2f2ef; border-color: #2a2a2d; caret-color: #d4ff3a; }
+  .phone.nacht .w-field input::placeholder { color: #4a4a46; }
+  .phone.nacht .w-field input:focus { border-color: #d4ff3a; }
+  .phone.dag .w-field input { color: #1a1410; border-color: #c8bfa8; caret-color: #c9453a; }
+  .phone.dag .w-field input::placeholder { color: #a89c84; }
+  .phone.dag .w-field input:focus { border-color: #c9453a; }
+
+  .w-cta { margin-top: auto; display: flex; flex-direction: column; gap: 12px; }
+  .w-go {
+    width: 100%; padding: 16px 18px; border-radius: 999px; border: 0; font: inherit; cursor: pointer;
+    font-family: 'Archivo', sans-serif; font-weight: 800; font-size: 15px; letter-spacing: 0.01em;
+    display: flex; align-items: center; justify-content: space-between;
+    transition: transform .15s cubic-bezier(.65,0,.35,1);
+  }
+  .w-go:active { transform: scale(0.98); }
+  .phone.nacht .w-go { background: #d4ff3a; color: #0a0a0b; }
+  .phone.dag   .w-go { background: #1a1410; color: #f5f1e8; }
+  .w-go .arr { font-size: 18px; }
+
+  .w-tiny {
+    text-align: center;
+    font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase;
+    line-height: 1.6;
+  }
+  .phone.nacht .w-tiny { color: #5a5a55; }
+  .phone.dag   .w-tiny { color: #8a7e6b; }
+
+  .stage { opacity: 0; pointer-events: none; transition: opacity .35s cubic-bezier(.65,0,.35,1); }
+  .stage.is-active { opacity: 1; pointer-events: auto; }
+</style>
+</head>
+<body class="mode-nacht">
+
+  <div class="page-head">
+    <div>
+      <div class="crumb">Andreas · 11 · Start</div>
+      <h1>Start scherm</h1>
+    </div>
+    <div class="note">
+      Splash → mode-keuze → welkom (naam, telefoon).
+      Drie momenten in één scherm-flow.<br/>
+      Klik door met de regelaar →
+    </div>
+  </div>
+
+  <div class="stage-controls">
+    <span style="opacity:.5">Fase</span>
+    <div class="seg" id="stage-seg">
+      <button data-stage="splash" class="active">01 Splash</button>
+      <button data-stage="mode">02 Mode</button>
+      <button data-stage="welkom">03 Welkom</button>
+    </div>
+    <span style="opacity:.5; margin-left: 16px;">Mode</span>
+    <div class="seg" id="mode-seg">
+      <button data-mode="nacht" class="active">Nacht</button>
+      <button data-mode="dag">Dag</button>
+    </div>
+  </div>
+
+  <div class="frame-row">
+    <div class="frame-col">
+      <div class="phone nacht" id="phone-start">
+        <div class="phone-notch"></div>
+        <div class="status"><span>23:14</span><span>● ● ●</span></div>
+        <div class="app">
+
+          <div class="splash stage is-active" data-stage="splash">
+            <div class="big-cross"></div>
+            <div class="splash-word">Andreas</div>
+            <div class="splash-tag">Niet alles. Iets goeds.</div>
+          </div>
+
+          <div class="mode-pick stage" data-stage="mode">
+            <div class="mp-kicker">— Twee snelheden</div>
+            <h1 class="mp-title">Hoe gaat<br/>het er <em>nu</em><br/>aan toe?</h1>
+            <p class="mp-sub">
+              Twee snelheden, één app. Nacht voor nightlife,
+              dag voor een dagje uit. Je schakelt zelf.
+            </p>
+
+            <div class="mp-tiles">
+              <button class="mp-tile is-nacht" id="pick-nacht">
+                <div class="mt-glyph"></div>
+                <div>
+                  <div class="mt-name">Nacht</div>
+                  <div class="mt-meta">nightlife</div>
+                </div>
+              </button>
+              <button class="mp-tile is-dag" id="pick-dag">
+                <div class="mt-glyph"></div>
+                <div>
+                  <div class="mt-name">Dag</div>
+                  <div class="mt-meta">dagje uit</div>
+                </div>
+              </button>
+            </div>
+
+            <div class="mp-foot">je kan dit altijd wisselen</div>
+          </div>
+
+          <div class="welkom stage" data-stage="welkom">
+            <div class="welkom-logo">
+              <div class="wl-cross"></div>
+              <div class="wl-word">Andreas</div>
+            </div>
+            <div class="w-kicker">— Welkom</div>
+            <h1 class="w-title">Hoe heet<br/>je <em>eigenlijk</em>?</h1>
+            <p class="w-sub">
+              We bouwen je netwerk handmatig. Geen contacten-import,
+              geen suggesties. Jij voegt zelf toe.
+            </p>
+
+            <div class="w-fields">
+              <label class="w-field">
+                <span>Naam</span>
+                <input type="text" placeholder="Roos van Dijk" autocomplete="name" />
+              </label>
+              <label class="w-field">
+                <span>Telefoon</span>
+                <input type="tel" placeholder="+31 6 …" autocomplete="tel" />
+              </label>
+            </div>
+
+            <div class="w-cta">
+              <button class="w-go">
+                <span>Verder</span>
+                <span class="arr">→</span>
+              </button>
+              <div class="w-tiny">
+                Door verder te gaan ga je akkoord met de afspraken.<br/>
+                Lezen kan, hoeft niet vandaag.
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+      <div class="frame-label">11 · Start</div>
+    </div>
+  </div>
+
+<script>
+  const phone = document.getElementById('phone-start');
+  const stages = phone.querySelectorAll('.stage');
+  const stageSeg = document.getElementById('stage-seg');
+  const modeSeg = document.getElementById('mode-seg');
+
+  function showStage(name) {
+    stages.forEach(s => s.classList.toggle('is-active', s.dataset.stage === name));
+    stageSeg.querySelectorAll('button').forEach(b => b.classList.toggle('active', b.dataset.stage === name));
+  }
+  function setMode(mode) {
+    phone.classList.remove('nacht', 'dag');
+    phone.classList.add(mode);
+    document.body.classList.remove('mode-nacht', 'mode-dag');
+    document.body.classList.add('mode-' + mode);
+    modeSeg.querySelectorAll('button').forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
+  }
+
+  stageSeg.addEventListener('click', (e) => {
+    const b = e.target.closest('button[data-stage]');
+    if (b) showStage(b.dataset.stage);
+  });
+  modeSeg.addEventListener('click', (e) => {
+    const b = e.target.closest('button[data-mode]');
+    if (b) setMode(b.dataset.mode);
+  });
+
+  document.getElementById('pick-nacht').addEventListener('click', () => { setMode('nacht'); showStage('welkom'); });
+  document.getElementById('pick-dag').addEventListener('click', () => { setMode('dag'); showStage('welkom'); });
+
+  setTimeout(() => {
+    if (document.querySelector('.stage.is-active')?.dataset.stage === 'splash') showStage('mode');
+  }, 1600);
+</script>
+
+</body>
+</html>

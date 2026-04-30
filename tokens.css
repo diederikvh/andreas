@@ -1,0 +1,109 @@
+/* ============================================================
+   Andreas · design tokens
+   ------------------------------------------------------------
+   One source of truth for colors, type, spacing, motion.
+   Mode is set on <body class="mode-nacht"> or "mode-dag".
+   Individual .phone.nacht / .phone.dag keep working as before,
+   so this file is purely additive.
+   ============================================================ */
+
+:root {
+  /* ---- SHARED PALETTE ---------------------------------------------- */
+  --noir:        #0a0a0b;   /* nacht background */
+  --noir-2:      #17171a;   /* lifted surface in nacht */
+  --noir-3:      #1f1f23;   /* pills, chips in nacht */
+  --ink:         #f2f2ef;   /* primary text on nacht */
+  --ink-muted:   #9a9a94;
+
+  --paper:       #d9d1bf;   /* dag background */
+  --paper-2:     #ebe6d8;   /* lifted paper */
+  --paper-3:     #f5f1e8;   /* highlight paper */
+  --soil:        #1a1410;   /* primary text on dag */
+  --soil-muted:  #5a4e3f;
+
+  /* Brand accents — shared across modes */
+  --acid:        #d4ff3a;   /* nacht-only accent (never on dag) */
+  --flare:       #ff4d2e;   /* nacht-only hot-orange */
+  --plum:        #c441ff;
+  --azure:       #4d7cff;
+
+  --red:         #c9453a;   /* dag primary accent */
+  --forest:      #2d4a3e;
+  --cobalt:      #2b4b9c;
+  --saffron:     #e89b2e;
+
+  /* ---- TYPE -------------------------------------------------------- */
+  --ff-display: 'Archivo', system-ui, sans-serif;  /* 900 weight for hero, 700/800 for sub */
+  --ff-body:    'Archivo', system-ui, sans-serif;  /* 400/500/700 */
+  --ff-mono:    'JetBrains Mono', monospace;       /* kickers, meta, micro-caps */
+
+  /* Scale (approximate) */
+  --fs-xs:    10px;
+  --fs-s:     12px;
+  --fs-m:     14px;
+  --fs-base:  15px;
+  --fs-l:     17px;
+  --fs-xl:    22px;
+  --fs-2xl:   30px;
+  --fs-hero:  34px;
+
+  /* ---- RADII ------------------------------------------------------- */
+  --r-xs: 4px;
+  --r-s:  8px;
+  --r-m:  12px;
+  --r-l:  18px;
+  --r-pill: 999px;
+  --r-phone: 46px;
+
+  /* ---- STROKES ----------------------------------------------------- */
+  /* Icons follow the Andreas cross: thick, NO rounded caps/joins.
+     Exception: a dot in a circle stays round, a heart stays curved. */
+  --stroke-icon: 3.6;
+
+  /* ---- MOTION ------------------------------------------------------ */
+  --ease:        cubic-bezier(.65,0,.35,1);  /* brand easing */
+  --dur-fast:    .22s;
+  --dur-base:    .4s;
+  --dur-curtain: .9s;   /* full curtain sweep on mode swap */
+
+  /* ---- MODE ROLES (resolve below) --------------------------------- */
+  --bg:         var(--noir);
+  --bg-lift:    var(--noir-2);
+  --bg-chip:    var(--noir-3);
+  --fg:         var(--ink);
+  --fg-muted:   var(--ink-muted);
+  --accent:     var(--acid);
+  --accent-2:   var(--flare);
+  --on-accent:  var(--noir);
+  /* curtain bg = the OTHER mode's base */
+  --curtain-bg: var(--paper);
+  --curtain-fg: var(--soil);
+}
+
+/* ---- Mode: NACHT (default on :root is already nacht) ---- */
+body.mode-nacht {
+  --bg:         var(--noir);
+  --bg-lift:    var(--noir-2);
+  --bg-chip:    var(--noir-3);
+  --fg:         var(--ink);
+  --fg-muted:   var(--ink-muted);
+  --accent:     var(--acid);
+  --accent-2:   var(--flare);
+  --on-accent:  var(--noir);
+  --curtain-bg: var(--paper);
+  --curtain-fg: var(--soil);
+}
+
+/* ---- Mode: DAG ---- */
+body.mode-dag {
+  --bg:         var(--paper);
+  --bg-lift:    var(--paper-2);
+  --bg-chip:    var(--paper-3);
+  --fg:         var(--soil);
+  --fg-muted:   var(--soil-muted);
+  --accent:     var(--red);
+  --accent-2:   var(--forest);
+  --on-accent:  var(--paper-3);
+  --curtain-bg: var(--noir);
+  --curtain-fg: var(--acid);
+}

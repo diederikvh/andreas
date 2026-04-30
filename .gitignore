@@ -1,0 +1,10 @@
+# Local git config (per-user)
+.gitconfig
+
+# macOS
+.DS_Store
+
+# Local env files
+.env
+.env.local
+.env.*.local

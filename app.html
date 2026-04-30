@@ -1,0 +1,3785 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Andreas · App prototype</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;700;800;900&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="tokens.css" />
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; font-family: 'Inter', system-ui, sans-serif; }
+
+  body {
+    min-height: 100vh; padding: 40px 24px 120px;
+    background: #1a1a1d;
+    color: #e8e8e5;
+    transition: background .5s;
+  }
+  body.mode-dag { background: #d9d1bf; color: #1a1410; }
+
+  .wrap { max-width: 1320px; margin: 0 auto; }
+
+  .page-head {
+    display: flex; justify-content: space-between; align-items: flex-end;
+    padding-bottom: 24px; margin-bottom: 48px; border-bottom: 1px solid rgba(255,255,255,.1);
+  }
+  body.mode-dag .page-head { border-color: rgba(0,0,0,.12); }
+  .page-head h1 {
+    font-family: 'Archivo', sans-serif; font-weight: 900; font-size: 44px; letter-spacing: -0.035em; margin: 0;
+  }
+  .page-head .crumb { font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; opacity: 0.6; margin-bottom: 6px; }
+  .page-head .note { font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.08em; opacity: 0.55; max-width: 380px; text-align: right; line-height: 1.5; }
+
+  .frame-row { display: flex; justify-content: center; align-items: flex-start; gap: 48px; flex-wrap: wrap; }
+  .frame-col { display: flex; flex-direction: column; align-items: center; gap: 14px; }
+  .frame-label { font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; opacity: 0.55; }
+
+  /* Phone frame — neutral, adapts to mode */
+  .phone {
+    width: 390px; height: 820px; border-radius: 46px; position: relative; overflow: hidden;
+    transition: background .4s, box-shadow .5s;
+  }
+  .phone.nacht {
+    background: #0a0a0b;
+    box-shadow: 0 40px 80px -40px rgba(212,255,58,.12), 0 0 0 8px #17171a, 0 0 0 9px #2a2a2d;
+  }
+  .phone.dag {
+    background: #f5f1e8;
+    box-shadow: 0 40px 80px -40px rgba(201,69,58,.18), 0 0 0 8px #e0d9c6, 0 0 0 9px #b8ad94;
+  }
+  .phone-notch { position: absolute; top: 14px; left: 50%; transform: translateX(-50%); width: 110px; height: 28px; background: #000; border-radius: 999px; z-index: 20; }
+  .phone.dag .phone-notch { background: #1a1410; }
+
+  /* Status */
+  .status { position: absolute; top: 20px; left: 24px; right: 24px; display: flex; justify-content: space-between; font-family: 'Archivo', sans-serif; font-weight: 700; font-size: 12px; z-index: 15; }
+  .phone.nacht .status { color: #f2f2ef; }
+  .phone.dag .status { color: #1a1410; }
+
+  /* ========= APP surface ========= */
+  .app { position: absolute; inset: 0; padding-top: 48px; display: flex; flex-direction: column; overflow: hidden; }
+
+  /* ----- Header bar: logo left + day/night switch right ----- */
+  .app-header {
+    position: relative; z-index: 10;
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 10px 18px 8px;
+  }
+
+  /* Logo lockup: ✕ + ANDREAS wordmark */
+  .logo-lockup { display: flex; align-items: center; gap: 5px; }
+  .logo-lockup .logo-cross {
+    width: 17px; height: 17px; position: relative; flex-shrink: 0;
+  }
+  .logo-lockup .logo-cross::before,
+  .logo-lockup .logo-cross::after {
+    content: ""; position: absolute; top: 50%; left: 50%; width: 17px; height: 4.2px;
+    background: currentColor; border-radius: 0.5px;
+  }
+  .logo-lockup .logo-cross::before { transform: translate(-50%, -50%) rotate(45deg); }
+  .logo-lockup .logo-cross::after  { transform: translate(-50%, -50%) rotate(-45deg); }
+  .logo-lockup .wordmark {
+    font-family: 'Archivo', sans-serif; font-weight: 900; font-size: 18px; letter-spacing: -0.01em; line-height: 1; text-transform: uppercase;
+  }
+  .phone.nacht .logo-lockup { color: #d4ff3a; }
+  .phone.dag .logo-lockup { color: #c9453a; }
+  .phone.nacht .logo-lockup .wordmark { color: #f2f2ef; }
+  .phone.dag .logo-lockup .wordmark { color: #1a1410; }
+
+  /* ========= Day/night switch (pill) ========= */
+  .dn-switch {
+    position: relative; width: 52px; height: 28px; border-radius: 999px;
+    border: 0; padding: 0; cursor: pointer;
+    background: transparent;
+    overflow: hidden;
+    transition: background .4s;
+    flex-shrink: 0;
+  }
+  .phone.nacht .dn-switch { background: #1f1f23; box-shadow: inset 0 0 0 1px #2a2a2d; }
+  .phone.dag   .dn-switch { background: #ebe6d8; box-shadow: inset 0 0 0 1px #d9d1bf; }
+
+  /* Tiny sun / moon glyphs baked into the track */
+  .dn-switch .dn-sun,
+  .dn-switch .dn-moon {
+    position: absolute; top: 50%; transform: translateY(-50%);
+    width: 10px; height: 10px; pointer-events: none;
+  }
+  .dn-switch .dn-sun  { left: 8px; }
+  .dn-switch .dn-moon { right: 8px; }
+  .dn-switch .dn-sun::before {
+    content: ""; position: absolute; inset: 0; border-radius: 50%;
+    background: currentColor;
+  }
+  .dn-switch .dn-moon::before {
+    content: ""; position: absolute; inset: 0; border-radius: 50%;
+    box-shadow: inset -3px 0 0 0 currentColor;
+  }
+  .phone.nacht .dn-switch { color: #4a4a46; }
+  .phone.dag   .dn-switch { color: #8a7e6b; }
+  .phone.nacht .dn-switch .dn-moon { color: #d4ff3a; }
+  .phone.dag   .dn-switch .dn-sun  { color: #c9453a; }
+
+  .dn-switch .dn-thumb {
+    position: absolute; top: 3px; left: 3px; width: 22px; height: 22px; border-radius: 50%;
+    transition: transform .38s cubic-bezier(.65,0,.35,1), background .3s;
+    z-index: 2;
+  }
+  .phone.nacht .dn-switch .dn-thumb { background: #d4ff3a; transform: translateX(24px); }
+  .phone.dag   .dn-switch .dn-thumb { background: #c9453a; transform: translateX(0); }
+
+  /* ========= Curtain slide animation ========= */
+  .app-content {
+    position: relative; flex: 1; display: flex; flex-direction: column; overflow: hidden;
+  }
+  /* Curtain overlay — a sheet that slides across during a mode swap.
+     Lives directly inside .phone so it covers header, status bar, tabbar — everything. */
+  .curtain {
+    position: absolute; inset: 0; z-index: 60;
+    transform: translateX(100%);
+    pointer-events: none;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: inherit;
+    overflow: hidden;
+  }
+  .phone.nacht .curtain { background: #d9d1bf; color: #1a1410; }  /* curtain = the OTHER mode */
+  .phone.dag   .curtain { background: #0a0a0b; color: #d4ff3a; }
+  .curtain .curtain-x {
+    width: 72px; height: 72px; position: relative;
+  }
+  .curtain .curtain-x::before,
+  .curtain .curtain-x::after {
+    content: ""; position: absolute; top: 50%; left: 50%; width: 72px; height: 12px;
+    background: currentColor; border-radius: 1px;
+  }
+  .curtain .curtain-x::before { transform: translate(-50%, -50%) rotate(45deg); }
+  .curtain .curtain-x::after  { transform: translate(-50%, -50%) rotate(-45deg); }
+
+  .phone.switching .curtain {
+    animation: curtain-sweep .9s cubic-bezier(.65,0,.35,1) forwards;
+  }
+  @keyframes curtain-sweep {
+    0%   { transform: translateX(100%); }
+    45%  { transform: translateX(0); }
+    55%  { transform: translateX(0); }
+    100% { transform: translateX(-100%); }
+  }
+
+  /* The hero block shifts down to make room for ezelsoor peek */
+  /* Title block */
+  .hero-block { padding: 14px 18px 12px; }
+  .hero-kicker { font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; }
+  .phone.nacht .hero-kicker { color: #d4ff3a; }
+  .phone.dag .hero-kicker { color: #c9453a; }
+  .hero-title {
+    font-family: 'Archivo', sans-serif; font-weight: 900; font-size: 30px; line-height: 0.95; letter-spacing: -0.035em; margin-top: 6px;
+  }
+  .phone.nacht .hero-title { color: #f2f2ef; }
+  .phone.dag .hero-title { color: #1a1410; }
+  .hero-title em { font-style: normal; font-family: 'Archivo', serif; font-weight: 400; }
+  .phone.nacht .hero-title em { color: #ff4d2e; }
+  .phone.dag .hero-title em { color: #2d4a3e; }
+
+  /* Category scroll tabs */
+  .cat-tabs { display: flex; gap: 6px; padding: 12px 18px 12px; overflow-x: auto; scrollbar-width: none; }
+  .cat-tabs::-webkit-scrollbar { display: none; }
+  .cat-tab {
+    flex-shrink: 0; padding: 8px 14px; border-radius: 999px; font-size: 12px; font-family: inherit;
+    white-space: nowrap; cursor: pointer; transition: all .2s; letter-spacing: -0.005em;
+  }
+  .phone.nacht .cat-tab { background: transparent; border: 1px solid #2a2a2d; color: #9a9a94; }
+  .phone.nacht .cat-tab.active { background: #f2f2ef; color: #0a0a0b; border-color: #f2f2ef; }
+  .phone.dag .cat-tab { background: transparent; border: 1px solid #d9d1bf; color: #5a4e3f; }
+  .phone.dag .cat-tab.active { background: #1a1410; color: #f5f1e8; border-color: #1a1410; }
+
+  /* Scroll content */
+  .app-scroll { flex: 1; overflow-y: auto; padding-bottom: 96px; scrollbar-width: none; }
+  .app-scroll::-webkit-scrollbar { display: none; }
+
+  /* ----- Featured (hero card with photo) ----- */
+  .featured {
+    margin: 0 18px 20px; aspect-ratio: 1/1.2; border-radius: 18px; overflow: hidden; position: relative;
+    display: flex; flex-direction: column; justify-content: space-between; padding: 16px; cursor: pointer;
+  }
+  .featured .feat-photo {
+    position: absolute; inset: 0; background-size: cover; background-position: center;
+  }
+  .phone.nacht .featured .feat-photo {
+    filter: grayscale(.3) contrast(1.15) brightness(.7);
+  }
+  .phone.nacht .featured::before {
+    content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(0,0,0,0) 30%, rgba(10,10,11,.85) 100%); z-index: 2;
+  }
+  .phone.nacht .featured::after {
+    content: ""; position: absolute; inset: 0; background: repeating-linear-gradient(0deg, rgba(255,255,255,.02) 0 1px, transparent 1px 3px); pointer-events: none; mix-blend-mode: overlay; z-index: 3;
+  }
+  .phone.dag .featured .feat-photo {
+    filter: grayscale(1) contrast(1.3) brightness(1.1);
+  }
+  .phone.dag .featured {
+    background: #c9453a;
+  }
+  .phone.dag .featured::before {
+    content: ""; position: absolute; inset: 0; background: #c9453a; mix-blend-mode: screen; z-index: 2;
+  }
+  .phone.dag .featured::after {
+    content: ""; position: absolute; right: -80px; bottom: -80px; width: 260px; height: 260px; background: #e89b2e; border-radius: 50%; mix-blend-mode: multiply; z-index: 3; opacity: 0.9;
+  }
+  .featured > * { position: relative; z-index: 4; }
+
+  .feat-kicker { font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; }
+  .phone.nacht .feat-kicker { color: #d4ff3a; }
+  .phone.dag .feat-kicker { color: #f5f1e8; }
+
+  .feat-title {
+    font-family: 'Archivo', sans-serif; font-weight: 900; font-size: 34px; line-height: 0.92; letter-spacing: -0.04em;
+  }
+  .phone.nacht .feat-title { color: #f2f2ef; }
+  .phone.dag .feat-title { color: #f5f1e8; }
+
+  .feat-meta {
+    font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; margin-top: 10px;
+    display: flex; gap: 8px; flex-wrap: wrap;
+  }
+  .phone.nacht .feat-meta { color: rgba(242,242,239,.85); }
+  .phone.dag .feat-meta { color: rgba(245,241,232,.9); }
+  .feat-meta span.dot { opacity: 0.5; }
+
+  /* ----- Section title ----- */
+  .sec-title {
+    padding: 0 18px 8px; display: flex; justify-content: space-between; align-items: baseline;
+    font-family: 'Archivo', sans-serif; font-weight: 800; font-size: 17px; letter-spacing: -0.02em;
+  }
+  .phone.nacht .sec-title { color: #f2f2ef; }
+  .phone.dag .sec-title { color: #1a1410; }
+  .sec-title span { font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; font-weight: 500; }
+  .phone.nacht .sec-title span { color: #9a9a94; }
+  .phone.dag .sec-title span { color: #5a4e3f; }
+
+  /* ----- Event row ----- */
+  .event-list { padding: 0 18px; display: flex; flex-direction: column; gap: 10px; }
+  .event-row {
+    display: grid; grid-template-columns: 68px 1fr auto; gap: 12px; align-items: center;
+    padding: 10px; border-radius: 12px; cursor: pointer; transition: background .2s, border-color .2s;
+  }
+  .phone.nacht .event-row { background: #101012; border: 1px solid #232327; }
+  .phone.nacht .event-row:hover { border-color: #3a3a3f; }
+  .phone.dag .event-row { background: #ebe6d8; border: 1px solid #d9d1bf; }
+  .phone.dag .event-row:hover { border-color: #1a1410; }
+
+  .event-thumb {
+    width: 68px; height: 68px; border-radius: 8px; position: relative; overflow: hidden;
+    background-size: cover; background-position: center;
+  }
+  .phone.nacht .event-thumb { filter: grayscale(.2) contrast(1.1) brightness(.75); }
+  .phone.nacht .event-thumb::after {
+    content: ""; position: absolute; inset: 0; box-shadow: inset 0 0 0 1px rgba(255,255,255,.06);
+  }
+  .phone.dag .event-thumb { filter: grayscale(1) contrast(1.25); }
+  .phone.dag .event-thumb::before {
+    content: ""; position: absolute; inset: 0; mix-blend-mode: multiply;
+  }
+  .phone.dag .event-thumb.cat-red::before { background: #c9453a; }
+  .phone.dag .event-thumb.cat-forest::before { background: #2d4a3e; }
+  .phone.dag .event-thumb.cat-cobalt::before { background: #2b4b9c; }
+  .phone.dag .event-thumb.cat-saffron::before { background: #e89b2e; }
+
+  .event-content { min-width: 0; }
+  .event-title {
+    font-family: 'Archivo', sans-serif; font-weight: 700; font-size: 14px; line-height: 1.2; letter-spacing: -0.015em;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .phone.nacht .event-title { color: #f2f2ef; }
+  .phone.dag .event-title { color: #1a1410; }
+
+  .event-meta {
+    font-family: 'JetBrains Mono', monospace; font-size: 9px; letter-spacing: 0.08em; text-transform: uppercase; margin-top: 4px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .phone.nacht .event-meta { color: #9a9a94; }
+  .phone.dag .event-meta { color: #5a4e3f; }
+
+  .event-badge {
+    display: inline-block; font-family: 'JetBrains Mono', monospace; font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase;
+    padding: 2px 6px; border-radius: 4px; margin-right: 6px;
+  }
+  .phone.nacht .event-badge.acid { background: rgba(212,255,58,.15); color: #d4ff3a; }
+  .phone.nacht .event-badge.flare { background: rgba(255,77,46,.15); color: #ff4d2e; }
+  .phone.nacht .event-badge.plum { background: rgba(196,65,255,.15); color: #c441ff; }
+  .phone.nacht .event-badge.azure { background: rgba(77,124,255,.15); color: #4d7cff; }
+  .phone.dag .event-badge.acid { background: rgba(201,69,58,.15); color: #c9453a; }
+  .phone.dag .event-badge.flare { background: rgba(45,74,62,.15); color: #2d4a3e; }
+  .phone.dag .event-badge.plum { background: rgba(43,75,156,.15); color: #2b4b9c; }
+  .phone.dag .event-badge.azure { background: rgba(232,155,46,.2); color: #8a5b00; }
+
+  .event-arrow { font-size: 16px; }
+  .phone.nacht .event-arrow { color: #5a5a56; }
+  .phone.dag .event-arrow { color: #8a7e6b; }
+
+  /* ----- Inline photo-band ----- */
+  .photo-band { padding: 0 18px 20px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 16px; }
+  .photo-card {
+    aspect-ratio: 3/4; border-radius: 12px; position: relative; overflow: hidden; cursor: pointer;
+    background-size: cover; background-position: center;
+  }
+  .phone.nacht .photo-card { filter: grayscale(.2) contrast(1.1) brightness(.75); }
+  .phone.nacht .photo-card::before {
+    content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, transparent 40%, rgba(10,10,11,.9) 100%); z-index: 2;
+  }
+  .phone.dag .photo-card { filter: grayscale(1) contrast(1.3); }
+  .phone.dag .photo-card::before { content: ""; position: absolute; inset: 0; mix-blend-mode: multiply; z-index: 2; }
+  .phone.dag .photo-card.d-red::before { background: #c9453a; }
+  .phone.dag .photo-card.d-cobalt::before { background: #2b4b9c; }
+  .phone.dag .photo-card::after { content: ""; position: absolute; right: -30px; bottom: -30px; width: 90px; height: 90px; background: #e89b2e; border-radius: 50%; mix-blend-mode: lighten; opacity: 0.9; z-index: 3; }
+
+  .photo-card-content { position: absolute; left: 10px; right: 10px; bottom: 10px; z-index: 5; }
+  .photo-card-content .pc-kicker { font-family: 'JetBrains Mono', monospace; font-size: 9px; letter-spacing: 0.12em; text-transform: uppercase; margin-bottom: 4px; }
+  .phone.nacht .photo-card-content .pc-kicker { color: #d4ff3a; }
+  .phone.dag .photo-card-content .pc-kicker { color: #f5f1e8; }
+  .photo-card-content .pc-title { font-family: 'Archivo', sans-serif; font-weight: 900; font-size: 17px; line-height: 0.95; letter-spacing: -0.025em; }
+  .phone.nacht .photo-card-content .pc-title { color: #f2f2ef; }
+  .phone.dag .photo-card-content .pc-title { color: #f5f1e8; }
+
+  /* ----- Tab bar (icon-only, abstract) ----- */
+  .tabbar {
+    position: absolute; bottom: 16px; left: 12px; right: 12px; padding: 6px;
+    display: grid; grid-template-columns: repeat(5, 1fr); gap: 2px; border-radius: 999px; z-index: 12;
+    backdrop-filter: blur(12px);
+  }
+  .phone.nacht .tabbar { background: rgba(23,23,26,.85); border: 1px solid #2a2a2d; }
+  .phone.dag .tabbar { background: rgba(235,230,216,.9); border: 1px solid #d9d1bf; }
+  .tabbar button {
+    background: transparent; border: 0; font-family: inherit;
+    padding: 12px 4px; border-radius: 999px; display: flex; align-items: center; justify-content: center; cursor: pointer;
+    transition: background .2s, color .2s;
+  }
+  .phone.nacht .tabbar button { color: #6a6a68; }
+  .phone.nacht .tabbar button.active { background: #d4ff3a; color: #0a0a0b; }
+  .phone.dag .tabbar button { color: #8a7e6b; }
+  .phone.dag .tabbar button.active { background: #c9453a; color: #f5f1e8; }
+  .tabbar button svg { width: 22px; height: 22px; display: block; stroke-width: 3.6; }
+
+  /* ========= DETAIL PHONE ========= */
+  .detail-app { padding-top: 0; }
+
+  .detail-hero {
+    height: 420px; position: relative; padding: 56px 18px 20px;
+    display: flex; flex-direction: column; justify-content: space-between; overflow: hidden;
+  }
+  .detail-photo { position: absolute; inset: 0; background-size: cover; background-position: center; z-index: 1; }
+  .phone.nacht .detail-photo { filter: grayscale(.2) contrast(1.2) brightness(.55); }
+  .phone.nacht .detail-hero::before {
+    content: ""; position: absolute; inset: 0; z-index: 2;
+    background: linear-gradient(180deg, rgba(10,10,11,.4) 0%, rgba(10,10,11,.2) 40%, rgba(10,10,11,.95) 100%);
+  }
+  .phone.nacht .detail-hero::after {
+    content: ""; position: absolute; inset: 0; z-index: 3;
+    background: repeating-linear-gradient(0deg, rgba(255,255,255,.02) 0 1px, transparent 1px 3px);
+    mix-blend-mode: overlay; pointer-events: none;
+  }
+  .phone.dag .detail-photo { filter: grayscale(1) contrast(1.3); }
+  .phone.dag .detail-hero { background: #2d4a3e; }
+  .phone.dag .detail-hero::before {
+    content: ""; position: absolute; inset: 0; z-index: 2; background: #2d4a3e; mix-blend-mode: screen;
+  }
+  .phone.dag .detail-hero::after {
+    content: ""; position: absolute; right: -100px; top: -60px; width: 280px; height: 280px;
+    background: #e89b2e; border-radius: 50%; mix-blend-mode: multiply; z-index: 3; opacity: 0.85;
+  }
+
+  .detail-top { position: relative; z-index: 5; display: flex; justify-content: space-between; align-items: flex-start; }
+  .detail-back, .detail-action {
+    width: 40px; height: 40px; border-radius: 50%; background: rgba(0,0,0,.3); border: 0; font-size: 16px; cursor: pointer;
+    backdrop-filter: blur(10px); color: #f2f2ef; display: flex; align-items: center; justify-content: center;
+  }
+  .detail-back svg, .detail-action svg { width: 20px; height: 20px; display: block; }
+  .detail-actions { display: flex; gap: 8px; }
+
+  .detail-hero-text { position: relative; z-index: 5; }
+  .detail-tag {
+    font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase;
+    padding: 5px 10px; border-radius: 999px; display: inline-block; margin-bottom: 12px;
+    white-space: nowrap;
+  }
+  .phone.nacht .detail-tag { background: #d4ff3a; color: #0a0a0b; }
+  .phone.dag .detail-tag { background: #f5f1e8; color: #1a1410; }
+  .detail-h2 { font-family: 'Archivo', sans-serif; font-weight: 900; font-size: 38px; line-height: 0.92; letter-spacing: -0.04em; color: #f2f2ef; }
+  .phone.dag .detail-h2 { color: #f5f1e8; }
+
+  .detail-body { flex: 1; overflow-y: auto; padding: 20px; padding-bottom: 100px; scrollbar-width: none; }
+  .detail-body::-webkit-scrollbar { display: none; }
+  .phone.nacht .detail-body { background: #0a0a0b; color: #f2f2ef; }
+  .phone.dag .detail-body { background: #f5f1e8; color: #1a1410; }
+
+  .meta-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 20px; }
+  .meta-cell { padding: 10px; border-radius: 8px; }
+  .phone.nacht .meta-cell { background: #101012; border: 1px solid #232327; }
+  .phone.dag .meta-cell { background: #ebe6d8; border: 1px solid #d9d1bf; }
+  .meta-cell .ml { font-family: 'JetBrains Mono', monospace; font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase; }
+  .phone.nacht .meta-cell .ml { color: #9a9a94; }
+  .phone.dag .meta-cell .ml { color: #5a4e3f; }
+  .meta-cell .mv { font-family: 'Archivo', sans-serif; font-weight: 700; font-size: 14px; letter-spacing: -0.015em; margin-top: 4px; }
+
+  .detail-body p { font-size: 13px; line-height: 1.6; margin: 0 0 12px; }
+  .phone.nacht .detail-body p { color: #9a9a94; }
+  .phone.dag .detail-body p { color: #5a4e3f; }
+  .detail-body h4 { font-family: 'Archivo', sans-serif; font-weight: 800; font-size: 12px; letter-spacing: 0.04em; text-transform: uppercase; margin: 20px 0 10px; }
+
+  .lineup { display: flex; flex-direction: column; gap: 6px; }
+  .lineup div { display: flex; justify-content: space-between; padding: 10px; border-radius: 8px; font-size: 13px; }
+  .phone.nacht .lineup div { background: #101012; border: 1px solid #232327; }
+  .phone.dag .lineup div { background: #ebe6d8; border: 1px solid #d9d1bf; }
+  .lineup b { font-family: 'Archivo', sans-serif; font-weight: 700; letter-spacing: -0.01em; }
+  .lineup span { font-family: 'JetBrains Mono', monospace; font-size: 10px; opacity: 0.6; }
+
+  /* Vrienden gaan ook */
+  .detail-friends {
+    display: grid; grid-template-columns: auto 1fr; gap: 12px; align-items: center;
+    padding: 10px 12px; border-radius: 8px;
+  }
+  .phone.nacht .detail-friends { background: #101012; border: 1px solid #232327; }
+  .phone.dag   .detail-friends { background: #ebe6d8; border: 1px solid #d9d1bf; }
+  .df-avatars { display: flex; }
+  .df-avatars img {
+    width: 28px; height: 28px; border-radius: 50%; object-fit: cover;
+    border: 2px solid;
+    margin-left: -8px;
+  }
+  .df-avatars img:first-child { margin-left: 0; }
+  .phone.nacht .df-avatars img { border-color: #101012; }
+  .phone.dag   .df-avatars img { border-color: #ebe6d8; }
+  .df-text {
+    font-family: 'Archivo', sans-serif; font-size: 12.5px; line-height: 1.4;
+    letter-spacing: -0.005em;
+  }
+  .phone.nacht .df-text { color: #b8b8b2; }
+  .phone.dag   .df-text { color: #5a4e3f; }
+  .df-text b { font-weight: 700; }
+  .phone.nacht .df-text b { color: #f2f2ef; }
+  .phone.dag   .df-text b { color: #1a1410; }
+
+  .detail-invite {
+    display: grid; grid-template-columns: 18px 1fr auto; gap: 12px;
+    align-items: center; width: 100%;
+    margin-top: 10px; padding: 13px 14px;
+    border-radius: 8px; border: 1px solid; background: transparent;
+    font-family: inherit; cursor: pointer; text-align: left;
+    font-size: 13px; font-weight: 600; letter-spacing: -0.005em;
+  }
+  .detail-invite svg { width: 16px; height: 16px; }
+  .phone.nacht .detail-invite { border-color: #2a2a2e; color: #f2f2ef; }
+  .phone.dag   .detail-invite { border-color: #d9d1bf; color: #1a1410; }
+  .detail-invite .di-chev { font-family: 'JetBrains Mono', monospace; opacity: .35; font-size: 14px; }
+
+  .photo-strip { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; margin: 12px 0 16px; }
+  .photo-strip .ps {
+    aspect-ratio: 1; border-radius: 6px; background-size: cover; background-position: center;
+  }
+  .phone.nacht .photo-strip .ps { filter: grayscale(.3) contrast(1.1) brightness(.7); }
+  .phone.dag .photo-strip .ps { filter: grayscale(1) contrast(1.3); position: relative; }
+  .phone.dag .photo-strip .ps::before { content: ""; position: absolute; inset: 0; background: #c9453a; mix-blend-mode: multiply; border-radius: 6px; }
+
+  .cta-dock {
+    position: absolute; bottom: 0; left: 0; right: 0; padding: 14px 16px 28px;
+    display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: center;
+    z-index: 10;
+  }
+  .phone.nacht .cta-dock { background: linear-gradient(to top, #0a0a0b 70%, transparent); }
+  .phone.dag .cta-dock { background: linear-gradient(to top, #f5f1e8 70%, transparent); }
+  .cta-dock .price { font-family: 'Archivo', sans-serif; font-weight: 900; font-size: 22px; letter-spacing: -0.02em; }
+  .cta-dock .price em { font-style: normal; font-size: 10px; font-weight: 500; display: block; font-family: 'JetBrains Mono', monospace; letter-spacing: 0.08em; text-transform: uppercase; opacity: 0.6; }
+
+  .btn-cta {
+    padding: 14px 22px; border: 0; font-family: 'Inter', sans-serif; font-weight: 600; font-size: 13px;
+    border-radius: 999px; cursor: pointer; letter-spacing: -0.005em;
+  }
+  .phone.nacht .btn-cta { background: #d4ff3a; color: #0a0a0b; }
+  .phone.dag .btn-cta { background: #1a1410; color: #f5f1e8; }
+
+  /* ========= AGENDA PHONE ========= */
+  .agenda-app { display: flex; flex-direction: column; height: 100%; }
+
+  .agenda-head {
+    padding: 4px 22px 10px;
+  }
+  .agenda-head .ah-title {
+    font-family: 'Archivo', sans-serif; font-weight: 900; font-size: 30px; letter-spacing: -0.03em; line-height: 1; margin-top: 6px;
+  }
+  .agenda-head .ah-title em { font-style: normal; font-weight: 400; opacity: 0.55; }
+  .agenda-head .ah-sub { font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; margin-top: 10px; display: flex; justify-content: space-between; gap: 8px; }
+  .phone.nacht .agenda-head .ah-sub { color: #9a9a94; }
+  .phone.dag .agenda-head .ah-sub { color: #5a4e3f; }
+  .phone.nacht .agenda-head .ah-sub b { color: #d4ff3a; font-weight: 500; }
+  .phone.dag .agenda-head .ah-sub b { color: #c9453a; font-weight: 500; }
+
+  /* Day strip */
+  .day-strip-shell {
+    position: relative;
+    padding: 10px 22px 8px;
+  }
+
+  /* Horizontal day strip */
+  .day-strip {
+    display: flex; gap: 6px; overflow-x: auto; padding-right: 66px; /* room for fixed filter chip */
+    scrollbar-width: none;
+  }
+  .day-strip::-webkit-scrollbar { display: none; }
+  .day-chip {
+    flex-shrink: 0; min-width: 56px; padding: 10px 4px; border-radius: 14px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+    border: 0; cursor: pointer; background: transparent;
+    font-family: inherit; height: 66px;
+  }
+  .day-chip .dc-dow { font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; opacity: .6; }
+  .day-chip .dc-num { font-family: 'Archivo', sans-serif; font-weight: 900; font-size: 24px; letter-spacing: -0.02em; line-height: 1; }
+  .phone.nacht .day-chip { color: #e8e8e5; }
+  .phone.dag .day-chip { color: #1a1410; }
+  .phone.nacht .day-chip.active { background: #d4ff3a; color: #0a0a0b; }
+  .phone.nacht .day-chip.active .dc-dow,
+  .phone.nacht .day-chip.active .dc-count { opacity: .8; }
+  .phone.dag .day-chip.active { background: #c9453a; color: #f5f1e8; }
+  .phone.dag .day-chip.active .dc-dow,
+  .phone.dag .day-chip.active .dc-count { opacity: .8; }
+
+  /* Filter/search chip row — inline between day strip and agenda list */
+  .ag-chips-row {
+    padding: 6px 22px 10px;
+  }
+  .ag-chips-row .ag-chips {
+    display: flex; gap: 8px; overflow-x: auto; align-items: center;
+    scrollbar-width: none;
+  }
+  .ag-chips-row .ag-chips::-webkit-scrollbar { display: none; }
+  .ag-chips-row .ag-chip {
+    flex-shrink: 0;
+    padding: 8px 14px; border-radius: 999px; cursor: pointer; border: 1px solid;
+    font-family: 'Inter', sans-serif; font-weight: 500; font-size: 12px; letter-spacing: -0.005em;
+    background: transparent;
+    white-space: nowrap;
+    transition: background .2s, color .2s, border-color .2s;
+  }
+  .phone.nacht .ag-chips-row .ag-chip { border-color: #2a2a2d; color: #9a9a94; }
+  .phone.dag .ag-chips-row .ag-chip { border-color: #b8ae96; color: #5a4e3f; }
+  .phone.nacht .ag-chips-row .ag-chip.active { background: #d4ff3a; color: #0a0a0b; border-color: #d4ff3a; }
+  .phone.dag .ag-chips-row .ag-chip.active { background: #c9453a; color: #f5f1e8; border-color: #c9453a; }
+
+  .agenda-scroll {
+    flex: 1; overflow-y: auto; padding: 4px 0 110px;
+  }
+  .agenda-scroll::-webkit-scrollbar { display: none; }
+
+  /* ═══════════════════════════════════════════════════════════════════
+     05 · GERED (Andreas-kruis) — saved plans list + friend signals
+     ═══════════════════════════════════════════════════════════════════ */
+  .gered-app { display: flex; flex-direction: column; height: 100%; }
+  .gered-head { padding: 4px 22px 8px; }
+  .gered-head .gh-title { font-family: 'Archivo', sans-serif; font-weight: 900; font-size: 30px; letter-spacing: -0.03em; line-height: 1; margin-top: 6px; }
+  .gered-head .gh-sub { font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; }
+  .phone.nacht .gered-head .gh-sub { color: #9a9a94; }
+  .phone.dag .gered-head .gh-sub { color: #5a4e3f; }
+  .phone.nacht .gered-head .gh-sub b { color: #d4ff3a; font-weight: 500; }
+  .phone.dag .gered-head .gh-sub b { color: #c9453a; font-weight: 500; }
+
+  .gered-seg { display: flex; gap: 0; padding: 10px 22px 4px; border-bottom: 1px solid; }
+  .phone.nacht .gered-seg { border-color: rgba(255,255,255,0.08); }
+  .phone.dag .gered-seg { border-color: rgba(0,0,0,0.08); }
+  .gseg-btn {
+    flex: 1; background: none; border: none; cursor: pointer;
+    font-family: 'Archivo', sans-serif; font-weight: 600; font-size: 13px;
+    padding: 8px 0 10px; letter-spacing: -0.005em;
+    border-bottom: 2px solid transparent; margin-bottom: -1px;
+  }
+  .phone.nacht .gseg-btn { color: #7a7a74; }
+  .phone.dag .gseg-btn { color: #8a7f6f; }
+  .phone.nacht .gseg-btn.active { color: #f3f1ec; border-bottom-color: #d4ff3a; }
+  .phone.dag .gseg-btn.active { color: #2a241c; border-bottom-color: #c9453a; }
+
+  .gered-scroll { flex: 1; overflow-y: auto; padding: 4px 0 110px; }
+  .gered-scroll::-webkit-scrollbar { display: none; }
+
+  .gered-anchor {
+    display: flex; justify-content: space-between; align-items: baseline;
+    padding: 14px 22px 6px; position: sticky; top: 0; z-index: 2;
+    backdrop-filter: blur(8px);
+  }
+  .phone.nacht .gered-anchor { background: rgba(15,15,13,0.78); }
+  .phone.dag .gered-anchor { background: rgba(245,241,232,0.82); }
+  .gered-anchor .ga-dow { font-family: 'Archivo', sans-serif; font-weight: 900; font-size: 22px; letter-spacing: -0.02em; }
+  .gered-anchor .ga-date { font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; opacity: 0.55; }
+
+  .gered-row {
+    display: grid; grid-template-columns: 44px 1fr auto; gap: 12px;
+    padding: 12px 22px; align-items: flex-start;
+    border-bottom: 1px solid;
+    cursor: pointer;
+  }
+  .phone.nacht .gered-row { border-color: rgba(255,255,255,0.04); }
+  .phone.dag .gered-row { border-color: rgba(0,0,0,0.04); }
+  .gered-row .gr-time {
+    font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 500;
+    padding-top: 2px; letter-spacing: 0.02em;
+  }
+  .phone.nacht .gered-row .gr-time { color: #d4ff3a; }
+  .phone.dag .gered-row .gr-time { color: #c9453a; }
+  .gered-row .gr-title {
+    font-family: 'Archivo', sans-serif; font-weight: 700; font-size: 15px; line-height: 1.2;
+    letter-spacing: -0.01em;
+  }
+  .gered-row .gr-venue {
+    font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 0.1em;
+    text-transform: uppercase; margin-top: 5px; opacity: 0.7;
+  }
+  .gered-row .gr-friends {
+    display: flex; align-items: center; gap: 6px; margin-top: 8px;
+    padding: 5px 9px 5px 5px; border-radius: 999px;
+    font-family: 'Archivo', sans-serif; font-size: 11px; font-weight: 500;
+  }
+  .phone.nacht .gered-row .gr-friends { background: rgba(212,255,58,0.1); color: #d4ff3a; }
+  .phone.dag .gered-row .gr-friends { background: rgba(201,69,58,0.08); color: #c9453a; }
+  .gr-avstack { display: inline-flex; }
+  .gr-avstack img {
+    width: 18px; height: 18px; border-radius: 50%; object-fit: cover;
+    border: 1.5px solid; margin-left: -6px;
+  }
+  .phone.nacht .gr-avstack img { border-color: #0f0f0d; }
+  .phone.dag .gr-avstack img { border-color: #f5f1e8; }
+  .gr-avstack img:first-child { margin-left: 0; }
+  .gered-row .gr-tick {
+    width: 3px; align-self: stretch; border-radius: 2px;
+  }
+  .gered-row .gr-tick.t-acid { background: #d4ff3a; }
+  .gered-row .gr-tick.t-flare { background: #ff6b4a; }
+  .gered-row .gr-tick.t-plum { background: #a675c2; }
+  .gered-row .gr-tick.t-azure { background: #6aa8d8; }
+
+  /* Sticky date anchors */
+  .date-anchor {
+    position: sticky; top: 0; z-index: 5;
+    padding: 14px 22px 10px;
+    display: flex; align-items: baseline; justify-content: space-between; gap: 10px;
+    backdrop-filter: blur(10px);
+  }
+  .phone.nacht .date-anchor { background: rgba(10,10,11,.85); border-bottom: 1px solid #1f1f23; }
+  .phone.dag .date-anchor { background: rgba(217,209,191,.88); border-bottom: 1px solid #b8ae96; }
+  .date-anchor .da-num {
+    font-family: 'Archivo', sans-serif; font-weight: 900; font-size: 36px; letter-spacing: -0.03em; line-height: 0.9;
+  }
+  .date-anchor .da-dow {
+    font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase;
+  }
+  .phone.nacht .date-anchor .da-dow { color: #9a9a94; }
+  .phone.dag .date-anchor .da-dow { color: #5a4e3f; }
+  .date-anchor .da-count { font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; opacity: .5; }
+
+  /* Filter panel — legacy (unused now that chips live inline) */
+  .agenda-panel { display: none; }
+
+  /* Search chip — magnifier only by default, expands into input when active */
+  .ag-search-chip {
+    display: flex; align-items: center; gap: 0;
+    padding: 8px 10px; min-width: 34px;
+    transition: min-width .3s cubic-bezier(.65,0,.35,1), padding .3s cubic-bezier(.65,0,.35,1), gap .3s;
+  }
+  .ag-search-chip svg { width: 14px; height: 14px; flex-shrink: 0; }
+  .ag-search-chip input {
+    width: 0; border: 0; outline: 0; background: transparent; padding: 0;
+    font: inherit; color: inherit; letter-spacing: 0.06em; text-transform: uppercase;
+    font-family: 'JetBrains Mono', monospace; font-size: 11px;
+    transition: width .3s cubic-bezier(.65,0,.35,1);
+    pointer-events: none;
+  }
+  .ag-search-chip.active {
+    min-width: 160px; padding: 8px 14px; gap: 8px;
+    flex: 1;
+  }
+  .ag-search-chip.active input {
+    width: 100%; pointer-events: auto;
+  }
+  .ag-search-chip.active svg { opacity: .7; }
+
+  /* Agenda row: time | thumb | content | accent tick */
+  .agenda-row {
+    display: grid; grid-template-columns: 56px 54px 1fr 14px; gap: 12px; align-items: stretch;
+    padding: 14px 22px; cursor: pointer;
+    border-bottom: 1px solid;
+  }
+  .ag-thumb {
+    width: 54px; height: 54px; border-radius: 8px; background-size: cover; background-position: center;
+    position: relative; overflow: hidden;
+  }
+  .phone.nacht .ag-thumb { filter: brightness(0.9) saturate(1.1); }
+  .phone.dag .ag-thumb { filter: grayscale(1) contrast(1.2); }
+  .phone.dag .ag-thumb::before {
+    content: ""; position: absolute; inset: 0; background: #c9453a; mix-blend-mode: multiply; border-radius: 8px;
+  }
+
+  .phone.nacht .agenda-row { border-color: #17171a; }
+  .phone.dag .agenda-row { border-color: #c4b9a1; }
+  .agenda-row:active { background: rgba(255,255,255,.03); }
+
+  .ag-time {
+    font-family: 'Archivo', sans-serif; font-weight: 900; font-size: 18px; letter-spacing: -0.01em; line-height: 1; padding-top: 2px;
+  }
+  .ag-time em {
+    display: block; font-family: 'JetBrains Mono', monospace; font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase; font-weight: 500; font-style: normal; margin-top: 4px; opacity: .55;
+  }
+
+  .ag-body {
+    display: flex; flex-direction: column; gap: 4px; min-width: 0;
+  }
+  .ag-body .ag-title {
+    font-family: 'Archivo', sans-serif; font-weight: 800; font-size: 15px; letter-spacing: -0.015em; line-height: 1.2;
+  }
+  .ag-body .ag-venue {
+    font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase;
+  }
+  .phone.nacht .ag-body .ag-venue { color: #9a9a94; }
+  .phone.dag .ag-body .ag-venue { color: #5a4e3f; }
+  .ag-body .ag-tags {
+    display: flex; gap: 6px; margin-top: 4px; flex-wrap: wrap;
+  }
+  .ag-tag {
+    font-family: 'JetBrains Mono', monospace; font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase;
+    padding: 2px 6px; border-radius: 3px;
+  }
+  .ag-tag.acid  { background: rgba(212,255,58,.15); color: #d4ff3a; }
+  .ag-tag.flare { background: rgba(255,77,46,.18); color: #ff4d2e; }
+  .ag-tag.plum  { background: rgba(196,65,255,.18); color: #c441ff; }
+  .ag-tag.azure { background: rgba(77,124,255,.18); color: #4d7cff; }
+  .phone.dag .ag-tag.acid  { background: rgba(201,69,58,.12); color: #c9453a; }
+  .phone.dag .ag-tag.flare { background: rgba(45,74,62,.12); color: #2d4a3e; }
+  .phone.dag .ag-tag.plum  { background: rgba(43,75,156,.12); color: #2b4b9c; }
+  .phone.dag .ag-tag.azure { background: rgba(232,155,46,.18); color: #9a6518; }
+  .ag-tag.status-sold { background: transparent !important; border: 1px solid currentColor; }
+
+  .ag-tick {
+    position: relative; align-self: stretch;
+  }
+  .ag-tick::before {
+    content: ""; position: absolute; top: 6px; right: 2px; bottom: 6px; width: 3px; border-radius: 2px;
+  }
+  .ag-tick.t-acid::before  { background: #d4ff3a; }
+  .ag-tick.t-flare::before { background: #ff4d2e; }
+  .ag-tick.t-plum::before  { background: #c441ff; }
+  .ag-tick.t-azure::before { background: #4d7cff; }
+  .phone.dag .ag-tick.t-acid::before  { background: #c9453a; }
+  .phone.dag .ag-tick.t-flare::before { background: #2d4a3e; }
+  .phone.dag .ag-tick.t-plum::before  { background: #2b4b9c; }
+  .phone.dag .ag-tick.t-azure::before { background: #e89b2e; }
+
+  /* ————— Kaart ————— */
+  .kaart-app { display: flex; flex-direction: column; min-height: 0; }
+  .kaart-toolbar {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 4px 22px 10px; gap: 10px;
+  }
+  .kaart-seg {
+    display: flex; border-radius: 999px; padding: 3px; gap: 2px;
+  }
+  .phone.nacht .kaart-seg { background: #17171a; }
+  .phone.dag .kaart-seg { background: #ebe6d8; }
+  .kseg-btn {
+    display: flex; align-items: center; gap: 6px;
+    padding: 7px 12px; border-radius: 999px;
+    border: 0; background: transparent; cursor: pointer;
+    font-family: 'Inter', sans-serif; font-weight: 500; font-size: 12px; letter-spacing: -0.005em;
+    transition: background .2s, color .2s;
+  }
+  .phone.nacht .kseg-btn { color: #9a9a94; }
+  .phone.dag .kseg-btn { color: #5a4e3f; }
+  .kseg-btn svg { width: 14px; height: 14px; }
+  .phone.nacht .kseg-btn.active { background: #d4ff3a; color: #0a0a0b; }
+  .phone.dag .kseg-btn.active { background: #c9453a; color: #f5f1e8; }
+
+  .kaart-self {
+    width: 36px; height: 36px; border-radius: 999px;
+    border: 0; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .phone.nacht .kaart-self { background: #17171a; color: #e8e8e5; }
+  .phone.dag .kaart-self { background: #ebe6d8; color: #1a1410; }
+  .kaart-self svg { width: 16px; height: 16px; }
+
+  /* Canvas */
+  .kaart-canvas {
+    position: relative; flex: 1; overflow: hidden;
+    min-height: 320px;
+  }
+  .kaart-bg {
+    position: absolute; inset: 0; width: 100%; height: 100%;
+  }
+  /* Base land color — muted, app-tinted */
+  .phone.nacht .kb-land { fill: #12121a; }
+  .phone.dag .kb-land { fill: #e6ddca; }
+  /* Water */
+  .phone.nacht .kb-water,
+  .phone.nacht .kb-water-fill { fill: #0a1220; stroke: #0a1220; }
+  .phone.dag .kb-water,
+  .phone.dag .kb-water-fill { fill: #b8c4c9; stroke: #b8c4c9; }
+  .phone.nacht .kb-water-thin { stroke: #0a1220; }
+  .phone.dag .kb-water-thin { stroke: #b8c4c9; }
+  /* Street lines */
+  .kb-streets line { stroke-width: 1.2; stroke-linecap: round; }
+  .phone.nacht .kb-streets line { stroke: #1d1d26; }
+  .phone.dag .kb-streets line { stroke: #d0c6af; }
+  /* Park/big blocks */
+  .phone.nacht .kb-blocks rect { fill: #161620; }
+  .phone.dag .kb-blocks rect { fill: #ddd3bd; }
+  /* Buurt labels */
+  .kb-label {
+    font-family: 'JetBrains Mono', monospace; font-size: 8.5px; letter-spacing: 0.22em;
+    font-weight: 500;
+  }
+  .phone.nacht .kb-label { fill: #2d2d3a; }
+  .phone.dag .kb-label { fill: #a89a80; }
+
+  /* Distance rings around "you" */
+  .kaart-rings {
+    position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    pointer-events: none;
+  }
+  .kring {
+    position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    border-radius: 50%; border: 1px dashed;
+  }
+  .phone.nacht .kring { border-color: rgba(212,255,58,.14); }
+  .phone.dag .kring { border-color: rgba(201,69,58,.24); }
+  .kring.r1 { width: 120px; height: 120px; }
+  .kring.r2 { width: 220px; height: 220px; }
+  .kring.r3 { width: 320px; height: 320px; }
+
+  /* You-pin center */
+  .kaart-you {
+    position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    width: 38px; height: 38px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    z-index: 10;
+  }
+  .phone.nacht .kaart-you { background: #d4ff3a; box-shadow: 0 0 0 6px rgba(212,255,58,.14), 0 0 0 14px rgba(212,255,58,.06); }
+  .phone.dag .kaart-you { background: #c9453a; box-shadow: 0 0 0 6px rgba(201,69,58,.16), 0 0 0 14px rgba(201,69,58,.08); }
+  .ky-cross {
+    position: relative; width: 16px; height: 16px;
+  }
+  .ky-cross::before, .ky-cross::after {
+    content: ""; position: absolute; background: #0a0a0b;
+  }
+  .phone.dag .ky-cross::before, .phone.dag .ky-cross::after { background: #f5f1e8; }
+  .ky-cross::before { top: 0; left: 50%; width: 3px; height: 100%; transform: translateX(-50%) rotate(45deg); }
+  .ky-cross::after  { top: 50%; left: 0; width: 100%; height: 3px; transform: translateY(-50%) rotate(45deg); }
+
+  /* Marker layer */
+  .kaart-layer {
+    position: absolute; inset: 0;
+  }
+  .kmarker {
+    position: absolute; transform: translate(-50%, -50%);
+    display: flex; align-items: center; gap: 6px;
+    padding: 5px 10px 5px 5px; border-radius: 999px; cursor: pointer;
+    border: 0;
+    font-family: 'Inter', sans-serif; font-weight: 600; font-size: 10.5px; letter-spacing: -0.005em;
+    white-space: nowrap;
+    transition: transform .2s, box-shadow .2s;
+  }
+  .kmarker:hover, .kmarker.active { transform: translate(-50%, -50%) scale(1.08); z-index: 20; }
+  .phone.nacht .kmarker { background: #17171a; color: #e8e8e5; box-shadow: 0 2px 10px rgba(0,0,0,.5); }
+  .phone.dag .kmarker { background: #f5f1e8; color: #1a1410; box-shadow: 0 2px 10px rgba(0,0,0,.12); }
+  .phone.nacht .kmarker.active { background: #d4ff3a; color: #0a0a0b; }
+  .phone.dag .kmarker.active { background: #c9453a; color: #f5f1e8; }
+  .kmarker .km-dot {
+    width: 18px; height: 18px; border-radius: 50%; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 9px;
+    color: #0a0a0b;
+  }
+  .kmarker.cat-muziek .km-dot { background: #d4ff3a; }
+  .kmarker.cat-theater .km-dot { background: #ff4d2e; color: #f5f1e8; }
+  .kmarker.cat-literatuur .km-dot { background: #c441ff; color: #f5f1e8; }
+  .kmarker.cat-film .km-dot { background: #4d7cff; color: #f5f1e8; }
+  .phone.dag .kmarker.cat-muziek .km-dot { background: #c9453a; color: #f5f1e8; }
+  .phone.dag .kmarker.cat-theater .km-dot { background: #2d4a3e; color: #f5f1e8; }
+  .phone.dag .kmarker.cat-literatuur .km-dot { background: #2b4b9c; color: #f5f1e8; }
+  .phone.dag .kmarker.cat-film .km-dot { background: #e89b2e; color: #1a1410; }
+  .kmarker .km-min {
+    font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 0.04em;
+  }
+
+  /* Friends */
+  .kfriend {
+    position: absolute; transform: translate(-50%, -50%);
+    width: 22px; height: 22px; border-radius: 50%;
+    background-size: cover; background-position: center;
+    border: 2px solid;
+    z-index: 5;
+  }
+  .phone.nacht .kfriend { border-color: #0a0a0b; }
+  .phone.dag .kfriend { border-color: #d9d1bf; }
+  .kfriend::after {
+    content: ""; position: absolute; inset: -4px; border-radius: 50%; border: 1px solid;
+    animation: kpulse 2.4s ease-out infinite;
+  }
+  .phone.nacht .kfriend::after { border-color: rgba(212,255,58,.4); }
+  .phone.dag .kfriend::after { border-color: rgba(201,69,58,.4); }
+  @keyframes kpulse {
+    0% { transform: scale(.9); opacity: 1; }
+    100% { transform: scale(1.8); opacity: 0; }
+  }
+
+  /* Bottom sheet — comes from the bottom edge, sits BELOW the floating tabbar */
+  .kaart-sheet {
+    position: absolute; left: 0; right: 0; bottom: 0; z-index: 10;
+    border-radius: 24px 24px 0 0;
+    padding: 10px 22px 88px; /* bottom padding clears the floating tabbar */
+    max-height: 300px; display: flex; flex-direction: column; gap: 10px;
+    transition: transform .3s cubic-bezier(.65,0,.35,1);
+  }
+  .phone.nacht .kaart-sheet { background: #17171a; color: #e8e8e5; box-shadow: 0 -20px 40px rgba(0,0,0,.5); }
+  .phone.dag .kaart-sheet { background: #f5f1e8; color: #1a1410; box-shadow: 0 -20px 40px rgba(0,0,0,.08); }
+  .ksheet-handle {
+    width: 36px; height: 4px; border-radius: 2px; margin: 0 auto;
+    background: currentColor; opacity: .25;
+  }
+  .ksheet-head {
+    display: flex; justify-content: space-between; align-items: baseline;
+  }
+  .ksheet-kicker {
+    font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; opacity: .6;
+  }
+  .ksheet-count {
+    font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 0.08em; opacity: .6;
+  }
+  .ksheet-count b {
+    font-family: 'Archivo', sans-serif; font-weight: 900; font-size: 16px; letter-spacing: -0.02em;
+    opacity: 1; margin-right: 2px;
+  }
+  .ksheet-list {
+    flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 2px;
+    scrollbar-width: none;
+  }
+  .ksheet-list::-webkit-scrollbar { display: none; }
+  .ksheet-row {
+    display: grid; grid-template-columns: 44px 1fr auto; gap: 10px; align-items: center;
+    padding: 10px 0; border-bottom: 1px solid;
+    cursor: pointer; border-left: 0; border-right: 0; border-top: 0;
+    background: transparent;
+  }
+  .phone.nacht .ksheet-row { border-color: #2a2a2d; }
+  .phone.dag .ksheet-row { border-color: #c4b9a1; }
+  .ksheet-row:last-child { border-bottom: 0; }
+  .ksheet-row.is-active { opacity: 1; }
+  .ksheet-row:not(.is-active) { opacity: .88; }
+  .phone.nacht .ksheet-row.is-active .ksheet-min { color: #d4ff3a; }
+  .phone.dag .ksheet-row.is-active .ksheet-min { color: #c9453a; }
+  .ksheet-row.is-active .ksheet-title { text-decoration: underline; text-decoration-thickness: 1.5px; text-underline-offset: 3px; }
+  .ksheet-min {
+    font-family: 'Archivo', sans-serif; font-weight: 900; font-size: 22px; letter-spacing: -0.03em; line-height: 1;
+    text-align: left;
+  }
+  .ksheet-min em {
+    font-family: 'JetBrains Mono', monospace; font-style: normal; font-weight: 400; font-size: 9px;
+    letter-spacing: 0.1em; text-transform: uppercase; display: block; opacity: .55; margin-top: 2px;
+  }
+  .ksheet-body { min-width: 0; text-align: left; }
+  .ksheet-title {
+    font-family: 'Archivo', sans-serif; font-weight: 700; font-size: 14px; letter-spacing: -0.015em; line-height: 1.15;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .ksheet-venue {
+    font-family: 'JetBrains Mono', monospace; font-size: 9.5px; letter-spacing: 0.08em; text-transform: uppercase; opacity: .55;
+    margin-top: 2px;
+  }
+  .ksheet-time {
+    font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 0.06em; opacity: .7;
+  }
+
+  /* List view */
+  .kaart-listview {
+    flex: 1; overflow-y: auto; padding: 0 22px 110px;
+  }
+
+  /* Copy swap animation */
+  .swap { transition: opacity .25s; }
+  .swap.out { opacity: 0; }
+
+  /* ═════════════════════════════════════════════════════════════════
+     06 · JIJ — profile + friends + preferences (settings-first, clean)
+     ═════════════════════════════════════════════════════════════════ */
+  .jij-app { display: flex; flex-direction: column; height: 100%; }
+
+  .jij-head {
+    display: grid; grid-template-columns: 64px 1fr; gap: 14px;
+    padding: 6px 22px 14px; align-items: center;
+  }
+  .jij-avatar {
+    width: 64px; height: 64px; border-radius: 50%; overflow: hidden;
+    border: 2px solid;
+  }
+  .phone.nacht .jij-avatar { border-color: #1f1f23; }
+  .phone.dag .jij-avatar { border-color: #d9d1bf; }
+  .jij-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .jij-name {
+    font-family: 'Archivo', sans-serif; font-weight: 800; font-size: 22px;
+    letter-spacing: -0.025em; line-height: 1.05;
+  }
+  .jij-handle {
+    font-family: 'JetBrains Mono', monospace; font-size: 10px;
+    letter-spacing: 0.12em; text-transform: uppercase; margin-top: 4px;
+  }
+  .phone.nacht .jij-handle { color: #6a6a68; }
+  .phone.dag .jij-handle { color: #8a7e6b; }
+  .jij-bio {
+    font-family: 'Archivo', sans-serif; font-size: 12.5px; line-height: 1.4;
+    margin-top: 6px; padding: 0 22px 4px;
+  }
+  .phone.nacht .jij-bio { color: #b8b8b2; }
+  .phone.dag .jij-bio { color: #5a4e3f; }
+
+  .jij-scroll { flex: 1; overflow-y: auto; padding: 4px 0 110px; }
+  .jij-scroll::-webkit-scrollbar { display: none; }
+
+  /* Section header */
+  .jij-section-h {
+    display: flex; align-items: baseline; justify-content: space-between;
+    padding: 18px 22px 8px; gap: 12px;
+  }
+  .jij-section-h .jsh-label {
+    font-family: 'JetBrains Mono', monospace; font-size: 10px;
+    letter-spacing: 0.16em; text-transform: uppercase;
+    white-space: nowrap;
+  }
+  .phone.nacht .jij-section-h .jsh-label { color: #9a9a94; }
+  .phone.dag .jij-section-h .jsh-label { color: #5a4e3f; }
+  .jij-section-h .jsh-action {
+    font-family: 'JetBrains Mono', monospace; font-size: 10px;
+    letter-spacing: 0.12em; text-transform: uppercase;
+    background: transparent; border: 0; cursor: pointer; font-weight: 500;
+    white-space: nowrap;
+  }
+  .phone.nacht .jij-section-h .jsh-action { color: #d4ff3a; }
+  .phone.dag .jij-section-h .jsh-action { color: #c9453a; }
+  .jij-section-h .jsh-count {
+    font-family: 'JetBrains Mono', monospace; font-size: 10px;
+    letter-spacing: 0.14em; opacity: 0.5;
+  }
+
+  /* Friend row */
+  .jij-friend {
+    display: grid; grid-template-columns: 36px 1fr auto; gap: 12px;
+    padding: 10px 22px; align-items: center;
+    border-top: 1px solid; cursor: pointer;
+  }
+  .phone.nacht .jij-friend { border-color: rgba(255,255,255,0.04); }
+  .phone.dag .jij-friend { border-color: rgba(0,0,0,0.04); }
+  .jij-friend .jf-av {
+    width: 36px; height: 36px; border-radius: 50%; overflow: hidden;
+  }
+  .jij-friend .jf-av img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .jij-friend .jf-name {
+    font-family: 'Archivo', sans-serif; font-weight: 600; font-size: 14px;
+    letter-spacing: -0.01em; line-height: 1.15;
+  }
+  .jij-friend .jf-meta {
+    font-family: 'JetBrains Mono', monospace; font-size: 9.5px;
+    letter-spacing: 0.12em; text-transform: uppercase;
+    margin-top: 4px;
+  }
+  .phone.nacht .jij-friend .jf-meta { color: #6a6a68; }
+  .phone.dag .jij-friend .jf-meta { color: #8a7e6b; }
+  .phone.nacht .jij-friend .jf-meta.hot { color: #d4ff3a; }
+  .phone.dag .jij-friend .jf-meta.hot { color: #c9453a; }
+
+  .jf-action {
+    font-family: 'JetBrains Mono', monospace; font-size: 10px;
+    letter-spacing: 0.12em; text-transform: uppercase;
+    background: transparent; border: 1px solid; padding: 6px 10px;
+    border-radius: 999px; cursor: pointer; font-weight: 500;
+  }
+  .phone.nacht .jf-action { border-color: #2a2a2d; color: #b8b8b2; }
+  .phone.dag .jf-action { border-color: #c4b89e; color: #5a4e3f; }
+  .jf-action.primary { padding: 6px 12px; }
+  .phone.nacht .jf-action.primary { background: #d4ff3a; border-color: #d4ff3a; color: #0a0a0b; }
+  .phone.dag .jf-action.primary { background: #c9453a; border-color: #c9453a; color: #f5f1e8; }
+
+  .jf-twin { display: flex; gap: 6px; }
+  .jf-twin button {
+    width: 32px; height: 32px; border-radius: 50%; border: 1px solid;
+    cursor: pointer; display: flex; align-items: center; justify-content: center;
+    background: transparent; padding: 0;
+  }
+  .jf-twin button svg { width: 14px; height: 14px; }
+  .phone.nacht .jf-twin .jft-yes { background: #d4ff3a; border-color: #d4ff3a; color: #0a0a0b; }
+  .phone.dag .jf-twin .jft-yes { background: #c9453a; border-color: #c9453a; color: #f5f1e8; }
+  .phone.nacht .jf-twin .jft-no { border-color: #2a2a2d; color: #6a6a68; }
+  .phone.dag .jf-twin .jft-no { border-color: #c4b89e; color: #8a7e6b; }
+
+  /* Settings rows (toggles + nav) */
+  .jij-srow {
+    display: grid; grid-template-columns: 1fr auto; gap: 14px;
+    padding: 14px 22px; align-items: center;
+    border-top: 1px solid; cursor: pointer;
+  }
+  .phone.nacht .jij-srow { border-color: rgba(255,255,255,0.04); }
+  .phone.dag .jij-srow { border-color: rgba(0,0,0,0.04); }
+  .jij-srow .jsr-label {
+    font-family: 'Archivo', sans-serif; font-weight: 500; font-size: 14px;
+    letter-spacing: -0.005em;
+  }
+  .jij-srow .jsr-sub {
+    font-family: 'JetBrains Mono', monospace; font-size: 9.5px;
+    letter-spacing: 0.1em; text-transform: uppercase;
+    margin-top: 4px;
+  }
+  .phone.nacht .jij-srow .jsr-sub { color: #6a6a68; }
+  .phone.dag .jij-srow .jsr-sub { color: #8a7e6b; }
+  .jij-srow .jsr-value {
+    font-family: 'JetBrains Mono', monospace; font-size: 11px;
+    letter-spacing: 0.08em; text-transform: uppercase;
+  }
+  .phone.nacht .jij-srow .jsr-value { color: #d4ff3a; }
+  .phone.dag .jij-srow .jsr-value { color: #c9453a; }
+  .jij-srow .jsr-chev {
+    font-family: 'JetBrains Mono', monospace; opacity: .35; margin-left: 8px; font-size: 12px;
+  }
+  .jij-srow.danger .jsr-label { color: #c9453a; }
+  .phone.nacht .jij-srow.danger .jsr-label { color: #ff6b4a; }
+
+  /* Pill toggle (matches design language — no iOS-style switches) */
+  .jij-toggle {
+    width: 38px; height: 22px; border-radius: 999px; position: relative;
+    border: 1px solid; cursor: pointer; transition: background .2s, border-color .2s;
+    background: transparent;
+  }
+  .phone.nacht .jij-toggle { border-color: #2a2a2d; }
+  .phone.dag .jij-toggle { border-color: #c4b89e; }
+  .jij-toggle::after {
+    content: ''; position: absolute; top: 3px; left: 3px;
+    width: 14px; height: 14px; border-radius: 50%;
+    transition: transform .2s, background .2s;
+  }
+  .phone.nacht .jij-toggle::after { background: #6a6a68; }
+  .phone.dag .jij-toggle::after { background: #8a7e6b; }
+  .jij-toggle.on::after { transform: translateX(16px); }
+  .phone.nacht .jij-toggle.on { background: #d4ff3a; border-color: #d4ff3a; }
+  .phone.nacht .jij-toggle.on::after { background: #0a0a0b; }
+  .phone.dag .jij-toggle.on { background: #c9453a; border-color: #c9453a; }
+  .phone.dag .jij-toggle.on::after { background: #f5f1e8; }
+
+  /* ═════════════════════════════════════════════════════════════════
+     07 · VENUE — venue detail (Paradiso). Reuses .detail-hero pattern.
+     ═════════════════════════════════════════════════════════════════ */
+  .venue-app { padding-top: 0; display: flex; flex-direction: column; height: 100%; }
+  .venue-body {
+    flex: 1; overflow-y: auto; padding: 18px 22px 110px; scrollbar-width: none;
+  }
+  .venue-body::-webkit-scrollbar { display: none; }
+  .phone.nacht .venue-body { background: #0a0a0b; color: #f2f2ef; }
+  .phone.dag .venue-body { background: #f5f1e8; color: #1a1410; }
+
+  .venue-addr {
+    display: flex; flex-direction: column; gap: 2px;
+    padding: 0 0 14px; border-bottom: 1px solid;
+  }
+  .phone.nacht .venue-addr { border-color: #1f1f23; }
+  .phone.dag .venue-addr { border-color: #d9d1bf; }
+  .venue-addr .va-line {
+    font-family: 'JetBrains Mono', monospace; font-size: 11px;
+    letter-spacing: 0.06em; line-height: 1.5;
+  }
+  .phone.nacht .venue-addr .va-line { color: #b8b8b2; }
+  .phone.dag .venue-addr .va-line { color: #2a241c; }
+  .venue-addr .va-meta {
+    font-family: 'JetBrains Mono', monospace; font-size: 9.5px;
+    letter-spacing: 0.14em; text-transform: uppercase; margin-top: 8px;
+  }
+  .phone.nacht .venue-addr .va-meta { color: #6a6a68; }
+  .phone.dag .venue-addr .va-meta { color: #8a7e6b; }
+
+  .venue-actions {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
+    margin: 14px 0 18px;
+  }
+  .venue-action {
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    padding: 13px 12px; border-radius: 12px; cursor: pointer;
+    font-family: 'JetBrains Mono', monospace; font-size: 11px;
+    letter-spacing: 0.1em; text-transform: uppercase; font-weight: 500;
+    border: 1px solid;
+  }
+  .venue-action svg { width: 14px; height: 14px; }
+  .phone.nacht .venue-action { background: #d4ff3a; border-color: #d4ff3a; color: #0a0a0b; }
+  .phone.dag .venue-action { background: #c9453a; border-color: #c9453a; color: #f5f1e8; }
+  .venue-action.secondary { background: transparent; }
+  .phone.nacht .venue-action.secondary { background: transparent; color: #f2f2ef; border-color: #2a2a2d; }
+  .phone.dag .venue-action.secondary { background: transparent; color: #1a1410; border-color: #c4b89e; }
+  .phone.nacht .venue-action.secondary.saved { background: rgba(212,255,58,0.08); border-color: #d4ff3a; color: #d4ff3a; }
+  .phone.dag .venue-action.secondary.saved { background: rgba(201,69,58,0.08); border-color: #c9453a; color: #c9453a; }
+
+  .venue-desc {
+    font-family: 'Archivo', sans-serif; font-size: 13px; line-height: 1.5;
+    margin: 0 0 22px;
+  }
+  .phone.nacht .venue-desc { color: #b8b8b2; }
+  .phone.dag .venue-desc { color: #2a241c; }
+
+  .venue-prog-h {
+    display: flex; align-items: baseline; justify-content: space-between;
+    margin: 6px 0 10px;
+  }
+  .venue-prog-h .vph-label {
+    font-family: 'JetBrains Mono', monospace; font-size: 11px;
+    letter-spacing: 0.16em; text-transform: uppercase;
+  }
+  .phone.nacht .venue-prog-h .vph-label { color: #f2f2ef; }
+  .phone.dag .venue-prog-h .vph-label { color: #1a1410; }
+  .venue-prog-h .vph-count {
+    font-family: 'JetBrains Mono', monospace; font-size: 10px;
+    letter-spacing: 0.12em; text-transform: uppercase; opacity: 0.55;
+  }
+
+  .venue-row {
+    display: grid; grid-template-columns: 50px 1fr 3px; gap: 14px;
+    padding: 14px 0; align-items: flex-start;
+    border-top: 1px solid; cursor: pointer;
+  }
+  .phone.nacht .venue-row { border-color: rgba(255,255,255,0.06); }
+  .phone.dag .venue-row { border-color: rgba(0,0,0,0.06); }
+  .venue-row .vr-date {
+    font-family: 'Archivo', sans-serif; line-height: 0.95;
+  }
+  .venue-row .vr-date .num {
+    display: block; font-size: 26px; font-weight: 900; letter-spacing: -0.03em;
+  }
+  .venue-row .vr-date .mon {
+    font-family: 'JetBrains Mono', monospace; font-size: 9px;
+    letter-spacing: 0.16em; opacity: 0.55; font-weight: 500; margin-top: 3px;
+  }
+  .venue-row .vr-title {
+    font-family: 'Archivo', sans-serif; font-weight: 700; font-size: 15px;
+    line-height: 1.2; letter-spacing: -0.01em;
+  }
+  .venue-row .vr-meta {
+    font-family: 'JetBrains Mono', monospace; font-size: 10px;
+    letter-spacing: 0.1em; text-transform: uppercase; margin-top: 5px; opacity: 0.65;
+  }
+  .venue-row .vr-tick { width: 3px; align-self: stretch; border-radius: 2px; }
+  .venue-row .vr-tick.t-acid  { background: #d4ff3a; }
+  .venue-row .vr-tick.t-flare { background: #ff6b4a; }
+  .venue-row .vr-tick.t-plum  { background: #a675c2; }
+  .venue-row .vr-tick.t-azure { background: #6aa8d8; }
+
+  .venue-hall {
+    font-family: 'JetBrains Mono', monospace; font-size: 10px;
+    letter-spacing: 0.16em; text-transform: uppercase;
+    margin: 22px 0 0; opacity: 0.5;
+  }
+  .venue-hall:first-of-type { margin-top: 6px; }
+
+  /* ═════════════════════════════════════════════════════════════════
+     08 · VRIEND — friend detail (Roos)
+     Hergebruikt jij-head, venue-row, venue-hall patterns.
+     ═════════════════════════════════════════════════════════════════ */
+  .vriend-app { display: flex; flex-direction: column; height: 100%; }
+  .vriend-topbar {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 6px 18px 0;
+  }
+  .vriend-topbar .detail-back {
+    background: transparent; backdrop-filter: none;
+  }
+  .phone.nacht .vriend-topbar .detail-back { color: #f2f2ef; }
+  .phone.dag .vriend-topbar .detail-back { color: #1a1410; }
+  .vriend-topbar .vt-meta {
+    font-family: 'JetBrains Mono', monospace; font-size: 10px;
+    letter-spacing: 0.14em; text-transform: uppercase;
+  }
+  .phone.nacht .vriend-topbar .vt-meta { color: #6a6a68; }
+  .phone.dag .vriend-topbar .vt-meta { color: #8a7e6b; }
+
+  .vriend-overlap {
+    display: inline-flex; gap: 6px; align-items: center;
+    margin-top: 8px; padding: 4px 10px; border-radius: 999px;
+    font-family: 'JetBrains Mono', monospace; font-size: 9.5px;
+    letter-spacing: 0.14em; text-transform: uppercase; font-weight: 500;
+  }
+  .phone.nacht .vriend-overlap { background: rgba(212,255,58,0.1); color: #d4ff3a; }
+  .phone.dag .vriend-overlap { background: rgba(201,69,58,0.08); color: #c9453a; }
+
+  .vriend-handles { display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
+  .vh-pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 4px 9px 4px 7px; border-radius: 999px;
+    font-family: 'JetBrains Mono', monospace; font-size: 10px;
+    letter-spacing: 0.04em; cursor: pointer;
+    border: 1px solid;
+  }
+  .vh-pill .vh-net {
+    font-weight: 600; letter-spacing: 0.12em;
+    padding: 1px 5px; border-radius: 3px;
+  }
+  .phone.nacht .vh-pill { border-color: #2a2a2d; color: #c9c5b8; }
+  .phone.nacht .vh-pill .vh-net { background: #1f1f23; color: #f2f2ef; }
+  .phone.dag .vh-pill { border-color: #d9d1bf; color: #5a5142; }
+  .phone.dag .vh-pill .vh-net { background: #1a1410; color: #f3eddf; }
+
+  .vriend-scroll { flex: 1; overflow-y: auto; padding: 4px 0 110px; }
+  .vriend-scroll::-webkit-scrollbar { display: none; }
+  .vriend-scroll .venue-row { padding-left: 22px; padding-right: 22px; }
+  .vriend-scroll .venue-hall { padding: 0 22px; }
+  .vriend-scroll .jij-srow { cursor: pointer; }
+
+  .vriend-foot {
+    margin-top: 26px; border-top: 1px solid;
+  }
+  .phone.nacht .vriend-foot { border-color: #1f1f23; }
+  .phone.dag .vriend-foot { border-color: #d9d1bf; }
+  .vriend-foot .jij-srow .jsr-label { font-weight: 500; }
+
+</style>
+</head>
+<body class="mode-nacht">
+
+<div class="wrap">
+  <div class="page-head">
+    <div>
+      <div class="crumb">Andreas · App prototype · v0.4</div>
+      <h1>Feed · Detail · Agenda</h1>
+    </div>
+    <div class="note">Drie schermen die dezelfde taal spreken.<br/>De <b>agenda</b> is een werkinstrument — tijd leidt, datum is het ankerpunt, geen grote foto's die je afleiden.</div>
+  </div>
+
+  <div class="frame-row">
+    <div class="frame-col">
+      <div class="phone nacht" id="phone-feed">
+        <div class="phone-notch"></div>
+        <div class="status"><span id="time">23:14</span><span>● ● ●</span></div>
+
+        <!-- Curtain lives at phone-level so it covers EVERYTHING including header + tabbar -->
+        <div class="curtain"><span class="curtain-x"></span></div>
+
+        <div class="app">
+          <div class="app-header">
+            <div class="logo-lockup">
+              <span class="logo-cross" aria-hidden="true"></span>
+              <span class="wordmark">Andreas</span>
+            </div>
+            <button class="dn-switch" aria-label="Dag/nacht" data-switch>
+              <span class="dn-sun"></span>
+              <span class="dn-moon"></span>
+              <span class="dn-thumb"></span>
+            </button>
+          </div>
+
+          <div class="app-content">
+
+          <div class="hero-block">
+            <div class="hero-kicker swap" data-copy="kicker">Donderdagavond · 22 apr</div>
+            <div class="hero-title swap" data-copy="title">47 dingen<br/>die <em>nu</em> tellen.</div>
+          </div>
+
+          <div class="cat-tabs">
+            <button class="cat-tab active">Vanavond</button>
+            <button class="cat-tab">Muziek</button>
+            <button class="cat-tab">Theater</button>
+            <button class="cat-tab">Literatuur</button>
+            <button class="cat-tab">Film</button>
+          </div>
+
+          <div class="app-scroll">
+            <div class="featured" id="featured">
+              <div class="feat-photo" id="feat-photo"></div>
+              <div class="feat-kicker swap" data-copy="feat-kicker">— Avondkeuze</div>
+              <div>
+                <div class="feat-title swap" data-copy="feat-title">Lewsberg<br/>live</div>
+                <div class="feat-meta swap" data-copy="feat-meta"><span>OCCII</span><span class="dot">·</span><span>23:30</span><span class="dot">·</span><span>€12</span><span class="dot">·</span><span>nog 3 kaarten</span></div>
+              </div>
+            </div>
+
+            <div class="sec-title"><span class="swap" data-copy="sec1-l">Kleine zalen</span> <span class="swap" data-copy="sec1-r">6 evenementen</span></div>
+
+            <div class="event-list" id="event-list"></div>
+
+            <div class="sec-title" style="margin-top:28px"><span class="swap" data-copy="sec2-l">Met andere ogen gezien</span> <span class="swap" data-copy="sec2-r">foto dump</span></div>
+            <div class="photo-band">
+              <div class="photo-card d-red" style="background-image:url('https://images.unsplash.com/photo-1506157786151-b8491531f063?w=400&q=60&auto=format&fit=crop')">
+                <div class="photo-card-content">
+                  <div class="pc-kicker">Poëzie · open mic</div>
+                  <div class="pc-title">Middenmoot<br/>avond</div>
+                </div>
+              </div>
+              <div class="photo-card d-cobalt" style="background-image:url('https://images.unsplash.com/photo-1518609878373-06d740f60d8b?w=400&q=60&auto=format&fit=crop')">
+                <div class="photo-card-content">
+                  <div class="pc-kicker">Film · Nieuwe Anita</div>
+                  <div class="pc-title">Mosquito<br/>screening</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          </div><!-- /.app-content -->
+
+          <!-- TABBAR: icon-only, abstract glyphs — thick like the logo cross -->
+          <div class="tabbar">
+            <button class="active" aria-label="Nu">
+              <svg viewBox="0 0 24 24" fill="currentColor">
+                <!-- Solid dot -->
+                <circle cx="12" cy="12" r="5"/>
+              </svg>
+            </button>
+            <button aria-label="Agenda">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.6">
+                <!-- Three thick ticks -->
+                <line x1="5" y1="7" x2="19" y2="7"/>
+                <line x1="5" y1="12" x2="19" y2="12"/>
+                <line x1="5" y1="17" x2="13" y2="17"/>
+              </svg>
+            </button>
+            <button aria-label="Kaart">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.6">
+                <!-- Solid diamond, no inner dot -->
+                <polygon points="12,3 21,12 12,21 3,12"/>
+              </svg>
+            </button>
+            <button aria-label="Gered">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.6">
+                <!-- Brand cross, same weight -->
+                <line x1="5" y1="5" x2="19" y2="19"/>
+                <line x1="19" y1="5" x2="5" y2="19"/>
+              </svg>
+            </button>
+            <button aria-label="Jij">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.6">
+                <circle cx="12" cy="12" r="8"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+      </div>
+      <div class="frame-label">01 · Feed</div>
+    </div>
+
+    <div class="frame-col">
+      <div class="phone nacht" id="phone-detail">
+        <div class="phone-notch"></div>
+        <div class="status"><span>23:14</span><span>● ● ●</span></div>
+
+        <!-- Curtain covers the whole phone -->
+        <div class="curtain"><span class="curtain-x"></span></div>
+
+        <div class="app detail-app">
+          <div class="detail-hero">
+            <div class="detail-photo" id="detail-photo" style="background-image:url('https://images.unsplash.com/photo-1501612780327-45045538702b?w=800&q=70&auto=format&fit=crop')"></div>
+            <div class="detail-top">
+              <button class="detail-back" aria-label="Terug">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.6">
+                  <polyline points="15,5 7,12 15,19"/>
+                </svg>
+              </button>
+              <div class="detail-actions">
+                <button class="detail-action" aria-label="Gered">
+                  <svg viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12 21s-7.5-4.6-9.3-9.1C1.5 8.6 3.2 5 6.6 5c2 0 3.5 1 5.4 3.2C13.9 6 15.4 5 17.4 5c3.4 0 5.1 3.6 3.9 6.9C19.5 16.4 12 21 12 21z"/>
+                  </svg>
+                </button>
+                <button class="detail-action" aria-label="Delen">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.6">
+                    <line x1="7" y1="17" x2="18" y2="6"/>
+                    <polyline points="9,6 18,6 18,15"/>
+                  </svg>
+                </button>
+              </div>
+            </div>
+            <div class="detail-hero-text">
+              <div class="detail-tag swap" data-copy="d-tag">Muziek · post-punk</div>
+              <div class="detail-h2 swap" data-copy="d-title">Lewsberg<br/>+ Personal<br/>Trainer</div>
+            </div>
+          </div>
+          <div class="detail-body">
+            <div class="meta-row">
+              <div class="meta-cell"><div class="ml">Datum</div><div class="mv swap" data-copy="d-date">Vr 25.04</div></div>
+              <div class="meta-cell"><div class="ml">Aanvang</div><div class="mv swap" data-copy="d-time">23:30</div></div>
+              <div class="meta-cell"><div class="ml">Venue</div><div class="mv swap" data-copy="d-venue">OCCII</div></div>
+            </div>
+            <p class="swap" data-copy="d-desc">Dubbelconcert in de kelder van de OCCII. Lewsberg brengt een korte set uit het nieuwe album, Personal Trainer sluit af met een set die volgens hen zelf 'absurd' wordt.</p>
+            <div class="photo-strip">
+              <div class="ps" style="background-image:url('https://images.unsplash.com/photo-1470229722913-7c0e2dbbafd3?w=200&q=60&auto=format&fit=crop')"></div>
+              <div class="ps" style="background-image:url('https://images.unsplash.com/photo-1516450360452-9312f5e86fc7?w=200&q=60&auto=format&fit=crop')"></div>
+              <div class="ps" style="background-image:url('https://images.unsplash.com/photo-1429962714451-bb934ecdc4ec?w=200&q=60&auto=format&fit=crop')"></div>
+            </div>
+            <h4>Line-up</h4>
+            <div class="lineup swap" data-copy="d-lineup" id="lineup">
+              <div><b>Personal Trainer</b><span>01:00</span></div>
+              <div><b>Lewsberg</b><span>23:30</span></div>
+              <div><b>DJ Nachtwacht</b><span>23:00 · open</span></div>
+            </div>
+
+            <h4 style="margin-top:24px;">Vrienden gaan ook</h4>
+            <div class="detail-friends">
+              <div class="df-avatars">
+                <img src="https://i.pravatar.cc/72?img=47" alt="Roos" />
+                <img src="https://i.pravatar.cc/72?img=33" alt="Milan" />
+                <img src="https://i.pravatar.cc/72?img=23" alt="Iris" />
+              </div>
+              <div class="df-text"><b>Roos</b>, <b>Milan</b> en <b>Iris</b> gaan ook</div>
+            </div>
+            <button class="detail-invite">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                <circle cx="8.5" cy="7" r="4"/>
+                <line x1="20" y1="8" x2="20" y2="14"/>
+                <line x1="23" y1="11" x2="17" y2="11"/>
+              </svg>
+              <span>Vraag iemand anders mee</span>
+              <span class="di-chev">›</span>
+            </button>
+          </div>
+          <div class="cta-dock">
+            <div class="price swap" data-copy="d-price">€12,00<em>incl. servicekosten</em></div>
+            <button class="btn-cta">Reserveer</button>
+          </div>
+        </div>
+      </div>
+      <div class="frame-label">02 · Detail</div>
+    </div>
+
+    <div class="frame-col">
+      <div class="phone nacht" id="phone-agenda">
+        <div class="phone-notch"></div>
+        <div class="status"><span>23:14</span><span>● ● ●</span></div>
+
+        <!-- Curtain covers the whole phone -->
+        <div class="curtain"><span class="curtain-x"></span></div>
+
+        <div class="app agenda-app">
+          <div class="app-header">
+            <div class="logo-lockup">
+              <span class="logo-cross" aria-hidden="true"></span>
+              <span class="wordmark">Andreas</span>
+            </div>
+            <button class="dn-switch" aria-label="Dag/nacht" data-switch>
+              <span class="dn-sun"></span>
+              <span class="dn-moon"></span>
+              <span class="dn-thumb"></span>
+            </button>
+          </div>
+
+          <div class="agenda-head">
+            <div class="ah-sub"><span class="swap" data-copy="ag-sub-l">April · week 17</span><span class="swap" data-copy="ag-sub-r"><b>18</b> plannen</span></div>
+            <div class="ah-title swap" data-copy="ag-title">Agenda</div>
+          </div>
+
+          <div class="day-strip-shell">
+            <div class="day-strip" id="day-strip"></div>
+          </div>
+
+          <div class="ag-chips-row">
+            <div class="ag-chips" id="ag-chips">
+              <button class="ag-chip ag-search-chip" id="ag-search-chip" aria-label="Zoek">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.6">
+                  <circle cx="11" cy="11" r="6"/>
+                  <line x1="16" y1="16" x2="20" y2="20"/>
+                </svg>
+                <input type="text" placeholder="ZOEK" id="ag-search-input" />
+              </button>
+              <button class="ag-chip active" data-chip="">Alles</button>
+              <button class="ag-chip" data-chip="Muziek">Muziek</button>
+              <button class="ag-chip" data-chip="Theater">Theater</button>
+              <button class="ag-chip" data-chip="Literatuur">Literatuur</button>
+              <button class="ag-chip" data-chip="Film">Film</button>
+            </div>
+          </div>
+
+          <div class="agenda-scroll" id="agenda-scroll"></div>
+
+          <div class="tabbar">
+            <button aria-label="Nu">
+              <svg viewBox="0 0 24 24" fill="currentColor">
+                <circle cx="12" cy="12" r="5"/>
+              </svg>
+            </button>
+            <button class="active" aria-label="Agenda">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.6">
+                <line x1="5" y1="7" x2="19" y2="7"/>
+                <line x1="5" y1="12" x2="19" y2="12"/>
+                <line x1="5" y1="17" x2="13" y2="17"/>
+              </svg>
+            </button>
+            <button aria-label="Kaart">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.6">
+                <polygon points="12,3 21,12 12,21 3,12"/>
+              </svg>
+            </button>
+            <button aria-label="Gered">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.6">
+                <line x1="5" y1="5" x2="19" y2="19"/>
+                <line x1="19" y1="5" x2="5" y2="19"/>
+              </svg>
+            </button>
+            <button aria-label="Jij">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.6">
+                <circle cx="12" cy="12" r="8"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+      </div>
+      <div class="frame-label">03 · Agenda</div>
+    </div>
+
+    <div class="frame-col">
+      <div class="phone nacht" id="phone-kaart">
+        <div class="phone-notch"></div>
+        <div class="status"><span>23:14</span><span>● ● ●</span></div>
+
+        <!-- Curtain covers the whole phone -->
+        <div class="curtain"><span class="curtain-x"></span></div>
+
+        <div class="app kaart-app">
+          <div class="app-header">
+            <div class="logo-lockup">
+              <span class="logo-cross" aria-hidden="true"></span>
+              <span class="wordmark">Andreas</span>
+            </div>
+            <button class="dn-switch" aria-label="Dag/nacht" data-switch>
+              <span class="dn-sun"></span>
+              <span class="dn-moon"></span>
+              <span class="dn-thumb"></span>
+            </button>
+          </div>
+
+          <div class="agenda-head">
+            <div class="ah-sub"><span class="swap" data-copy="k-sub-l">Donderdag · 22 apr</span> · <span class="swap" data-copy="k-sub-r"><b>8</b> plekken op loopafstand</span></div>
+          </div>
+
+          <!-- View toggle: map / list -->
+          <div class="kaart-toolbar">
+            <div class="kaart-seg" role="tablist">
+              <button class="kseg-btn active" data-view="map" aria-label="Kaart">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.6">
+                  <polygon points="12,3 21,12 12,21 3,12"/>
+                </svg>
+                <span>Kaart</span>
+              </button>
+              <button class="kseg-btn" data-view="list" aria-label="Lijst">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.6">
+                  <line x1="5" y1="7" x2="19" y2="7"/>
+                  <line x1="5" y1="12" x2="19" y2="12"/>
+                  <line x1="5" y1="17" x2="13" y2="17"/>
+                </svg>
+                <span>Lijst</span>
+              </button>
+            </div>
+            <button class="kaart-self" aria-label="Mijn locatie">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.6">
+                <circle cx="12" cy="12" r="3"/>
+                <line x1="12" y1="2" x2="12" y2="6"/>
+                <line x1="12" y1="18" x2="12" y2="22"/>
+                <line x1="2" y1="12" x2="6" y2="12"/>
+                <line x1="18" y1="12" x2="22" y2="12"/>
+              </svg>
+            </button>
+          </div>
+
+          <!-- Map canvas -->
+          <div class="kaart-canvas" id="kaart-canvas">
+            <svg class="kaart-bg" viewBox="0 0 390 520" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+              <rect width="390" height="520" class="kb-land"/>
+
+              <!-- Amstel river diagonal -->
+              <path d="M -20 460 Q 110 430 175 370 T 410 190" class="kb-water" stroke-width="34" fill="none" stroke-linecap="round"/>
+              <!-- IJ/harbour at top -->
+              <path d="M -20 -20 L 410 -20 L 410 60 Q 220 90 -20 55 Z" class="kb-water-fill"/>
+              <!-- Grachtengordel arcs (Singel/Heren/Keizers/Prinsen) -->
+              <path d="M -20 320 Q 120 300 200 330 T 410 360" class="kb-water-thin" stroke-width="6" fill="none"/>
+              <path d="M -20 270 Q 120 250 200 280 T 410 310" class="kb-water-thin" stroke-width="6" fill="none"/>
+              <path d="M -20 220 Q 120 200 200 230 T 410 260" class="kb-water-thin" stroke-width="6" fill="none"/>
+              <path d="M -20 170 Q 120 150 200 180 T 410 210" class="kb-water-thin" stroke-width="6" fill="none"/>
+
+              <!-- Street grid radiating toward center -->
+              <g class="kb-streets">
+                <!-- Horizontal connectors -->
+                <line x1="-20" y1="110" x2="410" y2="120"/>
+                <line x1="-20" y1="395" x2="410" y2="400"/>
+                <line x1="-20" y1="435" x2="410" y2="445"/>
+                <!-- Radiating -->
+                <line x1="-20" y1="500" x2="195" y2="260"/>
+                <line x1="50"  y1="520" x2="195" y2="260"/>
+                <line x1="150" y1="520" x2="195" y2="260"/>
+                <line x1="240" y1="520" x2="195" y2="260"/>
+                <line x1="340" y1="520" x2="195" y2="260"/>
+                <line x1="410" y1="500" x2="195" y2="260"/>
+                <line x1="410" y1="420" x2="195" y2="260"/>
+                <line x1="410" y1="340" x2="195" y2="260"/>
+                <line x1="-20" y1="340" x2="195" y2="260"/>
+                <line x1="-20" y1="420" x2="195" y2="260"/>
+                <!-- Parks/blocks as soft rects -->
+              </g>
+              <g class="kb-blocks">
+                <rect x="35" y="395" width="60" height="40" rx="4"/>
+                <rect x="280" y="405" width="80" height="50" rx="4"/>
+                <rect x="310" y="110" width="50" height="30" rx="4"/>
+                <rect x="40" y="120" width="55" height="30" rx="4"/>
+              </g>
+
+              <!-- Buurt labels (ultra-soft) -->
+              <text x="70" y="135" class="kb-label">JORDAAN</text>
+              <text x="290" y="125" class="kb-label">NOORD</text>
+              <text x="300" y="420" class="kb-label">OOST</text>
+              <text x="50" y="455" class="kb-label">DE PIJP</text>
+            </svg>
+
+            <!-- Distance rings around "you" -->
+            <div class="kaart-rings" aria-hidden="true">
+              <span class="kring r1"></span>
+              <span class="kring r2"></span>
+              <span class="kring r3"></span>
+            </div>
+
+            <!-- Venue pins + friend dots -->
+            <div class="kaart-layer" id="kaart-markers"></div>
+
+            <!-- You-pin: always centered -->
+            <div class="kaart-you" aria-label="Jouw locatie">
+              <span class="ky-cross" aria-hidden="true"></span>
+            </div>
+          </div>
+
+          <!-- Bottom sheet -->
+          <div class="kaart-sheet" id="kaart-sheet">
+            <div class="ksheet-handle"></div>
+            <div class="ksheet-head">
+              <div class="ksheet-kicker swap" data-copy="k-sheet-k">In de buurt · komend uur</div>
+              <div class="ksheet-count swap" data-copy="k-sheet-c"><b>8</b> plannen</div>
+            </div>
+            <div class="ksheet-list" id="ksheet-list"></div>
+          </div>
+
+          <!-- List view (hidden by default) -->
+          <div class="kaart-listview" id="kaart-listview" hidden></div>
+
+          <div class="tabbar">
+            <button aria-label="Nu">
+              <svg viewBox="0 0 24 24" fill="currentColor">
+                <circle cx="12" cy="12" r="5"/>
+              </svg>
+            </button>
+            <button aria-label="Agenda">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.6">
+                <line x1="5" y1="7" x2="19" y2="7"/>
+                <line x1="5" y1="12" x2="19" y2="12"/>
+                <line x1="5" y1="17" x2="13" y2="17"/>
+              </svg>
+            </button>
+            <button class="active" aria-label="Kaart">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.6">
+                <polygon points="12,3 21,12 12,21 3,12"/>
+              </svg>
+            </button>
+            <button aria-label="Gered">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.6">
+                <line x1="5" y1="5" x2="19" y2="19"/>
+                <line x1="19" y1="5" x2="5" y2="19"/>
+              </svg>
+            </button>
+            <button aria-label="Jij">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.6">
+                <circle cx="12" cy="12" r="8"/>
+              </svg>
+            </button>
+          </div>
+        </div><!-- /.app -->
+      </div>
+      <div class="frame-label">04 · Kaart</div>
+    </div>
+
+    <div class="frame-col">
+      <div class="phone nacht" id="phone-gered">
+        <div class="phone-notch"></div>
+        <div class="status"><span>23:14</span><span>● ● ●</span></div>
+        <div class="curtain"><span class="curtain-x"></span></div>
+
+        <div class="app gered-app">
+          <div class="app-header">
+            <div class="logo-lockup">
+              <span class="logo-cross" aria-hidden="true"></span>
+              <span class="wordmark">Andreas</span>
+            </div>
+            <button class="dn-switch" aria-label="Dag/nacht" data-switch>
+              <span class="dn-sun"></span>
+              <span class="dn-moon"></span>
+              <span class="dn-thumb"></span>
+            </button>
+          </div>
+
+          <div class="gered-head">
+            <div class="gh-sub">
+              <span class="swap" data-copy="g-sub-l">Donderdag · 22 apr</span> · <span class="swap" data-copy="g-sub-r"><b>11</b> plannen vooruit</span>
+            </div>
+            <div class="gh-title swap" data-copy="g-title">Op uit.</div>
+          </div>
+
+          <div class="gered-seg" role="tablist">
+            <button class="gseg-btn active" data-gview="up">Komend</button>
+            <button class="gseg-btn" data-gview="past">Geweest</button>
+          </div>
+
+          <div class="ag-chips-row">
+            <div class="ag-chips" id="g-chips">
+              <button class="ag-chip active" data-gchip="">Alles</button>
+              <button class="ag-chip" data-gchip="friends">Met vrienden</button>
+              <button class="ag-chip" data-gchip="Muziek">Muziek</button>
+              <button class="ag-chip" data-gchip="Theater">Theater</button>
+              <button class="ag-chip" data-gchip="Literatuur">Literatuur</button>
+              <button class="ag-chip" data-gchip="Film">Film</button>
+            </div>
+          </div>
+
+          <div class="gered-scroll" id="gered-scroll"></div>
+
+          <div class="tabbar">
+            <button aria-label="Nu">
+              <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="5"/></svg>
+            </button>
+            <button aria-label="Agenda">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.6">
+                <line x1="5" y1="7" x2="19" y2="7"/>
+                <line x1="5" y1="12" x2="19" y2="12"/>
+                <line x1="5" y1="17" x2="13" y2="17"/>
+              </svg>
+            </button>
+            <button aria-label="Kaart">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.6">
+                <polygon points="12,3 21,12 12,21 3,12"/>
+              </svg>
+            </button>
+            <button class="active" aria-label="Gered">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.6">
+                <line x1="5" y1="5" x2="19" y2="19"/>
+                <line x1="19" y1="5" x2="5" y2="19"/>
+              </svg>
+            </button>
+            <button aria-label="Jij">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.6">
+                <circle cx="12" cy="12" r="8"/>
+              </svg>
+            </button>
+          </div>
+        </div><!-- /.app -->
+      </div>
+      <div class="frame-label">05 · Op uit</div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════
+         FRAME 06 — JIJ
+         Settings-first profile with friends + preferences.
+         ═══════════════════════════════════════════════════════ -->
+    <div class="frame-col">
+      <div class="phone nacht" id="phone-jij">
+        <div class="phone-notch"></div>
+        <div class="status"><span>23:14</span><span>● ● ●</span></div>
+        <div class="curtain"><span class="curtain-x"></span></div>
+
+        <div class="app jij-app">
+          <div class="app-header">
+            <div class="logo-lockup">
+              <span class="logo-cross" aria-hidden="true"></span>
+              <span class="wordmark">Andreas</span>
+            </div>
+            <button class="dn-switch" aria-label="Dag/nacht" data-switch>
+              <span class="dn-sun"></span>
+              <span class="dn-moon"></span>
+              <span class="dn-thumb"></span>
+            </button>
+          </div>
+
+          <div class="jij-head">
+            <div class="jij-avatar">
+              <img src="https://i.pravatar.cc/128?img=14" alt=""/>
+            </div>
+            <div>
+              <div class="jij-name">Tomas de Vries</div>
+              <div class="jij-handle">@tomasdv · sinds &#39;23</div>
+            </div>
+          </div>
+          <div class="jij-bio">Vooral muziek, soms theater. Amsterdam.</div>
+
+          <div class="jij-scroll" id="jij-scroll"></div>
+
+          <div class="tabbar">
+            <button aria-label="Nu">
+              <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="5"/></svg>
+            </button>
+            <button aria-label="Agenda">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.6">
+                <line x1="5" y1="7" x2="19" y2="7"/>
+                <line x1="5" y1="12" x2="19" y2="12"/>
+                <line x1="5" y1="17" x2="13" y2="17"/>
+              </svg>
+            </button>
+            <button aria-label="Kaart">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.6">
+                <polygon points="12,3 21,12 12,21 3,12"/>
+              </svg>
+            </button>
+            <button aria-label="Op uit">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.6">
+                <line x1="5" y1="5" x2="19" y2="19"/>
+                <line x1="19" y1="5" x2="5" y2="19"/>
+              </svg>
+            </button>
+            <button class="active" aria-label="Jij">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.6">
+                <circle cx="12" cy="12" r="8"/>
+              </svg>
+            </button>
+          </div>
+        </div><!-- /.app -->
+      </div>
+      <div class="frame-label">06 · Jij</div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════
+         FRAME 07 — VENUE (Paradiso)
+         Foto-header + praktisch-eerst + programma. Geen sociaal.
+         ═══════════════════════════════════════════════════════ -->
+    <div class="frame-col">
+      <div class="phone nacht" id="phone-venue">
+        <div class="phone-notch"></div>
+        <div class="status"><span>23:14</span><span>● ● ●</span></div>
+        <div class="curtain"><span class="curtain-x"></span></div>
+
+        <div class="app venue-app">
+          <div class="detail-hero">
+            <div class="detail-photo" id="venue-photo"></div>
+            <div class="detail-top">
+              <button class="detail-back" aria-label="Terug">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4">
+                  <polyline points="15,5 8,12 15,19"/>
+                </svg>
+              </button>
+              <div class="detail-actions">
+                <button class="detail-action" aria-label="Opslaan" id="venue-save-hero">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                    <path d="M6 4 h12 v16 l-6-4 -6 4 z"/>
+                  </svg>
+                </button>
+              </div>
+            </div>
+            <div class="detail-hero-text">
+              <span class="detail-tag swap" data-copy="venue-tag">Popmuziek · Monument</span>
+              <div class="detail-h2">Paradiso</div>
+            </div>
+          </div>
+
+          <div class="venue-body">
+            <div class="venue-addr">
+              <div class="va-line">Weteringschans 6&ndash;8</div>
+              <div class="va-line">1017 SG Amsterdam</div>
+              <div class="va-meta swap" data-copy="venue-hours">Vanavond open &middot; tot 04:00</div>
+            </div>
+
+            <div class="venue-actions">
+              <button class="venue-action">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                  <polygon points="3,11 21,3 13,21 11,13"/>
+                </svg>
+                Route openen
+              </button>
+              <button class="venue-action secondary" id="venue-save">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                  <path d="M6 4 h12 v16 l-6-4 -6 4 z"/>
+                </svg>
+                <span id="venue-save-label">Opslaan</span>
+              </button>
+            </div>
+
+            <div class="venue-desc swap" data-copy="venue-desc">
+              Voormalige kerk uit 1879, sinds 1968 popmuziek. Hoofdzaal, kleine zaal en basement &mdash; drie kamers met elk hun eigen geluid.
+            </div>
+
+            <div class="venue-prog-h">
+              <span class="vph-label">Programma</span>
+              <span class="vph-count swap" data-copy="venue-count">12 komend</span>
+            </div>
+
+            <div id="venue-prog"></div>
+          </div>
+
+          <div class="tabbar">
+            <button aria-label="Nu">
+              <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="5"/></svg>
+            </button>
+            <button aria-label="Agenda">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.6">
+                <line x1="5" y1="7" x2="19" y2="7"/>
+                <line x1="5" y1="12" x2="19" y2="12"/>
+                <line x1="5" y1="17" x2="13" y2="17"/>
+              </svg>
+            </button>
+            <button class="active" aria-label="Kaart">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.6">
+                <polygon points="12,3 21,12 12,21 3,12"/>
+              </svg>
+            </button>
+            <button aria-label="Op uit">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.6">
+                <line x1="5" y1="5" x2="19" y2="19"/>
+                <line x1="19" y1="5" x2="5" y2="19"/>
+              </svg>
+            </button>
+            <button aria-label="Jij">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.6">
+                <circle cx="12" cy="12" r="8"/>
+              </svg>
+            </button>
+          </div>
+        </div><!-- /.app -->
+      </div>
+      <div class="frame-label">07 · Venue</div>
+    </div>
+
+    <!-- ═════════════════════════════════════════════════════════════════
+         08 · VRIEND — friend detail (Roos van Dam)
+         ═════════════════════════════════════════════════════════════════ -->
+    <div class="frame-col">
+      <div class="phone nacht" id="phone-vriend">
+        <div class="phone-notch"></div>
+        <div class="status"><span>23:58</span><span>● ● ●</span></div>
+        <div class="curtain"><span class="curtain-x"></span></div>
+        <div class="app vriend-app">
+
+          <div class="vriend-topbar">
+            <button class="detail-back" aria-label="Terug">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M14 6 L8 12 L14 18"/>
+              </svg>
+            </button>
+            <span class="vt-meta">Vriend</span>
+            <span style="width:40px"></span>
+          </div>
+
+          <div class="jij-head" style="padding-top:14px;align-items:start;">
+            <div class="jij-avatar" style="background:#c9453a;color:#f3eddf;display:flex;align-items:center;justify-content:center;font-family:'Archivo',sans-serif;font-weight:800;font-size:24px;letter-spacing:-0.02em;">R</div>
+            <div>
+              <div class="jij-name">Roos van Dam</div>
+              <div class="jij-handle">@roosvd · Amsterdam-West</div>
+            </div>
+          </div>
+          <div class="jij-bio">Vooral muziek en boeken. Houdt van lange avonden en korte ochtenden.</div>
+          <div style="padding:0 22px;">
+            <div class="vriend-overlap">
+              <span>●</span> Overlap · muziek · literatuur
+            </div>
+            <div class="vriend-handles">
+              <span class="vh-pill"><span class="vh-net">WA</span> @roosvd</span>
+              <span class="vh-pill"><span class="vh-net">IG</span> @roos.vd</span>
+              <span class="vh-pill"><span class="vh-net">SC</span> roosvd_</span>
+            </div>
+          </div>
+
+          <div class="vriend-scroll">
+
+            <div class="jij-section-h" style="padding-top:6px">
+              <span class="jsh-label">Wij samen</span>
+              <span class="jsh-count">3 komend</span>
+            </div>
+
+            <div class="venue-row">
+              <div class="vr-date"><span class="num">23</span><span class="mon">apr</span></div>
+              <div>
+                <div class="vr-title">Poëzie van de Middenmoot</div>
+                <div class="vr-meta"><span>Wo</span><span class="dot">·</span><span>Perdu</span><span class="dot">·</span><span>20:00</span><span class="dot">·</span><span>€8</span></div>
+              </div>
+              <div class="vr-tick t-acid"></div>
+            </div>
+            <div class="venue-row">
+              <div class="vr-date"><span class="num">02</span><span class="mon">mei</span></div>
+              <div>
+                <div class="vr-title">Sevdaliza</div>
+                <div class="vr-meta"><span>Vr</span><span class="dot">·</span><span>Paradiso</span><span class="dot">·</span><span>21:30</span><span class="dot">·</span><span>€32</span></div>
+              </div>
+              <div class="vr-tick t-flare"></div>
+            </div>
+            <div class="venue-row">
+              <div class="vr-date"><span class="num">17</span><span class="mon">mei</span></div>
+              <div>
+                <div class="vr-title">Kafka — Het slot (try-out)</div>
+                <div class="vr-meta"><span>Za</span><span class="dot">·</span><span>ITA</span><span class="dot">·</span><span>20:30</span><span class="dot">·</span><span>€24</span></div>
+              </div>
+              <div class="vr-tick t-plum"></div>
+            </div>
+
+            <div class="jij-section-h">
+              <span class="jsh-label">Roos haar plannen</span>
+              <span class="jsh-count">5 komend</span>
+            </div>
+
+            <div class="venue-row">
+              <div class="vr-date"><span class="num">24</span><span class="mon">apr</span></div>
+              <div>
+                <div class="vr-title">Bookclub · Annie Ernaux</div>
+                <div class="vr-meta"><span>Do</span><span class="dot">·</span><span>Athenaeum</span><span class="dot">·</span><span>19:30</span></div>
+              </div>
+              <div class="vr-tick t-acid"></div>
+            </div>
+            <div class="venue-row">
+              <div class="vr-date"><span class="num">27</span><span class="mon">apr</span></div>
+              <div>
+                <div class="vr-title">Sun Ra Arkestra</div>
+                <div class="vr-meta"><span>Zo</span><span class="dot">·</span><span>Bimhuis</span><span class="dot">·</span><span>20:30</span><span class="dot">·</span><span>€38</span></div>
+              </div>
+              <div class="vr-tick t-flare"></div>
+            </div>
+            <div class="venue-row">
+              <div class="vr-date"><span class="num">30</span><span class="mon">apr</span></div>
+              <div>
+                <div class="vr-title">Yu-mei Balasingamchow lezing</div>
+                <div class="vr-meta"><span>Wo</span><span class="dot">·</span><span>Spui25</span><span class="dot">·</span><span>17:00</span><span class="dot">·</span><span>gratis</span></div>
+              </div>
+              <div class="vr-tick t-acid"></div>
+            </div>
+            <div class="venue-row">
+              <div class="vr-date"><span class="num">08</span><span class="mon">mei</span></div>
+              <div>
+                <div class="vr-title">Caroline Polachek</div>
+                <div class="vr-meta"><span>Do</span><span class="dot">·</span><span>AFAS Live</span><span class="dot">·</span><span>20:00</span><span class="dot">·</span><span>€48</span></div>
+              </div>
+              <div class="vr-tick t-flare"></div>
+            </div>
+            <div class="venue-row">
+              <div class="vr-date"><span class="num">23</span><span class="mon">mei</span></div>
+              <div>
+                <div class="vr-title">Patti Smith — Year of the Monkey</div>
+                <div class="vr-meta"><span>Vr</span><span class="dot">·</span><span>Paradiso</span><span class="dot">·</span><span>20:30</span><span class="dot">·</span><span>€42</span></div>
+              </div>
+              <div class="vr-tick t-flare"></div>
+            </div>
+
+            <div class="jij-section-h">
+              <span class="jsh-label">Roos komt vaak hier</span>
+              <span class="jsh-count">3 plekken</span>
+            </div>
+
+            <div class="jij-srow">
+              <div><div class="jsr-label">Paradiso</div><div class="jsr-sub">Muziek · 24× dit jaar</div></div>
+              <span class="jsr-chev">›</span>
+            </div>
+            <div class="jij-srow">
+              <div><div class="jsr-label">Perdu</div><div class="jsr-sub">Literatuur · 11× dit jaar</div></div>
+              <span class="jsr-chev">›</span>
+            </div>
+            <div class="jij-srow">
+              <div><div class="jsr-label">Bimhuis</div><div class="jsr-sub">Muziek · 9× dit jaar</div></div>
+              <span class="jsr-chev">›</span>
+            </div>
+
+            <div class="vriend-foot">
+              <div class="jij-srow">
+                <div class="jsr-label">Niet meer volgen</div>
+                <span class="jsr-chev">›</span>
+              </div>
+              <div class="jij-srow danger">
+                <div class="jsr-label">Verbergen / blokkeren</div>
+                <span class="jsr-chev">›</span>
+              </div>
+            </div>
+
+          </div><!-- /.vriend-scroll -->
+
+        </div><!-- /.app -->
+      </div>
+      <div class="frame-label">08 · Vriend</div>
+    </div>
+
+    <!-- ═════════════════════════════════════════════════════════════════
+         09 · TOEVOEGEN — vrienden toevoegen (QR + link + zoeken)
+         ═════════════════════════════════════════════════════════════════ -->
+    <div class="frame-col">
+      <div class="phone nacht" id="phone-toevoegen">
+        <div class="phone-notch"></div>
+        <div class="status"><span>23:14</span><span>● ● ●</span></div>
+        <div class="curtain"><span class="curtain-x"></span></div>
+        <div class="app toev-app">
+
+          <div class="vriend-topbar">
+            <button class="detail-back" aria-label="Terug">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M14 6 L8 12 L14 18"/>
+              </svg>
+            </button>
+            <span class="vt-meta">Vriend toevoegen</span>
+            <span style="width:40px"></span>
+          </div>
+
+          <div class="toev-scroll">
+
+            <!-- Primair: QR -->
+            <div class="toev-qr-block">
+              <div class="toev-qr-meta">— Jouw code</div>
+              <div class="toev-qr-card">
+                <div class="toev-qr">
+                  <!-- Stylized QR — pseudo-grid -->
+                  <svg viewBox="0 0 200 200" class="toev-qr-svg" xmlns="http://www.w3.org/2000/svg">
+                    <!-- Background -->
+                    <rect width="200" height="200" fill="#f3eddf"/>
+                    <!-- Three corner markers -->
+                    <g fill="#1a1410">
+                      <rect x="10" y="10" width="42" height="42"/>
+                      <rect x="148" y="10" width="42" height="42"/>
+                      <rect x="10" y="148" width="42" height="42"/>
+                    </g>
+                    <g fill="#f3eddf">
+                      <rect x="18" y="18" width="26" height="26"/>
+                      <rect x="156" y="18" width="26" height="26"/>
+                      <rect x="18" y="156" width="26" height="26"/>
+                    </g>
+                    <g fill="#1a1410">
+                      <rect x="24" y="24" width="14" height="14"/>
+                      <rect x="162" y="24" width="14" height="14"/>
+                      <rect x="24" y="162" width="14" height="14"/>
+                    </g>
+                    <!-- Pseudo-random data dots -->
+                    <g fill="#1a1410">
+                      <rect x="62" y="14" width="6" height="6"/><rect x="74" y="14" width="6" height="6"/><rect x="86" y="14" width="6" height="6"/><rect x="104" y="14" width="6" height="6"/><rect x="116" y="14" width="6" height="6"/><rect x="128" y="14" width="6" height="6"/>
+                      <rect x="62" y="26" width="6" height="6"/><rect x="80" y="26" width="6" height="6"/><rect x="98" y="26" width="6" height="6"/><rect x="110" y="26" width="6" height="6"/><rect x="134" y="26" width="6" height="6"/>
+                      <rect x="68" y="38" width="6" height="6"/><rect x="86" y="38" width="6" height="6"/><rect x="104" y="38" width="6" height="6"/><rect x="122" y="38" width="6" height="6"/>
+                      <rect x="14" y="62" width="6" height="6"/><rect x="26" y="62" width="6" height="6"/><rect x="44" y="62" width="6" height="6"/><rect x="62" y="62" width="6" height="6"/><rect x="80" y="62" width="6" height="6"/><rect x="98" y="62" width="6" height="6"/><rect x="116" y="62" width="6" height="6"/><rect x="128" y="62" width="6" height="6"/><rect x="146" y="62" width="6" height="6"/><rect x="164" y="62" width="6" height="6"/><rect x="182" y="62" width="6" height="6"/>
+                      <rect x="20" y="74" width="6" height="6"/><rect x="38" y="74" width="6" height="6"/><rect x="56" y="74" width="6" height="6"/><rect x="74" y="74" width="6" height="6"/><rect x="92" y="74" width="6" height="6"/><rect x="110" y="74" width="6" height="6"/><rect x="140" y="74" width="6" height="6"/><rect x="158" y="74" width="6" height="6"/><rect x="176" y="74" width="6" height="6"/>
+                      <rect x="14" y="86" width="6" height="6"/><rect x="32" y="86" width="6" height="6"/><rect x="50" y="86" width="6" height="6"/><rect x="68" y="86" width="6" height="6"/><rect x="146" y="86" width="6" height="6"/><rect x="164" y="86" width="6" height="6"/><rect x="182" y="86" width="6" height="6"/>
+                      <rect x="26" y="98" width="6" height="6"/><rect x="44" y="98" width="6" height="6"/><rect x="62" y="98" width="6" height="6"/><rect x="152" y="98" width="6" height="6"/><rect x="170" y="98" width="6" height="6"/>
+                      <rect x="14" y="110" width="6" height="6"/><rect x="38" y="110" width="6" height="6"/><rect x="56" y="110" width="6" height="6"/><rect x="74" y="110" width="6" height="6"/><rect x="140" y="110" width="6" height="6"/><rect x="158" y="110" width="6" height="6"/><rect x="176" y="110" width="6" height="6"/>
+                      <rect x="20" y="122" width="6" height="6"/><rect x="44" y="122" width="6" height="6"/><rect x="62" y="122" width="6" height="6"/><rect x="86" y="122" width="6" height="6"/><rect x="104" y="122" width="6" height="6"/><rect x="122" y="122" width="6" height="6"/><rect x="146" y="122" width="6" height="6"/><rect x="164" y="122" width="6" height="6"/><rect x="182" y="122" width="6" height="6"/>
+                      <rect x="14" y="134" width="6" height="6"/><rect x="32" y="134" width="6" height="6"/><rect x="50" y="134" width="6" height="6"/><rect x="68" y="134" width="6" height="6"/><rect x="92" y="134" width="6" height="6"/><rect x="116" y="134" width="6" height="6"/><rect x="134" y="134" width="6" height="6"/><rect x="158" y="134" width="6" height="6"/>
+                      <rect x="62" y="156" width="6" height="6"/><rect x="80" y="156" width="6" height="6"/><rect x="98" y="156" width="6" height="6"/><rect x="116" y="156" width="6" height="6"/><rect x="134" y="156" width="6" height="6"/>
+                      <rect x="68" y="168" width="6" height="6"/><rect x="86" y="168" width="6" height="6"/><rect x="110" y="168" width="6" height="6"/><rect x="128" y="168" width="6" height="6"/><rect x="146" y="168" width="6" height="6"/>
+                      <rect x="62" y="180" width="6" height="6"/><rect x="80" y="180" width="6" height="6"/><rect x="98" y="180" width="6" height="6"/><rect x="122" y="180" width="6" height="6"/><rect x="140" y="180" width="6" height="6"/>
+                    </g>
+                    <!-- Centered avatar circle (placeholder) -->
+                    <circle cx="100" cy="100" r="22" fill="#f3eddf" stroke="#1a1410" stroke-width="3"/>
+                    <text x="100" y="108" text-anchor="middle" font-family="Archivo, sans-serif" font-weight="900" font-size="20" fill="#1a1410">W</text>
+                  </svg>
+                </div>
+                <div class="toev-qr-foot">
+                  <div class="toev-qr-name">Wendell</div>
+                  <div class="toev-qr-handle">@wendell · andreas.app/w</div>
+                </div>
+              </div>
+              <div class="toev-qr-hint">Houd dichtbij. Vriend opent zijn camera.</div>
+            </div>
+
+            <!-- Of: deel via WhatsApp -->
+            <div class="toev-divider"><span>of</span></div>
+
+            <button class="toev-share">
+              <span class="toev-share-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M4 12v7a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-7"/>
+                  <path d="M16 6l-4-4-4 4"/>
+                  <path d="M12 2v14"/>
+                </svg>
+              </span>
+              <span class="toev-share-body">
+                <span class="toev-share-l">Deel je link</span>
+                <span class="toev-share-s">via WhatsApp, Signal, mail …</span>
+              </span>
+              <span class="toev-share-chev">›</span>
+            </button>
+
+            <!-- Of: zoeken -->
+            <div class="jij-section-h" style="padding-top:18px;">
+              <span class="jsh-label">Zoek op naam of @</span>
+            </div>
+            <div class="toev-search">
+              <span class="toev-search-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="11" cy="11" r="7"/>
+                  <path d="M20 20l-3.5-3.5"/>
+                </svg>
+              </span>
+              <input class="toev-search-i" type="text" placeholder="Bv. @roosvd of Iris Sengers" />
+            </div>
+
+            <!-- Sample search result with pending state -->
+            <div class="toev-result">
+              <div class="toev-req-avatar">
+                <img src="https://i.pravatar.cc/72?img=23" alt="" />
+              </div>
+              <div class="toev-req-body">
+                <div class="toev-req-name">Iris Sengers</div>
+                <div class="toev-req-sub">@iris.s</div>
+              </div>
+              <button class="toev-add">+ Vraag</button>
+            </div>
+            <div class="toev-result">
+              <div class="toev-req-avatar">
+                <img src="https://i.pravatar.cc/72?img=58" alt="" />
+              </div>
+              <div class="toev-req-body">
+                <div class="toev-req-name">Daan de Wit</div>
+                <div class="toev-req-sub">@daan.dw</div>
+              </div>
+              <button class="toev-add pending">Verstuurd</button>
+            </div>
+
+            <div class="toev-foot-meta">Geen suggesties of algoritme. Voeg alleen toe wie je kent.</div>
+
+          </div><!-- /.toev-scroll -->
+
+        </div><!-- /.app -->
+      </div>
+      <div class="frame-label">09 · Toevoegen</div>
+    </div>
+
+    <!-- ═════════════════════════════════════════════════════════════════
+         10 · VRAAG MEE — invite friends to an event (WhatsApp-first)
+         ═════════════════════════════════════════════════════════════════ -->
+    <div class="frame-col">
+      <div class="phone nacht" id="phone-vraag">
+        <div class="phone-notch"></div>
+        <div class="status"><span>23:14</span><span>● ● ●</span></div>
+        <div class="curtain"><span class="curtain-x"></span></div>
+        <div class="app vraag-app">
+
+          <div class="vriend-topbar">
+            <button class="detail-back" aria-label="Terug">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M14 6 L8 12 L14 18"/>
+              </svg>
+            </button>
+            <span class="vt-meta">Vraag mee</span>
+            <span style="width:40px"></span>
+          </div>
+
+          <div class="vraag-scroll">
+
+            <!-- Event-context strip -->
+            <div class="vraag-event">
+              <div class="vr-date"><span class="num">02</span><span class="mon">mei</span></div>
+              <div>
+                <div class="vr-title">Sevdaliza</div>
+                <div class="vr-meta"><span>Vr</span><span class="dot">·</span><span>Paradiso</span><span class="dot">·</span><span>21:30</span></div>
+              </div>
+            </div>
+
+            <!-- Vrienden kiezen -->
+            <div class="jij-section-h" style="padding-top:14px;">
+              <span class="jsh-label">Kies vrienden</span>
+              <span class="jsh-count" id="vraag-count">0 / 3 gekozen</span>
+            </div>
+
+            <div class="vraag-friend selected" data-vraag-friend="roos">
+              <div class="vraag-avatar"><img src="https://i.pravatar.cc/72?img=47" alt="" /></div>
+              <div class="vraag-body">
+                <div class="vraag-name">Roos van Dam</div>
+                <div class="vraag-sub">Was 12× bij Paradiso · houdt van muziek</div>
+              </div>
+              <div class="vraag-tick" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M5 12 L10 17 L19 8"/>
+                </svg>
+              </div>
+            </div>
+
+            <div class="vraag-friend selected" data-vraag-friend="milan">
+              <div class="vraag-avatar"><img src="https://i.pravatar.cc/72?img=33" alt="" /></div>
+              <div class="vraag-body">
+                <div class="vraag-name">Milan Berghuis</div>
+                <div class="vraag-sub">Was gisteren bij Paradiso</div>
+              </div>
+              <div class="vraag-tick" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M5 12 L10 17 L19 8"/>
+                </svg>
+              </div>
+            </div>
+
+            <div class="vraag-friend" data-vraag-friend="iris">
+              <div class="vraag-avatar"><img src="https://i.pravatar.cc/72?img=23" alt="" /></div>
+              <div class="vraag-body">
+                <div class="vraag-name">Iris Sengers</div>
+                <div class="vraag-sub">Houdt van muziek</div>
+              </div>
+              <div class="vraag-tick" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M5 12 L10 17 L19 8"/>
+                </svg>
+              </div>
+            </div>
+
+            <div class="vraag-friend" data-vraag-friend="daan">
+              <div class="vraag-avatar"><img src="https://i.pravatar.cc/72?img=58" alt="" /></div>
+              <div class="vraag-body">
+                <div class="vraag-name">Daan de Wit</div>
+                <div class="vraag-sub">2 plekken samen</div>
+              </div>
+              <div class="vraag-tick" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M5 12 L10 17 L19 8"/>
+                </svg>
+              </div>
+            </div>
+
+            <div class="vraag-friend" data-vraag-friend="nora">
+              <div class="vraag-avatar"><img src="https://i.pravatar.cc/72?img=36" alt="" /></div>
+              <div class="vraag-body">
+                <div class="vraag-name">Nora Kamphuis</div>
+                <div class="vraag-sub">Houdt van theater</div>
+              </div>
+              <div class="vraag-tick" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M5 12 L10 17 L19 8"/>
+                </svg>
+              </div>
+            </div>
+
+            <!-- Wachtend op antwoord — RSVP-status van eerdere uitnodigingen -->
+            <div class="jij-section-h" style="padding-top:24px;">
+              <span class="jsh-label">Eerder gevraagd</span>
+              <span class="jsh-count">3 antwoorden</span>
+            </div>
+
+            <div class="vraag-rsvp">
+              <div class="vrsvp-event">
+                <div class="vrsvp-title">Poëzie van de Middenmoot</div>
+                <div class="vrsvp-meta">Wo 23 apr · Perdu</div>
+              </div>
+              <div class="vrsvp-list">
+                <div class="vrsvp-row vrsvp-yes">
+                  <span class="vrsvp-name">Roos van Dam</span>
+                  <span class="vrsvp-status">Ja</span>
+                </div>
+                <div class="vrsvp-row vrsvp-maybe">
+                  <span class="vrsvp-name">Iris Sengers</span>
+                  <span class="vrsvp-status">Misschien</span>
+                </div>
+                <div class="vrsvp-row vrsvp-no">
+                  <span class="vrsvp-name">Milan Berghuis</span>
+                  <span class="vrsvp-status">Nee</span>
+                </div>
+              </div>
+            </div>
+
+          </div><!-- /.vraag-scroll -->
+
+          <!-- Vaste actie onderaan -->
+          <div class="vraag-dock">
+            <button class="btn-cta vraag-cta">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M5 12h14"/>
+                <path d="M13 6l6 6-6 6"/>
+              </svg>
+              <span class="vraag-cta-label">Vraag mee</span>
+            </button>
+            <div class="vraag-hint">Ze krijgen een seintje. Antwoorden komen hier terug.</div>
+          </div>
+
+        </div><!-- /.app -->
+      </div>
+      <div class="frame-label">10 · Vraag mee</div>
+    </div>
+
+  </div>
+</div>
+
+<style>
+  /* ═════════════════════════════════════════════════════════════════
+     10 · VRAAG MEE — invite friends to an event
+     ═════════════════════════════════════════════════════════════════ */
+  .vraag-app { display: flex; flex-direction: column; height: 100%; }
+  .vraag-scroll { flex: 1; overflow-y: auto; padding: 6px 0 30px; }
+  .vraag-scroll::-webkit-scrollbar { display: none; }
+
+  /* Event-context */
+  .vraag-event {
+    display: grid; grid-template-columns: 50px 1fr; gap: 14px;
+    padding: 14px 22px 16px;
+    border-bottom: 1px solid;
+  }
+  .phone.nacht .vraag-event { border-color: rgba(255,255,255,0.06); }
+  .phone.dag   .vraag-event { border-color: rgba(0,0,0,0.06); }
+  .vraag-event .vr-date { font-family: 'Archivo', sans-serif; line-height: 0.95; }
+  .vraag-event .vr-date .num { display: block; font-size: 26px; font-weight: 900; letter-spacing: -0.03em; }
+  .vraag-event .vr-date .mon { font-family: 'JetBrains Mono', monospace; font-size: 9px; letter-spacing: 0.16em; opacity: 0.55; font-weight: 500; margin-top: 3px; display: block; text-transform: uppercase; }
+  .vraag-event .vr-title { font-family: 'Archivo', sans-serif; font-weight: 700; font-size: 16px; line-height: 1.2; letter-spacing: -0.01em; }
+  .vraag-event .vr-meta { font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; margin-top: 5px; opacity: 0.65; }
+  .vraag-event .vr-meta .dot { margin: 0 6px; opacity: 0.5; }
+
+  /* Friend rij */
+  .vraag-friend {
+    display: grid; grid-template-columns: 44px 1fr 28px; gap: 14px;
+    align-items: center; padding: 12px 22px;
+    border-top: 1px solid; cursor: pointer;
+    transition: background .15s;
+  }
+  .phone.nacht .vraag-friend { border-color: rgba(255,255,255,0.04); }
+  .phone.dag   .vraag-friend { border-color: rgba(0,0,0,0.04); }
+  .vraag-avatar { width: 44px; height: 44px; border-radius: 50%; overflow: hidden; }
+  .vraag-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .vraag-name {
+    font-family: 'Archivo', sans-serif; font-weight: 700; font-size: 14.5px;
+    letter-spacing: -0.01em;
+  }
+  .vraag-sub {
+    font-family: 'JetBrains Mono', monospace; font-size: 10px;
+    letter-spacing: 0.1em; text-transform: uppercase; margin-top: 4px;
+  }
+  .phone.nacht .vraag-sub { color: #6a6a68; }
+  .phone.dag   .vraag-sub { color: #8a7e6b; }
+
+  /* Tick — leeg cirkel default, gevuld bij selected */
+  .vraag-tick {
+    width: 26px; height: 26px; border-radius: 50%;
+    border: 1.5px solid; display: flex; align-items: center; justify-content: center;
+    transition: background .15s, border-color .15s, color .15s;
+  }
+  .phone.nacht .vraag-tick { border-color: #2a2a2e; color: transparent; }
+  .phone.dag   .vraag-tick { border-color: #c4b89e; color: transparent; }
+  .vraag-tick svg { width: 14px; height: 14px; }
+
+  .vraag-friend.selected .vraag-tick {
+    color: #0a0a0b;
+  }
+  .phone.nacht .vraag-friend.selected .vraag-tick { background: #d4ff3a; border-color: #d4ff3a; }
+  .phone.dag   .vraag-friend.selected .vraag-tick { background: #c9453a; border-color: #c9453a; color: #f3eddf; }
+
+  .vraag-friend.disabled { opacity: 0.35; cursor: not-allowed; }
+
+  /* Eerder gevraagd / RSVP block */
+  .vraag-rsvp {
+    margin: 4px 22px 0;
+    padding: 14px 16px 12px;
+    border-radius: 10px;
+    border: 1px solid;
+  }
+  .phone.nacht .vraag-rsvp { border-color: #1f1f23; background: rgba(255,255,255,0.015); }
+  .phone.dag   .vraag-rsvp { border-color: #d9d1bf; background: rgba(0,0,0,0.015); }
+  .vrsvp-title {
+    font-family: 'Archivo', sans-serif; font-weight: 700; font-size: 14px;
+    letter-spacing: -0.01em;
+  }
+  .vrsvp-meta {
+    font-family: 'JetBrains Mono', monospace; font-size: 10px;
+    letter-spacing: 0.12em; text-transform: uppercase; margin-top: 3px; opacity: 0.6;
+  }
+  .vrsvp-list { margin-top: 12px; display: flex; flex-direction: column; gap: 6px; }
+  .vrsvp-row {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 6px 0;
+  }
+  .vrsvp-name {
+    font-family: 'Archivo', sans-serif; font-size: 13px; font-weight: 500;
+  }
+  .vrsvp-status {
+    font-family: 'JetBrains Mono', monospace; font-size: 10px;
+    letter-spacing: 0.14em; text-transform: uppercase; font-weight: 600;
+    padding: 3px 8px; border-radius: 4px;
+  }
+  .phone.nacht .vrsvp-yes   .vrsvp-status { background: rgba(212,255,58,0.14); color: #d4ff3a; }
+  .phone.dag   .vrsvp-yes   .vrsvp-status { background: rgba(50,120,60,0.12); color: #2d6b3a; }
+  .phone.nacht .vrsvp-maybe .vrsvp-status { background: rgba(255,255,255,0.06); color: #c4b89e; }
+  .phone.dag   .vrsvp-maybe .vrsvp-status { background: rgba(0,0,0,0.06); color: #8a7e6b; }
+  .phone.nacht .vrsvp-no    .vrsvp-status { background: rgba(255,107,74,0.1); color: #ff8a6a; }
+  .phone.dag   .vrsvp-no    .vrsvp-status { background: rgba(201,69,58,0.08); color: #c9453a; }
+
+  /* Vaste dock onderaan */
+  .vraag-dock {
+    padding: 14px 22px 26px;
+    border-top: 1px solid;
+  }
+  .phone.nacht .vraag-dock { background: #0a0a0b; border-color: rgba(255,255,255,0.06); }
+  .phone.dag   .vraag-dock { background: #f5f1e8; border-color: rgba(0,0,0,0.06); }
+  .vraag-cta {
+    width: 100%;
+    display: inline-flex; align-items: center; justify-content: center; gap: 10px;
+    padding: 16px 22px; font-size: 14px; font-weight: 700; letter-spacing: -0.005em;
+  }
+  .vraag-cta svg { width: 16px; height: 16px; }
+  .vraag-cta:disabled { opacity: 0.4; cursor: not-allowed; }
+  .vraag-hint {
+    font-family: 'JetBrains Mono', monospace; font-size: 10px;
+    letter-spacing: 0.12em; text-transform: uppercase; opacity: 0.45;
+    text-align: center; margin-top: 10px; line-height: 1.6;
+  }
+</style>
+
+<script>
+  // 10 · Vraag mee — friend selection (max 3)
+  (function bindVraagMee() {
+    const friends = document.querySelectorAll('#phone-vraag .vraag-friend');
+    const counter = document.getElementById('vraag-count');
+    const cta = document.querySelector('#phone-vraag .vraag-cta');
+    const ctaLabel = cta && cta.querySelector('.vraag-cta-label');
+    const MAX = 3;
+
+    function update() {
+      const sel = document.querySelectorAll('#phone-vraag .vraag-friend.selected');
+      const n = sel.length;
+      counter.textContent = `${n} / ${MAX} gekozen`;
+      friends.forEach(f => {
+        if (!f.classList.contains('selected') && n >= MAX) {
+          f.classList.add('disabled');
+        } else {
+          f.classList.remove('disabled');
+        }
+      });
+      if (cta && ctaLabel) {
+        if (n === 0) {
+          cta.disabled = true;
+          ctaLabel.textContent = 'Kies eerst een vriend';
+        } else {
+          cta.disabled = false;
+          ctaLabel.textContent = `Vraag mee · ${n}`;
+        }
+      }
+    }
+
+    friends.forEach(f => {
+      f.addEventListener('click', () => {
+        if (f.classList.contains('selected')) {
+          f.classList.remove('selected');
+        } else {
+          const n = document.querySelectorAll('#phone-vraag .vraag-friend.selected').length;
+          if (n >= MAX) return;
+          f.classList.add('selected');
+        }
+        update();
+      });
+    });
+
+    update();
+  })();
+</script>
+
+<style>
+  /* ═════════════════════════════════════════════════════════════════
+     09 · TOEVOEGEN — vriend toevoegen
+     Hergebruikt vriend-topbar, jij-section-h.
+     ═════════════════════════════════════════════════════════════════ */
+  .toev-app { display: flex; flex-direction: column; height: 100%; }
+  .toev-scroll { flex: 1; overflow-y: auto; padding: 4px 0 110px; }
+  .toev-scroll::-webkit-scrollbar { display: none; }
+
+  /* Inkomend verzoek */
+  .toev-inbox {
+    margin: 8px 18px 22px;
+    padding: 14px 16px 16px;
+    border-radius: 10px;
+  }
+  .phone.nacht .toev-inbox { background: rgba(212,255,58,0.06); border: 1px solid rgba(212,255,58,0.18); }
+  .phone.dag   .toev-inbox { background: rgba(201,69,58,0.05); border: 1px solid rgba(201,69,58,0.18); }
+  .toev-inbox-h {
+    display: flex; align-items: baseline; justify-content: space-between;
+    margin-bottom: 12px;
+  }
+  .toev-inbox-h .jsh-label { font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 0.16em; text-transform: uppercase; }
+  .phone.nacht .toev-inbox-h .jsh-label { color: #d4ff3a; }
+  .phone.dag   .toev-inbox-h .jsh-label { color: #c9453a; }
+  .toev-inbox-h .jsh-count { font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 0.14em; opacity: 0.7; }
+
+  .toev-req { display: grid; grid-template-columns: 40px 1fr auto; gap: 12px; align-items: center; }
+  .toev-req-avatar { width: 40px; height: 40px; border-radius: 50%; overflow: hidden; }
+  .toev-req-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .toev-req-name { font-family: 'Archivo', sans-serif; font-weight: 700; font-size: 14px; letter-spacing: -0.01em; }
+  .toev-req-sub  { font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; margin-top: 3px; }
+  .phone.nacht .toev-req-sub { color: #6a6a68; }
+  .phone.dag   .toev-req-sub { color: #8a7e6b; }
+  .toev-req-actions { display: flex; gap: 6px; align-items: center; }
+  .toev-req-yes {
+    font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase;
+    padding: 8px 12px; border-radius: 6px; border: none; cursor: pointer; font-weight: 600;
+  }
+  .phone.nacht .toev-req-yes { background: #d4ff3a; color: #0d0d0e; }
+  .phone.dag   .toev-req-yes { background: #c9453a; color: #f3eddf; }
+  .toev-req-no {
+    width: 28px; height: 28px; border-radius: 50%; border: 1px solid; background: transparent;
+    font-size: 16px; line-height: 1; cursor: pointer; font-family: inherit;
+  }
+  .phone.nacht .toev-req-no { border-color: #2a2a2e; color: #9a9a94; }
+  .phone.dag   .toev-req-no { border-color: #d9d1bf; color: #8a7e6b; }
+
+  /* QR block */
+  .toev-qr-block { padding: 18px 22px 0; text-align: center; }
+  .toev-qr-meta {
+    font-family: 'JetBrains Mono', monospace; font-size: 10px;
+    letter-spacing: 0.16em; text-transform: uppercase; opacity: 0.55;
+    margin-bottom: 10px;
+  }
+  .toev-qr-card {
+    background: #f3eddf; border-radius: 14px; padding: 18px 18px 14px;
+    display: inline-block; max-width: 100%; width: 240px;
+  }
+  .phone.nacht .toev-qr-card { box-shadow: 0 0 0 1px rgba(255,255,255,0.06); }
+  .toev-qr {
+    width: 200px; height: 200px; margin: 0 auto;
+  }
+  .toev-qr-svg { width: 100%; height: 100%; display: block; border-radius: 4px; }
+  .toev-qr-foot { margin-top: 12px; text-align: center; }
+  .toev-qr-name {
+    font-family: 'Archivo', sans-serif; font-weight: 800; font-size: 18px;
+    color: #1a1410; letter-spacing: -0.02em;
+  }
+  .toev-qr-handle {
+    font-family: 'JetBrains Mono', monospace; font-size: 10px;
+    letter-spacing: 0.12em; text-transform: uppercase; color: #8a7e6b; margin-top: 4px;
+  }
+  .toev-qr-hint {
+    font-family: 'JetBrains Mono', monospace; font-size: 10px;
+    letter-spacing: 0.1em; text-transform: uppercase; opacity: 0.45;
+    margin-top: 14px;
+  }
+
+  /* Of-divider */
+  .toev-divider {
+    display: flex; align-items: center; gap: 12px;
+    margin: 22px 22px 14px;
+  }
+  .toev-divider::before, .toev-divider::after {
+    content: ''; flex: 1; height: 1px;
+  }
+  .phone.nacht .toev-divider::before, .phone.nacht .toev-divider::after { background: rgba(255,255,255,0.08); }
+  .phone.dag   .toev-divider::before, .phone.dag   .toev-divider::after { background: rgba(0,0,0,0.08); }
+  .toev-divider span {
+    font-family: 'JetBrains Mono', monospace; font-size: 10px;
+    letter-spacing: 0.18em; text-transform: uppercase; opacity: 0.5;
+  }
+
+  /* Share button */
+  .toev-share {
+    display: grid; grid-template-columns: 36px 1fr auto; gap: 14px;
+    align-items: center; width: calc(100% - 44px);
+    margin: 0 22px;
+    padding: 14px 16px; border-radius: 10px;
+    background: transparent; border: 1px solid; cursor: pointer;
+    font-family: inherit; text-align: left;
+  }
+  .phone.nacht .toev-share { border-color: #2a2a2e; color: #f2f2ef; }
+  .phone.dag   .toev-share { border-color: #d9d1bf; color: #1a1410; }
+  .toev-share-icon { width: 32px; height: 32px; }
+  .toev-share-icon svg { width: 100%; height: 100%; opacity: 0.7; }
+  .toev-share-body { display: flex; flex-direction: column; gap: 3px; }
+  .toev-share-l {
+    font-family: 'Archivo', sans-serif; font-weight: 700; font-size: 14px; letter-spacing: -0.01em;
+  }
+  .toev-share-s {
+    font-family: 'JetBrains Mono', monospace; font-size: 10px;
+    letter-spacing: 0.1em; text-transform: uppercase;
+  }
+  .phone.nacht .toev-share-s { color: #6a6a68; }
+  .phone.dag   .toev-share-s { color: #8a7e6b; }
+  .toev-share-chev { font-family: 'JetBrains Mono', monospace; opacity: .35; font-size: 14px; }
+
+  /* Search */
+  .toev-search {
+    margin: 0 22px 4px;
+    display: grid; grid-template-columns: 18px 1fr; gap: 10px;
+    padding: 12px 14px; border-radius: 10px;
+    border: 1px solid;
+  }
+  .phone.nacht .toev-search { border-color: #2a2a2e; background: rgba(255,255,255,0.02); }
+  .phone.dag   .toev-search { border-color: #d9d1bf; background: rgba(0,0,0,0.02); }
+  .toev-search-icon { width: 16px; height: 16px; align-self: center; }
+  .toev-search-icon svg { width: 100%; height: 100%; opacity: 0.5; }
+  .toev-search-i {
+    border: none; background: transparent; outline: none;
+    font-family: 'Archivo', sans-serif; font-size: 14px; color: inherit;
+    letter-spacing: -0.005em;
+  }
+  .toev-search-i::placeholder { opacity: 0.4; }
+
+  /* Result row */
+  .toev-result {
+    display: grid; grid-template-columns: 40px 1fr auto; gap: 12px; align-items: center;
+    padding: 12px 22px; border-top: 1px solid;
+  }
+  .phone.nacht .toev-result { border-color: rgba(255,255,255,0.04); }
+  .phone.dag   .toev-result { border-color: rgba(0,0,0,0.04); }
+  .toev-add {
+    font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase;
+    padding: 7px 12px; border-radius: 6px; border: 1px solid; background: transparent;
+    cursor: pointer; font-weight: 600;
+  }
+  .phone.nacht .toev-add { border-color: #d4ff3a; color: #d4ff3a; }
+  .phone.dag   .toev-add { border-color: #c9453a; color: #c9453a; }
+  .toev-add.pending {
+    border-style: dashed; opacity: 0.55;
+  }
+
+  .toev-foot-meta {
+    font-family: 'JetBrains Mono', monospace; font-size: 10px;
+    letter-spacing: 0.12em; text-transform: uppercase;
+    text-align: center; padding: 26px 32px 0; opacity: 0.4;
+    line-height: 1.6;
+  }
+</style>
+
+<script>
+  // ——— Copy & curatie per mood ———
+  const COPY = {
+    nacht: {
+      kicker: 'Donderdagavond · 22 apr',
+      title: '47 dingen<br/>die <em>nu</em> tellen.',
+      'feat-kicker': '— Avondkeuze',
+      'feat-title': 'Lewsberg<br/>live',
+      'feat-meta': '<span>OCCII</span><span class="dot">·</span><span>23:30</span><span class="dot">·</span><span>€12</span><span class="dot">·</span><span>nog 3 kaarten</span>',
+      'sec1-l': 'Laat open', 'sec1-r': '5 plekken na 23:00',
+      'sec2-l': 'Na middernacht', 'sec2-r': 'foto dump',
+      'd-tag': 'Muziek · post-punk',
+      'd-title': 'Lewsberg<br/>+ Personal<br/>Trainer',
+      'd-date': 'Vr 25.04',
+      'd-time': '23:30',
+      'd-venue': 'OCCII',
+      'd-desc': "Dubbelconcert in de kelder van de OCCII. Lewsberg brengt een korte set uit het nieuwe album, Personal Trainer sluit af met een set die volgens hen zelf 'absurd' wordt.",
+      'd-lineup': '<div><b>Personal Trainer</b><span>01:00</span></div><div><b>Lewsberg</b><span>23:30</span></div><div><b>DJ Nachtwacht</b><span>23:00 · open</span></div>',
+      'd-price': '€12,00<em>incl. servicekosten</em>',
+      time: '23:14',
+      ezLabel: 'nacht',
+      'ag-title': 'Nachten<br/>vooruit.',
+      'ag-sub-l': 'April · week 17',
+      'ag-sub-r': '<b>18</b> nachten vooruit',
+      'k-sub-l': 'Donderdag · 22 apr',
+      'k-sub-r': '<b>8</b> plekken op loopafstand',
+      'k-sheet-k': 'In de buurt · komend uur',
+      'k-sheet-c': '<b>8</b> plannen',
+      'g-sub-l': 'Donderdag · 22 apr',
+      'g-sub-r': '<b>7</b> avonden vooruit',
+      'g-title': 'Op uit.',
+      'venue-tag': 'Popmuziek \u00b7 Monument',
+      'venue-hours': 'Vanavond open \u00b7 tot 04:00',
+      'venue-desc': 'Voormalige kerk uit 1879, sinds 1968 popmuziek. Hoofdzaal, kleine zaal en basement &mdash; drie kamers met elk hun eigen geluid.'
+    },
+    dag: {
+      kicker: 'Zaterdagochtend · 25 apr',
+      title: '47 dingen<br/>om <em>aan</em> te denken.',
+      'feat-kicker': '— Zaterdagkeuze',
+      'feat-title': 'Poëzie van<br/>de Middenmoot',
+      'feat-meta': '<span>PERDU</span><span class="dot">·</span><span>20:00</span><span class="dot">·</span><span>€8</span><span class="dot">·</span><span>Maria Barnas</span>',
+      'sec1-l': 'Om op te plannen', 'sec1-r': '8 voor dit weekend',
+      'sec2-l': 'Zaterdag vooruit', 'sec2-r': 'foto dump',
+      'd-tag': 'Literatuur · open mic',
+      'd-title': 'Poëzie van<br/>de Midden-<br/>moot',
+      'd-date': 'Wo 22.04',
+      'd-time': '20:00',
+      'd-venue': 'Perdu',
+      'd-desc': "Een open mic-avond in Perdu waar dichters die 'bijna' maar net niet in de canon zijn staan opgesteld naast debutanten. Maria Barnas presenteert en leest ook nieuw werk voor.",
+      'd-lineup': '<div><b>Maria Barnas</b><span>22:00</span></div><div><b>Open mic</b><span>21:00</span></div><div><b>Deuren</b><span>19:30</span></div>',
+      'd-price': '€8,00<em>incl. servicekosten</em>',
+      time: '10:24',
+      ezLabel: 'dag',
+      'ag-title': 'Je dagen<br/><em>zijn kort.</em>',
+      'ag-sub-l': 'April · week 17',
+      'ag-sub-r': '<b>22</b> dagen ingepland',
+      'k-sub-l': 'Zaterdag · 25 apr',
+      'k-sub-r': '<b>9</b> plekken op loopafstand',
+      'k-sheet-k': 'In de buurt · vandaag',
+      'k-sheet-c': '<b>9</b> plekken',
+      'g-sub-l': 'Zaterdag · 25 apr',
+      'g-sub-r': '<b>7</b> dagen vooruit',
+      'g-title': 'Op uit.',
+      'venue-tag': 'Popmuziek \u00b7 Monument',
+      'venue-hours': 'Open op afspraak \u00b7 vanaf 11:00',
+      'venue-desc': 'Voormalige kerk uit 1879, sinds 1968 popmuziek. Overdag matinees, lezingen en open repetities &mdash; meestal in de kleine zaal.'
+    }
+  };
+
+  const FEAT_PHOTO = {
+    nacht: 'https://images.unsplash.com/photo-1501386761578-eac5c94b800a?w=800&q=70&auto=format&fit=crop',
+    dag: 'https://images.unsplash.com/photo-1513475382585-d06e58bcb0e0?w=800&q=70&auto=format&fit=crop'
+  };
+  const DETAIL_PHOTO = {
+    nacht: 'https://images.unsplash.com/photo-1501612780327-45045538702b?w=800&q=70&auto=format&fit=crop',
+    dag: 'https://images.unsplash.com/photo-1519608487953-e999c86e7455?w=800&q=70&auto=format&fit=crop'
+  };
+  const VENUE_PHOTO = {
+    nacht: 'https://images.unsplash.com/photo-1429962714451-bb934ecdc4ec?w=800&q=70&auto=format&fit=crop',
+    dag: 'https://images.unsplash.com/photo-1551038247-3d9af20df552?w=800&q=70&auto=format&fit=crop'
+  };
+
+  const EVENTS = {
+    nacht: [
+      { thumb: 'https://images.unsplash.com/photo-1470229722913-7c0e2dbbafd3?w=200&q=60&auto=format&fit=crop', title: 'Lewsberg + Personal Trainer', meta: 'VR · 23:30 · OCCII · €12', badge: 'Muziek', badgeCls: 'acid', catCls: 'cat-forest' },
+      { thumb: 'https://images.unsplash.com/photo-1516450360452-9312f5e86fc7?w=200&q=60&auto=format&fit=crop', title: 'Nachttheater: De Wake', meta: 'DO · 22:00 · FRASCATI 4 · €14', badge: 'Theater', badgeCls: 'flare', catCls: 'cat-red' },
+      { thumb: 'https://images.unsplash.com/photo-1485579149621-3123dd979885?w=200&q=60&auto=format&fit=crop', title: 'Late Lezing: Doorwaakt', meta: 'VR · 23:00 · PERDU · €7', badge: 'Literatuur', badgeCls: 'plum', catCls: 'cat-cobalt' },
+      { thumb: 'https://images.unsplash.com/photo-1478720568477-152d9b164e26?w=200&q=60&auto=format&fit=crop', title: 'Mosquito Screening', meta: 'DO · 22:00 · DE NIEUWE ANITA · €7', badge: 'Film', badgeCls: 'azure', catCls: 'cat-cobalt' },
+      { thumb: 'https://images.unsplash.com/photo-1459749411175-04bf5292ceea?w=200&q=60&auto=format&fit=crop', title: 'Splendor Strings — Hidden Track', meta: 'ZA · 00:30 · SPLENDOR · €15', badge: 'Muziek', badgeCls: 'acid', catCls: 'cat-saffron' }
+    ],
+    dag: [
+      { thumb: 'https://images.unsplash.com/photo-1506157786151-b8491531f063?w=200&q=60&auto=format&fit=crop', title: 'Poëzie van de Middenmoot', meta: 'WO · 20:00 · PERDU · €8', badge: 'Literatuur', badgeCls: 'acid', catCls: 'cat-red' },
+      { thumb: 'https://images.unsplash.com/photo-1518609878373-06d740f60d8b?w=200&q=60&auto=format&fit=crop', title: 'Moeders op Oorlogspad', meta: 'VR · 21:00 · FRASCATI 5 · €18,50', badge: 'Theater', badgeCls: 'flare', catCls: 'cat-forest' },
+      { thumb: 'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?w=200&q=60&auto=format&fit=crop', title: 'Matinee: Eisensteins Stakes', meta: 'ZA · 14:00 · EYE · €11', badge: 'Film', badgeCls: 'plum', catCls: 'cat-cobalt' },
+      { thumb: 'https://images.unsplash.com/photo-1517457373958-b7bdd4587205?w=200&q=60&auto=format&fit=crop', title: 'Boekpresentatie: Rondje Noord', meta: 'ZO · 16:00 · ATHENAEUM · gratis', badge: 'Literatuur', badgeCls: 'azure', catCls: 'cat-saffron' },
+      { thumb: 'https://images.unsplash.com/photo-1459749411175-04bf5292ceea?w=200&q=60&auto=format&fit=crop', title: 'Splendor Strings: Kamerconcert', meta: 'ZA · 15:30 · SPLENDOR · €15', badge: 'Muziek', badgeCls: 'acid', catCls: 'cat-red' }
+    ]
+  };
+
+  // AGENDA: grouped by date. Nacht = avondprogramma, Dag = overdag.
+  const AGENDA = {
+    nacht: [
+      { num: '24', dow: 'Do', month: 'APR', count: 3, items: [
+        { time: '20:30', dur: '2u', title: 'Mosquito Screening', venue: 'De Nieuwe Anita', tags: [['Film','azure']], tick: 'azure', cat: 'Film', thumb: 'https://images.unsplash.com/photo-1478720568477-152d9b164e26?w=200&q=60&auto=format&fit=crop' },
+        { time: '22:00', dur: 'tot 01:00', title: 'Nachttheater: De Wake', venue: 'Frascati 4', tags: [['Theater','flare'],['Uitverkocht','status-sold']], tick: 'flare', cat: 'Theater', thumb: 'https://images.unsplash.com/photo-1516450360452-9312f5e86fc7?w=200&q=60&auto=format&fit=crop' },
+        { time: '23:00', dur: 'deuren', title: 'Late Lezing: Doorwaakt', venue: 'Perdu', tags: [['Literatuur','plum']], tick: 'plum', cat: 'Literatuur', thumb: 'https://images.unsplash.com/photo-1485579149621-3123dd979885?w=200&q=60&auto=format&fit=crop' }
+      ]},
+      { num: '25', dow: 'Vr', month: 'APR', count: 4, items: [
+        { time: '21:30', dur: 'dubbelbill', title: 'Lewsberg + Personal Trainer', venue: 'OCCII', tags: [['Muziek','acid'],['nog 3','status-sold']], tick: 'acid', cat: 'Muziek', thumb: 'https://images.unsplash.com/photo-1470229722913-7c0e2dbbafd3?w=200&q=60&auto=format&fit=crop' },
+        { time: '22:00', dur: '90 min', title: 'Fassbinder dubbelprogramma', venue: 'Kriterion', tags: [['Film','azure']], tick: 'azure', cat: 'Film', thumb: 'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?w=200&q=60&auto=format&fit=crop' },
+        { time: '23:15', dur: 'speciaal', title: 'Splendor Strings — Hidden Track', venue: 'Splendor', tags: [['Muziek','acid']], tick: 'acid', cat: 'Muziek', thumb: 'https://images.unsplash.com/photo-1459749411175-04bf5292ceea?w=200&q=60&auto=format&fit=crop' },
+        { time: '00:00', dur: 'doorlopend', title: 'Nachtcafé · open floor', venue: 'De Nieuwe Anita', tags: [['Theater','flare']], tick: 'flare', cat: 'Theater', thumb: 'https://images.unsplash.com/photo-1598387993441-a364f854c3e1?w=200&q=60&auto=format&fit=crop' }
+      ]},
+      { num: '26', dow: 'Za', month: 'APR', count: 3, items: [
+        { time: '21:30', dur: '90 min', title: 'Sussie — solo', venue: 'Paradiso kleine zaal', tags: [['Muziek','acid']], tick: 'acid', cat: 'Muziek', thumb: 'https://images.unsplash.com/photo-1501612780327-45045538702b?w=200&q=60&auto=format&fit=crop' },
+        { time: '23:00', dur: 'première', title: 'Nachtstuk: Ocht. van later', venue: 'Frascati 3', tags: [['Theater','flare']], tick: 'flare', cat: 'Theater', thumb: 'https://images.unsplash.com/photo-1503095396549-807759245b35?w=200&q=60&auto=format&fit=crop' },
+        { time: '00:15', dur: 'laatste show', title: 'Nachtelijk Kabinet', venue: 'Frascati 3', tags: [['Theater','flare']], tick: 'flare', cat: 'Theater', thumb: 'https://images.unsplash.com/photo-1533174072545-7a4b6ad7a6c3?w=200&q=60&auto=format&fit=crop' }
+      ]},
+      { num: '27', dow: 'Zo', month: 'APR', count: 2, items: [
+        { time: '21:00', dur: 'avondlezing', title: 'Open tafel: nachtdichters', venue: 'Perdu', tags: [['Literatuur','plum']], tick: 'plum', cat: 'Literatuur', thumb: 'https://images.unsplash.com/photo-1519682577862-22b62b24e493?w=200&q=60&auto=format&fit=crop' },
+        { time: '22:30', dur: '60 min', title: 'Zondagse korte films', venue: 'EYE', tags: [['Film','azure']], tick: 'azure', cat: 'Film', thumb: 'https://images.unsplash.com/photo-1478720568477-152d9b164e26?w=200&q=60&auto=format&fit=crop' }
+      ]},
+      { num: '30', dow: 'Wo', month: 'APR', count: 2, items: [
+        { time: '21:00', dur: '2u', title: 'Koningsnacht op de kade', venue: 'Noorderkade', tags: [['Muziek','acid']], tick: 'acid', cat: 'Muziek', thumb: 'https://images.unsplash.com/photo-1506157786151-b8491531f063?w=200&q=60&auto=format&fit=crop' },
+        { time: '23:30', dur: 'afterparty', title: 'After · Paradiso', venue: 'Paradiso', tags: [['Muziek','acid']], tick: 'acid', cat: 'Muziek', thumb: 'https://images.unsplash.com/photo-1459749411175-04bf5292ceea?w=200&q=60&auto=format&fit=crop' }
+      ]},
+      { num: '02', dow: 'Vr', month: 'MEI', count: 2, items: [
+        { time: '22:00', dur: 'pre-première', title: 'Film: De Stille Straat', venue: 'Kriterion', tags: [['Film','azure']], tick: 'azure', cat: 'Film', thumb: 'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?w=200&q=60&auto=format&fit=crop' },
+        { time: '23:30', dur: 'late', title: 'Jazzclub: Melodics', venue: 'Bimhuis', tags: [['Muziek','acid']], tick: 'acid', cat: 'Muziek', thumb: 'https://images.unsplash.com/photo-1415201364774-f6f0bb35f28f?w=200&q=60&auto=format&fit=crop' }
+      ]},
+      { num: '03', dow: 'Za', month: 'MEI', count: 2, items: [
+        { time: '21:00', dur: 'dansavond', title: 'Patta × NDSM', venue: 'NDSM-werf', tags: [['Muziek','acid']], tick: 'acid', cat: 'Muziek', thumb: 'https://images.unsplash.com/photo-1470229722913-7c0e2dbbafd3?w=200&q=60&auto=format&fit=crop' },
+        { time: '23:00', dur: '75 min', title: 'Nacht-reprise: Mosquito', venue: 'De Nieuwe Anita', tags: [['Film','azure']], tick: 'azure', cat: 'Film', thumb: 'https://images.unsplash.com/photo-1478720568477-152d9b164e26?w=200&q=60&auto=format&fit=crop' }
+      ]}
+    ],
+    dag: [
+      { num: '25', dow: 'Vr', month: 'APR', count: 2, items: [
+        { time: '10:30', dur: '45 min', title: 'Ochtendlezing: Stadsdichters', venue: 'OBA Oosterdok', tags: [['Literatuur','plum']], tick: 'plum', cat: 'Literatuur', thumb: 'https://images.unsplash.com/photo-1517457373958-b7bdd4587205?w=200&q=60&auto=format&fit=crop' },
+        { time: '14:00', dur: '2u', title: 'Matinee: Eisensteins Stakes', venue: 'EYE', tags: [['Film','plum']], tick: 'plum', cat: 'Film', thumb: 'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?w=200&q=60&auto=format&fit=crop' }
+      ]},
+      { num: '26', dow: 'Za', month: 'APR', count: 4, items: [
+        { time: '11:00', dur: 'rondleiding', title: 'Rietveld – open ateliers', venue: 'Rietveld Academie', tags: [['Literatuur','plum']], tick: 'plum', cat: 'Literatuur', thumb: 'https://images.unsplash.com/photo-1472289065668-ce650ac443d2?w=200&q=60&auto=format&fit=crop' },
+        { time: '15:30', dur: 'kamerconcert', title: 'Splendor Strings · kamerconcert', venue: 'Splendor', tags: [['Muziek','acid']], tick: 'acid', cat: 'Muziek', thumb: 'https://images.unsplash.com/photo-1507838153414-b4b713384a76?w=200&q=60&auto=format&fit=crop' },
+        { time: '16:00', dur: 'gratis', title: 'Boekpresentatie: Rondje Noord', venue: 'Athenaeum', tags: [['Literatuur','azure']], tick: 'azure', cat: 'Literatuur', thumb: 'https://images.unsplash.com/photo-1519682577862-22b62b24e493?w=200&q=60&auto=format&fit=crop' },
+        { time: '20:00', dur: '90 min', title: 'Poëzie van de Middenmoot', venue: 'Perdu', tags: [['Literatuur','acid']], tick: 'acid', cat: 'Literatuur', thumb: 'https://images.unsplash.com/photo-1506157786151-b8491531f063?w=200&q=60&auto=format&fit=crop' }
+      ]},
+      { num: '27', dow: 'Zo', month: 'APR', count: 3, items: [
+        { time: '11:30', dur: 'brunch-set', title: 'Sunday Strings', venue: 'Splendor', tags: [['Muziek','acid']], tick: 'acid', cat: 'Muziek', thumb: 'https://images.unsplash.com/photo-1459749411175-04bf5292ceea?w=200&q=60&auto=format&fit=crop' },
+        { time: '14:00', dur: '2u', title: 'Theater voor kinderen: Grote Vis', venue: 'Frascati 2', tags: [['Theater','flare']], tick: 'flare', cat: 'Theater', thumb: 'https://images.unsplash.com/photo-1503095396549-807759245b35?w=200&q=60&auto=format&fit=crop' },
+        { time: '15:00', dur: '3u', title: 'Tentoonstelling: Stakes', venue: 'Stedelijk', tags: [['Film','plum']], tick: 'plum', cat: 'Film', thumb: 'https://images.unsplash.com/photo-1472289065668-ce650ac443d2?w=200&q=60&auto=format&fit=crop' }
+      ]},
+      { num: '28', dow: 'Ma', month: 'APR', count: 2, items: [
+        { time: '12:30', dur: 'lunchconcert', title: 'Boekmanstichting · lunchconcert', venue: 'Boekmanzaal', tags: [['Muziek','acid']], tick: 'acid', cat: 'Muziek', thumb: 'https://images.unsplash.com/photo-1415201364774-f6f0bb35f28f?w=200&q=60&auto=format&fit=crop' },
+        { time: '17:00', dur: '45 min', title: 'Lezing: Stad als partituur', venue: 'Felix Meritis', tags: [['Literatuur','plum']], tick: 'plum', cat: 'Literatuur', thumb: 'https://images.unsplash.com/photo-1517457373958-b7bdd4587205?w=200&q=60&auto=format&fit=crop' }
+      ]},
+      { num: '30', dow: 'Wo', month: 'APR', count: 2, items: [
+        { time: '10:00', dur: 'hele dag', title: 'Koningsdag op het IJ', venue: 'IJ-oevers', tags: [['Muziek','acid']], tick: 'acid', cat: 'Muziek', thumb: 'https://images.unsplash.com/photo-1506157786151-b8491531f063?w=200&q=60&auto=format&fit=crop' },
+        { time: '13:00', dur: 'open atelier', title: 'Dag-routine: Atelier Rutte', venue: 'Noord', tags: [['Literatuur','plum']], tick: 'plum', cat: 'Literatuur', thumb: 'https://images.unsplash.com/photo-1472289065668-ce650ac443d2?w=200&q=60&auto=format&fit=crop' }
+      ]},
+      { num: '02', dow: 'Vr', month: 'MEI', count: 2, items: [
+        { time: '14:00', dur: '2u', title: 'Matinee: De Dodenherdenking', venue: 'Tuschinski', tags: [['Film','azure']], tick: 'azure', cat: 'Film', thumb: 'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?w=200&q=60&auto=format&fit=crop' },
+        { time: '16:30', dur: '75 min', title: 'Dichters voor Vrijheid', venue: 'Perdu', tags: [['Literatuur','plum']], tick: 'plum', cat: 'Literatuur', thumb: 'https://images.unsplash.com/photo-1519682577862-22b62b24e493?w=200&q=60&auto=format&fit=crop' }
+      ]},
+      { num: '04', dow: 'Zo', month: 'MEI', count: 2, items: [
+        { time: '11:00', dur: 'stille wandeling', title: 'Stilte-wandeling langs de Amstel', venue: 'Amstel', tags: [['Literatuur','plum']], tick: 'plum', cat: 'Literatuur', thumb: 'https://images.unsplash.com/photo-1503095396549-807759245b35?w=200&q=60&auto=format&fit=crop' },
+        { time: '15:00', dur: '90 min', title: 'Matinee: Eisenstein restored', venue: 'EYE', tags: [['Film','plum']], tick: 'plum', cat: 'Film', thumb: 'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?w=200&q=60&auto=format&fit=crop' }
+      ]}
+    ]
+  };
+
+  // Track current agenda filter (null = all)
+  let currentFilter = null;
+  let currentQuery = '';
+
+  function setAgendaFilter(cat) {
+    currentFilter = cat;
+    document.querySelectorAll('.ag-chip[data-chip]').forEach(c => {
+      c.classList.toggle('active', (c.dataset.chip || '') === (cat || ''));
+    });
+    const mode = document.body.classList.contains('mode-nacht') ? 'nacht' : 'dag';
+    renderAgenda(mode);
+  }
+
+  function setAgendaQuery(q) {
+    currentQuery = (q || '').trim().toLowerCase();
+    const mode = document.body.classList.contains('mode-nacht') ? 'nacht' : 'dag';
+    renderAgenda(mode);
+  }
+
+  function renderDayStrip(mode) {
+    const strip = document.getElementById('day-strip');
+    if (!strip) return;
+    strip.innerHTML = '';
+    AGENDA[mode].forEach((day, idx) => {
+      const btn = document.createElement('button');
+      btn.className = 'day-chip' + (idx === 0 ? ' active' : '');
+      btn.innerHTML = `
+        <div class="dc-dow">${day.dow}</div>
+        <div class="dc-num">${day.num}</div>
+      `;
+      btn.addEventListener('click', () => {
+        strip.querySelectorAll('.day-chip').forEach(c => c.classList.remove('active'));
+        btn.classList.add('active');
+        const target = document.querySelector(`.date-anchor[data-anchor="${idx}"]`);
+        if (target) target.scrollIntoView({ block: 'start', behavior: 'smooth' });
+      });
+      strip.appendChild(btn);
+    });
+  }
+
+  function renderAgenda(mode) {
+    const scroll = document.getElementById('agenda-scroll');
+    if (!scroll) return;
+    scroll.innerHTML = '';
+    AGENDA[mode].forEach((day, idx) => {
+      const catFiltered = currentFilter
+        ? day.items.filter(it => it.cat === currentFilter)
+        : day.items;
+      const filteredItems = currentQuery
+        ? catFiltered.filter(it =>
+            (it.title + ' ' + it.venue).toLowerCase().includes(currentQuery))
+        : catFiltered;
+      if (filteredItems.length === 0) return;
+
+      const anchor = document.createElement('div');
+      anchor.className = 'date-anchor';
+      anchor.dataset.anchor = idx;
+      anchor.innerHTML = `
+        <div style="display:flex; align-items:baseline; gap:10px;">
+          <div class="da-num">${day.num}</div>
+          <div class="da-dow">${day.dow} · ${day.month}</div>
+        </div>
+        <div class="da-count">${filteredItems.length} plannen</div>
+      `;
+      scroll.appendChild(anchor);
+
+      filteredItems.forEach(it => {
+        const row = document.createElement('div');
+        row.className = 'agenda-row';
+        const tagsHtml = it.tags.map(([t, cls]) => `<span class="ag-tag ${cls}">${t}</span>`).join('');
+        row.innerHTML = `
+          <div class="ag-time">${it.time}<em>${it.dur}</em></div>
+          <div class="ag-thumb" style="background-image:url('${it.thumb}')"></div>
+          <div class="ag-body">
+            <div class="ag-title">${it.title}</div>
+            <div class="ag-venue">${it.venue}</div>
+            <div class="ag-tags">${tagsHtml}</div>
+          </div>
+          <div class="ag-tick t-${it.tick}"></div>
+        `;
+        scroll.appendChild(row);
+      });
+    });
+  }
+
+  // ——— KAART data ———
+  // Positions are percentages of the .kaart-canvas box. 50/50 = "you" at center.
+  // Category classes: cat-muziek, cat-theater, cat-literatuur, cat-film.
+  const KAART = {
+    nacht: {
+      friends: [
+        { x: 32, y: 35, img: 'https://i.pravatar.cc/48?img=47' },
+        { x: 68, y: 62, img: 'https://i.pravatar.cc/48?img=33' },
+        { x: 58, y: 28, img: 'https://i.pravatar.cc/48?img=12' }
+      ],
+      venues: [
+        { x: 30, y: 68, min: 12, cat: 'muziek',     dot: 'M', title: 'Lewsberg + Personal Trainer', venue: 'OCCII',           time: '23:30' },
+        { x: 42, y: 45, min:  7, cat: 'muziek',     dot: 'M', title: 'Jazz Late Session',           venue: 'Paradiso Noir',    time: '23:00' },
+        { x: 62, y: 48, min:  9, cat: 'muziek',     dot: 'M', title: 'DJ Nachtwacht',               venue: 'De Nieuwe Anita',  time: '00:00' },
+        { x: 76, y: 38, min: 14, cat: 'literatuur', dot: 'L', title: 'Open Mic Nacht',              venue: 'Perdu',            time: '22:30' },
+        { x: 86, y: 62, min: 18, cat: 'literatuur', dot: 'L', title: 'Vertel-avond',                venue: 'Mezrab',           time: '22:00' },
+        { x: 66, y: 78, min: 11, cat: 'film',       dot: 'F', title: 'Midnight Movie',              venue: 'Kriterion',        time: '23:45' },
+        { x: 18, y: 40, min:  6, cat: 'theater',    dot: 'T', title: 'Late Night Cabaret',          venue: 'Frascati',         time: '22:15' },
+        { x: 52, y: 72, min: 15, cat: 'film',       dot: 'F', title: 'Laat arthouse',               venue: 'Rialto',           time: '22:00' }
+      ]
+    },
+    dag: {
+      friends: [
+        { x: 38, y: 38, img: 'https://i.pravatar.cc/48?img=24' },
+        { x: 62, y: 58, img: 'https://i.pravatar.cc/48?img=5' }
+      ],
+      venues: [
+        { x: 32, y: 42, min:  5, cat: 'literatuur', dot: 'L', title: 'Jordaan boekenwandeling',     venue: 'Noordermarkt',     time: '10:00' },
+        { x: 44, y: 58, min:  8, cat: 'muziek',     dot: 'M', title: 'Klassieke matinee',           venue: 'Café de Jaren',    time: '11:30' },
+        { x: 60, y: 42, min:  9, cat: 'literatuur', dot: 'L', title: 'Fotografie · Deep Storage',   venue: 'Foam',             time: '10:30' },
+        { x: 72, y: 35, min: 11, cat: 'muziek',     dot: 'M', title: 'Zondagsbrunch live',          venue: 'Noorderkerk',      time: '11:00' },
+        { x: 78, y: 55, min: 12, cat: 'literatuur', dot: 'L', title: 'Boeklancering',               venue: 'Perdu',            time: '15:00' },
+        { x: 68, y: 72, min: 14, cat: 'film',       dot: 'F', title: 'Zondagmatinee',               venue: 'Kriterion',        time: '14:30' },
+        { x: 40, y: 78, min: 20, cat: 'film',       dot: 'F', title: 'Documentaire-programma',      venue: 'Oosterpark',       time: '13:00' },
+        { x: 86, y: 68, min: 17, cat: 'theater',    dot: 'T', title: 'Expo-rondleiding',            venue: 'Stedelijk',        time: '13:30' },
+        { x: 22, y: 58, min:  6, cat: 'theater',    dot: 'T', title: 'Matinee · De Meeuw',          venue: 'Frascati',         time: '15:00' }
+      ]
+    }
+  };
+
+  let activeMarkerIdx = null;
+
+  function renderKaart(mode) {
+    const layer = document.getElementById('kaart-markers');
+    const list = document.getElementById('ksheet-list');
+    if (!layer || !list) return;
+    const data = KAART[mode];
+    // Markers
+    layer.innerHTML = '';
+    data.friends.forEach(f => {
+      const el = document.createElement('div');
+      el.className = 'kfriend';
+      el.style.left = f.x + '%';
+      el.style.top = f.y + '%';
+      el.style.backgroundImage = `url('${f.img}')`;
+      layer.appendChild(el);
+    });
+    data.venues.forEach((v, i) => {
+      const el = document.createElement('button');
+      el.className = `kmarker cat-${v.cat}` + (activeMarkerIdx === i ? ' active' : '');
+      el.style.left = v.x + '%';
+      el.style.top = v.y + '%';
+      el.innerHTML = `<span class="km-dot">${v.dot}</span><span class="km-min">${v.min}m</span>`;
+      el.addEventListener('click', (e) => {
+        e.stopPropagation();
+        activeMarkerIdx = activeMarkerIdx === i ? null : i;
+        renderKaart(mode);
+      });
+      layer.appendChild(el);
+    });
+
+    // Sheet — sort by walking time, highlight active if any
+    list.innerHTML = '';
+    const sorted = [...data.venues].map((v, i) => ({...v, idx: i}))
+      .sort((a, b) => a.min - b.min);
+    let activeRowEl = null;
+    sorted.forEach(v => {
+      const row = document.createElement('div');
+      row.className = 'ksheet-row' + (activeMarkerIdx === v.idx ? ' is-active' : '');
+      row.innerHTML = `
+        <div class="ksheet-min">${v.min}<em>min</em></div>
+        <div class="ksheet-body">
+          <div class="ksheet-title">${v.title}</div>
+          <div class="ksheet-venue">${v.venue}</div>
+        </div>
+        <div class="ksheet-time">${v.time}</div>
+      `;
+      row.addEventListener('click', () => {
+        activeMarkerIdx = v.idx;
+        renderKaart(mode);
+      });
+      list.appendChild(row);
+      if (activeMarkerIdx === v.idx) activeRowEl = row;
+    });
+    // Scroll active row into view within the sheet list
+    if (activeRowEl) {
+      const top = activeRowEl.offsetTop - 8;
+      list.scrollTo({ top, behavior: 'smooth' });
+    }
+  }
+
+  // View toggle
+  document.querySelectorAll('.kseg-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const view = btn.dataset.view;
+      document.querySelectorAll('.kseg-btn').forEach(b => b.classList.toggle('active', b === btn));
+      const canvas = document.getElementById('kaart-canvas');
+      const sheet = document.getElementById('kaart-sheet');
+      const listview = document.getElementById('kaart-listview');
+      if (view === 'map') {
+        canvas.hidden = false; sheet.hidden = false; listview.hidden = true;
+      } else {
+        canvas.hidden = true; sheet.hidden = true; listview.hidden = false;
+        // Populate list view from current data
+        const mode = document.body.classList.contains('mode-nacht') ? 'nacht' : 'dag';
+        listview.innerHTML = '';
+        KAART[mode].venues.slice().sort((a,b)=>a.min-b.min).forEach(v => {
+          const row = document.createElement('div');
+          row.className = 'ksheet-row';
+          row.innerHTML = `
+            <div class="ksheet-min">${v.min}<em>min</em></div>
+            <div class="ksheet-body">
+              <div class="ksheet-title">${v.title}</div>
+              <div class="ksheet-venue">${v.venue}</div>
+            </div>
+            <div class="ksheet-time">${v.time}</div>
+          `;
+          listview.appendChild(row);
+        });
+      }
+    });
+  });
+
+  // ——— GERED data (saved plans · both modes · with friend signals) ———
+  const GERED = {
+    nacht: {
+      up: [
+        { day: 'Vr', num: '25', month: 'APR', time: '23:30', title: 'Lewsberg + Personal Trainer', venue: 'OCCII', cat: 'Muziek', tick: 'acid',
+          friends: [{name:'Roos', img:'https://i.pravatar.cc/40?img=47'},{name:'Milan', img:'https://i.pravatar.cc/40?img=33'}] },
+        { day: 'Vr', num: '25', month: 'APR', time: '23:15', title: 'Splendor Strings — Hidden Track', venue: 'Splendor', cat: 'Muziek', tick: 'acid',
+          friends: [] },
+        { day: 'Za', num: '26', month: 'APR', time: '21:30', title: 'Sussie — solo', venue: 'Paradiso kleine zaal', cat: 'Muziek', tick: 'acid',
+          friends: [{name:'Lotte', img:'https://i.pravatar.cc/40?img=12'}] },
+        { day: 'Za', num: '26', month: 'APR', time: '23:00', title: 'Nachtstuk: Ochtend van later', venue: 'Frascati 3', cat: 'Theater', tick: 'flare',
+          friends: [] },
+        { day: 'Zo', num: '27', month: 'APR', time: '22:30', title: 'Zondagse korte films', venue: 'EYE', cat: 'Film', tick: 'azure',
+          friends: [{name:'Roos', img:'https://i.pravatar.cc/40?img=47'},{name:'Sam', img:'https://i.pravatar.cc/40?img=59'},{name:'Milan', img:'https://i.pravatar.cc/40?img=33'}] },
+        { day: 'Wo', num: '30', month: 'APR', time: '22:00', title: 'Late Lezing: Doorwaakt', venue: 'Perdu', cat: 'Literatuur', tick: 'plum',
+          friends: [] },
+        { day: 'Vr', num: '02', month: 'MEI', time: '22:30', title: 'Fassbinder dubbelprogramma', venue: 'Kriterion', cat: 'Film', tick: 'azure',
+          friends: [{name:'Iris', img:'https://i.pravatar.cc/40?img=20'}] }
+      ],
+      past: [
+        { day: 'Vr', num: '11', month: 'APR', time: '23:00', title: 'Future Islands — extra show', venue: 'Paradiso', cat: 'Muziek', tick: 'acid',
+          friends: [{name:'Roos', img:'https://i.pravatar.cc/40?img=47'}] },
+        { day: 'Do', num: '03', month: 'APR', time: '20:30', title: 'Nacht van de Poëzie', venue: 'Perdu', cat: 'Literatuur', tick: 'plum',
+          friends: [] },
+        { day: 'Zo', num: '23', month: 'MRT', time: '22:00', title: 'Nachtspoor: Sofia Coppola', venue: 'De Nieuwe Anita', cat: 'Film', tick: 'azure',
+          friends: [{name:'Milan', img:'https://i.pravatar.cc/40?img=33'}] }
+      ]
+    },
+    dag: {
+      up: [
+        { day: 'Wo', num: '22', month: 'APR', time: '20:00', title: 'Poëzie van de Middenmoot', venue: 'Perdu', cat: 'Literatuur', tick: 'plum',
+          friends: [{name:'Iris', img:'https://i.pravatar.cc/40?img=20'}] },
+        { day: 'Vr', num: '24', month: 'APR', time: '14:00', title: 'Matinee: Eisensteins Stakes', venue: 'EYE', cat: 'Film', tick: 'azure',
+          friends: [] },
+        { day: 'Za', num: '25', month: 'APR', time: '15:30', title: 'Splendor Strings: Kamerconcert', venue: 'Splendor', cat: 'Muziek', tick: 'acid',
+          friends: [{name:'Roos', img:'https://i.pravatar.cc/40?img=47'},{name:'Milan', img:'https://i.pravatar.cc/40?img=33'}] },
+        { day: 'Za', num: '25', month: 'APR', time: '19:00', title: 'Moeders op Oorlogspad', venue: 'Frascati 5', cat: 'Theater', tick: 'flare',
+          friends: [] },
+        { day: 'Zo', num: '26', month: 'APR', time: '16:00', title: 'Boekpresentatie: Rondje Noord', venue: 'Athenaeum', cat: 'Literatuur', tick: 'plum',
+          friends: [{name:'Sam', img:'https://i.pravatar.cc/40?img=59'}] },
+        { day: 'Di', num: '28', month: 'APR', time: '11:00', title: 'Ochtendwandeling: Amsterdam Noord', venue: 'NDSM', cat: 'Literatuur', tick: 'plum',
+          friends: [] },
+        { day: 'Do', num: '01', month: 'MEI', time: '14:30', title: 'Joris Ivens retrospective', venue: 'EYE', cat: 'Film', tick: 'azure',
+          friends: [{name:'Lotte', img:'https://i.pravatar.cc/40?img=12'},{name:'Iris', img:'https://i.pravatar.cc/40?img=20'}] }
+      ],
+      past: [
+        { day: 'Za', num: '11', month: 'APR', time: '15:00', title: 'Rijksmuseum — Vermeer late', venue: 'Rijksmuseum', cat: 'Literatuur', tick: 'plum',
+          friends: [{name:'Roos', img:'https://i.pravatar.cc/40?img=47'}] },
+        { day: 'Zo', num: '05', month: 'APR', time: '14:00', title: 'Frascati — matinee', venue: 'Frascati', cat: 'Theater', tick: 'flare',
+          friends: [] }
+      ]
+    }
+  };
+
+  let gView = 'up';
+  let gFilter = '';
+
+  function renderGered(mode) {
+    const scroll = document.getElementById('gered-scroll');
+    if (!scroll) return;
+    scroll.innerHTML = '';
+    let items = GERED[mode][gView];
+    if (gFilter === 'friends') items = items.filter(i => i.friends.length > 0);
+    else if (gFilter) items = items.filter(i => i.cat === gFilter);
+
+    // Group by date (num+month)
+    const groups = {};
+    items.forEach(it => {
+      const key = it.num + '-' + it.month;
+      if (!groups[key]) groups[key] = { day: it.day, num: it.num, month: it.month, items: [] };
+      groups[key].items.push(it);
+    });
+
+    Object.values(groups).forEach(g => {
+      const anchor = document.createElement('div');
+      anchor.className = 'gered-anchor';
+      anchor.innerHTML = `
+        <div style="display:flex; align-items:baseline; gap:10px;">
+          <span class="ga-dow">${g.day} ${g.num}</span>
+          <span class="ga-date">${g.month}</span>
+        </div>
+        <span class="ga-date">${g.items.length} ${g.items.length===1?'plan':'plannen'}</span>
+      `;
+      scroll.appendChild(anchor);
+
+      g.items.forEach(it => {
+        const row = document.createElement('div');
+        row.className = 'gered-row';
+        const friendsHtml = it.friends.length > 0
+          ? `<div class="gr-friends">
+               <span class="gr-avstack">${it.friends.map(f=>`<img src="${f.img}" alt=""/>`).join('')}</span>
+               <span>${it.friends.map(f=>f.name).join(' & ')} ${it.friends.length===1?'gaat':'gaan'} ook</span>
+             </div>`
+          : '';
+        row.innerHTML = `
+          <div class="gr-time">${it.time}</div>
+          <div>
+            <div class="gr-title">${it.title}</div>
+            <div class="gr-venue">${it.venue}</div>
+            ${friendsHtml}
+          </div>
+          <div class="gr-tick t-${it.tick}"></div>
+        `;
+        scroll.appendChild(row);
+      });
+    });
+
+    // Update upcoming count in header
+    const count = GERED[mode].up.length;
+    const sub = document.querySelector('#phone-gered .swap[data-copy="g-sub-r"]');
+    if (sub && gView === 'up') {
+      const word = mode === 'nacht' ? 'avonden' : 'dagen';
+      sub.innerHTML = `<b>${count}</b> ${word} vooruit`;
+    }
+  }
+
+  // Wire Gered segment + chips
+  document.querySelectorAll('.gseg-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      gView = btn.dataset.gview;
+      document.querySelectorAll('.gseg-btn').forEach(b => b.classList.toggle('active', b === btn));
+      const mode = document.body.classList.contains('mode-nacht') ? 'nacht' : 'dag';
+      renderGered(mode);
+    });
+  });
+  document.querySelectorAll('#g-chips .ag-chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      gFilter = chip.dataset.gchip;
+      document.querySelectorAll('#g-chips .ag-chip').forEach(c => c.classList.toggle('active', c === chip));
+      const mode = document.body.classList.contains('mode-nacht') ? 'nacht' : 'dag';
+      renderGered(mode);
+    });
+  });
+
+  function renderEvents(mode) {
+    const list = document.getElementById('event-list');
+    list.innerHTML = '';
+    EVENTS[mode].forEach(e => {
+      const row = document.createElement('div');
+      row.className = 'event-row';
+      row.innerHTML = `
+        <div class="event-thumb ${e.catCls}" style="background-image:url('${e.thumb}')"></div>
+        <div class="event-content">
+          <div class="event-title">${e.title}</div>
+          <div class="event-meta"><span class="event-badge ${e.badgeCls}">${e.badge}</span>${e.meta}</div>
+        </div>
+        <div class="event-arrow">→</div>
+      `;
+      list.appendChild(row);
+    });
+  }
+
+  function swapText(mode) {
+    const swaps = document.querySelectorAll('.swap[data-copy]');
+    swaps.forEach(el => el.classList.add('out'));
+    setTimeout(() => {
+      swaps.forEach(el => {
+        const key = el.dataset.copy;
+        if (COPY[mode][key] !== undefined) el.innerHTML = COPY[mode][key];
+      });
+      document.getElementById('time').textContent = COPY[mode].time;
+      swaps.forEach(el => el.classList.remove('out'));
+    }, 250);
+  }
+
+  // ─────────────────────────────────────────────────────────────────
+  // 06 · JIJ — friends + preferences (clean, settings-first)
+  // ─────────────────────────────────────────────────────────────────
+  const JIJ_FRIENDS = [
+    { name: 'Roos van Dam',    img: 'https://i.pravatar.cc/72?img=47', meta: { dag: '3 GEMEENSCHAPPELIJKE PLANNEN', nacht: '3 GEMEENSCHAPPELIJKE AVONDEN' }, hot: true },
+    { name: 'Milan Berghuis',  img: 'https://i.pravatar.cc/72?img=33', meta: { dag: 'WAS GISTEREN BIJ EYE',         nacht: 'WAS GISTEREN BIJ PARADISO' } },
+    { name: 'Iris Sengers',    img: 'https://i.pravatar.cc/72?img=20', meta: { dag: '1 GEMEENSCHAPPELIJK PLAN',     nacht: '1 GEMEENSCHAPPELIJKE AVOND' }, hot: true },
+    { name: 'Lotte Ouwens',    img: 'https://i.pravatar.cc/72?img=12', meta: { dag: 'VAAK NAAR EYE',                nacht: 'VAAK NAAR OCCII' } },
+    { name: 'Sam Kortram',     img: 'https://i.pravatar.cc/72?img=59', meta: { dag: 'VIA ROOS',                     nacht: 'VIA ROOS' } },
+    { name: 'Daan Polak',      img: 'https://i.pravatar.cc/72?img=8',  meta: { dag: 'GEEN OVERLAP',                 nacht: 'GEEN OVERLAP' } },
+    { name: 'Ines Marqu\u00e9s', img: 'https://i.pravatar.cc/72?img=31', meta: { dag: 'NIEUW \u00b7 SINDS DEZE WEEK', nacht: 'NIEUW \u00b7 SINDS DEZE WEEK' } },
+    { name: 'Sem Brunings',    img: 'https://i.pravatar.cc/72?img=15', meta: { dag: 'VOLGT JOU TERUG',              nacht: 'VOLGT JOU TERUG' } }
+  ];
+
+  const JIJ_REQUESTS = [
+    { name: 'Jonas Velthuis', img: 'https://i.pravatar.cc/72?img=24', meta: '2 GEMEENSCHAPPELIJK \u00b7 ROOS, MILAN' },
+    { name: 'Anouk Strijbos', img: 'https://i.pravatar.cc/72?img=5',  meta: 'VIA SAM' }
+  ];
+
+  function jijToggle(key, def) {
+    const v = localStorage.getItem('andreas-jij-' + key);
+    if (v === null) return def;
+    return v === '1';
+  }
+  function setJijToggle(key, val) {
+    localStorage.setItem('andreas-jij-' + key, val ? '1' : '0');
+  }
+
+  // ─────────────────────────────────────────────────────────────────
+  // 07 · VENUE — Paradiso programma
+  // ─────────────────────────────────────────────────────────────────
+  const VENUE_PROG = {
+    nacht: [
+      { hall: 'Hoofdzaal', items: [
+        { num: '25', mon: 'APR', title: 'Lewsberg + Personal Trainer', meta: '23:30 \u00b7 UITVERKOCHT', tick: 'acid' },
+        { num: '27', mon: 'APR', title: 'Sussie \u2014 solo', meta: '21:30 \u00b7 KAARTEN VANAF \u20ac24', tick: 'acid' },
+        { num: '02', mon: 'MEI', title: 'Tropical Fuck Storm', meta: '22:00 \u00b7 KAARTEN \u20ac28', tick: 'acid' },
+        { num: '08', mon: 'MEI', title: 'Yves Tumor', meta: '22:30 \u00b7 KAARTEN \u20ac38', tick: 'acid' }
+      ]},
+      { hall: 'Kleine zaal', items: [
+        { num: '26', mon: 'APR', title: 'De Likt', meta: '23:00 \u00b7 KAARTEN \u20ac19', tick: 'acid' },
+        { num: '01', mon: 'MEI', title: 'Personal Trainer \u2014 album release', meta: '22:30 \u00b7 KAARTEN \u20ac17', tick: 'acid' },
+        { num: '09', mon: 'MEI', title: 'Eerie Wanda', meta: '22:00 \u00b7 KAARTEN \u20ac16', tick: 'acid' }
+      ]},
+      { hall: 'Basement', items: [
+        { num: '24', mon: 'APR', title: 'Noiserv \u2014 fluisterconcert', meta: '23:30 \u00b7 KAARTEN \u20ac14', tick: 'plum' },
+        { num: '30', mon: 'APR', title: 'Andere Aap presenteert', meta: '23:00 \u00b7 KAARTEN \u20ac12', tick: 'plum' },
+        { num: '06', mon: 'MEI', title: 'Q&A: Sussie over haar tweede plaat', meta: '23:30 \u00b7 GRATIS', tick: 'plum' }
+      ]}
+    ],
+    dag: [
+      { hall: 'Hoofdzaal', items: [
+        { num: '26', mon: 'APR', title: 'Splendor Strings: Kamerconcert', meta: '15:30 \u00b7 KAARTEN \u20ac17', tick: 'acid' },
+        { num: '01', mon: 'MEI', title: 'Vrouwen op de troon \u2014 lezing', meta: '14:30 \u00b7 GRATIS', tick: 'plum' },
+        { num: '03', mon: 'MEI', title: 'Songs of Holland \u2014 matinee', meta: '14:00 \u00b7 KAARTEN \u20ac22', tick: 'acid' }
+      ]},
+      { hall: 'Kleine zaal', items: [
+        { num: '27', mon: 'APR', title: 'Boekclub: Lieke Marsman', meta: '11:00 \u00b7 GRATIS', tick: 'plum' },
+        { num: '04', mon: 'MEI', title: 'Open repetitie Holland Festival', meta: '14:00 \u00b7 KAARTEN \u20ac9', tick: 'acid' }
+      ]},
+      { hall: 'Basement', items: [
+        { num: '28', mon: 'APR', title: 'Filmclub: Stille Nederland', meta: '15:00 \u00b7 KAARTEN \u20ac8', tick: 'azure' }
+      ]}
+    ]
+  };
+
+  function renderVenue(mode) {
+    const photo = document.getElementById('venue-photo');
+    if (photo) photo.style.backgroundImage = `url('${VENUE_PHOTO[mode]}')`;
+
+    const list = document.getElementById('venue-prog');
+    if (!list) return;
+    list.innerHTML = '';
+
+    const halls = VENUE_PROG[mode];
+    const total = halls.reduce((s, h) => s + h.items.length, 0);
+    const countEl = document.querySelector('[data-copy="venue-count"]');
+    if (countEl) countEl.textContent = `${total} komend`;
+
+    halls.forEach(h => {
+      const sub = document.createElement('div');
+      sub.className = 'venue-hall';
+      sub.textContent = h.hall;
+      list.appendChild(sub);
+      h.items.forEach(it => {
+        const row = document.createElement('div');
+        row.className = 'venue-row';
+        row.innerHTML = `
+          <div class="vr-date"><span class="num">${it.num}</span><span class="mon">${it.mon}</span></div>
+          <div>
+            <div class="vr-title">${it.title}</div>
+            <div class="vr-meta">${it.meta}</div>
+          </div>
+          <div class="vr-tick t-${it.tick}"></div>
+        `;
+        list.appendChild(row);
+      });
+    });
+  }
+
+  // Save toggle for the venue
+  (function bindVenueSave() {
+    const btn = document.getElementById('venue-save');
+    if (!btn) return;
+    const label = document.getElementById('venue-save-label');
+    let saved = localStorage.getItem('andreas-venue-paradiso') === '1';
+    function paint() {
+      btn.classList.toggle('saved', saved);
+      if (label) label.textContent = saved ? 'Opgeslagen' : 'Opslaan';
+    }
+    paint();
+    btn.addEventListener('click', () => {
+      saved = !saved;
+      localStorage.setItem('andreas-venue-paradiso', saved ? '1' : '0');
+      paint();
+    });
+  })();
+
+  function renderJij(mode) {
+    const scroll = document.getElementById('jij-scroll');
+    if (!scroll) return;
+    scroll.innerHTML = '';
+
+    const fhead = document.createElement('div');
+    fhead.className = 'jij-section-h';
+    fhead.innerHTML = `
+      <span class="jsh-label">Vrienden \u00b7 <span class="jsh-count">${JIJ_FRIENDS.length}</span></span>
+      <button class="jsh-action">+ Toevoegen</button>
+    `;
+    scroll.appendChild(fhead);
+
+    JIJ_FRIENDS.forEach(f => {
+      const row = document.createElement('div');
+      row.className = 'jij-friend';
+      row.innerHTML = `
+        <div class="jf-av"><img src="${f.img}" alt=""/></div>
+        <div>
+          <div class="jf-name">${f.name}</div>
+          <div class="jf-meta ${f.hot ? 'hot' : ''}">${f.meta[mode]}</div>
+        </div>
+        <button class="jf-action">Volgend</button>
+      `;
+      scroll.appendChild(row);
+    });
+
+    const rhead = document.createElement('div');
+    rhead.className = 'jij-section-h';
+    rhead.innerHTML = `<span class="jsh-label">Verzoeken \u00b7 <span class="jsh-count">${JIJ_REQUESTS.length}</span></span>`;
+    scroll.appendChild(rhead);
+
+    JIJ_REQUESTS.forEach(f => {
+      const row = document.createElement('div');
+      row.className = 'jij-friend';
+      row.innerHTML = `
+        <div class="jf-av"><img src="${f.img}" alt=""/></div>
+        <div>
+          <div class="jf-name">${f.name}</div>
+          <div class="jf-meta">${f.meta}</div>
+        </div>
+        <div class="jf-twin">
+          <button class="jft-no" aria-label="Afwijzen">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+              <line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/>
+            </svg>
+          </button>
+          <button class="jft-yes" aria-label="Accepteren">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2">
+              <polyline points="5,12 10,17 19,7"/>
+            </svg>
+          </button>
+        </div>
+      `;
+      scroll.appendChild(row);
+    });
+
+    const mhead = document.createElement('div');
+    mhead.className = 'jij-section-h';
+    mhead.innerHTML = `<span class="jsh-label">Meldingen</span>`;
+    scroll.appendChild(mhead);
+
+    const toggles = [
+      { key: 'notify-friend-plan',  label: 'Vriend plant hetzelfde',     sub: 'STUUR EEN SEINTJE',         def: true  },
+      { key: 'notify-tonight',      label: 'Tip voor vanavond',          sub: 'EEN \u00d3F TWEE PER WEEK', def: true  },
+      { key: 'notify-last-min',     label: 'Last-minute kaartjes',       sub: 'BIJ FAVORIETE LOCATIES',    def: false }
+    ];
+    toggles.forEach(t => {
+      const on = jijToggle(t.key, t.def);
+      const row = document.createElement('div');
+      row.className = 'jij-srow';
+      row.innerHTML = `
+        <div>
+          <div class="jsr-label">${t.label}</div>
+          <div class="jsr-sub">${t.sub}</div>
+        </div>
+        <button class="jij-toggle ${on ? 'on' : ''}" data-toggle="${t.key}" aria-pressed="${on}"></button>
+      `;
+      scroll.appendChild(row);
+    });
+
+    const ghead = document.createElement('div');
+    ghead.className = 'jij-section-h';
+    ghead.innerHTML = `<span class="jsh-label">Algemeen</span>`;
+    scroll.appendChild(ghead);
+
+    const langRow = document.createElement('div');
+    langRow.className = 'jij-srow';
+    langRow.innerHTML = `
+      <div class="jsr-label">Taal</div>
+      <div><span class="jsr-value">Nederlands</span><span class="jsr-chev">\u203a</span></div>
+    `;
+    scroll.appendChild(langRow);
+
+    const themeRow = document.createElement('div');
+    themeRow.className = 'jij-srow';
+    themeRow.innerHTML = `
+      <div>
+        <div class="jsr-label">Thema</div>
+        <div class="jsr-sub">VOLGT TIJD VAN DE DAG</div>
+      </div>
+      <div><span class="jsr-value">${mode === 'nacht' ? 'Nacht' : 'Dag'}</span><span class="jsr-chev">\u203a</span></div>
+    `;
+    scroll.appendChild(themeRow);
+
+    // Mijn locaties — favoriete venues, verbonden aan "Last-minute kaartjes"
+    const lhead = document.createElement('div');
+    lhead.className = 'jij-section-h';
+    lhead.innerHTML = `
+      <span class="jsh-label">Mijn locaties \u00b7 <span class="jsh-count">4</span></span>
+      <button class="jsh-action">+ Toevoegen</button>
+    `;
+    scroll.appendChild(lhead);
+
+    const venues = [
+      { name: 'Paradiso',         cat: 'MUZIEK' },
+      { name: 'EYE Filmmuseum',   cat: 'FILM' },
+      { name: 'Frascati',         cat: 'THEATER' },
+      { name: 'Perdu',            cat: 'LITERATUUR' }
+    ];
+    venues.forEach(v => {
+      const row = document.createElement('div');
+      row.className = 'jij-srow';
+      row.innerHTML = `
+        <div>
+          <div class="jsr-label">${v.name}</div>
+          <div class="jsr-sub">${v.cat}</div>
+        </div>
+        <div class="jsr-chev">\u203a</div>
+      `;
+      scroll.appendChild(row);
+    });
+
+    // Privacy
+    const phead = document.createElement('div');
+    phead.className = 'jij-section-h';
+    phead.innerHTML = `<span class="jsh-label">Privacy</span>`;
+    scroll.appendChild(phead);
+
+    const privacyNav = [
+      { label: 'Wie ziet mijn plannen', value: 'Vrienden' },
+      { label: 'Wie kan mij volgen',    value: 'Iedereen' },
+      { label: 'Toon mij op kaart',     value: 'Tijdens een plan', sub: 'ZICHTBAAR \u00b1 1U ROND EVENT' },
+      { label: 'Locatiegebruik',        value: 'Tijdens gebruik',  sub: 'VOOR KAART EN TIPS DICHTBIJ' }
+    ];
+    privacyNav.forEach(p => {
+      const row = document.createElement('div');
+      row.className = 'jij-srow';
+      const left = p.sub
+        ? `<div><div class="jsr-label">${p.label}</div><div class="jsr-sub">${p.sub}</div></div>`
+        : `<div class="jsr-label">${p.label}</div>`;
+      row.innerHTML = `
+        ${left}
+        <div><span class="jsr-value">${p.value}</span><span class="jsr-chev">\u203a</span></div>
+      `;
+      scroll.appendChild(row);
+    });
+
+    const privacyToggles = [
+      { key: 'priv-search',    label: 'Verschijn in zoekresultaten', sub: 'VRIENDEN VINDEN JE OP NAAM',     def: true  },
+      { key: 'priv-history',   label: 'Deel bezoek-geschiedenis',    sub: 'VRIENDEN ZIEN WAAR JE WAS',      def: false }
+    ];
+    privacyToggles.forEach(t => {
+      const on = jijToggle(t.key, t.def);
+      const row = document.createElement('div');
+      row.className = 'jij-srow';
+      row.innerHTML = `
+        <div>
+          <div class="jsr-label">${t.label}</div>
+          <div class="jsr-sub">${t.sub}</div>
+        </div>
+        <button class="jij-toggle ${on ? 'on' : ''}" data-toggle="${t.key}" aria-pressed="${on}"></button>
+      `;
+      scroll.appendChild(row);
+    });
+
+    const ahead = document.createElement('div');
+    ahead.className = 'jij-section-h';
+    ahead.innerHTML = `<span class="jsh-label">Account</span>`;
+    scroll.appendChild(ahead);
+
+    const emailRow = document.createElement('div');
+    emailRow.className = 'jij-srow';
+    emailRow.innerHTML = `
+      <div class="jsr-label">E-mail</div>
+      <div class="jsr-value" style="text-transform:none;letter-spacing:.04em;opacity:.7">tomas@dvries.nl</div>
+    `;
+    scroll.appendChild(emailRow);
+
+    const logoutRow = document.createElement('div');
+    logoutRow.className = 'jij-srow danger';
+    logoutRow.innerHTML = `<div class="jsr-label">Uitloggen</div><div class="jsr-chev">\u203a</div>`;
+    scroll.appendChild(logoutRow);
+
+    scroll.querySelectorAll('.jij-toggle').forEach(t => {
+      t.addEventListener('click', e => {
+        e.stopPropagation();
+        const on = !t.classList.contains('on');
+        t.classList.toggle('on', on);
+        t.setAttribute('aria-pressed', on);
+        setJijToggle(t.dataset.toggle, on);
+      });
+    });
+  }
+
+  function setMode(mode) {
+    document.body.className = 'mode-' + mode;
+    document.querySelectorAll('.phone').forEach(p => {
+      p.classList.remove('nacht', 'dag');
+      p.classList.add(mode);
+    });
+    document.getElementById('feat-photo').style.backgroundImage = `url('${FEAT_PHOTO[mode]}')`;
+    document.getElementById('detail-photo').style.backgroundImage = `url('${DETAIL_PHOTO[mode]}')`;
+    renderEvents(mode);
+    renderDayStrip(mode);
+    renderAgenda(mode);
+    renderKaart(mode);
+    renderGered(mode);
+    renderJij(mode);
+    renderVenue(mode);
+    swapText(mode);
+    localStorage.setItem('andreas-mode', mode);
+  }
+
+  function toggleMode() {
+    const current = document.body.classList.contains('mode-nacht') ? 'nacht' : 'dag';
+    const next = current === 'nacht' ? 'dag' : 'nacht';
+
+    // Trigger curtain sweep on both phones, swap mode at midpoint
+    const phones = document.querySelectorAll('.phone');
+    phones.forEach(p => {
+      p.classList.remove('switching');
+      void p.offsetWidth;
+      p.classList.add('switching');
+    });
+
+    // Swap content mid-sweep (when curtain fully covers the screen)
+    setTimeout(() => setMode(next), 420);
+
+    // Clean up
+    setTimeout(() => {
+      phones.forEach(p => p.classList.remove('switching'));
+    }, 950);
+  }
+
+  document.querySelectorAll('[data-switch]').forEach(sw => {
+    sw.addEventListener('click', toggleMode);
+  });
+
+  const saved = localStorage.getItem('andreas-mode') || 'nacht';
+  setMode(saved);
+
+  // Cat-tab on feed → filter Agenda
+  document.querySelectorAll('.cat-tab').forEach(t => {
+    t.addEventListener('click', () => {
+      document.querySelectorAll('.cat-tab').forEach(x => x.classList.remove('active'));
+      t.classList.add('active');
+      const label = t.textContent.trim();
+      const catMap = { 'Muziek':'Muziek', 'Theater':'Theater', 'Literatuur':'Literatuur', 'Film':'Film' };
+      setAgendaFilter(catMap[label] || null);
+      document.getElementById('phone-agenda')?.scrollIntoView({ behavior:'smooth', block:'nearest', inline:'center' });
+    });
+  });
+
+  // Agenda search chip — expand into input
+  const searchChip = document.getElementById('ag-search-chip');
+  const searchInput = document.getElementById('ag-search-input');
+
+  searchChip?.addEventListener('click', (e) => {
+    if (!searchChip.classList.contains('active')) {
+      searchChip.classList.add('active');
+      setTimeout(() => searchInput?.focus(), 250);
+    }
+  });
+  searchInput?.addEventListener('input', (e) => {
+    setAgendaQuery(e.target.value);
+  });
+  searchInput?.addEventListener('blur', () => {
+    if (!searchInput.value.trim()) {
+      searchChip?.classList.remove('active');
+    }
+  });
+
+  // Category chips — collapse search when selecting a category
+  document.querySelectorAll('.ag-chip[data-chip]').forEach(c => {
+    c.addEventListener('click', () => {
+      const val = c.dataset.chip || null;
+      searchChip?.classList.remove('active');
+      if (searchInput) searchInput.value = '';
+      setAgendaQuery('');
+      setAgendaFilter(val);
+      document.querySelectorAll('.cat-tab').forEach(t => {
+        const lbl = t.textContent.trim();
+        t.classList.toggle('active', val ? lbl === val : lbl === 'Vanavond');
+      });
+    });
+  });
+</script>
+
+</body>
+</html>
