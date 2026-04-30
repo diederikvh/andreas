@@ -38,8 +38,20 @@ export function Welkom({ onSubmit }: Props) {
     focused === which ? roles.accent : roles.bgChip;
 
   return (
+    // Outer View owns the safe-area padding so it stays put.
+    // KAV only handles keyboard offset (its animated paddingBottom would
+    // otherwise overwrite ours when the keyboard is hidden).
+    <View
+      style={[
+        styles.root,
+        {
+          paddingTop: insets.top + 24,
+          paddingBottom: insets.bottom + 28,
+        },
+      ]}
+    >
     <KeyboardAvoidingView
-      style={[styles.root, { paddingBottom: insets.bottom + 28 }]}
+      style={styles.kavInner}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
       <View style={styles.logo}>
@@ -124,11 +136,13 @@ export function Welkom({ onSubmit }: Props) {
         </Text>
       </View>
     </KeyboardAvoidingView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, paddingHorizontal: 24, paddingTop: 56 },
+  root: { flex: 1, paddingHorizontal: 24 },
+  kavInner: { flex: 1 },
   logo: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   logoWord: {
     fontFamily: fontFamily.display,

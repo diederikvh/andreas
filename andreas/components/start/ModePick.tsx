@@ -21,7 +21,15 @@ export function ModePick({ onPicked }: Props) {
   };
 
   return (
-    <View style={[styles.root, { paddingBottom: insets.bottom + 8 }]}>
+    <View
+      style={[
+        styles.root,
+        {
+          paddingTop: insets.top + 24,
+          paddingBottom: insets.bottom + 8,
+        },
+      ]}
+    >
       <Text style={[styles.kicker, { color: roles.accent }]}>— Dag of nacht</Text>
 
       <Text style={[styles.title, { color: roles.fg }]}>Wat zoek je?</Text>
@@ -121,7 +129,7 @@ function DagGlyph() {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, paddingHorizontal: 24, paddingTop: 56 },
+  root: { flex: 1, paddingHorizontal: 24 },
   kicker: {
     fontFamily: fontFamily.mono,
     fontSize: 10,
