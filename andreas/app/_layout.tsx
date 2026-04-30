@@ -18,6 +18,7 @@ import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
+import { ModeCurtain } from '@/components/ModeCurtain';
 import { useHasHydrated, useMode } from '@/store/mode';
 
 SplashScreen.preventAutoHideAsync();
@@ -52,6 +53,7 @@ export default function RootLayout() {
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="welkom" options={{ presentation: 'modal' }} />
       </Stack>
+      <ModeCurtain />
       <StatusBar style={mode === 'nacht' ? 'light' : 'dark'} />
     </SafeAreaProvider>
   );
