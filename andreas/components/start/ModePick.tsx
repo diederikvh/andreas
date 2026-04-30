@@ -1,5 +1,6 @@
 import * as Haptics from 'expo-haptics';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useMode, useModeStore, useRoles } from '@/store/mode';
 import { fontFamily, palette, type Mode } from '@/theme/tokens';
@@ -10,6 +11,7 @@ type Props = {
 
 export function ModePick({ onPicked }: Props) {
   const roles = useRoles();
+  const insets = useSafeAreaInsets();
   const setMode = useModeStore((s) => s.setMode);
 
   const pick = (mode: Mode) => {
@@ -19,7 +21,7 @@ export function ModePick({ onPicked }: Props) {
   };
 
   return (
-    <View style={styles.root}>
+    <View style={[styles.root, { paddingBottom: Math.max(insets.bottom + 16, 28) }]}>
       <Text style={[styles.kicker, { color: roles.accent }]}>— Twee snelheden</Text>
 
       <Text style={[styles.title, { color: roles.fg }]}>
@@ -28,7 +30,7 @@ export function ModePick({ onPicked }: Props) {
         {'\n'}aan toe?
       </Text>
 
-      <Text style={[styles.sub, { color: roles.fgMuted }]}>
+      <Text style={[styles.sub, { color: roles.fgRead }]}>
         Twee snelheden, één app. Nacht voor nightlife, dag voor een dagje uit. Je
         schakelt zelf.
       </Text>
@@ -122,7 +124,7 @@ function DagGlyph() {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, paddingHorizontal: 24, paddingTop: 56, paddingBottom: 28 },
+  root: { flex: 1, paddingHorizontal: 24, paddingTop: 56 },
   kicker: {
     fontFamily: fontFamily.mono,
     fontSize: 10,

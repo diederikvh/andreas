@@ -9,6 +9,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Cross } from '@/components/Cross';
 import { useRoles } from '@/store/mode';
@@ -20,6 +21,7 @@ type Props = {
 
 export function Welkom({ onSubmit }: Props) {
   const roles = useRoles();
+  const insets = useSafeAreaInsets();
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [focused, setFocused] = useState<'name' | 'phone' | null>(null);
@@ -37,7 +39,7 @@ export function Welkom({ onSubmit }: Props) {
 
   return (
     <KeyboardAvoidingView
-      style={styles.root}
+      style={[styles.root, { paddingBottom: Math.max(insets.bottom + 16, 28) }]}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
       <View style={styles.logo}>
@@ -52,7 +54,7 @@ export function Welkom({ onSubmit }: Props) {
         <Text style={[styles.titleEm, { color: roles.accent2 }]}>eigenlijk</Text>?
       </Text>
 
-      <Text style={[styles.sub, { color: roles.fgMuted }]}>
+      <Text style={[styles.sub, { color: roles.fgRead }]}>
         We bouwen je netwerk handmatig. Geen contacten-import, geen suggesties.
         Jij voegt zelf toe.
       </Text>
@@ -64,7 +66,7 @@ export function Welkom({ onSubmit }: Props) {
             value={name}
             onChangeText={setName}
             placeholder="Roos van Dijk"
-            placeholderTextColor={roles.fgMuted}
+            placeholderTextColor={roles.fgPlaceholder}
             autoComplete="name"
             textContentType="name"
             onFocus={() => setFocused('name')}
@@ -83,7 +85,7 @@ export function Welkom({ onSubmit }: Props) {
             value={phone}
             onChangeText={setPhone}
             placeholder="+31 6 …"
-            placeholderTextColor={roles.fgMuted}
+            placeholderTextColor={roles.fgPlaceholder}
             keyboardType="phone-pad"
             autoComplete="tel"
             textContentType="telephoneNumber"
@@ -117,8 +119,8 @@ export function Welkom({ onSubmit }: Props) {
           )}
         </Pressable>
         <Text style={[styles.tiny, { color: roles.fgMuted }]}>
-          Door verder te gaan ga je akkoord met de afspraken.{'\n'}
-          Lezen kan, hoeft niet vandaag.
+          Door verder te gaan ga je akkoord met de afspraken. Lezen kan, hoeft
+          niet vandaag.
         </Text>
       </View>
     </KeyboardAvoidingView>
@@ -126,7 +128,7 @@ export function Welkom({ onSubmit }: Props) {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, paddingHorizontal: 24, paddingTop: 56, paddingBottom: 28 },
+  root: { flex: 1, paddingHorizontal: 24, paddingTop: 56 },
   logo: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   logoWord: {
     fontFamily: fontFamily.display,

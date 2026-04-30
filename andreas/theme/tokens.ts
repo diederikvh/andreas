@@ -36,13 +36,22 @@ export type PaletteKey = keyof typeof palette;
  * Mode-resolved roles. Components read from these instead of palette
  * keys, so a mode switch only flips one map.
  */
+/**
+ * Foreground hierarchy (brightest → dimmest):
+ *   fg          — title / display, full contrast
+ *   fgRead      — body paragraphs people actually read
+ *   fgMuted     — labels, kickers, footer micro-caps
+ *   fgPlaceholder — input placeholders, "ghost" text
+ */
 export const roles = {
   nacht: {
     bg: palette.noir,
     bgLift: palette.noir2,
     bgChip: palette.noir3,
     fg: palette.ink,
+    fgRead: '#c8c8c2',
     fgMuted: palette.inkMuted,
+    fgPlaceholder: '#4a4a46',
     accent: palette.acid,
     accent2: palette.flare,
     onAccent: palette.noir,
@@ -50,11 +59,16 @@ export const roles = {
     curtainFg: palette.soil,
   },
   dag: {
-    bg: palette.paper,
+    // The dag canvas is paper-3 (the lightest cream); the darker paper
+    // is reserved for tiles/cards so they read as a layer ABOVE the
+    // canvas. Mirrors `.phone.dag { background: #f5f1e8 }` in the mocks.
+    bg: palette.paper3,
     bgLift: palette.paper2,
-    bgChip: palette.paper3,
+    bgChip: palette.paper,
     fg: palette.soil,
+    fgRead: '#3d342a',
     fgMuted: palette.soilMuted,
+    fgPlaceholder: '#a89c84',
     accent: palette.red,
     accent2: palette.forest,
     onAccent: palette.paper3,

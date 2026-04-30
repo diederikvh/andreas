@@ -16,6 +16,7 @@ import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { useHasHydrated, useMode } from '@/store/mode';
 
@@ -47,9 +48,9 @@ export default function RootLayout() {
   }
 
   return (
-    <>
+    <SafeAreaProvider>
       <Stack screenOptions={{ headerShown: false }} />
       <StatusBar style={mode === 'nacht' ? 'light' : 'dark'} />
-    </>
+    </SafeAreaProvider>
   );
 }
