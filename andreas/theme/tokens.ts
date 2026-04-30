@@ -54,6 +54,8 @@ export const roles = {
     fgPlaceholder: '#4a4a46',
     accent: palette.acid,
     accent2: palette.flare,
+    /** Emphasis colour for em-words inside titles. Always the warm pop. */
+    emphasis: palette.flare,
     onAccent: palette.noir,
     curtainBg: palette.paper,
     curtainFg: palette.soil,
@@ -71,6 +73,8 @@ export const roles = {
     fgPlaceholder: '#a89c84',
     accent: palette.red,
     accent2: palette.forest,
+    /** Same warm-pop role as nacht; in dag the warm pop IS the primary red. */
+    emphasis: palette.red,
     onAccent: palette.paper3,
     curtainBg: palette.noir,
     curtainFg: palette.acid,

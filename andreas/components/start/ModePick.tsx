@@ -21,12 +21,12 @@ export function ModePick({ onPicked }: Props) {
   };
 
   return (
-    <View style={[styles.root, { paddingBottom: Math.max(insets.bottom + 16, 28) }]}>
+    <View style={[styles.root, { paddingBottom: insets.bottom + 8 }]}>
       <Text style={[styles.kicker, { color: roles.accent }]}>— Twee snelheden</Text>
 
       <Text style={[styles.title, { color: roles.fg }]}>
         Hoe gaat{'\n'}het er{' '}
-        <Text style={[styles.titleEm, { color: roles.accent2 }]}>nu</Text>
+        <Text style={[styles.titleEm, { color: roles.emphasis }]}>nu</Text>
         {'\n'}aan toe?
       </Text>
 

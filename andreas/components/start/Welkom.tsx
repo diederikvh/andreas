@@ -39,7 +39,7 @@ export function Welkom({ onSubmit }: Props) {
 
   return (
     <KeyboardAvoidingView
-      style={[styles.root, { paddingBottom: Math.max(insets.bottom + 16, 28) }]}
+      style={[styles.root, { paddingBottom: insets.bottom + 28 }]}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
       <View style={styles.logo}>
@@ -51,7 +51,7 @@ export function Welkom({ onSubmit }: Props) {
 
       <Text style={[styles.title, { color: roles.fg }]}>
         Hoe heet{'\n'}je{' '}
-        <Text style={[styles.titleEm, { color: roles.accent2 }]}>eigenlijk</Text>?
+        <Text style={[styles.titleEm, { color: roles.emphasis }]}>eigenlijk</Text>?
       </Text>
 
       <Text style={[styles.sub, { color: roles.fgRead }]}>
