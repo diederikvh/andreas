@@ -75,8 +75,8 @@ function ModeTile({ name, meta, onPress, variant }: TileProps) {
         {
           backgroundColor: isNacht ? palette.noir : palette.paper,
           borderColor: isNacht ? palette.noir3 : 'rgba(0,0,0,0.08)',
-          opacity: pressed ? 0.85 : 1,
-          transform: [{ translateY: pressed ? 0 : -0 }],
+          opacity: pressed ? 0.88 : 1,
+          transform: [{ scale: pressed ? 0.98 : 1 }],
         },
       ]}
     >
