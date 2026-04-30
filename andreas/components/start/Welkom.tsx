@@ -57,14 +57,10 @@ export function Welkom({ onSubmit }: Props) {
     >
       <Text style={[styles.kicker, { color: roles.accent }]}>— Welkom</Text>
 
-      <Text style={[styles.title, { color: roles.fg }]}>
-        Hoe heet{'\n'}je{' '}
-        <Text style={[styles.titleEm, { color: roles.emphasis }]}>eigenlijk</Text>?
-      </Text>
+      <Text style={[styles.title, { color: roles.fg }]}>Eerst dit.</Text>
 
       <Text style={[styles.sub, { color: roles.fgRead }]}>
-        We bouwen je netwerk handmatig. Geen contacten-import, geen suggesties.
-        Jij voegt zelf toe.
+        Zo kunnen vrienden je later vinden in Andreas.
       </Text>
 
       <View style={styles.fields}>
@@ -127,8 +123,7 @@ export function Welkom({ onSubmit }: Props) {
           )}
         </Pressable>
         <Text style={[styles.tiny, { color: roles.fgMuted }]}>
-          Door verder te gaan ga je akkoord met de afspraken. Lezen kan, hoeft
-          niet vandaag.
+          Door verder te gaan ga je akkoord met de voorwaarden.
         </Text>
       </View>
     </KeyboardAvoidingView>
