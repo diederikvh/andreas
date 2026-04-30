@@ -22,29 +22,26 @@ export function ModePick({ onPicked }: Props) {
 
   return (
     <View style={[styles.root, { paddingBottom: insets.bottom + 8 }]}>
-      <Text style={[styles.kicker, { color: roles.accent }]}>— Twee snelheden</Text>
+      <Text style={[styles.kicker, { color: roles.accent }]}>— Twee gezichten</Text>
 
-      <Text style={[styles.title, { color: roles.fg }]}>
-        Hoe gaat{'\n'}het er{' '}
-        <Text style={[styles.titleEm, { color: roles.emphasis }]}>nu</Text>
-        {'\n'}aan toe?
-      </Text>
+      <Text style={[styles.title, { color: roles.fg }]}>Wat gaan we doen?</Text>
 
       <Text style={[styles.sub, { color: roles.fgRead }]}>
-        Twee snelheden, één app. Nacht voor nightlife, dag voor een dagje uit. Je
-        schakelt zelf.
+        Overdag wijs ik je galeries, openings, koffieadressen en plekken die je
+        makkelijk over het hoofd ziet. 's Nachts ken ik de loodsen, de kelders
+        en de feestjes die niet op de gevel staan.
       </Text>
 
       <View style={styles.tiles}>
         <ModeTile
           name="Nacht"
-          meta="nightlife"
+          meta="kelders & loodsen"
           onPress={() => pick('nacht')}
           variant="nacht"
         />
         <ModeTile
           name="Dag"
-          meta="dagje uit"
+          meta="galeries & koffie"
           onPress={() => pick('dag')}
           variant="dag"
         />
@@ -52,7 +49,7 @@ export function ModePick({ onPicked }: Props) {
 
       <View style={styles.footWrap}>
         <Text style={[styles.foot, { color: roles.fgMuted }]}>
-          je kan dit altijd wisselen
+          Je kan altijd schakelen
         </Text>
       </View>
     </View>
