@@ -35,7 +35,7 @@ export function ModePick({ onPicked }: Props) {
       <View style={styles.tiles}>
         <ModeTile
           name="Nacht"
-          meta="feesten, concerten, late films"
+          meta="feesten, concerten, films"
           onPress={() => pick('nacht')}
           variant="nacht"
         />
