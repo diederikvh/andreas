@@ -1,7 +1,7 @@
 import * as Haptics from 'expo-haptics';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { useModeStore, useRoles } from '@/store/mode';
+import { useMode, useModeStore, useRoles } from '@/store/mode';
 import { fontFamily, palette, type Mode } from '@/theme/tokens';
 
 type Props = {
@@ -66,17 +66,28 @@ type TileProps = {
 
 function ModeTile({ name, meta, onPress, variant }: TileProps) {
   const isNacht = variant === 'nacht';
+  const currentMode = useMode();
+
+  // Only the nacht tile carries a border. In nacht context it's a dark
+  // hairline (noir3); in dag context it softens to a near-invisible
+  // outline so the dark slab doesn't read as a button-with-stroke.
+  const borderColor = isNacht
+    ? currentMode === 'dag'
+      ? 'rgba(0,0,0,0.08)'
+      : palette.noir3
+    : 'transparent';
+  const borderWidth = isNacht ? 1.5 : 0;
+  const fg = isNacht ? palette.ink : palette.soil;
 
   return (
     <Pressable
       onPress={onPress}
-      style={({ pressed }) => [
+      style={[
         styles.tile,
         {
           backgroundColor: isNacht ? palette.noir : palette.paper,
-          borderColor: isNacht ? palette.noir3 : 'rgba(0,0,0,0.08)',
-          opacity: pressed ? 0.88 : 1,
-          transform: [{ scale: pressed ? 0.98 : 1 }],
+          borderColor,
+          borderWidth,
         },
       ]}
     >
@@ -84,12 +95,8 @@ function ModeTile({ name, meta, onPress, variant }: TileProps) {
         {isNacht ? <NachtGlyph /> : <DagGlyph />}
       </View>
       <View>
-        <Text style={[styles.tileName, { color: isNacht ? palette.ink : palette.soil }]}>
-          {name}
-        </Text>
-        <Text style={[styles.tileMeta, { color: isNacht ? palette.ink : palette.soil }]}>
-          {meta}
-        </Text>
+        <Text style={[styles.tileName, { color: fg }]}>{name}</Text>
+        <Text style={[styles.tileMeta, { color: fg }]}>{meta}</Text>
       </View>
     </Pressable>
   );
@@ -148,10 +155,9 @@ const styles = StyleSheet.create({
   },
   tile: {
     flex: 1,
-    aspectRatio: 1 / 1.15,
+    height: 190,
     borderRadius: 18,
     padding: 16,
-    borderWidth: 1.5,
     justifyContent: 'space-between',
   },
   tileName: {
@@ -192,7 +198,7 @@ const glyph = StyleSheet.create({
     top: 0,
     bottom: 0,
     right: 0,
-    width: 18,
+    width: 10,
     backgroundColor: palette.acid,
   },
   dagRing: {

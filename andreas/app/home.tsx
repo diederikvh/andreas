@@ -1,3 +1,4 @@
+import { router } from 'expo-router';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useModeStore, useRoles } from '@/store/mode';
@@ -11,6 +12,12 @@ export default function Home() {
   const roles = useRoles();
   const toggle = useModeStore((s) => s.toggle);
 
+  const resetOnboarding = async () => {
+    await useModeStore.persist.clearStorage();
+    useModeStore.setState({ mode: 'nacht', hasOnboarded: false });
+    router.replace('/');
+  };
+
   return (
     <View style={[styles.root, { backgroundColor: roles.bg }]}>
       <Text style={[styles.kicker, { color: roles.accent }]}>— Tabs komen hier</Text>
@@ -21,12 +28,23 @@ export default function Home() {
       <Pressable
         onPress={toggle}
         style={({ pressed }) => [
-          styles.toggle,
+          styles.button,
           { backgroundColor: roles.accent, opacity: pressed ? 0.85 : 1 },
         ]}
       >
-        <Text style={[styles.toggleLabel, { color: roles.onAccent }]}>
+        <Text style={[styles.buttonLabel, { color: roles.onAccent }]}>
           Wissel mode
+        </Text>
+      </Pressable>
+      <Pressable
+        onPress={resetOnboarding}
+        style={({ pressed }) => [
+          styles.devButton,
+          { borderColor: roles.fgMuted, opacity: pressed ? 0.5 : 1 },
+        ]}
+      >
+        <Text style={[styles.devLabel, { color: roles.fgMuted }]}>
+          DEV · reset onboarding
         </Text>
       </Pressable>
     </View>
@@ -54,16 +72,28 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     maxWidth: 280,
   },
-  toggle: {
+  button: {
     marginTop: 16,
     paddingVertical: 14,
     paddingHorizontal: 22,
     borderRadius: 999,
   },
-  toggleLabel: {
+  buttonLabel: {
     fontFamily: fontFamily.displayBold,
     fontSize: 14,
     letterSpacing: 0.14,
     textTransform: 'uppercase',
+  },
+  devButton: {
+    marginTop: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
+  devLabel: {
+    fontFamily: fontFamily.mono,
+    fontSize: 10,
+    letterSpacing: 1.4,
   },
 });

@@ -99,22 +99,22 @@ export function Welkom({ onSubmit }: Props) {
       </View>
 
       <View style={styles.cta}>
-        <Pressable
-          onPress={handleSubmit}
-          disabled={!canSubmit}
-          style={({ pressed }) => [
-            styles.go,
-            {
-              backgroundColor: roles.accent,
-              opacity: !canSubmit ? 0.45 : pressed ? 0.9 : 1,
-              transform: [{ scale: pressed ? 0.98 : 1 }],
-            },
-          ]}
-        >
-          <Text style={[styles.goLabel, { color: roles.onAccent }]}>Verder</Text>
-          <Text style={[styles.goLabel, { color: roles.onAccent, fontSize: 18 }]}>
-            →
-          </Text>
+        <Pressable onPress={handleSubmit} disabled={!canSubmit}>
+          {({ pressed }) => (
+            <View
+              style={[
+                styles.go,
+                {
+                  backgroundColor: roles.accent,
+                  opacity: !canSubmit ? 0.45 : pressed ? 0.92 : 1,
+                  transform: [{ scale: pressed ? 0.98 : 1 }],
+                },
+              ]}
+            >
+              <Text style={[styles.goLabel, { color: roles.onAccent }]}>Verder</Text>
+              <Text style={[styles.goArrow, { color: roles.onAccent }]}>→</Text>
+            </View>
+          )}
         </Pressable>
         <Text style={[styles.tiny, { color: roles.fgMuted }]}>
           Door verder te gaan ga je akkoord met de afspraken.{'\n'}
@@ -175,17 +175,21 @@ const styles = StyleSheet.create({
   },
   cta: { marginTop: 'auto', gap: 12 },
   go: {
-    paddingVertical: 16,
-    paddingHorizontal: 18,
-    borderRadius: 999,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    paddingVertical: 16,
+    paddingHorizontal: 22,
+    borderRadius: 999,
   },
   goLabel: {
     fontFamily: fontFamily.displayBold,
     fontSize: 15,
     letterSpacing: 0.15,
+  },
+  goArrow: {
+    fontFamily: fontFamily.displayBold,
+    fontSize: 18,
   },
   tiny: {
     textAlign: 'center',
