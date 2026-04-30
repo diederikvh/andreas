@@ -27,7 +27,7 @@ export default function StartScreen() {
     const t = setTimeout(() => {
       const { hasOnboarded } = useModeStore.getState();
       if (hasOnboarded) {
-        router.replace('/home');
+        router.replace('/avond');
       } else {
         setStage('mode');
       }
@@ -37,7 +37,7 @@ export default function StartScreen() {
 
   const handlePicked = () => {
     completeOnboarding();
-    router.replace('/home');
+    router.replace('/avond');
   };
 
   return (

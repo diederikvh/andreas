@@ -60,7 +60,7 @@ export function Welkom({ onSubmit }: Props) {
       <Text style={[styles.title, { color: roles.fg }]}>Eerst dit.</Text>
 
       <Text style={[styles.sub, { color: roles.fgRead }]}>
-        Zo kunnen vrienden je later vinden in Andreas.
+        Zo kunnen vrienden je later vinden in Andreas X.
       </Text>
 
       <View style={styles.fields}>

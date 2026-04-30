@@ -73,7 +73,7 @@ export function Splash() {
           <Cross size={96} thickness={17} color={roles.accent} />
         </Animated.View>
         <Animated.Text style={[styles.word, { color: roles.fg }, wordStyle]}>
-          Andreas
+          Andreas X
         </Animated.Text>
       </View>
       <Animated.View style={[styles.tagWrap, tagStyle]}>
