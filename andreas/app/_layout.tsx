@@ -49,7 +49,9 @@ export default function RootLayout() {
 
   return (
     <SafeAreaProvider>
-      <Stack screenOptions={{ headerShown: false }} />
+      <Stack screenOptions={{ headerShown: false }}>
+        <Stack.Screen name="welkom" options={{ presentation: 'modal' }} />
+      </Stack>
       <StatusBar style={mode === 'nacht' ? 'light' : 'dark'} />
     </SafeAreaProvider>
   );

@@ -26,14 +26,25 @@ export default function Home() {
         Placeholder. Fase 2 bouwt de 5-tab navigatie en de feed.
       </Text>
       <Pressable
-        onPress={toggle}
+        onPress={() => router.push('/welkom')}
         style={({ pressed }) => [
           styles.button,
           { backgroundColor: roles.accent, opacity: pressed ? 0.85 : 1 },
         ]}
       >
         <Text style={[styles.buttonLabel, { color: roles.onAccent }]}>
-          Wissel mode
+          Stel je even voor
+        </Text>
+      </Pressable>
+      <Pressable
+        onPress={toggle}
+        style={({ pressed }) => [
+          styles.devButton,
+          { borderColor: roles.fgMuted, opacity: pressed ? 0.5 : 1 },
+        ]}
+      >
+        <Text style={[styles.devLabel, { color: roles.fgMuted }]}>
+          DEV · wissel mode
         </Text>
       </Pressable>
       <Pressable

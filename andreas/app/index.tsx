@@ -5,13 +5,18 @@ import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 
 import { ModePick } from '@/components/start/ModePick';
 import { Splash } from '@/components/start/Splash';
-import { Welkom } from '@/components/start/Welkom';
 import { useModeStore, useRoles } from '@/store/mode';
 
 const SPLASH_HOLD_MS = 1600;
 
-type Stage = 'splash' | 'mode' | 'welkom';
+type Stage = 'splash' | 'mode';
 
+/**
+ * Start flow: splash → mode-keuze → home. The Welkom (naam + telefoon)
+ * step is no longer part of this flow — it's deferred to the first
+ * action that needs an account (save, add-friend) and lives at
+ * /welkom as a modal route.
+ */
 export default function StartScreen() {
   const roles = useRoles();
   const completeOnboarding = useModeStore((s) => s.completeOnboarding);
@@ -30,7 +35,7 @@ export default function StartScreen() {
     return () => clearTimeout(t);
   }, [stage]);
 
-  const handleSubmit = () => {
+  const handlePicked = () => {
     completeOnboarding();
     router.replace('/home');
   };
@@ -55,18 +60,7 @@ export default function StartScreen() {
           entering={FadeIn.duration(350)}
           exiting={FadeOut.duration(250)}
         >
-          <ModePick onPicked={() => setStage('welkom')} />
-        </Animated.View>
-      )}
-
-      {stage === 'welkom' && (
-        <Animated.View
-          key="welkom"
-          style={StyleSheet.absoluteFill}
-          entering={FadeIn.duration(350)}
-          exiting={FadeOut.duration(250)}
-        >
-          <Welkom onSubmit={handleSubmit} />
+          <ModePick onPicked={handlePicked} />
         </Animated.View>
       )}
     </View>
