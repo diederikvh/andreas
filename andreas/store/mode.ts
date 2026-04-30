@@ -9,10 +9,11 @@ type ModeState = {
   mode: Mode;
   /** True until persistence has finished restoring. Splash should wait. */
   hasHydrated: boolean;
-  /** True the first time a mode is explicitly chosen (gates the start flow). */
-  hasChosen: boolean;
+  /** True once the user has finished the start-screen flow (mode-keuze + welkom). */
+  hasOnboarded: boolean;
   setMode: (mode: Mode) => void;
   toggle: () => void;
+  completeOnboarding: () => void;
 };
 
 export const useModeStore = create<ModeState>()(
@@ -20,18 +21,16 @@ export const useModeStore = create<ModeState>()(
     (set) => ({
       mode: 'nacht',
       hasHydrated: false,
-      hasChosen: false,
-      setMode: (mode) => set({ mode, hasChosen: true }),
+      hasOnboarded: false,
+      setMode: (mode) => set({ mode }),
       toggle: () =>
-        set((s) => ({
-          mode: s.mode === 'nacht' ? 'dag' : 'nacht',
-          hasChosen: true,
-        })),
+        set((s) => ({ mode: s.mode === 'nacht' ? 'dag' : 'nacht' })),
+      completeOnboarding: () => set({ hasOnboarded: true }),
     }),
     {
       name: 'andreas:mode',
       storage: createJSONStorage(() => AsyncStorage),
-      partialize: (s) => ({ mode: s.mode, hasChosen: s.hasChosen }),
+      partialize: (s) => ({ mode: s.mode, hasOnboarded: s.hasOnboarded }),
     }
   )
 );
@@ -40,8 +39,6 @@ useModeStore.persist.onFinishHydration(() => {
   useModeStore.setState({ hasHydrated: true });
 });
 
-// If hydration already finished synchronously (web, or no stored value),
-// flip the flag on the next tick so consumers always see a stable value.
 if (useModeStore.persist.hasHydrated()) {
   useModeStore.setState({ hasHydrated: true });
 }
@@ -49,4 +46,4 @@ if (useModeStore.persist.hasHydrated()) {
 export const useMode = () => useModeStore((s) => s.mode);
 export const useRoles = () => roles[useModeStore((s) => s.mode)];
 export const useHasHydrated = () => useModeStore((s) => s.hasHydrated);
-export const useHasChosenMode = () => useModeStore((s) => s.hasChosen);
+export const useHasOnboarded = () => useModeStore((s) => s.hasOnboarded);

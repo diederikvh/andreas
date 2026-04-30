@@ -14,7 +14,10 @@ import {
 } from '@expo-google-fonts/jetbrains-mono';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
+import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
+
+import { useHasHydrated, useMode } from '@/store/mode';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -28,16 +31,25 @@ export default function RootLayout() {
     JetBrainsMono_400Regular,
     JetBrainsMono_500Medium,
   });
+  const hasHydrated = useHasHydrated();
+  const mode = useMode();
+
+  const ready = (fontsLoaded || fontError !== null) && hasHydrated;
 
   useEffect(() => {
-    if (fontsLoaded || fontError) {
+    if (ready) {
       SplashScreen.hideAsync();
     }
-  }, [fontsLoaded, fontError]);
+  }, [ready]);
 
-  if (!fontsLoaded && !fontError) {
+  if (!ready) {
     return null;
   }
 
-  return <Stack screenOptions={{ headerShown: false }} />;
+  return (
+    <>
+      <Stack screenOptions={{ headerShown: false }} />
+      <StatusBar style={mode === 'nacht' ? 'light' : 'dark'} />
+    </>
+  );
 }
