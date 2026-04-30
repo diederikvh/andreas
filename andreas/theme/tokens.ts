@@ -103,7 +103,6 @@ export const fontFamily = {
   bold: 'Archivo_700Bold',
   medium: 'Archivo_500Medium',
   body: 'Archivo_400Regular',
-  serifItalic: 'Archivo_400Regular_Italic',
   mono: 'JetBrainsMono_400Regular',
   monoMedium: 'JetBrainsMono_500Medium',
 } as const;
