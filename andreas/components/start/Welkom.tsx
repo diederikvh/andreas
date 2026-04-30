@@ -11,7 +11,6 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Cross } from '@/components/Cross';
 import { useRoles } from '@/store/mode';
 import { fontFamily } from '@/theme/tokens';
 
@@ -45,8 +44,10 @@ export function Welkom({ onSubmit }: Props) {
       style={[
         styles.root,
         {
-          paddingTop: insets.top + 24,
-          paddingBottom: insets.bottom + 28,
+          // Math.max guards devices without a notch / home-indicator —
+          // we always want at least a visible breathing strip.
+          paddingTop: Math.max(insets.top + 24, 56),
+          paddingBottom: Math.max(insets.bottom + 28, 44),
         },
       ]}
     >
@@ -54,11 +55,6 @@ export function Welkom({ onSubmit }: Props) {
       style={styles.kavInner}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      <View style={styles.logo}>
-        <Cross size={17} thickness={4.2} color={roles.accent} />
-        <Text style={[styles.logoWord, { color: roles.fg }]}>Andreas</Text>
-      </View>
-
       <Text style={[styles.kicker, { color: roles.accent }]}>— Welkom</Text>
 
       <Text style={[styles.title, { color: roles.fg }]}>
@@ -143,19 +139,11 @@ export function Welkom({ onSubmit }: Props) {
 const styles = StyleSheet.create({
   root: { flex: 1, paddingHorizontal: 24 },
   kavInner: { flex: 1 },
-  logo: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  logoWord: {
-    fontFamily: fontFamily.display,
-    fontSize: 16,
-    letterSpacing: -0.16,
-    textTransform: 'uppercase',
-  },
   kicker: {
     fontFamily: fontFamily.mono,
     fontSize: 10,
     letterSpacing: 1.6,
     textTransform: 'uppercase',
-    marginTop: 36,
   },
   title: {
     fontFamily: fontFamily.display,

@@ -25,8 +25,11 @@ export function ModePick({ onPicked }: Props) {
       style={[
         styles.root,
         {
-          paddingTop: insets.top + 24,
-          paddingBottom: insets.bottom + 8,
+          // Math.max guards devices without a notch / home-indicator
+          // (older iPhones, parts of the Android lineup) so we still get
+          // a visible breathing strip when insets are small or zero.
+          paddingTop: Math.max(insets.top + 24, 56),
+          paddingBottom: Math.max(insets.bottom + 8, 24),
         },
       ]}
     >
