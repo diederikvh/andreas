@@ -25,16 +25,19 @@ export default function Home() {
       <Text style={[styles.body, { color: roles.fgMuted }]}>
         Placeholder. Fase 2 bouwt de 5-tab navigatie en de feed.
       </Text>
-      <Pressable
-        onPress={() => router.push('/welkom')}
-        style={({ pressed }) => [
-          styles.button,
-          { backgroundColor: roles.accent, opacity: pressed ? 0.85 : 1 },
-        ]}
-      >
-        <Text style={[styles.buttonLabel, { color: roles.onAccent }]}>
-          Stel je even voor
-        </Text>
+      <Pressable onPress={() => router.push('/welkom')}>
+        {({ pressed }) => (
+          <View
+            style={[
+              styles.button,
+              { backgroundColor: roles.accent, opacity: pressed ? 0.85 : 1 },
+            ]}
+          >
+            <Text style={[styles.buttonLabel, { color: roles.onAccent }]}>
+              Stel je even voor
+            </Text>
+          </View>
+        )}
       </Pressable>
       <Pressable
         onPress={toggle}
