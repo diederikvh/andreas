@@ -22,26 +22,26 @@ export function ModePick({ onPicked }: Props) {
 
   return (
     <View style={[styles.root, { paddingBottom: insets.bottom + 8 }]}>
-      <Text style={[styles.kicker, { color: roles.accent }]}>— Twee gezichten</Text>
+      <Text style={[styles.kicker, { color: roles.accent }]}>— Dag of nacht</Text>
 
-      <Text style={[styles.title, { color: roles.fg }]}>Wat gaan we doen?</Text>
+      <Text style={[styles.title, { color: roles.fg }]}>Wat zoek je?</Text>
 
       <Text style={[styles.sub, { color: roles.fgRead }]}>
-        Overdag wijs ik je galeries, openings, koffieadressen en plekken die je
-        makkelijk over het hoofd ziet. 's Nachts ken ik de loodsen, de kelders
-        en de feestjes die niet op de gevel staan.
+        Twee agenda's. Twee ritmes. Eentje voor wat overdag in de stad gebeurt,
+        eentje voor wat 's avonds en 's nachts losgaat. Begin waar je nu zin in
+        hebt.
       </Text>
 
       <View style={styles.tiles}>
         <ModeTile
           name="Nacht"
-          meta="kelders & loodsen"
+          meta="feesten, concerten, late films"
           onPress={() => pick('nacht')}
           variant="nacht"
         />
         <ModeTile
           name="Dag"
-          meta="galeries & koffie"
+          meta="exposities, matinees, openings"
           onPress={() => pick('dag')}
           variant="dag"
         />
@@ -49,7 +49,7 @@ export function ModePick({ onPicked }: Props) {
 
       <View style={styles.footWrap}>
         <Text style={[styles.foot, { color: roles.fgMuted }]}>
-          Je kan altijd schakelen
+          Wisselen kan altijd
         </Text>
       </View>
     </View>
