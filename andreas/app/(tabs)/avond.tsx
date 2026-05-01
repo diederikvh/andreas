@@ -3,6 +3,7 @@ import MaskedView from '@react-native-masked-view/masked-view';
 import { BlurView } from 'expo-blur';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
+import { router } from 'expo-router';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -43,12 +44,14 @@ export default function Avond() {
           </Text>
         </View>
 
-        <FeaturedCard
-          kicker={data.featured.kicker}
-          title={data.featured.title}
-          meta={data.featured.meta}
-          photo={data.featured.photo}
-        />
+        <Pressable onPress={() => router.push('/event/featured')}>
+          <FeaturedCard
+            kicker={data.featured.kicker}
+            title={data.featured.title}
+            meta={data.featured.meta}
+            photo={data.featured.photo}
+          />
+        </Pressable>
 
         <SectionTitle
           title={data.smallRooms.sectionTitle}
@@ -228,35 +231,40 @@ function EventRow({ event }: { event: EventRowType }) {
   const badgeBg = `${tone}26`; // ~15% alpha hex
 
   return (
-    <View style={styles.eventRow}>
-      <Image
-        source={{ uri: event.thumb }}
-        style={styles.eventThumb}
-        contentFit="cover"
-      />
-      <View style={styles.eventContent}>
-        <Text
-          numberOfLines={1}
-          style={[styles.eventTitle, { color: roles.fg }]}
-        >
-          {event.title}
-        </Text>
-        <View style={styles.eventMetaRow}>
-          <View style={[styles.eventBadge, { backgroundColor: badgeBg }]}>
-            <Text style={[styles.eventBadgeText, { color: tone }]}>
-              {event.badge}
-            </Text>
-          </View>
+    <Pressable
+      onPress={() => router.push(`/event/${event.id}`)}
+      style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}
+    >
+      <View style={styles.eventRow}>
+        <Image
+          source={{ uri: event.thumb }}
+          style={styles.eventThumb}
+          contentFit="cover"
+        />
+        <View style={styles.eventContent}>
           <Text
             numberOfLines={1}
-            style={[styles.eventMeta, { color: roles.fgMuted }]}
+            style={[styles.eventTitle, { color: roles.fg }]}
           >
-            {event.meta}
+            {event.title}
           </Text>
+          <View style={styles.eventMetaRow}>
+            <View style={[styles.eventBadge, { backgroundColor: badgeBg }]}>
+              <Text style={[styles.eventBadgeText, { color: tone }]}>
+                {event.badge}
+              </Text>
+            </View>
+            <Text
+              numberOfLines={1}
+              style={[styles.eventMeta, { color: roles.fgMuted }]}
+            >
+              {event.meta}
+            </Text>
+          </View>
         </View>
+        <Text style={[styles.eventArrow, { color: roles.fgPlaceholder }]}>›</Text>
       </View>
-      <Text style={[styles.eventArrow, { color: roles.fgPlaceholder }]}>›</Text>
-    </View>
+    </Pressable>
   );
 }
 
