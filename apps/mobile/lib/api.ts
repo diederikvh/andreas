@@ -60,4 +60,26 @@ export async function getEvent(id: string): Promise<ApiEvent> {
   return event;
 }
 
+export type ApiVenue = {
+  id: string;
+  slug: string;
+  name: string;
+  address: string;
+  lat: number;
+  lng: number;
+  imageUrl: string | null;
+  description: string | null;
+};
+
+export type ApiVenueProgramItem = Omit<ApiEvent, 'venue'>;
+
+export type ApiVenueWithProgram = {
+  venue: ApiVenue;
+  events: ApiVenueProgramItem[];
+};
+
+export async function getVenue(slug: string): Promise<ApiVenueWithProgram> {
+  return await request<ApiVenueWithProgram>(`/venues/${slug}`);
+}
+
 export { ApiError, BASE_URL };

@@ -141,7 +141,11 @@ export default function EventDetail() {
           <View style={styles.metaRow}>
             <MetaCell label="Datum" value={view.date} />
             <MetaCell label="Aanvang" value={view.time} />
-            <MetaCell label="Venue" value={view.venue} />
+            <MetaCell
+              label="Venue"
+              value={view.venue}
+              onPress={() => router.push(`/venue/${event.venue.slug}`)}
+            />
           </View>
 
           {view.description && (
@@ -407,23 +411,38 @@ function DetailFallback({
   );
 }
 
-function MetaCell({ label, value }: { label: string; value: string }) {
+function MetaCell({
+  label,
+  value,
+  onPress,
+}: {
+  label: string;
+  value: string;
+  onPress?: () => void;
+}) {
   const mode = useMode();
   const roles = useRoles();
   const isNacht = mode === 'nacht';
+  const Wrap = onPress ? Pressable : View;
+  const borderColor = onPress
+    ? roles.accent
+    : isNacht
+      ? '#232327'
+      : palette.paper;
   return (
-    <View
+    <Wrap
+      onPress={onPress}
       style={[
         styles.metaCell,
         {
           backgroundColor: isNacht ? '#101012' : palette.paper2,
-          borderColor: isNacht ? '#232327' : palette.paper,
+          borderColor,
         },
       ]}
     >
       <Text style={[styles.metaLabel, { color: roles.fgMuted }]}>{label}</Text>
       <Text style={[styles.metaValue, { color: roles.fg }]}>{value}</Text>
-    </View>
+    </Wrap>
   );
 }
 
