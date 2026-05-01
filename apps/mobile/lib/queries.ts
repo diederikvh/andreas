@@ -1,17 +1,17 @@
 import { useQuery } from '@tanstack/react-query';
 
-import { getEvent, getEvents, getVenue } from '@/lib/api';
+import { getEvent, getEvents, getVenue, type EventsFilter } from '@/lib/api';
 
 export const queryKeys = {
-  events: () => ['events'] as const,
+  events: (filter: EventsFilter = {}) => ['events', filter] as const,
   event: (id: string) => ['event', id] as const,
   venue: (slug: string) => ['venue', slug] as const,
 };
 
-export function useEvents() {
+export function useEvents(filter: EventsFilter = {}) {
   return useQuery({
-    queryKey: queryKeys.events(),
-    queryFn: () => getEvents(),
+    queryKey: queryKeys.events(filter),
+    queryFn: () => getEvents(filter),
   });
 }
 

@@ -92,7 +92,40 @@ type SeededEvent = {
   ticketUrl: string | null;
   imageUrl: string;
   category: 'Muziek' | 'Theater' | 'Literatuur' | 'Film';
+  featured?: boolean;
 };
+
+/**
+ * Hulpfuncties voor relatieve datums — seed-tijd "nu" + N dagen op
+ * een specifiek uur. Re-seeden geeft altijd events "binnenkort".
+ */
+function dayAt(daysFromNow: number, hour: number, minute = 0): Date {
+  const d = new Date();
+  d.setDate(d.getDate() + daysFromNow);
+  d.setHours(hour, minute, 0, 0);
+  return d;
+}
+
+function plusHours(d: Date, hours: number): Date {
+  const next = new Date(d);
+  next.setHours(next.getHours() + hours);
+  return next;
+}
+
+// Datums zijn relatief tov seed-tijd zodat de Avond-curatie (komende
+// 3 dagen) en de Agenda altijd "binnenkort" content tonen na een
+// re-seed. Voorvoegsel: dayAt(0) = vandaag-middernacht, +1 = morgen.
+const EVT_LEWSBERG_START = dayAt(0, 21, 30);
+const EVT_DE_WAKE_START = dayAt(0, 22);
+const EVT_EISENSTEINS_START = dayAt(1, 14);
+const EVT_SUSSIE_START = dayAt(1, 21, 30);
+const EVT_FUTURE_ISLANDS_START = dayAt(2, 20, 30);
+const EVT_POEZIE_MIDDENMOOT_START = dayAt(2, 20);
+const EVT_DE_MEEUW_START = dayAt(2, 15);
+const EVT_LATE_LEZING_START = dayAt(4, 22);
+const EVT_MOSQUITO_START = dayAt(5, 22);
+const EVT_MOEDERS_START = dayAt(7, 21);
+const EVT_FASSBINDER_START = dayAt(9, 22, 30);
 
 const EVENTS: SeededEvent[] = [
   {
@@ -101,21 +134,22 @@ const EVENTS: SeededEvent[] = [
     title: 'Lewsberg + Personal Trainer',
     description:
       'Dubbelconcert in de kelder. Lewsberg brengt een korte set uit het nieuwe album, Personal Trainer sluit af.',
-    startsAt: new Date('2026-05-08T21:30:00+02:00'),
-    endsAt: new Date('2026-05-09T01:30:00+02:00'),
+    startsAt: EVT_LEWSBERG_START,
+    endsAt: plusHours(EVT_LEWSBERG_START, 4),
     priceCents: 1200,
     ticketUrl: 'https://occii.org/event/lewsberg',
     imageUrl:
       'https://images.unsplash.com/photo-1501612780327-45045538702b?w=800&q=70&auto=format&fit=crop',
     category: 'Muziek',
+    featured: true,
   },
   {
     id: 'evt-future-islands',
     venueId: 'paradiso',
     title: 'Future Islands — extra show',
     description: 'Tweede avond toegevoegd na uitverkochte eerste.',
-    startsAt: new Date('2026-05-10T20:30:00+02:00'),
-    endsAt: new Date('2026-05-10T23:00:00+02:00'),
+    startsAt: EVT_FUTURE_ISLANDS_START,
+    endsAt: plusHours(EVT_FUTURE_ISLANDS_START, 2.5),
     priceCents: 3250,
     ticketUrl: 'https://paradiso.nl/event/future-islands-2',
     imageUrl:
@@ -128,21 +162,22 @@ const EVENTS: SeededEvent[] = [
     title: 'Poëzie van de Middenmoot',
     description:
       'Open mic-avond met dichters die "bijna" maar net niet in de canon staan. Maria Barnas presenteert.',
-    startsAt: new Date('2026-05-11T20:00:00+02:00'),
-    endsAt: new Date('2026-05-11T22:30:00+02:00'),
+    startsAt: EVT_POEZIE_MIDDENMOOT_START,
+    endsAt: plusHours(EVT_POEZIE_MIDDENMOOT_START, 2.5),
     priceCents: 800,
     ticketUrl: null,
     imageUrl:
       'https://images.unsplash.com/photo-1506157786151-b8491531f063?w=800&q=70&auto=format&fit=crop',
     category: 'Literatuur',
+    featured: true,
   },
   {
     id: 'evt-late-lezing-doorwaakt',
     venueId: 'perdu',
     title: 'Late Lezing: Doorwaakt',
     description: 'Late lezing over slaap en wakker zijn in de moderne stad.',
-    startsAt: new Date('2026-05-12T22:00:00+02:00'),
-    endsAt: new Date('2026-05-13T00:00:00+02:00'),
+    startsAt: EVT_LATE_LEZING_START,
+    endsAt: plusHours(EVT_LATE_LEZING_START, 2),
     priceCents: 700,
     ticketUrl: null,
     imageUrl:
@@ -154,21 +189,22 @@ const EVENTS: SeededEvent[] = [
     venueId: 'eye',
     title: 'Matinee: Eisensteins Stakes',
     description: 'Restored print, met inleiding van filmhistorica Tessa van Wijck.',
-    startsAt: new Date('2026-05-09T14:00:00+02:00'),
-    endsAt: new Date('2026-05-09T16:30:00+02:00'),
+    startsAt: EVT_EISENSTEINS_START,
+    endsAt: plusHours(EVT_EISENSTEINS_START, 2.5),
     priceCents: 1100,
     ticketUrl: 'https://eyefilm.nl/event/eisensteins-stakes',
     imageUrl:
       'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?w=800&q=70&auto=format&fit=crop',
     category: 'Film',
+    featured: true,
   },
   {
     id: 'evt-mosquito',
     venueId: 'eye',
     title: 'Mosquito Screening',
     description: 'Première van Mosquito met de regisseur in zaal.',
-    startsAt: new Date('2026-05-13T22:00:00+02:00'),
-    endsAt: new Date('2026-05-14T00:30:00+02:00'),
+    startsAt: EVT_MOSQUITO_START,
+    endsAt: plusHours(EVT_MOSQUITO_START, 2.5),
     priceCents: 1400,
     ticketUrl: null,
     imageUrl:
@@ -181,21 +217,22 @@ const EVENTS: SeededEvent[] = [
     title: 'Nachttheater: De Wake',
     description:
       'Een twee-uurs voorstelling over een familie die een kind kwijt is. In Frascati 4.',
-    startsAt: new Date('2026-05-08T22:00:00+02:00'),
-    endsAt: new Date('2026-05-09T00:00:00+02:00'),
+    startsAt: EVT_DE_WAKE_START,
+    endsAt: plusHours(EVT_DE_WAKE_START, 2),
     priceCents: 1450,
     ticketUrl: 'https://frascati.nl/event/de-wake',
     imageUrl:
       'https://images.unsplash.com/photo-1516450360452-9312f5e86fc7?w=800&q=70&auto=format&fit=crop',
     category: 'Theater',
+    featured: true,
   },
   {
     id: 'evt-moeders-oorlogspad',
     venueId: 'frascati',
     title: 'Moeders op Oorlogspad',
     description: 'Première van het nieuwe stuk van Wouter Snip in Frascati 5.',
-    startsAt: new Date('2026-05-15T21:00:00+02:00'),
-    endsAt: new Date('2026-05-15T23:00:00+02:00'),
+    startsAt: EVT_MOEDERS_START,
+    endsAt: plusHours(EVT_MOEDERS_START, 2),
     priceCents: 1850,
     ticketUrl: 'https://frascati.nl/event/moeders-oorlogspad',
     imageUrl:
@@ -207,8 +244,8 @@ const EVENTS: SeededEvent[] = [
     venueId: 'paradiso',
     title: 'Sussie — solo',
     description: 'Sussie speelt nieuw materiaal in de kleine zaal.',
-    startsAt: new Date('2026-05-09T21:30:00+02:00'),
-    endsAt: new Date('2026-05-10T00:00:00+02:00'),
+    startsAt: EVT_SUSSIE_START,
+    endsAt: plusHours(EVT_SUSSIE_START, 2.5),
     priceCents: 2100,
     ticketUrl: 'https://paradiso.nl/event/sussie-solo',
     imageUrl:
@@ -216,12 +253,27 @@ const EVENTS: SeededEvent[] = [
     category: 'Muziek',
   },
   {
+    id: 'evt-de-meeuw',
+    venueId: 'frascati',
+    title: 'Matinee: De Meeuw',
+    description:
+      'Tsjechov in de kleine zaal. Geen pauze, dan koffie en stilte. Geregisseerd door Eline van Houten.',
+    startsAt: EVT_DE_MEEUW_START,
+    endsAt: plusHours(EVT_DE_MEEUW_START, 2.5),
+    priceCents: 1650,
+    ticketUrl: 'https://frascati.nl/event/de-meeuw',
+    imageUrl:
+      'https://images.unsplash.com/photo-1503095396549-807759245b35?w=800&q=70&auto=format&fit=crop',
+    category: 'Theater',
+    featured: true,
+  },
+  {
     id: 'evt-fassbinder',
     venueId: 'eye',
     title: 'Fassbinder dubbelprogramma',
     description: 'Twee Fassbinders op één avond — Angst essen Seele auf + In a Year of 13 Moons.',
-    startsAt: new Date('2026-05-16T22:30:00+02:00'),
-    endsAt: new Date('2026-05-17T02:30:00+02:00'),
+    startsAt: EVT_FASSBINDER_START,
+    endsAt: plusHours(EVT_FASSBINDER_START, 4),
     priceCents: 1200,
     ticketUrl: null,
     imageUrl:

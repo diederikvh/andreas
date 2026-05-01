@@ -76,6 +76,8 @@ export const events = pgTable(
     ticketUrl: text(),
     imageUrl: text(),
     category: eventCategory().notNull(),
+    /** Editorial-pick voor de Avond-tab. Curator zet deze aan. */
+    featured: boolean().notNull().default(false),
     createdAt: timestamp({ withTimezone: true })
       .notNull()
       .default(sql`now()`),
@@ -83,6 +85,7 @@ export const events = pgTable(
   (t) => [
     index('events_starts_at_idx').on(t.startsAt),
     index('events_venue_idx').on(t.venueId),
+    index('events_featured_idx').on(t.featured),
   ]
 );
 

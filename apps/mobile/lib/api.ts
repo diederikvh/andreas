@@ -20,6 +20,7 @@ export type ApiEvent = {
   ticketUrl: string | null;
   imageUrl: string | null;
   category: 'Muziek' | 'Theater' | 'Literatuur' | 'Film';
+  featured: boolean;
   venue: {
     id: string;
     slug: string;
@@ -30,6 +31,17 @@ export type ApiEvent = {
     description?: string | null;
     imageUrl?: string | null;
   };
+};
+
+export type EventsFilter = {
+  featured?: boolean;
+  /** ISO datestring */
+  from?: string;
+  /** ISO datestring */
+  to?: string;
+  category?: ApiEvent['category'];
+  q?: string;
+  limit?: number;
 };
 
 class ApiError extends Error {
@@ -49,9 +61,18 @@ async function request<T>(path: string): Promise<T> {
   return (await res.json()) as T;
 }
 
-export async function getEvents(opts?: { limit?: number }): Promise<ApiEvent[]> {
-  const qs = opts?.limit ? `?limit=${opts.limit}` : '';
-  const { events } = await request<{ events: ApiEvent[] }>(`/events${qs}`);
+export async function getEvents(filter: EventsFilter = {}): Promise<ApiEvent[]> {
+  const params = new URLSearchParams();
+  if (filter.featured) params.set('featured', 'true');
+  if (filter.from) params.set('from', filter.from);
+  if (filter.to) params.set('to', filter.to);
+  if (filter.category) params.set('category', filter.category);
+  if (filter.q && filter.q.trim().length > 0) params.set('q', filter.q.trim());
+  if (filter.limit) params.set('limit', String(filter.limit));
+  const qs = params.toString();
+  const { events } = await request<{ events: ApiEvent[] }>(
+    `/events${qs ? `?${qs}` : ''}`
+  );
   return events;
 }
 

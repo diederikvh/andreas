@@ -1,7 +1,7 @@
 import { useScrollToTop } from '@react-navigation/native';
 import { Image } from 'expo-image';
 import { router } from 'expo-router';
-import { useRef } from 'react';
+import { useMemo, useRef } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -33,6 +33,23 @@ function formatMeta(event: ApiEvent): string {
     .join(' · ');
 }
 
+// Avond toont een gecureerde subset: featured-events binnen de
+// komende 3 dagen vanaf vandaag (lokale dag-grens, geen "nu" zodat
+// nacht- en dag-modus ook 's morgens nog vanavond's items tonen).
+const HOME_WINDOW_DAYS = 3;
+
+/** Vanaf welk uur een event als "avond" geldt (anders: "overdag"). */
+const NACHT_HOUR_THRESHOLD = 17;
+
+function homeWindow(): { from: string; to: string } {
+  const now = new Date();
+  const from = new Date(now);
+  from.setHours(0, 0, 0, 0);
+  const to = new Date(from);
+  to.setDate(to.getDate() + HOME_WINDOW_DAYS);
+  return { from: from.toISOString(), to: to.toISOString() };
+}
+
 export default function Avond() {
   const roles = useRoles();
   const mode = useMode();
@@ -41,9 +58,27 @@ export default function Avond() {
   const scrollRef = useRef<ScrollView>(null);
   useScrollToTop(scrollRef);
 
-  // Hero/featured/photoBand blijven voorlopig op mock-data; alleen de
-  // small-rooms-lijst draait nu live tegen GET /events.
-  const { data: events, isLoading, error } = useEvents();
+  const window = useMemo(() => homeWindow(), []);
+  // Editorial-pick events in de komende 3 dagen — Avond is altijd de
+  // gecureerde view, niet alle data uit de DB.
+  const { data: events, isLoading, error } = useEvents({
+    featured: true,
+    from: window.from,
+    to: window.to,
+  });
+  // Splits op tijd-van-dag: nacht-mode toont avond-events (>= 17:00),
+  // dag-mode toont overdag-events (< 17:00).
+  const filtered = useMemo(() => {
+    if (!events) return [];
+    return events.filter((e) => {
+      const hour = new Date(e.startsAt).getHours();
+      return mode === 'nacht'
+        ? hour >= NACHT_HOUR_THRESHOLD
+        : hour < NACHT_HOUR_THRESHOLD;
+    });
+  }, [events, mode]);
+  const lead = filtered[0];
+  const rest = filtered.slice(1);
 
   return (
     <View style={[styles.root, { backgroundColor: roles.bg }]}>
@@ -68,35 +103,40 @@ export default function Avond() {
           </Text>
         </View>
 
-        <Pressable
-          onPress={
-            events?.[0]
-              ? () => router.push(`/event/${events[0].id}`)
-              : undefined
-          }
-        >
-          <FeaturedCard
-            kicker={data.featured.kicker}
-            title={data.featured.title}
-            meta={data.featured.meta}
-            photo={data.featured.photo}
-          />
-        </Pressable>
+        {/* Hoofd-artikel: eerste featured event als grote kaart bovenaan.
+            Tot we een dedicated lead-flag hebben pakken we de eerstvolgende
+            featured-pick. */}
+        {lead && (
+          <Pressable onPress={() => router.push(`/event/${lead.id}`)}>
+            <FeaturedCard
+              kicker={data.featured.kicker}
+              title={lead.title}
+              meta={formatMeta(lead)}
+              photo={lead.imageUrl ?? data.featured.photo}
+            />
+          </Pressable>
+        )}
 
         <SectionTitle
-          title={data.smallRooms.sectionTitle}
+          title="Redactiekeuze"
           meta={
-            events ? `${events.length} live` : data.smallRooms.sectionMeta
+            rest.length > 0 ? `${rest.length} meer` : data.smallRooms.sectionMeta
           }
         />
         {isLoading && <ListState text="Laden…" />}
         {error && (
+          <ListState text="Kon redactiekeuze niet laden." tone="error" />
+        )}
+        {!isLoading && !error && filtered.length === 0 && events && (
           <ListState
-            text={`Kon events niet ophalen — draait pnpm api?`}
-            tone="error"
+            text={
+              mode === 'nacht'
+                ? 'Niets aanbevolen voor de komende avonden.'
+                : 'Niets aanbevolen voor overdag de komende dagen.'
+            }
           />
         )}
-        {events?.map((e) => <ApiEventRow key={e.id} event={e} />)}
+        {rest.map((e) => <ApiEventRow key={e.id} event={e} />)}
 
         <View style={{ height: 28 }} />
         <SectionTitle
