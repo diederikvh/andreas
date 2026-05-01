@@ -2,88 +2,77 @@
 
 Live status van het project. Cross-checken met `HANDOFF.md` voor de oorspronkelijke briefing en met de huidige codebase voor de waarheid. Per open punt staat genoeg context om een agent zelfstandig te laten werken.
 
-Laatste sync: 2026-05-01 · branch `main`.
+Laatste sync: 2026-05-02 · branch `main`.
 
 ## Stand
 
 **Fase 1 — Fundament**: ✅ klaar.
 
-**Fase 2 — Statische schermen**: ✅ klaar voor de zes hoofdroutes (Avond / Detail / Agenda / Gered / Jij / Kaart). Alle data komt uit `apps/mobile/mocks/*.ts`.
+**Fase 2 — Statische schermen**: ✅ klaar — alle hoofdroutes zijn live op echte data.
 
-**Fase 3 — Interactie**: ⚙️ in progress.
-- ✅ Save-flow op event-detail (Zustand + AsyncStorage in [`apps/mobile/store/saved.ts`](apps/mobile/store/saved.ts), heart met scale + haptic, "Net opgeslagen" sectie in Gered).
-- ⬜ Modals (`/event/[id]/invite`, `/add-friend`) — geparkeerd tot na fase 4 want vereist auth + friends-data uit DB.
-- ⬜ `/friend/[id]` en `/venue/[id]` detail-schermen — geparkeerd tot na fase 4 (data-driven).
-- ⬜ dn-switch óók op Jij — designvraag, nog niet beantwoord.
+**Fase 3 — Interactie**: ✅ klaar.
+- ✅ Save-flow op event-detail (server-backed, heart toggle met optimistic update + haptic).
+- ✅ `/friend/[id]` detail met avatar/handle + ontvolgen-knop + lijst van toekomstige saves.
+- ✅ `/venue/[slug]` venue-detail met programma, "Route openen" naar device maps, lokale venue-save.
+- ⬜ `/event/[id]/invite` modal — staat als open punt voor volgende slice (zie hieronder).
+- ⬜ `/add-friend` heeft nu handle-search; QR-genereren + scannen nog niet (later).
 
-**Fase 4 — Backend**: ⚙️ in progress.
-- ✅ Monorepo restructure (`apps/mobile`, `apps/api`, `packages/shared`) met pnpm workspaces. `.npmrc` heeft `node-linker=hoisted` voor RN+Metro compat.
-- ✅ Neon Postgres (Frankfurt, `andreas_x`) + Drizzle schema voor 9 tabellen (users · friendships · venues · events · saves · venue_follows · session · account · verification). Migration `0000_misty_swarm.sql` is applied.
-- ✅ Hono API draait op `:8787` met `/health`. better-auth + phone-OTP plugin geconfigureerd (sendOTP via MessageBird; in dev zonder access key worden codes naar console gelogd).
-- ✅ Bunny.net storage zone `andreas-x` + pull zone `https://andreas-x.b-cdn.net` aangemaakt (Force SSL aan).
-- ⬜ **Volgende slice**: seed-script + `GET /events` + mobile api-client (zie hieronder).
-- ⬜ TanStack Query setup in mobile, Avond-tab live op `/events`.
-- ⬜ Phone-OTP login UI in mobile + better-auth client wiring.
-- ⬜ Resterende API-routes (`/venues`, `/saves`, `/friends`, `/invites`).
-- ⬜ EAS build + TestFlight.
-
----
-
-## Volgende slice (in werk)
-
-1. **Seed-script** — `apps/api/src/db/seed.ts` met 4-5 echte Amsterdamse venues (OCCII, Paradiso, Perdu, EYE, Frascati) en ~10 events. Idempotent (delete-first, dan insert). Run: `pnpm --filter @andreas/api seed`.
-2. **`GET /events`** — Hono route, joint events met venues, gesorteerd op `starts_at` ascending, default limit 50. Ook `GET /events/:id` voor detail.
-3. **Mobile api-client** — `apps/mobile/lib/api.ts` met `EXPO_PUBLIC_API_URL` (default `http://localhost:8787`). Helpers `getEvents()` en `getEvent(id)` voor straks.
-
-Verwachte test: `curl http://localhost:8787/events` retourneert JSON-array.
+**Fase 4 — Backend**: ⚙️ in werk, grootste delen klaar.
+- ✅ Monorepo (`apps/mobile`, `apps/api`, `packages/shared`) met pnpm workspaces + `node-linker=hoisted` voor RN+Metro.
+- ✅ Neon Postgres (Frankfurt) + Drizzle schema. Tabellen: users · friendships · venues · events · saves · venue_follows · session · account · verification.
+- ✅ Hono API op `:8787` met better-auth (phone-OTP via MessageBird, expo + bearer plugins, 180-dagen sliding session).
+- ✅ Bunny.net storage zone `andreas-x` + pull zone (avatar uploads via `POST /me/avatar`).
+- ✅ API-routes: `/health`, `/me` (GET + PATCH + avatar), `/events` (incl. `friendsSaved`), `/events/:id`, `/venues/:slug`, `/saves` (toggle + list), `/friends` (list + request + accept + decline + remove + detail), `/users/search`.
+- ✅ Mobile auth-flow: Jij is single auth surface (phone → OTP-code → naam + handle → profielpagina), inclusief avatar-upload + edit.
+- ✅ Mobile data-laag: TanStack Query hooks (`useEvents`, `useEvent`, `useVenue`, `useMySaves`, `useFriends`, `useFriendRequests`, `useFriend`, `useUserSearch`).
+- ✅ Avond + Agenda + Kaart + Gered + Detail allemaal live op de API.
+- ✅ Friend-pill op event-rijen + friends-blok op event-detail. Privacy-gates moeten later (TODO-comment in `buildFriendsByEvent` en `GET /friends/:id`).
+- ⬜ Invite-modal (zie volgende slice).
+- ⬜ QR genereren + scannen op `/add-friend`.
+- ⬜ Privacy-toggles op profiel (zichtbaarheid van saves voor vrienden).
+- ⬜ Push notificaties (`expo-notifications`).
+- ⬜ EAS build → TestFlight.
 
 ---
 
-## Te fixen na deze slice (technical debt)
+## Volgende slice
 
-- **`apps/mobile/store/saved.ts`** slaat nu snapshots op zodat saves van detail naar Gered kunnen renderen ondanks dat detail.tsx altijd dezelfde per-mode mock toont. Zodra detail echt per-id data fetcht, wordt dit een simpele `Set<string>` van event-ids en lookup via TanStack Query.
-- **`apps/mobile/app/event/[id].tsx`** gebruikt nu `DETAIL[mode]` ongeacht de route-id. Moet worden vervangen door `useEvent(id)` zodra de API-route er is.
-- **Avond/Agenda/Gered/Kaart** halen nog uit `mocks/`. Migreren één voor één naar `useQuery`.
-- **`MESSAGEBIRD_ACCESS_KEY`** in `apps/api/.env` is leeg — OTP-codes loggen nu naar console. Aanmaken zodra phone-OTP UI live moet.
-- **Connection string + Bunny key** zijn in chat-history beland tijdens setup. Rotaten voor go-live (Neon → Reset password, Bunny → Reset FTP password). Niet kritisch voor V1-development.
-- **`packages/shared`** heeft alleen base types. Zodra DB-routes draaien, hier de response-shapes definiëren zodat client en server gegarandeerd in sync zijn.
-- **Drizzle Studio** (`pnpm studio`) is een handige DB-browser tijdens dev. Niet uitchecken in repo.
+### Invite-flow — "Vraag iemand mee"
+
+1. **API**:
+   - Schema: `invites` tabel toevoegen (`fromUserId`, `toUserId`, `eventId`, `message`, `status` enum `pending|accepted|declined`, `createdAt`).
+   - `POST /invites` met `{ eventId, toUserIds: string[], message? }` — schrijft één rij per ontvanger; weiger duplicates en self-invites.
+   - `GET /invites` — mijn ontvangen invites (status pending), met inviter-profiel + event-info gejoind.
+   - `POST /invites/:id/accept` + `POST /invites/:id/decline` — ontvanger only.
+2. **Mobile**:
+   - `/event/[id]/invite` route (modal-presentatie). Vrienden-checklist (uit `useFriends`), optionele message-textarea, "Stuur uitnodiging".
+   - Op detail-screen: de bestaande "Vraag iemand anders mee" pill triggert deze route.
+   - Op Jij: nieuwe "Uitnodigingen" sectie boven Vrienden, lijstje van ontvangen invites met accept/decline.
+3. **Optioneel later**: bij accept ook automatisch een save aanmaken voor de ontvanger.
 
 ---
 
-## Fase 3 — Interactie (geparkeerd tot fase 4)
+## Te fixen / technical debt
 
-Reden: deze features leunen ≥80% op data; een mock-versie is grotendeels weggegooid werk.
-
-- [ ] **`/event/[id]/invite` — Vraag iemand mee**. Bottom-sheet met vrienden-picker + persoonlijke message. Heeft `friendships` + `users` data nodig.
-- [ ] **`/add-friend` modal**. QR genereren + scannen + zoek op handle. Nieuwe deps: `expo-camera` voor scan, `react-native-qrcode-svg` voor genereren. Heeft user-handle uit DB nodig.
-- [ ] **`/friend/[id]` — Vriend detail**. Wat heeft die vriend gered, gemeenschappelijke plannen. Heeft `saves` + `friendships` join nodig.
-- [ ] **`/venue/[id]` — Venue detail**. Programmering van één venue. Heeft `events` waar `venue_id = ?` nodig. Layout-mock in `app.html` lines 1944-2038. Hergebruik `EventListRow`.
-
-## Fase 4 — Backend (open na huidige slice)
-
-- [ ] **TanStack Query in mobile**. Mock-imports vervangen door `useQuery`-hooks, één scherm tegelijk. Begin Avond → Agenda → Gered → Kaart.
-- [ ] **Auth-routes wiring in mobile**. better-auth client + phone-OTP UI. Inlog-route op `/` (start-flow), gebruiker landt na succesvolle OTP op `/avond`.
-- [ ] **API-routes**: `/venues` (lijst + detail), `/saves` (toggle, list mine), `/friends` (list mine, request, accept), `/invites` (send, list received).
-- [ ] **Push notificaties (expo-notifications)**. "Vriend redt iets" → notificatie via API.
-- [ ] **EAS build → TestFlight**. Eerst dev client met alle native deps, dan production.
+- **Privacy-gates**: `buildFriendsByEvent` en `GET /friends/:id` zien alle saves van vrienden. Zodra users een privacy-flag krijgen ("vrienden mogen mijn saves zien" toggle) moeten beide endpoints daarop checken.
+- **Apple Maps mapType**: `mutedStandard` is alleen iOS — Android krijgt nog steeds standaard kaart. MapLibre swap voor echt-zwart Andreas-style staat als open punt.
+- **MESSAGEBIRD_ACCESS_KEY** in `apps/api/.env` is leeg — OTP-codes loggen naar console. Vullen zodra een echte SMS-flow nodig is.
+- **Connection string + Bunny key** zijn ooit in chat-history beland. Rotaten voor go-live (Neon → Reset password, Bunny → Reset FTP password).
+- **Drizzle Studio** (`pnpm studio`) is een handige DB-browser tijdens dev. Niet uitchecken.
+- **Kaart-tab dev-scripts**: `apps/api/scripts/{drop-all,clear-users,show-friendships,show-sessions,check-friends-pill}.ts` zijn dev-utilities. Niet automatisch draaien tijdens shared dev — `clear-users` wist sessies en haalt je inlog onderuit.
+- **Mock-files**: `apps/mobile/mocks/{feed,agenda,gered,jij,kaart}.ts` worden alleen nog op een paar plekken in Avond/Jij gebruikt voor copy-fallbacks (hero-strings, photoBand). Volledig uitfaseren wanneer die strings server-side komen.
 
 ---
 
 ## Niet meegenomen / opzettelijk gesloopt
 
-Bewust geskipte features die later kunnen — agenten die hier aan willen werken vinden de info hier:
-
-- **`expo-linear-gradient` op Avond featured card**. Nu een vlakke rgba-overlay; mooier zou een `LinearGradient` zijn die naar onder donker wordt. Dep is al geïnstalleerd, dus puur een implementatie-stapje.
-- **Saffron blob rechtsonder op Avond featured in dag-mode**. Visueel detail uit de mock, geskipt voor V1.
-- **Cat-tabs filter op Avond** (Vanavond / Muziek / Theater / Lit / Film). Geskipt — past pas bij echte data.
-- **Filter chips + zoek op Agenda en Gered** (Alles / Met vrienden / Muziek …). Idem.
-- **Sticky date-anchors op Agenda en Gered**. Day-strip is sticky in Agenda; date-anchors zelf scrollen mee.
-- **Custom map-style** op de Kaart. Apple Maps default ondersteunt geen `customMapStyle`; voor donker/cream-tint moet je naar `PROVIDER_GOOGLE` (vereist Google Maps API key).
-- **Bottom-sheet swipe-to-dismiss / snap-points** op Kaart. Drawer is binair (open/dicht) met manual drag — voor V1 voldoende, geen `@gorhom/bottom-sheet` toegevoegd.
-- **Settings toggles + Algemeen-sectie op Jij** (notify-toggles, taal, thema). Past pas zinvol bij echte preferences-store.
-- **Custom Andreas-iconen** voor heart, share-outline, locate, person-add, checkmark, chevron-back. Op dit moment leunen we op `@expo/vector-icons` (Ionicons). HANDOFF noemde `lucide-react-native` als basis met Andreas-kruis override — pas relevant als design echt afwijkt.
-- **Apple Sign-In**. Niet nodig zolang we phone-only blijven (Apple's social-login eis triggert alleen bij Google/Facebook). Toevoegen wanneer we social-login willen.
+- **Custom Andreas-iconen** — Ionicons doet het werk, custom set is design-iteratie.
+- **Apple Sign-In** — niet nodig zolang phone-only login. Toevoegen bij social-login.
+- **Sticky date-anchors** in Agenda — day-strip is sticky, anchors scrollen mee.
+- **Bottom-sheet snap-points** op Kaart — manual drag voldoet voor V1.
+- **Settings toggles + Algemeen-sectie op Jij** — past pas bij preferences-store.
+- **`expo-linear-gradient` op Avond featured card** — vlakke overlay nu, gradient is implementatie-stapje.
+- **Saffron blob rechtsonder op Avond featured in dag-mode** — visueel detail uit de mock.
 
 ---
 
@@ -92,3 +81,4 @@ Bewust geskipte features die later kunnen — agenten die hier aan willen werken
 - [HANDOFF.md](HANDOFF.md) — oorspronkelijke briefing van de designer. Niet aanpassen tenzij scope echt verandert.
 - [app.html](app.html) — master-mockup, bron van waarheid voor copy + visual design. Lees per `phone-<naam>` blok.
 - [start-screen.html](start-screen.html) — splash + welkom-flow.
+- [CLAUDE.md](CLAUDE.md) — briefing voor elke nieuwe Claude-sessie.
