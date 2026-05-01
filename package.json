@@ -1,0 +1,17 @@
+{
+  "name": "andreas",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "mobile": "pnpm --filter @andreas/mobile start",
+    "api": "pnpm --filter @andreas/api dev",
+    "generate": "pnpm --filter @andreas/api db:generate",
+    "migrate": "pnpm --filter @andreas/api db:migrate",
+    "studio": "pnpm --filter @andreas/api db:studio",
+    "seed": "pnpm --filter @andreas/api db:seed"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "packageManager": "pnpm@9.15.0"
+}
