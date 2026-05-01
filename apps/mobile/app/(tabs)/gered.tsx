@@ -23,6 +23,7 @@ import { EventListRow } from '@/components/EventListRow';
 import type { GeredItem, GeredView } from '@/mocks/gered';
 import { GERED, GERED_HEAD } from '@/mocks/gered';
 import { useMode, useRoles } from '@/store/mode';
+import { useSavedList } from '@/store/saved';
 import { fontFamily } from '@/theme/tokens';
 
 const SCREEN_W = Dimensions.get('window').width;
@@ -79,6 +80,7 @@ export default function Gered() {
   const head = GERED_HEAD[mode];
   const [view, setView] = useState<GeredView>('up');
   const pos = useSharedValue(0);
+  const savedList = useSavedList();
 
   const toggle = () => {
     const next: GeredView = view === 'up' ? 'past' : 'up';
@@ -96,6 +98,12 @@ export default function Gered() {
   const topInset = insets.top + HEADER_HEIGHT;
   const bottomInset = insets.bottom + 96;
 
+  // Saves coming from the heart-button on the detail screen sit above
+  // the per-mode mock list under their own "Net opgeslagen" anchor.
+  // Filter out any id that is already in the mock so we don't double-render.
+  const mockIds = new Set(GERED[mode].up.map((i) => i.id));
+  const savedItems: GeredItem[] = savedList.filter((s) => !mockIds.has(s.id));
+
   return (
     <View style={[styles.root, { backgroundColor: roles.bg }]}>
       <View style={styles.pagesViewport}>
@@ -107,6 +115,7 @@ export default function Gered() {
             link="Geschiedenis →"
             onLink={toggle}
             items={GERED[mode].up}
+            savedItems={savedItems}
             topInset={topInset}
             bottomInset={bottomInset}
           />
@@ -134,6 +143,7 @@ function Page({
   link,
   onLink,
   items,
+  savedItems,
   topInset,
   bottomInset,
 }: {
@@ -143,6 +153,7 @@ function Page({
   link: string;
   onLink: () => void;
   items: GeredItem[];
+  savedItems?: GeredItem[];
   topInset: number;
   bottomInset: number;
 }) {
@@ -171,6 +182,14 @@ function Page({
           </Pressable>
         </View>
       </View>
+      {savedItems && savedItems.length > 0 && (
+        <View>
+          <SavedAnchor count={savedItems.length} />
+          {savedItems.map((item) => (
+            <GeredRow key={item.id} item={item} />
+          ))}
+        </View>
+      )}
       {groups.map((group) => (
         <View key={group.key}>
           <DateAnchor group={group} />
@@ -180,6 +199,22 @@ function Page({
         </View>
       ))}
     </ScrollView>
+  );
+}
+
+function SavedAnchor({ count }: { count: number }) {
+  const roles = useRoles();
+  return (
+    <View style={styles.anchor}>
+      <View style={styles.anchorLeft}>
+        <Text style={[styles.anchorDow, { color: roles.fg }]}>
+          Net opgeslagen
+        </Text>
+      </View>
+      <Text style={[styles.anchorCount, { color: roles.fgPlaceholder }]}>
+        {count} {count === 1 ? 'plan' : 'plannen'}
+      </Text>
+    </View>
   );
 }
 

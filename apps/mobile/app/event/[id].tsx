@@ -1,9 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
 import MaskedView from '@react-native-masked-view/masked-view';
 import { BlurView } from 'expo-blur';
+import * as Haptics from 'expo-haptics';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { Fragment } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, {
@@ -12,11 +13,16 @@ import Animated, {
   useAnimatedRef,
   useAnimatedStyle,
   useScrollViewOffset,
+  useSharedValue,
+  withSequence,
+  withTiming,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { DETAIL } from '@/mocks/detail';
+import type { BadgeTone } from '@/mocks/feed';
+import { DETAIL, type DetailData } from '@/mocks/detail';
 import { useMode, useRoles } from '@/store/mode';
+import { useIsSaved, useSavedStore, type SavedEvent } from '@/store/saved';
 import { fontFamily, palette } from '@/theme/tokens';
 
 const HERO_HEIGHT = 420;
@@ -27,6 +33,8 @@ const HERO_HEIGHT = 420;
  * shape is right for later.
  */
 export default function EventDetail() {
+  const { id: rawId } = useLocalSearchParams<{ id: string }>();
+  const id = rawId ?? 'detail';
   const mode = useMode();
   const roles = useRoles();
   const insets = useSafeAreaInsets();
@@ -257,7 +265,7 @@ export default function EventDetail() {
             </Text>
           </Animated.View>
           <View style={styles.heroActions}>
-            <CircleButton icon="heart" />
+            <HeartButton id={id} data={data} />
             <CircleButton icon="share-outline" />
           </View>
         </View>
@@ -314,6 +322,83 @@ function CircleButton({
     <Pressable onPress={onPress} style={styles.circleBtn}>
       <Ionicons name={icon} size={20} color={palette.ink} />
     </Pressable>
+  );
+}
+
+const MONTHS_NL = [
+  'JAN', 'FEB', 'MRT', 'APR', 'MEI', 'JUN',
+  'JUL', 'AUG', 'SEP', 'OKT', 'NOV', 'DEC',
+];
+
+const CATEGORY_TICK: Record<string, BadgeTone> = {
+  Muziek: 'acid',
+  Theater: 'flare',
+  Literatuur: 'plum',
+  Film: 'azure',
+};
+
+function buildSnapshot(id: string, data: DetailData): SavedEvent {
+  // "Vr 25.04" → dow "Vr", num "25", month "APR"
+  const [dow = '', date = ''] = data.date.split(' ');
+  const [num = '', mm = ''] = date.split('.');
+  const monthIdx = Math.max(0, Math.min(11, parseInt(mm, 10) - 1));
+  // "Muziek · post-punk" → category "Muziek", duration "post-punk"
+  const [categoryRaw = 'Muziek', durationRaw = ''] = data.tag.split(' · ');
+  const category = categoryRaw.trim();
+  return {
+    id,
+    dow,
+    num,
+    month: MONTHS_NL[monthIdx] ?? '',
+    time: data.time,
+    duration: durationRaw.trim() || category.toLowerCase(),
+    title: data.title.replace(/\n/g, ' ').replace(/-\s+/g, ''),
+    venue: data.venue,
+    category,
+    tick: CATEGORY_TICK[category] ?? 'acid',
+    friends: data.friends.names.map((name, i) => ({
+      name,
+      avatar: data.friends.avatars[i] ?? data.friends.avatars[0],
+    })),
+  };
+}
+
+function HeartButton({ id, data }: { id: string; data: DetailData }) {
+  const mode = useMode();
+  const isSaved = useIsSaved(id);
+  const toggle = useSavedStore((s) => s.toggle);
+  const scale = useSharedValue(1);
+
+  const animStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+  }));
+
+  const onPress = () => {
+    const nowSaved = toggle(buildSnapshot(id, data));
+    scale.value = withSequence(
+      withTiming(1.3, { duration: 140 }),
+      withTiming(1, { duration: 180 })
+    );
+    if (nowSaved) {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    } else {
+      Haptics.selectionAsync();
+    }
+  };
+
+  const iconName = isSaved ? 'heart' : 'heart-outline';
+  const iconColor = isSaved
+    ? mode === 'nacht'
+      ? palette.acid
+      : palette.red
+    : palette.ink;
+
+  return (
+    <Animated.View style={animStyle}>
+      <Pressable onPress={onPress} style={styles.circleBtn}>
+        <Ionicons name={iconName} size={20} color={iconColor} />
+      </Pressable>
+    </Animated.View>
   );
 }
 
