@@ -7,10 +7,37 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppHeader, HEADER_HEIGHT } from '@/components/AppHeader';
 import { EventListRow } from '@/components/EventListRow';
-import type { EventRow as EventRowType, PhotoCard } from '@/mocks/feed';
+import type { ApiEvent } from '@/lib/api';
+import { useEvents } from '@/lib/queries';
+import type { BadgeTone, PhotoCard } from '@/mocks/feed';
 import { FEED } from '@/mocks/feed';
 import { useMode, useRoles } from '@/store/mode';
 import { fontFamily, palette } from '@/theme/tokens';
+
+const DOW_NL = ['ZO', 'MA', 'DI', 'WO', 'DO', 'VR', 'ZA'] as const;
+
+const CATEGORY_TICK: Record<ApiEvent['category'], BadgeTone> = {
+  Muziek: 'acid',
+  Theater: 'flare',
+  Literatuur: 'plum',
+  Film: 'azure',
+};
+
+function formatMeta(event: ApiEvent): string {
+  const d = new Date(event.startsAt);
+  const dow = DOW_NL[d.getDay()];
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mm = String(d.getMinutes()).padStart(2, '0');
+  const price =
+    event.priceCents == null
+      ? null
+      : event.priceCents === 0
+        ? 'gratis'
+        : `€${(event.priceCents / 100).toFixed(0)}`;
+  return [dow, `${hh}:${mm}`, event.venue.name.toUpperCase(), price]
+    .filter(Boolean)
+    .join(' · ');
+}
 
 export default function Avond() {
   const roles = useRoles();
@@ -19,6 +46,10 @@ export default function Avond() {
   const data = FEED[mode];
   const scrollRef = useRef<ScrollView>(null);
   useScrollToTop(scrollRef);
+
+  // Hero/featured/photoBand blijven voorlopig op mock-data; alleen de
+  // small-rooms-lijst draait nu live tegen GET /events.
+  const { data: events, isLoading, error } = useEvents();
 
   return (
     <View style={[styles.root, { backgroundColor: roles.bg }]}>
@@ -54,11 +85,18 @@ export default function Avond() {
 
         <SectionTitle
           title={data.smallRooms.sectionTitle}
-          meta={data.smallRooms.sectionMeta}
+          meta={
+            events ? `${events.length} live` : data.smallRooms.sectionMeta
+          }
         />
-        {data.smallRooms.events.map((e) => (
-          <EventRow key={e.id} event={e} />
-        ))}
+        {isLoading && <ListState text="Laden…" />}
+        {error && (
+          <ListState
+            text={`Kon events niet ophalen — draait pnpm api?`}
+            tone="error"
+          />
+        )}
+        {events?.map((e) => <ApiEventRow key={e.id} event={e} />)}
 
         <View style={{ height: 28 }} />
         <SectionTitle
@@ -68,6 +106,41 @@ export default function Avond() {
         <PhotoBand cards={data.photoBand.cards} />
       </ScrollView>
       <AppHeader />
+    </View>
+  );
+}
+
+function ApiEventRow({ event }: { event: ApiEvent }) {
+  return (
+    <EventListRow
+      thumb={event.imageUrl ?? ''}
+      title={event.title}
+      venue={formatMeta(event)}
+      tags={[{ label: event.category, tone: CATEGORY_TICK[event.category] }]}
+      tick={CATEGORY_TICK[event.category]}
+      onPress={() => router.push(`/event/${event.id}`)}
+    />
+  );
+}
+
+function ListState({
+  text,
+  tone = 'muted',
+}: {
+  text: string;
+  tone?: 'muted' | 'error';
+}) {
+  const roles = useRoles();
+  return (
+    <View style={styles.listState}>
+      <Text
+        style={[
+          styles.listStateText,
+          { color: tone === 'error' ? '#c9453a' : roles.fgMuted },
+        ]}
+      >
+        {text}
+      </Text>
     </View>
   );
 }
@@ -131,20 +204,6 @@ function SectionTitle({ title, meta }: { title: string; meta: string }) {
       <Text style={[styles.sectionTitleText, { color: roles.fg }]}>{title}</Text>
       <Text style={[styles.sectionTitleText, { color: roles.fgMuted }]}>{meta}</Text>
     </View>
-  );
-}
-
-function EventRow({ event }: { event: EventRowType }) {
-  return (
-    <EventListRow
-      thumb={event.thumb}
-      title={event.title}
-      venue={event.meta}
-      tags={[{ label: event.badge, tone: event.badgeTone }]}
-      friends={event.friends}
-      tick={event.badgeTone}
-      onPress={() => router.push(`/event/${event.id}`)}
-    />
   );
 }
 
@@ -243,6 +302,17 @@ const styles = StyleSheet.create({
     fontSize: 10,
     letterSpacing: 1,
     textTransform: 'uppercase',
+  },
+
+  // List loading / error
+  listState: {
+    paddingHorizontal: 22,
+    paddingVertical: 14,
+  },
+  listStateText: {
+    fontFamily: fontFamily.mono,
+    fontSize: 11,
+    letterSpacing: 0.8,
   },
 
   // Photo band
