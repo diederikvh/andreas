@@ -74,7 +74,13 @@ export default function Avond() {
           </Text>
         </View>
 
-        <Pressable onPress={() => router.push('/event/featured')}>
+        <Pressable
+          onPress={
+            events?.[0]
+              ? () => router.push(`/event/${events[0].id}`)
+              : undefined
+          }
+        >
           <FeaturedCard
             kicker={data.featured.kicker}
             title={data.featured.title}

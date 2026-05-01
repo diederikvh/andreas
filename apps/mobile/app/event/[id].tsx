@@ -5,7 +5,6 @@ import * as Haptics from 'expo-haptics';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, useLocalSearchParams } from 'expo-router';
-import { Fragment } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, {
   Extrapolation,
@@ -19,8 +18,9 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import type { ApiEvent } from '@/lib/api';
+import { useEvent } from '@/lib/queries';
 import type { BadgeTone } from '@/mocks/feed';
-import { DETAIL, type DetailData } from '@/mocks/detail';
 import { useMode, useRoles } from '@/store/mode';
 import { useIsSaved, useSavedStore, type SavedEvent } from '@/store/saved';
 import { fontFamily, palette } from '@/theme/tokens';
@@ -28,17 +28,15 @@ import { fontFamily, palette } from '@/theme/tokens';
 const HERO_HEIGHT = 420;
 
 /**
- * Event detail screen. Until fase 4 wires real data, every event tap
- * lands on the same per-mode mock — the route accepts an id so the
- * shape is right for later.
+ * Event detail screen — fetches via GET /events/:id. Until lineup,
+ * photo strip and friends bestaan in de DB blijven die secties leeg.
  */
 export default function EventDetail() {
   const { id: rawId } = useLocalSearchParams<{ id: string }>();
-  const id = rawId ?? 'detail';
+  const id = rawId ?? '';
   const mode = useMode();
   const roles = useRoles();
   const insets = useSafeAreaInsets();
-  const data = DETAIL[mode];
   const isNacht = mode === 'nacht';
 
   const scrollRef = useAnimatedRef<Animated.ScrollView>();
@@ -51,9 +49,6 @@ export default function EventDetail() {
       Extrapolation.CLAMP
     ),
   }));
-  // Pull-to-zoom: when the user over-scrolls (negative scrollY), grow
-  // the hero photo from its top edge so it pushes downward with the
-  // bounce. translateY emulates `transformOrigin: 'top'`.
   const heroStyle = useAnimatedStyle(() => {
     const offset = Math.min(0, scrollY.value);
     const scale = 1 - offset / HERO_HEIGHT;
@@ -64,7 +59,20 @@ export default function EventDetail() {
       ],
     };
   });
-  const stickyTitle = data.title.replace(/\n/g, ' ');
+
+  const { data: event, isLoading, error } = useEvent(id);
+
+  if (isLoading || (!event && !error)) {
+    return <DetailFallback>Laden…</DetailFallback>;
+  }
+  if (error || !event) {
+    return (
+      <DetailFallback tone="error">Dit event is niet beschikbaar.</DetailFallback>
+    );
+  }
+
+  const view = toViewModel(event);
+  const stickyTitle = view.title;
 
   return (
     <View style={[styles.root, { backgroundColor: roles.bg }]}>
@@ -77,11 +85,13 @@ export default function EventDetail() {
           heroStyle,
         ]}
       >
-        <Image
-          source={{ uri: data.photo }}
-          style={StyleSheet.absoluteFill}
-          contentFit="cover"
-        />
+        {view.photo && (
+          <Image
+            source={{ uri: view.photo }}
+            style={StyleSheet.absoluteFill}
+            contentFit="cover"
+          />
+        )}
         <LinearGradient
           colors={
             isNacht
@@ -114,97 +124,25 @@ export default function EventDetail() {
                   { color: isNacht ? palette.noir : palette.soil },
                 ]}
               >
-                {data.tag}
+                {view.tag}
               </Text>
             </View>
-            <Text style={styles.heroTitle}>{data.title}</Text>
+            <Text style={styles.heroTitle}>{view.title}</Text>
           </View>
         </View>
 
         <View style={[styles.body, { backgroundColor: roles.bg }]}>
           <View style={styles.metaRow}>
-            <MetaCell label="Datum" value={data.date} />
-            <MetaCell label="Aanvang" value={data.time} />
-            <MetaCell label="Venue" value={data.venue} />
+            <MetaCell label="Datum" value={view.date} />
+            <MetaCell label="Aanvang" value={view.time} />
+            <MetaCell label="Venue" value={view.venue} />
           </View>
 
-          <Text style={[styles.bodyText, { color: roles.fgRead }]}>
-            {data.description}
-          </Text>
-
-          <View style={styles.photoStrip}>
-            {data.photoStrip.map((url) => (
-              <Image
-                key={url}
-                source={{ uri: url }}
-                style={styles.photoStripItem}
-                contentFit="cover"
-              />
-            ))}
-          </View>
-
-          <Text style={[styles.h4, { color: roles.fg }]}>Line-up</Text>
-          <View style={styles.lineup}>
-            {data.lineup.map((item) => (
-              <View
-                key={item.name}
-                style={[
-                  styles.lineupRow,
-                  {
-                    backgroundColor: isNacht ? '#101012' : palette.paper2,
-                    borderColor: isNacht ? '#232327' : palette.paper,
-                  },
-                ]}
-              >
-                <Text style={[styles.lineupName, { color: roles.fg }]}>
-                  {item.name}
-                </Text>
-                <Text style={[styles.lineupTime, { color: roles.fgMuted }]}>
-                  {item.time}
-                </Text>
-              </View>
-            ))}
-          </View>
-
-          <Text style={[styles.h4, styles.h4Spaced, { color: roles.fg }]}>
-            Vrienden gaan ook
-          </Text>
-          <View
-            style={[
-              styles.friends,
-              {
-                backgroundColor: isNacht ? '#101012' : palette.paper2,
-                borderColor: isNacht ? '#232327' : palette.paper,
-              },
-            ]}
-          >
-            <View style={styles.friendsAvatars}>
-              {data.friends.avatars.map((url, i) => (
-                <Image
-                  key={url}
-                  source={{ uri: url }}
-                  style={[
-                    styles.avatar,
-                    {
-                      borderColor: isNacht ? '#101012' : palette.paper2,
-                      marginLeft: i === 0 ? 0 : -8,
-                    },
-                  ]}
-                />
-              ))}
-            </View>
-            <Text style={[styles.friendsText, { color: roles.fgRead }]}>
-              {data.friends.names.map((name, i, arr) => (
-                <Fragment key={name}>
-                  <Text style={[styles.friendsName, { color: roles.fg }]}>
-                    {name}
-                  </Text>
-                  {i < arr.length - 2 ? ', ' : i === arr.length - 2 ? ' en ' : ''}
-                </Fragment>
-              ))}
-              {' '}{data.friends.suffix}
+          {view.description && (
+            <Text style={[styles.bodyText, { color: roles.fgRead }]}>
+              {view.description}
             </Text>
-          </View>
+          )}
 
           <Pressable
             style={[
@@ -265,7 +203,7 @@ export default function EventDetail() {
             </Text>
           </Animated.View>
           <View style={styles.heroActions}>
-            <HeartButton id={id} data={data} />
+            <HeartButton id={id} event={event} />
             <CircleButton icon="share-outline" />
           </View>
         </View>
@@ -286,10 +224,12 @@ export default function EventDetail() {
           style={StyleSheet.absoluteFill}
         />
         <View style={styles.priceWrap}>
-          <Text style={[styles.price, { color: roles.fg }]}>{data.price}</Text>
-          <Text style={[styles.priceNote, { color: roles.fgMuted }]}>
-            {data.priceNote}
-          </Text>
+          <Text style={[styles.price, { color: roles.fg }]}>{view.price}</Text>
+          {view.priceNote && (
+            <Text style={[styles.priceNote, { color: roles.fgMuted }]}>
+              {view.priceNote}
+            </Text>
+          )}
         </View>
         <Pressable
           style={[
@@ -325,45 +265,80 @@ function CircleButton({
   );
 }
 
+const DOW_NL_MIXED = ['Zo', 'Ma', 'Di', 'Wo', 'Do', 'Vr', 'Za'] as const;
 const MONTHS_NL = [
   'JAN', 'FEB', 'MRT', 'APR', 'MEI', 'JUN',
   'JUL', 'AUG', 'SEP', 'OKT', 'NOV', 'DEC',
 ];
 
-const CATEGORY_TICK: Record<string, BadgeTone> = {
+const CATEGORY_TICK: Record<ApiEvent['category'], BadgeTone> = {
   Muziek: 'acid',
   Theater: 'flare',
   Literatuur: 'plum',
   Film: 'azure',
 };
 
-function buildSnapshot(id: string, data: DetailData): SavedEvent {
-  // "Vr 25.04" → dow "Vr", num "25", month "APR"
-  const [dow = '', date = ''] = data.date.split(' ');
-  const [num = '', mm = ''] = date.split('.');
-  const monthIdx = Math.max(0, Math.min(11, parseInt(mm, 10) - 1));
-  // "Muziek · post-punk" → category "Muziek", duration "post-punk"
-  const [categoryRaw = 'Muziek', durationRaw = ''] = data.tag.split(' · ');
-  const category = categoryRaw.trim();
+type ViewModel = {
+  tag: string;
+  title: string;
+  date: string;
+  time: string;
+  venue: string;
+  description: string | null;
+  photo: string | null;
+  price: string;
+  priceNote: string | null;
+};
+
+function toViewModel(event: ApiEvent): ViewModel {
+  const d = new Date(event.startsAt);
+  const dow = DOW_NL_MIXED[d.getDay()];
+  const day = String(d.getDate()).padStart(2, '0');
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mm = String(d.getMinutes()).padStart(2, '0');
+  const price =
+    event.priceCents == null
+      ? '—'
+      : event.priceCents === 0
+        ? 'Gratis'
+        : `€${(event.priceCents / 100).toFixed(2).replace('.', ',')}`;
+  return {
+    tag: event.category,
+    title: event.title,
+    date: `${dow} ${day}.${month}`,
+    time: `${hh}:${mm}`,
+    venue: event.venue.name,
+    description: event.description,
+    photo: event.imageUrl,
+    price,
+    priceNote: event.priceCents && event.priceCents > 0 ? 'incl. servicekosten' : null,
+  };
+}
+
+function buildSnapshot(id: string, event: ApiEvent): SavedEvent {
+  const d = new Date(event.startsAt);
+  const dow = DOW_NL_MIXED[d.getDay()];
+  const num = String(d.getDate()).padStart(2, '0');
+  const month = MONTHS_NL[d.getMonth()] ?? '';
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mm = String(d.getMinutes()).padStart(2, '0');
   return {
     id,
     dow,
     num,
-    month: MONTHS_NL[monthIdx] ?? '',
-    time: data.time,
-    duration: durationRaw.trim() || category.toLowerCase(),
-    title: data.title.replace(/\n/g, ' ').replace(/-\s+/g, ''),
-    venue: data.venue,
-    category,
-    tick: CATEGORY_TICK[category] ?? 'acid',
-    friends: data.friends.names.map((name, i) => ({
-      name,
-      avatar: data.friends.avatars[i] ?? data.friends.avatars[0],
-    })),
+    month,
+    time: `${hh}:${mm}`,
+    duration: event.category.toLowerCase(),
+    title: event.title,
+    venue: event.venue.name,
+    category: event.category,
+    tick: CATEGORY_TICK[event.category],
+    friends: [],
   };
 }
 
-function HeartButton({ id, data }: { id: string; data: DetailData }) {
+function HeartButton({ id, event }: { id: string; event: ApiEvent }) {
   const mode = useMode();
   const isSaved = useIsSaved(id);
   const toggle = useSavedStore((s) => s.toggle);
@@ -374,7 +349,7 @@ function HeartButton({ id, data }: { id: string; data: DetailData }) {
   }));
 
   const onPress = () => {
-    const nowSaved = toggle(buildSnapshot(id, data));
+    const nowSaved = toggle(buildSnapshot(id, event));
     scale.value = withSequence(
       withTiming(1.3, { duration: 140 }),
       withTiming(1, { duration: 180 })
@@ -399,6 +374,56 @@ function HeartButton({ id, data }: { id: string; data: DetailData }) {
         <Ionicons name={iconName} size={20} color={iconColor} />
       </Pressable>
     </Animated.View>
+  );
+}
+
+function DetailFallback({
+  children,
+  tone = 'muted',
+}: {
+  children: string;
+  tone?: 'muted' | 'error';
+}) {
+  const mode = useMode();
+  const roles = useRoles();
+  const insets = useSafeAreaInsets();
+  const isNacht = mode === 'nacht';
+  return (
+    <View style={[styles.root, { backgroundColor: roles.bg }]}>
+      <View
+        style={[
+          styles.topBar,
+          { height: insets.top + 50, paddingTop: insets.top + 2 },
+        ]}
+      >
+        <View style={styles.topBarRow}>
+          <CircleButton icon="chevron-back" onPress={() => router.back()} />
+        </View>
+      </View>
+      <View style={styles.fallbackBody}>
+        <Text
+          style={[
+            styles.fallbackText,
+            { color: tone === 'error' ? '#c9453a' : roles.fgMuted },
+          ]}
+        >
+          {children}
+        </Text>
+        {tone === 'error' && (
+          <Pressable
+            onPress={() => router.back()}
+            style={[
+              styles.fallbackAction,
+              { borderColor: isNacht ? '#2a2a2e' : palette.paper },
+            ]}
+          >
+            <Text style={[styles.fallbackActionText, { color: roles.fg }]}>
+              Terug naar overzicht
+            </Text>
+          </Pressable>
+        )}
+      </View>
+    </View>
   );
 }
 
@@ -523,55 +548,41 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
 
-  // Photo strip
-  photoStrip: { flexDirection: 'row', gap: 6, marginVertical: 12 },
-  photoStripItem: { flex: 1, aspectRatio: 1, borderRadius: 6 },
-
-  h4: {
-    fontFamily: fontFamily.bold,
-    fontSize: 12,
-    letterSpacing: 0.5,
-    textTransform: 'uppercase',
-    marginVertical: 10,
-    marginTop: 20,
-  },
-  h4Spaced: { marginTop: 24 },
-
-  // Lineup
-  lineup: { gap: 6 },
-  lineupRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 10,
-    borderRadius: 8,
-    borderWidth: 1,
-  },
-  lineupName: {
-    fontFamily: fontFamily.bold,
-    fontSize: 13,
-    letterSpacing: -0.13,
-  },
-  lineupTime: { fontFamily: fontFamily.mono, fontSize: 10 },
-
-  // Friends
-  friends: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    padding: 12,
-    borderRadius: 8,
-    borderWidth: 1,
-  },
-  friendsAvatars: { flexDirection: 'row' },
-  avatar: { width: 28, height: 28, borderRadius: 999, borderWidth: 2 },
-  friendsText: {
+  // Loading / error fallback
+  fallbackBody: {
     flex: 1,
-    fontFamily: fontFamily.body,
-    fontSize: 12.5,
-    lineHeight: 17.5,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 40,
   },
-  friendsName: { fontFamily: fontFamily.bold },
+  fallbackText: {
+    fontFamily: fontFamily.mono,
+    fontSize: 12,
+    letterSpacing: 0.6,
+    textAlign: 'center',
+    lineHeight: 18,
+  },
+  fallbackBackBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 999,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  fallbackAction: {
+    alignSelf: 'center',
+    marginTop: 18,
+    paddingHorizontal: 18,
+    paddingVertical: 11,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
+  fallbackActionText: {
+    fontFamily: fontFamily.medium,
+    fontSize: 13,
+    letterSpacing: -0.07,
+  },
 
   // Invite
   invite: {
