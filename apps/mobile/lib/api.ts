@@ -201,6 +201,73 @@ export async function toggleSave(eventId: string): Promise<{ saved: boolean }> {
   });
 }
 
+// ─── Friends ──────────────────────────────────────────────────────────
+
+export type ApiPublicUser = {
+  id: string;
+  name: string;
+  handle: string | null;
+  avatarUrl: string | null;
+};
+
+export type ApiFriend = ApiPublicUser & { since: string };
+export type ApiFriendRequest = ApiPublicUser & { requestedAt: string };
+export type ApiSearchUser = ApiPublicUser & {
+  relation: 'accepted' | 'incoming' | 'outgoing' | null;
+};
+
+export async function getFriends(): Promise<ApiFriend[]> {
+  const { friends } = await authedRequest<{ friends: ApiFriend[] }>('/friends');
+  return friends;
+}
+
+export async function getFriendRequests(): Promise<ApiFriendRequest[]> {
+  const { requests } = await authedRequest<{ requests: ApiFriendRequest[] }>(
+    '/friends/requests'
+  );
+  return requests;
+}
+
+export async function sendFriendRequest(
+  handle: string
+): Promise<{ status: 'pending' | 'accepted' }> {
+  return await authedRequest<{ status: 'pending' | 'accepted' }>(
+    '/friends/request',
+    { method: 'POST', body: JSON.stringify({ handle }) }
+  );
+}
+
+export async function acceptFriendRequest(
+  fromUserId: string
+): Promise<{ status: 'accepted' }> {
+  return await authedRequest<{ status: 'accepted' }>('/friends/accept', {
+    method: 'POST',
+    body: JSON.stringify({ fromUserId }),
+  });
+}
+
+export async function declineFriendRequest(
+  fromUserId: string
+): Promise<{ ok: true }> {
+  return await authedRequest<{ ok: true }>('/friends/decline', {
+    method: 'POST',
+    body: JSON.stringify({ fromUserId }),
+  });
+}
+
+export async function removeFriend(userId: string): Promise<{ ok: true }> {
+  return await authedRequest<{ ok: true }>(`/friends/${userId}`, {
+    method: 'DELETE',
+  });
+}
+
+export async function searchUsers(q: string): Promise<ApiSearchUser[]> {
+  const { users } = await authedRequest<{ users: ApiSearchUser[] }>(
+    `/users/search?q=${encodeURIComponent(q)}`
+  );
+  return users;
+}
+
 export async function uploadAvatar(input: {
   uri: string;
   mimeType?: string;

@@ -5,10 +5,17 @@ import {
 } from '@tanstack/react-query';
 
 import {
+  acceptFriendRequest,
+  declineFriendRequest,
   getEvent,
   getEvents,
+  getFriendRequests,
+  getFriends,
   getMySaves,
   getVenue,
+  removeFriend,
+  searchUsers,
+  sendFriendRequest,
   toggleSave,
   type EventsFilter,
   type SavedApiEvent,
@@ -19,6 +26,9 @@ export const queryKeys = {
   event: (id: string) => ['event', id] as const,
   venue: (slug: string) => ['venue', slug] as const,
   saves: () => ['saves'] as const,
+  friends: () => ['friends'] as const,
+  friendRequests: () => ['friend-requests'] as const,
+  userSearch: (q: string) => ['user-search', q] as const,
 };
 
 export function useEvents(filter: EventsFilter = {}) {
@@ -76,5 +86,67 @@ export function useToggleSave() {
     onSettled: () => {
       qc.invalidateQueries({ queryKey: queryKeys.saves() });
     },
+  });
+}
+
+export function useFriends(opts: { enabled?: boolean } = {}) {
+  return useQuery({
+    queryKey: queryKeys.friends(),
+    queryFn: () => getFriends(),
+    enabled: opts.enabled ?? true,
+  });
+}
+
+export function useFriendRequests(opts: { enabled?: boolean } = {}) {
+  return useQuery({
+    queryKey: queryKeys.friendRequests(),
+    queryFn: () => getFriendRequests(),
+    enabled: opts.enabled ?? true,
+  });
+}
+
+export function useUserSearch(q: string) {
+  return useQuery({
+    queryKey: queryKeys.userSearch(q),
+    queryFn: () => searchUsers(q),
+    enabled: q.trim().length >= 2,
+  });
+}
+
+function invalidateFriendsCaches(qc: ReturnType<typeof useQueryClient>) {
+  qc.invalidateQueries({ queryKey: queryKeys.friends() });
+  qc.invalidateQueries({ queryKey: queryKeys.friendRequests() });
+  qc.invalidateQueries({ queryKey: ['user-search'] });
+}
+
+export function useSendFriendRequest() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (handle: string) => sendFriendRequest(handle),
+    onSettled: () => invalidateFriendsCaches(qc),
+  });
+}
+
+export function useAcceptFriendRequest() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (fromUserId: string) => acceptFriendRequest(fromUserId),
+    onSettled: () => invalidateFriendsCaches(qc),
+  });
+}
+
+export function useDeclineFriendRequest() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (fromUserId: string) => declineFriendRequest(fromUserId),
+    onSettled: () => invalidateFriendsCaches(qc),
+  });
+}
+
+export function useRemoveFriend() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (userId: string) => removeFriend(userId),
+    onSettled: () => invalidateFriendsCaches(qc),
   });
 }

@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useScrollToTop } from '@react-navigation/native';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import * as Haptics from 'expo-haptics';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
@@ -20,16 +20,15 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppHeader, HEADER_HEIGHT } from '@/components/AppHeader';
 import { Cross } from '@/components/Cross';
-import type { ApiMe } from '@/lib/api';
+import type { ApiFriend, ApiFriendRequest, ApiMe } from '@/lib/api';
 import { getMe, updateMe, uploadAvatar } from '@/lib/api';
 import { authClient, useSession } from '@/lib/authClient';
 import {
-  JIJ_FRIENDS,
-  JIJ_PROFILE,
-  JIJ_REQUESTS,
-  type JijFriend,
-  type JijRequest,
-} from '@/mocks/jij';
+  useAcceptFriendRequest,
+  useDeclineFriendRequest,
+  useFriendRequests,
+  useFriends,
+} from '@/lib/queries';
 import { useMode, useModeStore, useRoles } from '@/store/mode';
 import { fontFamily, palette } from '@/theme/tokens';
 
@@ -45,12 +44,18 @@ export default function Jij() {
   const scrollRef = useRef<ScrollView>(null);
   useScrollToTop(scrollRef);
 
+  const queryClient = useQueryClient();
   const { data: session } = useSession();
   const { data: me, refetch: refetchMe } = useQuery<ApiMe | null>({
     queryKey: ['me', session?.user?.id ?? null],
     queryFn: () => getMe(),
     enabled: Boolean(session?.user?.id),
   });
+  const authedAndOnboarded = Boolean(session?.user?.id && me?.handle);
+  const { data: friends } = useFriends({ enabled: authedAndOnboarded });
+  const { data: requests } = useFriendRequests({ enabled: authedAndOnboarded });
+  const acceptRequest = useAcceptFriendRequest();
+  const declineRequest = useDeclineFriendRequest();
 
   // Stage uit sessie + me afgeleid; tijdelijke override voor de
   // "code"-stap die geen server-state heeft.
@@ -163,6 +168,9 @@ export default function Jij() {
 
   const onLogout = async () => {
     await authClient.signOut();
+    // Wis de hele query-cache zodat de volgende ingelogde user (of
+    // empty state) geen stale data van de vorige sessie ziet.
+    queryClient.clear();
     setLocal('');
     setCode('');
     setName('');
@@ -496,10 +504,9 @@ export default function Jij() {
 
   // ─── Authed Jij ─────────────────────────────────────────────────────
 
-  const displayName = me?.name && !me.name.startsWith('+')
-    ? me.name
-    : JIJ_PROFILE.name;
-  const displayHandle = me?.handle ? `@${me.handle}` : JIJ_PROFILE.handle;
+  const displayName =
+    me?.name && !me.name.startsWith('+') ? me.name : 'Jij';
+  const displayHandle = me?.handle ? `@${me.handle}` : 'NIEUW';
 
   return (
     <View style={[styles.root, { backgroundColor: roles.bg }]}>
@@ -581,18 +588,32 @@ export default function Jij() {
 
         <SectionHead
           label="Vrienden"
-          count={JIJ_FRIENDS.length}
+          count={friends?.length ?? 0}
           action="+ Toevoegen"
-          onAction={() => router.push('/welkom')}
+          onAction={() => router.push('/add-friend' as never)}
         />
-        {JIJ_FRIENDS.map((f) => (
-          <FriendRow key={f.id} friend={f} mode={mode} />
-        ))}
+        {(friends ?? []).length === 0 ? (
+          <Text style={[styles.emptyHint, { color: roles.fgMuted }]}>
+            Nog geen vrienden. Tik op + Toevoegen om iemand te zoeken.
+          </Text>
+        ) : (
+          friends!.map((f) => <FriendRow key={f.id} friend={f} />)
+        )}
 
-        <SectionHead label="Verzoeken" count={JIJ_REQUESTS.length} />
-        {JIJ_REQUESTS.map((r) => (
-          <RequestRow key={r.id} request={r} />
-        ))}
+        {requests && requests.length > 0 && (
+          <>
+            <SectionHead label="Verzoeken" count={requests.length} />
+            {requests.map((r) => (
+              <RequestRow
+                key={r.id}
+                request={r}
+                onAccept={() => acceptRequest.mutate(r.id)}
+                onDecline={() => declineRequest.mutate(r.id)}
+                busy={acceptRequest.isPending || declineRequest.isPending}
+              />
+            ))}
+          </>
+        )}
 
         <SectionHead label="Account" />
         <View style={styles.devWrap}>
@@ -670,14 +691,14 @@ function SectionHead({
   );
 }
 
-function FriendRow({ friend, mode }: { friend: JijFriend; mode: 'nacht' | 'dag' }) {
+function FriendRow({ friend }: { friend: ApiFriend }) {
   const roles = useRoles();
   return (
     <View style={[styles.friend, { borderColor: roles.bgChip }]}>
-      <Image
-        source={{ uri: friend.avatar }}
-        style={styles.friendAvatar}
-        contentFit="cover"
+      <ProfileAvatar
+        avatarUrl={friend.avatarUrl}
+        name={friend.name}
+        size={36}
       />
       <View style={styles.friendBody}>
         <Text
@@ -686,33 +707,37 @@ function FriendRow({ friend, mode }: { friend: JijFriend; mode: 'nacht' | 'dag' 
         >
           {friend.name}
         </Text>
-        <Text
-          numberOfLines={1}
-          style={[
-            styles.friendMeta,
-            { color: friend.hot ? roles.accent : roles.fgMuted },
-          ]}
-        >
-          {friend.meta[mode]}
-        </Text>
+        {friend.handle && (
+          <Text
+            numberOfLines={1}
+            style={[styles.friendMeta, { color: roles.fgMuted }]}
+          >
+            @{friend.handle}
+          </Text>
+        )}
       </View>
-      <Pressable style={[styles.followBtn, { borderColor: roles.bgChip }]}>
-        <Text style={[styles.followBtnText, { color: roles.fgRead }]}>
-          Volgend
-        </Text>
-      </Pressable>
     </View>
   );
 }
 
-function RequestRow({ request }: { request: JijRequest }) {
+function RequestRow({
+  request,
+  onAccept,
+  onDecline,
+  busy,
+}: {
+  request: ApiFriendRequest;
+  onAccept: () => void;
+  onDecline: () => void;
+  busy: boolean;
+}) {
   const roles = useRoles();
   return (
     <View style={[styles.friend, { borderColor: roles.bgChip }]}>
-      <Image
-        source={{ uri: request.avatar }}
-        style={styles.friendAvatar}
-        contentFit="cover"
+      <ProfileAvatar
+        avatarUrl={request.avatarUrl}
+        name={request.name}
+        size={36}
       />
       <View style={styles.friendBody}>
         <Text
@@ -721,18 +746,26 @@ function RequestRow({ request }: { request: JijRequest }) {
         >
           {request.name}
         </Text>
-        <Text
-          numberOfLines={1}
-          style={[styles.friendMeta, { color: roles.fgMuted }]}
-        >
-          {request.meta}
-        </Text>
+        {request.handle && (
+          <Text
+            numberOfLines={1}
+            style={[styles.friendMeta, { color: roles.fgMuted }]}
+          >
+            @{request.handle}
+          </Text>
+        )}
       </View>
       <View style={styles.twin}>
-        <Pressable style={[styles.twinBtn, { borderColor: roles.bgChip }]}>
-          <Cross size={13} thickness={3} color={roles.fgMuted} />
+        <Pressable
+          onPress={onDecline}
+          disabled={busy}
+          style={[styles.twinBtn, { borderColor: roles.fgPlaceholder }]}
+        >
+          <Cross size={16} thickness={3.2} color={roles.fgMuted} />
         </Pressable>
         <Pressable
+          onPress={onAccept}
+          disabled={busy}
           style={[
             styles.twinBtn,
             { backgroundColor: roles.accent, borderColor: roles.accent },
@@ -741,6 +774,51 @@ function RequestRow({ request }: { request: JijRequest }) {
           <Ionicons name="checkmark" size={18} color={roles.onAccent} />
         </Pressable>
       </View>
+    </View>
+  );
+}
+
+function ProfileAvatar({
+  avatarUrl,
+  name,
+  size,
+}: {
+  avatarUrl: string | null;
+  name: string;
+  size: number;
+}) {
+  const mode = useMode();
+  const roles = useRoles();
+  const isNacht = mode === 'nacht';
+  if (avatarUrl) {
+    return (
+      <Image
+        source={{ uri: avatarUrl }}
+        style={{ width: size, height: size, borderRadius: 999 }}
+        contentFit="cover"
+      />
+    );
+  }
+  return (
+    <View
+      style={{
+        width: size,
+        height: size,
+        borderRadius: 999,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: isNacht ? palette.noir2 : palette.paper2,
+      }}
+    >
+      <Text
+        style={{
+          fontFamily: fontFamily.display,
+          fontSize: size * 0.45,
+          color: roles.fgMuted,
+        }}
+      >
+        {initialFor(name)}
+      </Text>
     </View>
   );
 }
@@ -986,6 +1064,14 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+
+  emptyHint: {
+    fontFamily: fontFamily.body,
+    fontSize: 12.5,
+    lineHeight: 17.5,
+    paddingHorizontal: 22,
+    paddingVertical: 8,
   },
 
   // Account / DEV
