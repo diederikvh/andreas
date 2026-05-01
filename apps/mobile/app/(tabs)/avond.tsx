@@ -33,21 +33,116 @@ function formatMeta(event: ApiEvent): string {
     .join(' · ');
 }
 
-// Avond toont een gecureerde subset: featured-events binnen de
-// komende 3 dagen vanaf vandaag (lokale dag-grens, geen "nu" zodat
-// nacht- en dag-modus ook 's morgens nog vanavond's items tonen).
-const HOME_WINDOW_DAYS = 3;
+// Avond is "vandaag" — slechts één dag. Wie meer wil, scrolt door
+// naar de Agenda.
+const HOME_WINDOW_DAYS = 1;
 
 /** Vanaf welk uur een event als "avond" geldt (anders: "overdag"). */
 const NACHT_HOUR_THRESHOLD = 17;
 
-function homeWindow(): { from: string; to: string } {
+function homeWindow(mode: 'nacht' | 'dag'): {
+  from: string;
+  to: string;
+  refDate: Date;
+  shifted: boolean;
+} {
   const now = new Date();
-  const from = new Date(now);
-  from.setHours(0, 0, 0, 0);
-  const to = new Date(from);
+  const refDate = new Date(now);
+  refDate.setHours(0, 0, 0, 0);
+  // Dag-mode na 17:00: vandaag's overdag-window is voorbij, dus
+  // verschuif het venster naar morgen. Nacht-mode niet verschuiven —
+  // events die om 22:00 starten zijn ook om 02:00 nog "vanavond".
+  let shifted = false;
+  if (mode === 'dag' && now.getHours() >= NACHT_HOUR_THRESHOLD) {
+    refDate.setDate(refDate.getDate() + 1);
+    shifted = true;
+  }
+  const to = new Date(refDate);
   to.setDate(to.getDate() + HOME_WINDOW_DAYS);
-  return { from: from.toISOString(), to: to.toISOString() };
+  return {
+    from: refDate.toISOString(),
+    to: to.toISOString(),
+    refDate,
+    shifted,
+  };
+}
+
+const DOW_NL_LOWER = ['zo', 'ma', 'di', 'wo', 'do', 'vr', 'za'] as const;
+const MONTHS_NL_LONG = [
+  'jan', 'feb', 'mrt', 'apr', 'mei', 'jun',
+  'jul', 'aug', 'sep', 'okt', 'nov', 'dec',
+] as const;
+
+type Hero = {
+  kicker: string;
+  titleBefore: string;
+  titleEm: string;
+  titleAfter: string;
+};
+
+/**
+ * Hero-copy hangt af van de mode (vanavond vs overdag), de grootte
+ * van de gecureerde lijst, en of we naar morgen zijn verschoven
+ * (alleen in dag-mode na 17:00).
+ */
+function buildHero(
+  mode: 'nacht' | 'dag',
+  count: number,
+  refDate: Date,
+  shifted: boolean
+): Hero {
+  const dow = DOW_NL_LOWER[refDate.getDay()];
+  const day = refDate.getDate();
+  const month = MONTHS_NL_LONG[refDate.getMonth()];
+  const datePart = `${dow} ${day} ${month}`;
+
+  if (mode === 'nacht') {
+    const kicker = `Vanavond · ${datePart}`;
+    if (count === 0) {
+      return { kicker, titleBefore: '', titleEm: 'Niets', titleAfter: '\nvoor vanavond.' };
+    }
+    if (count === 1) {
+      return {
+        kicker,
+        titleBefore: 'Eén ding die\n',
+        titleEm: 'vanavond',
+        titleAfter: ' telt.',
+      };
+    }
+    return {
+      kicker,
+      titleBefore: `${count} dingen\ndie `,
+      titleEm: 'vanavond',
+      titleAfter: ' tellen.',
+    };
+  }
+
+  // Dag-mode: bij shifted (na 17:00) lopen we naar morgen.
+  const dayLabel = shifted ? 'Morgen' : 'Vandaag';
+  const planEm = shifted ? 'morgen' : 'overdag';
+  const kicker = `${dayLabel} · ${datePart}`;
+  if (count === 0) {
+    return {
+      kicker,
+      titleBefore: '',
+      titleEm: 'Niets',
+      titleAfter: shifted ? '\nvoor morgen overdag.' : '\nvoor overdag.',
+    };
+  }
+  if (count === 1) {
+    return {
+      kicker,
+      titleBefore: 'Eén ding om\n',
+      titleEm: planEm,
+      titleAfter: ' te plannen.',
+    };
+  }
+  return {
+    kicker,
+    titleBefore: `${count} dingen om\n`,
+    titleEm: planEm,
+    titleAfter: ' te plannen.',
+  };
 }
 
 export default function Avond() {
@@ -58,16 +153,15 @@ export default function Avond() {
   const scrollRef = useRef<ScrollView>(null);
   useScrollToTop(scrollRef);
 
-  const window = useMemo(() => homeWindow(), []);
-  // Editorial-pick events in de komende 3 dagen — Avond is altijd de
-  // gecureerde view, niet alle data uit de DB.
+  const window = useMemo(() => homeWindow(mode), [mode]);
+  // Avond toont *alles* binnen het 3-daagse venster, gesplitst op
+  // tijd-van-dag. De featured-flag dient alleen om één event als
+  // hoofd-artikel boven uit te lichten — niet om de lijst eronder te
+  // filteren.
   const { data: events, isLoading, error } = useEvents({
-    featured: true,
     from: window.from,
     to: window.to,
   });
-  // Splits op tijd-van-dag: nacht-mode toont avond-events (>= 17:00),
-  // dag-mode toont overdag-events (< 17:00).
   const filtered = useMemo(() => {
     if (!events) return [];
     return events.filter((e) => {
@@ -77,8 +171,20 @@ export default function Avond() {
         : hour < NACHT_HOUR_THRESHOLD;
     });
   }, [events, mode]);
-  const lead = filtered[0];
-  const rest = filtered.slice(1);
+  // Hoofd-artikel: random featured event uit de huidige split. Geen
+  // featured? Dan eerste event uit de split. useMemo zorgt dat dezelfde
+  // pick blijft staan zolang de input-lijst niet verandert.
+  const lead = useMemo(() => {
+    if (filtered.length === 0) return undefined;
+    const featuredCandidates = filtered.filter((e) => e.featured);
+    if (featuredCandidates.length === 0) return filtered[0];
+    return featuredCandidates[
+      Math.floor(Math.random() * featuredCandidates.length)
+    ];
+  }, [filtered]);
+  const rest = lead ? filtered.filter((e) => e.id !== lead.id) : filtered;
+
+  const hero = buildHero(mode, filtered.length, window.refDate, window.shifted);
 
   return (
     <View style={[styles.root, { backgroundColor: roles.bg }]}>
@@ -92,16 +198,20 @@ export default function Avond() {
       >
         <View style={styles.hero}>
           <Text style={[styles.heroKicker, { color: roles.accent }]}>
-            {data.hero.kicker}
+            {hero.kicker}
           </Text>
           <Text style={[styles.heroTitle, { color: roles.fg }]}>
-            {data.hero.titleBefore}
+            {hero.titleBefore}
             <Text style={[styles.heroEm, { color: roles.accent }]}>
-              {data.hero.titleEm}
+              {hero.titleEm}
             </Text>
-            {data.hero.titleAfter}
+            {hero.titleAfter}
           </Text>
         </View>
+
+        {/* Cat-tabs zijn shortcuts naar de Agenda met categorie voorgefilterd.
+            Avond filtert nooit op categorie zelf — die rol heeft Agenda. */}
+        <CategoryTabs />
 
         {/* Hoofd-artikel: eerste featured event als grote kaart bovenaan.
             Tot we een dedicated lead-flag hebben pakken we de eerstvolgende
@@ -117,26 +227,35 @@ export default function Avond() {
           </Pressable>
         )}
 
-        <SectionTitle
-          title="Redactiekeuze"
-          meta={
-            rest.length > 0 ? `${rest.length} meer` : data.smallRooms.sectionMeta
-          }
-        />
         {isLoading && <ListState text="Laden…" />}
-        {error && (
-          <ListState text="Kon redactiekeuze niet laden." tone="error" />
-        )}
+        {error && <ListState text="Kon events niet laden." tone="error" />}
         {!isLoading && !error && filtered.length === 0 && events && (
           <ListState
             text={
               mode === 'nacht'
-                ? 'Niets aanbevolen voor de komende avonden.'
-                : 'Niets aanbevolen voor overdag de komende dagen.'
+                ? 'Vanavond niets gepland.'
+                : window.shifted
+                  ? 'Morgen overdag niets gepland.'
+                  : 'Overdag niets gepland.'
             }
           />
         )}
-        {rest.map((e) => <ApiEventRow key={e.id} event={e} />)}
+        {rest.length > 0 && (
+          <>
+            <SectionTitle
+              title={
+                mode === 'nacht'
+                  ? 'Vanavond'
+                  : window.shifted
+                    ? 'Morgen overdag'
+                    : 'Overdag'
+              }
+              meta="Alles →"
+              onMetaPress={() => router.push('/agenda')}
+            />
+            {rest.map((e) => <ApiEventRow key={e.id} event={e} />)}
+          </>
+        )}
 
         <View style={{ height: 28 }} />
         <SectionTitle
@@ -147,6 +266,72 @@ export default function Avond() {
       </ScrollView>
       <AppHeader />
     </View>
+  );
+}
+
+function CategoryTabs() {
+  const mode = useMode();
+  const roles = useRoles();
+  const isNacht = mode === 'nacht';
+  const homeLabel = isNacht ? 'Vanavond' : 'Overdag';
+  const cats: { label: string; cat: ApiEvent['category'] | null }[] = [
+    { label: homeLabel, cat: null },
+    { label: 'Muziek', cat: 'Muziek' },
+    { label: 'Theater', cat: 'Theater' },
+    { label: 'Literatuur', cat: 'Literatuur' },
+    { label: 'Film', cat: 'Film' },
+  ];
+  return (
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      contentContainerStyle={styles.catTabs}
+    >
+      {cats.map(({ label, cat }) => {
+        // Eerste chip is de "current view"-indicator: Vanavond/Overdag
+        // staat altijd actief op Avond. Tappen doet niets — andere chips
+        // springen naar Agenda met de filter voorgeselecteerd.
+        const active = cat === null;
+        return (
+          <Pressable
+            key={label}
+            onPress={
+              active
+                ? undefined
+                : () =>
+                    router.push({
+                      pathname: '/agenda',
+                      params: { cat: cat as string },
+                    })
+            }
+            style={[
+              styles.catTab,
+              {
+                borderColor: active
+                  ? roles.fg
+                  : isNacht
+                    ? '#2a2a2d'
+                    : palette.paper,
+                backgroundColor: active
+                  ? roles.fg
+                  : isNacht
+                    ? palette.noir2
+                    : palette.paper2,
+              },
+            ]}
+          >
+            <Text
+              style={[
+                styles.catTabText,
+                { color: active ? roles.bg : roles.fgMuted },
+              ]}
+            >
+              {label}
+            </Text>
+          </Pressable>
+        );
+      })}
+    </ScrollView>
   );
 }
 
@@ -237,8 +422,30 @@ function FeaturedCard({
   );
 }
 
-function SectionTitle({ title, meta }: { title: string; meta: string }) {
+function SectionTitle({
+  title,
+  meta,
+  onMetaPress,
+}: {
+  title: string;
+  meta: string;
+  onMetaPress?: () => void;
+}) {
   const roles = useRoles();
+  if (onMetaPress) {
+    return (
+      <View style={styles.sectionTitle}>
+        <Text style={[styles.sectionTitleText, { color: roles.fg }]}>
+          {title}
+        </Text>
+        <Pressable onPress={onMetaPress} hitSlop={8}>
+          <Text style={[styles.sectionTitleText, { color: roles.accent }]}>
+            {meta}
+          </Text>
+        </Pressable>
+      </View>
+    );
+  }
   return (
     <View style={styles.sectionTitle}>
       <Text style={[styles.sectionTitleText, { color: roles.fg }]}>{title}</Text>
@@ -342,6 +549,26 @@ const styles = StyleSheet.create({
     fontSize: 10,
     letterSpacing: 1,
     textTransform: 'uppercase',
+  },
+
+  // Category tabs (Avond) — navigate to Agenda met filter
+  catTabs: {
+    flexDirection: 'row',
+    gap: 6,
+    paddingHorizontal: 18,
+    paddingTop: 4,
+    paddingBottom: 14,
+  },
+  catTab: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
+  catTabText: {
+    fontFamily: fontFamily.medium,
+    fontSize: 12,
+    letterSpacing: -0.06,
   },
 
   // List loading / error

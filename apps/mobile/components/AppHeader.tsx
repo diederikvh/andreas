@@ -52,6 +52,20 @@ export function AppHeader({ children }: AppHeaderProps = {}) {
           tint={mode === 'nacht' ? 'dark' : 'light'}
           style={StyleSheet.absoluteFill}
         />
+        {/* Extra getinte overlay zodat de header steviger leest dan
+            een pure blur — anders concurreert hij visueel met de
+            content die er onderdoor scrollt. */}
+        <View
+          style={[
+            StyleSheet.absoluteFill,
+            {
+              backgroundColor:
+                mode === 'nacht'
+                  ? 'rgba(10,10,11,0.78)'
+                  : 'rgba(245,241,232,0.82)',
+            },
+          ]}
+        />
       </MaskedView>
       <View style={styles.header}>
         <View style={styles.logoLockup}>
