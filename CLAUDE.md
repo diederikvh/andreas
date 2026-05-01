@@ -11,11 +11,22 @@ Een anti-algoritme uitgaansapp voor Amsterdam. Geen oneindige feed, geen aanbeve
 
 Modus is een bewuste keuze van de gebruiker, geen tijd-gebaseerde toggle. De toggle zit in de app-header (de dn-switch).
 
+## Repo-structuur
+
+Monorepo met **pnpm workspaces**:
+
+- [`apps/mobile/`](apps/mobile/) — de Expo-app (was voorheen `andreas/`)
+- [`apps/api/`](apps/api/) — Hono + Drizzle backend (Neon Postgres in Frankfurt)
+- [`packages/shared/`](packages/shared/) — gedeelde TS-types tussen mobile en api
+
+Root `package.json` heeft scripts: `pnpm dev:mobile`, `pnpm dev:api`, `pnpm db:generate`, `pnpm db:migrate`.
+
 ## Stack
 
+### Mobile (`apps/mobile`)
 - **Expo SDK 54+** met **expo-router** (file-based routing).
 - **React Native 0.81**, **TypeScript** strict.
-- **NativeWind** is geïnstalleerd maar in praktijk gebruiken we vooral `StyleSheet.create({...})` met tokens uit [`andreas/theme/tokens.ts`](andreas/theme/tokens.ts).
+- **NativeWind** is geïnstalleerd maar in praktijk gebruiken we vooral `StyleSheet.create({...})` met tokens uit [`apps/mobile/theme/tokens.ts`](apps/mobile/theme/tokens.ts).
 - **Zustand** voor client state (mode-store, en straks save-store).
 - **Reanimated v4** + **gesture-handler** voor de curtain-transition, drawer-drag, sticky title bar, pull-to-zoom.
 - **expo-blur** + **expo-linear-gradient** + **@react-native-masked-view/masked-view** voor de gradient-blur header en map-toolbar.
@@ -24,22 +35,30 @@ Modus is een bewuste keuze van de gebruiker, geen tijd-gebaseerde toggle. De tog
 
 Native deps werken in **Expo Go** — geen dev client nodig totdat we een native module gebruiken die niet in Expo Go zit.
 
+### Backend (`apps/api`)
+- **Hono** op Node (start lokaal op `:8787`).
+- **Drizzle ORM** + **Neon Postgres** (Frankfurt). Schema in [`apps/api/src/db/schema.ts`](apps/api/src/db/schema.ts).
+- **better-auth** met de phone-number plugin voor OTP-login (geen wachtwoord).
+- **MessageBird** (HQ Amsterdam) als SMS-provider voor OTPs. In dev zonder `MESSAGEBIRD_ACCESS_KEY` worden codes naar de console gelogd.
+- **Bunny.net** (Slovenië, EU CDN) voor image storage + transformatie. Storage zone `andreas-x`, pull zone `https://andreas-x.b-cdn.net`.
+- Auth-stack draait volledig **EU-self-hosted**; geen Amerikaanse SaaS in het auth-pad.
+
 ## Bestanden waar je vaak zult komen
 
 | Pad | Wat |
 |---|---|
-| [`andreas/app/_layout.tsx`](andreas/app/_layout.tsx) | Root Stack — mount `<ModeCurtain />`, `<GestureHandlerRootView>` als wrapper, fonts laden. |
-| [`andreas/app/(tabs)/_layout.tsx`](andreas/app/(tabs)/_layout.tsx) | Tabs met custom `<TabBar />`. |
-| [`andreas/app/(tabs)/{avond,agenda,kaart,gered,jij}.tsx`](andreas/app/(tabs)/) | De vijf hoofdschermen. |
-| [`andreas/app/event/[id].tsx`](andreas/app/event/[id].tsx) | Event-detail met parallax hero + sticky title + pull-to-zoom + CTA-dock. |
-| [`andreas/components/AppHeader.tsx`](andreas/components/AppHeader.tsx) | Floating header (logo + dn-switch) met blur fade-out. Accepteert `children` voor secundaire rij. |
-| [`andreas/components/EventListRow.tsx`](andreas/components/EventListRow.tsx) | Gedeelde row voor Avond/Agenda/Gered. Time + duration / thumb / title + venue + tags + friends-pill / accent tick. Optionele props zorgen dat dezelfde component drie schermen dient. |
-| [`andreas/components/TabBar.tsx`](andreas/components/TabBar.tsx) | Custom 5-tab pill aan de onderkant met BlurView. Emit `tabPress` op elke klik (ook re-tap) — schermen kunnen luisteren via `navigation.addListener('tabPress')`. |
-| [`andreas/components/ModeCurtain.tsx`](andreas/components/ModeCurtain.tsx) | Horizontale curtain-sweep + `useModeSwitch()` hook. |
-| [`andreas/components/Cross.tsx`](andreas/components/Cross.tsx) | View-based Andreas-kruis (twee gedraaide rechthoeken). Gebruikt op de splash, de curtain, op markers. |
-| [`andreas/store/mode.ts`](andreas/store/mode.ts) | Zustand store + `useMode()`, `useRoles()`, `useHasOnboarded()`. |
-| [`andreas/theme/tokens.ts`](andreas/theme/tokens.ts) | Palette + roles per mode + radii + motion + fontFamily. |
-| [`andreas/mocks/`](andreas/mocks/) | Per scherm een mock-bestand. Real data komt in fase 4 — types blijven 1-op-1 bruikbaar als API shapes. |
+| [`apps/mobile/app/_layout.tsx`](apps/mobile/app/_layout.tsx) | Root Stack — mount `<ModeCurtain />`, `<GestureHandlerRootView>` als wrapper, fonts laden. |
+| [`apps/mobile/app/(tabs)/_layout.tsx`](apps/mobile/app/(tabs)/_layout.tsx) | Tabs met custom `<TabBar />`. |
+| [`apps/mobile/app/(tabs)/{avond,agenda,kaart,gered,jij}.tsx`](apps/mobile/app/(tabs)/) | De vijf hoofdschermen. |
+| [`apps/mobile/app/event/[id].tsx`](apps/mobile/app/event/[id].tsx) | Event-detail met parallax hero + sticky title + pull-to-zoom + CTA-dock. |
+| [`apps/mobile/components/AppHeader.tsx`](apps/mobile/components/AppHeader.tsx) | Floating header (logo + dn-switch) met blur fade-out. Accepteert `children` voor secundaire rij. |
+| [`apps/mobile/components/EventListRow.tsx`](apps/mobile/components/EventListRow.tsx) | Gedeelde row voor Avond/Agenda/Gered. Time + duration / thumb / title + venue + tags + friends-pill / accent tick. Optionele props zorgen dat dezelfde component drie schermen dient. |
+| [`apps/mobile/components/TabBar.tsx`](apps/mobile/components/TabBar.tsx) | Custom 5-tab pill aan de onderkant met BlurView. Emit `tabPress` op elke klik (ook re-tap) — schermen kunnen luisteren via `navigation.addListener('tabPress')`. |
+| [`apps/mobile/components/ModeCurtain.tsx`](apps/mobile/components/ModeCurtain.tsx) | Horizontale curtain-sweep + `useModeSwitch()` hook. |
+| [`apps/mobile/components/Cross.tsx`](apps/mobile/components/Cross.tsx) | View-based Andreas-kruis (twee gedraaide rechthoeken). Gebruikt op de splash, de curtain, op markers. |
+| [`apps/mobile/store/mode.ts`](apps/mobile/store/mode.ts) | Zustand store + `useMode()`, `useRoles()`, `useHasOnboarded()`. |
+| [`apps/mobile/theme/tokens.ts`](apps/mobile/theme/tokens.ts) | Palette + roles per mode + radii + motion + fontFamily. |
+| [`apps/mobile/mocks/`](apps/mobile/mocks/) | Per scherm een mock-bestand. Real data komt in fase 4 — types blijven 1-op-1 bruikbaar als API shapes. |
 
 ## Conventies
 

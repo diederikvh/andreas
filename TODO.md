@@ -2,70 +2,71 @@
 
 Live status van het project. Cross-checken met `HANDOFF.md` voor de oorspronkelijke briefing en met de huidige codebase voor de waarheid. Per open punt staat genoeg context om een agent zelfstandig te laten werken.
 
-Laatste sync: 2026-05-01 · branch `main` op commit `870a2ad`.
+Laatste sync: 2026-05-01 · branch `main`.
 
 ## Stand
 
-**Fase 1 — Fundament**: ✅ klaar. Expo + expo-router + NativeWind + fonts, design tokens in [`andreas/theme/tokens.ts`](andreas/theme/tokens.ts), Zustand mode-store met curtain-transition (`components/ModeCurtain.tsx`), custom tabbar met 5 tabs + placeholder schermen.
+**Fase 1 — Fundament**: ✅ klaar.
 
-**Fase 2 — Statische schermen**: ✅ klaar voor de zes hoofdroutes (Avond / Detail / Agenda / Gered / Jij / Kaart). Alle data komt uit `mocks/*.ts`. Mode-driven: nacht en dag hebben elk hun eigen content-set.
+**Fase 2 — Statische schermen**: ✅ klaar voor de zes hoofdroutes (Avond / Detail / Agenda / Gered / Jij / Kaart). Alle data komt uit `apps/mobile/mocks/*.ts`.
 
-**Fase 3 — Interactie**: ⬜ nog niet aangevangen. Zie open punten hieronder.
+**Fase 3 — Interactie**: ⚙️ in progress.
+- ✅ Save-flow op event-detail (Zustand + AsyncStorage in [`apps/mobile/store/saved.ts`](apps/mobile/store/saved.ts), heart met scale + haptic, "Net opgeslagen" sectie in Gered).
+- ⬜ Modals (`/event/[id]/invite`, `/add-friend`) — geparkeerd tot na fase 4 want vereist auth + friends-data uit DB.
+- ⬜ `/friend/[id]` en `/venue/[id]` detail-schermen — geparkeerd tot na fase 4 (data-driven).
+- ⬜ dn-switch óók op Jij — designvraag, nog niet beantwoord.
 
-**Fase 4 — Backend**: ⬜ nog niet aangevangen.
-
----
-
-## Gedeelde primitives
-
-Worden hergebruikt over de schermen heen. Bij refactor-werk: pas de gedeelde component aan in plaats van per-scherm te dupliceren.
-
-- [`components/AppHeader.tsx`](andreas/components/AppHeader.tsx) — floating Andreas-wordmark + dn-switch met blur fade-out. Accepteert `children` om een sticky tweede regel te tonen (Agenda day-strip, Gered segmented, Kaart toolbar).
-- [`components/EventListRow.tsx`](andreas/components/EventListRow.tsx) — uniforme row voor Avond, Agenda, Gered: thumb 64×64 of 76×76 (varieert per scherm), title/venue/tags inline, optionele `friends`-pill, accent tick rechts.
-- [`components/ModeCurtain.tsx`](andreas/components/ModeCurtain.tsx) — horizontale curtain-sweep + `useModeSwitch()` hook voor mode-toggle.
-- [`components/Cross.tsx`](andreas/components/Cross.tsx) — Andreas-kruis als view-based icoon (geen SVG dep nodig).
-- [`components/icons/TabIcons.tsx`](andreas/components/icons/TabIcons.tsx) — vijf tab-iconen, view-based.
-
-## Bekende valkuilen (lees voor je begint)
-
-- **`Pressable` met function-style `({ pressed }) => [...]`** breekt regelmatig de rendering op kleine cirkelvormige buttons (border verdwijnt, kinderen renderen niet, layout valt om). Default naar direct `style={[...]}`. Gebruik `onPressIn`/`onPressOut` met state of `TouchableOpacity` als je pressed-state nodig hebt. Geraakt in Jij twin-buttons en Kaart sheet rows.
-- **react-native-gesture-handler** vereist `GestureHandlerRootView` als root in [`app/_layout.tsx`](andreas/app/_layout.tsx). Staat er al — maak deze niet kapot.
-- **Expo Go** ondersteunt de huidige native deps (maps, blur, masked-view, gesture-handler). Voor toekomstige native modules eerst checken of ze in Expo Go zitten, anders eerst een dev client builden.
-- **Custom tabbar emit `tabPress` op elke klik** — schermen kunnen luisteren met `navigation.addListener('tabPress')` voor "re-tap"-gedrag (zie Kaart recentre, Avond/Agenda/Gered useScrollToTop).
+**Fase 4 — Backend**: ⚙️ in progress.
+- ✅ Monorepo restructure (`apps/mobile`, `apps/api`, `packages/shared`) met pnpm workspaces. `.npmrc` heeft `node-linker=hoisted` voor RN+Metro compat.
+- ✅ Neon Postgres (Frankfurt, `andreas_x`) + Drizzle schema voor 9 tabellen (users · friendships · venues · events · saves · venue_follows · session · account · verification). Migration `0000_misty_swarm.sql` is applied.
+- ✅ Hono API draait op `:8787` met `/health`. better-auth + phone-OTP plugin geconfigureerd (sendOTP via MessageBird; in dev zonder access key worden codes naar console gelogd).
+- ✅ Bunny.net storage zone `andreas-x` + pull zone `https://andreas-x.b-cdn.net` aangemaakt (Force SSL aan).
+- ⬜ **Volgende slice**: seed-script + `GET /events` + mobile api-client (zie hieronder).
+- ⬜ TanStack Query setup in mobile, Avond-tab live op `/events`.
+- ⬜ Phone-OTP login UI in mobile + better-auth client wiring.
+- ⬜ Resterende API-routes (`/venues`, `/saves`, `/friends`, `/invites`).
+- ⬜ EAS build + TestFlight.
 
 ---
 
-## Fase 3 — Interactie (open)
+## Volgende slice (in werk)
 
-### Save-flow
-- [ ] **Hart-tap op Detail/Avond → Gered**. Tikken op het hart in de circle-buttons-rij van [`app/event/[id].tsx`](andreas/app/event/[id].tsx) moet visueel een "save"-pop geven (scale + haptic) en de save persistent vasthouden zodat het event in de Gered-tab verschijnt. HANDOFF zegt: layout-anim die naar de Gered-tab vliegt.
-  - Voor de state: nieuwe Zustand-store `useSavedStore` met `Set<string>` van event-ids, `toggle(id)`, optionele MMKV-persist.
-  - Voor de animatie: Reanimated `withSequence(scale 1.3 → 1)` + `expo-haptics` `impactAsync(Light)`.
-  - Gered haalt nu uit `mocks/gered.ts`. Optie: `up`-lijst combineren met de saved-store ids om een echte "wat-heb-ik-opgeslagen" view te krijgen.
+1. **Seed-script** — `apps/api/src/db/seed.ts` met 4-5 echte Amsterdamse venues (OCCII, Paradiso, Perdu, EYE, Frascati) en ~10 events. Idempotent (delete-first, dan insert). Run: `pnpm --filter @andreas/api seed`.
+2. **`GET /events`** — Hono route, joint events met venues, gesorteerd op `starts_at` ascending, default limit 50. Ook `GET /events/:id` voor detail.
+3. **Mobile api-client** — `apps/mobile/lib/api.ts` met `EXPO_PUBLIC_API_URL` (default `http://localhost:8787`). Helpers `getEvents()` en `getEvent(id)` voor straks.
 
-### Modals
-- [ ] **`/event/[id]/invite` — Vraag iemand mee**. Bottom-sheet met vrienden-picker en een tekstveld voor een persoonlijke message. HANDOFF tabel rij 10. Patroon: zelfde modal-flow als `welkom` route (`presentation: 'modal'` in `app/_layout.tsx`'s Stack).
-- [ ] **`/add-friend` modal**. QR-code genereren, QR scannen (camera), zoekveld voor handle. Nieuwe deps nodig: `expo-camera` voor scan, `react-native-qrcode-svg` (of vergelijkbaar) voor genereren. Zie `JIJ_REQUESTS` mock in [`mocks/jij.ts`](andreas/mocks/jij.ts) voor het inkomende-verzoeken patroon.
-
-### Detail-schermen voor relations
-- [ ] **`/friend/[id]` — Vriend detail**. Wat heeft die vriend gered, gemeenschappelijke plannen. Mock kan via een aparte `mocks/friends-detail.ts` of door uitbreiding van `JIJ_FRIENDS`. Layout-inspiratie: detail-scherm patroon uit [`app/event/[id].tsx`](andreas/app/event/[id].tsx) (parallax hero + sticky title + body sections), maar dan zonder reserveer-CTA.
-- [ ] **`/venue/[id]` — Venue detail**. Programmering van één venue. HANDOFF tabel rij 07. Mock in `app.html` lines 1944-2038 toont structuur: detail-hero met venue-naam + tag, address-block, "Route openen" / "Opslaan" actions, beschrijving, programma-lijst per zaal. Reuse `EventListRow` voor de programma-rijen.
-
-### Mode-curtain afronding
-- [ ] **dn-switch op Jij óók aanwezig naast in de header**. HANDOFF noemt "mode-toggle prominent op Jij" expliciet. Nu zit hij alleen in `AppHeader`. Beslissing nodig: dubbel maken of alleen header-versie houden? Vraag eerst de user.
+Verwachte test: `curl http://localhost:8787/events` retourneert JSON-array.
 
 ---
 
-## Fase 4 — Backend (open)
+## Te fixen na deze slice (technical debt)
 
-Volgorde uit HANDOFF sectie 9, fase 4:
+- **`apps/mobile/store/saved.ts`** slaat nu snapshots op zodat saves van detail naar Gered kunnen renderen ondanks dat detail.tsx altijd dezelfde per-mode mock toont. Zodra detail echt per-id data fetcht, wordt dit een simpele `Set<string>` van event-ids en lookup via TanStack Query.
+- **`apps/mobile/app/event/[id].tsx`** gebruikt nu `DETAIL[mode]` ongeacht de route-id. Moet worden vervangen door `useEvent(id)` zodra de API-route er is.
+- **Avond/Agenda/Gered/Kaart** halen nog uit `mocks/`. Migreren één voor één naar `useQuery`.
+- **`MESSAGEBIRD_ACCESS_KEY`** in `apps/api/.env` is leeg — OTP-codes loggen nu naar console. Aanmaken zodra phone-OTP UI live moet.
+- **Connection string + Bunny key** zijn in chat-history beland tijdens setup. Rotaten voor go-live (Neon → Reset password, Bunny → Reset FTP password). Niet kritisch voor V1-development.
+- **`packages/shared`** heeft alleen base types. Zodra DB-routes draaien, hier de response-shapes definiëren zodat client en server gegarandeerd in sync zijn.
+- **Drizzle Studio** (`pnpm studio`) is een handige DB-browser tijdens dev. Niet uitchecken in repo.
 
-- [ ] **Neon + Drizzle schema + migrations**. Tables: `users`, `friendships`, `venues`, `events`, `saves`, `invites`. Zie HANDOFF sectie 2 voor stack-keuze.
-- [ ] **API server (Hono of tRPC) op Vercel/Cloudflare/Railway**. Praat met Neon via `@neondatabase/serverless` + Drizzle.
-- [ ] **Auth (Clerk of better-auth)**. JWT door naar API. HANDOFF zegt Clerk = simpelst, better-auth = open-source en dichter bij eigen Postgres.
-- [ ] **TanStack Query in app**. Mock-imports vervangen door `useQuery`-hooks, één scherm tegelijk. Begin met Avond (`mocks/feed.ts`), dan Agenda, etc. De huidige mock-types blijven 1-op-1 bruikbaar als API response shapes.
+---
+
+## Fase 3 — Interactie (geparkeerd tot fase 4)
+
+Reden: deze features leunen ≥80% op data; een mock-versie is grotendeels weggegooid werk.
+
+- [ ] **`/event/[id]/invite` — Vraag iemand mee**. Bottom-sheet met vrienden-picker + persoonlijke message. Heeft `friendships` + `users` data nodig.
+- [ ] **`/add-friend` modal**. QR genereren + scannen + zoek op handle. Nieuwe deps: `expo-camera` voor scan, `react-native-qrcode-svg` voor genereren. Heeft user-handle uit DB nodig.
+- [ ] **`/friend/[id]` — Vriend detail**. Wat heeft die vriend gered, gemeenschappelijke plannen. Heeft `saves` + `friendships` join nodig.
+- [ ] **`/venue/[id]` — Venue detail**. Programmering van één venue. Heeft `events` waar `venue_id = ?` nodig. Layout-mock in `app.html` lines 1944-2038. Hergebruik `EventListRow`.
+
+## Fase 4 — Backend (open na huidige slice)
+
+- [ ] **TanStack Query in mobile**. Mock-imports vervangen door `useQuery`-hooks, één scherm tegelijk. Begin Avond → Agenda → Gered → Kaart.
+- [ ] **Auth-routes wiring in mobile**. better-auth client + phone-OTP UI. Inlog-route op `/` (start-flow), gebruiker landt na succesvolle OTP op `/avond`.
+- [ ] **API-routes**: `/venues` (lijst + detail), `/saves` (toggle, list mine), `/friends` (list mine, request, accept), `/invites` (send, list received).
 - [ ] **Push notificaties (expo-notifications)**. "Vriend redt iets" → notificatie via API.
-- [ ] **EAS build → TestFlight**. Eerst dev client met alle native deps, dan production builds.
+- [ ] **EAS build → TestFlight**. Eerst dev client met alle native deps, dan production.
 
 ---
 
@@ -82,11 +83,12 @@ Bewust geskipte features die later kunnen — agenten die hier aan willen werken
 - **Bottom-sheet swipe-to-dismiss / snap-points** op Kaart. Drawer is binair (open/dicht) met manual drag — voor V1 voldoende, geen `@gorhom/bottom-sheet` toegevoegd.
 - **Settings toggles + Algemeen-sectie op Jij** (notify-toggles, taal, thema). Past pas zinvol bij echte preferences-store.
 - **Custom Andreas-iconen** voor heart, share-outline, locate, person-add, checkmark, chevron-back. Op dit moment leunen we op `@expo/vector-icons` (Ionicons). HANDOFF noemde `lucide-react-native` als basis met Andreas-kruis override — pas relevant als design echt afwijkt.
+- **Apple Sign-In**. Niet nodig zolang we phone-only blijven (Apple's social-login eis triggert alleen bij Google/Facebook). Toevoegen wanneer we social-login willen.
 
 ---
 
 ## Werkdocumenten
 
 - [HANDOFF.md](HANDOFF.md) — oorspronkelijke briefing van de designer. Niet aanpassen tenzij scope echt verandert.
-- [andreas/app.html](andreas/app.html) — master-mockup, bron van waarheid voor copy + visual design. Lees per `phone-<naam>` blok.
-- [andreas/start-screen.html](andreas/start-screen.html) — splash + welkom-flow.
+- [app.html](app.html) — master-mockup, bron van waarheid voor copy + visual design. Lees per `phone-<naam>` blok.
+- [start-screen.html](start-screen.html) — splash + welkom-flow.
