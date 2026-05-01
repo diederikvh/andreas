@@ -1,3 +1,4 @@
+import type { Friend } from '@/mocks/gered';
 import type { Mode } from '@/theme/tokens';
 
 /**
@@ -19,6 +20,8 @@ export type EventRow = {
   badge: string;
   badgeTone: BadgeTone;
   thumb: string;
+  /** Optional friends already saved to this event. */
+  friends?: Friend[];
 };
 
 export type PhotoCard = {
@@ -81,6 +84,10 @@ export const FEED: Record<Mode, FeedData> = {
           badgeTone: 'acid',
           thumb:
             'https://images.unsplash.com/photo-1470229722913-7c0e2dbbafd3?w=200&q=60&auto=format&fit=crop',
+          friends: [
+            { name: 'Roos', avatar: 'https://i.pravatar.cc/40?img=47' },
+            { name: 'Milan', avatar: 'https://i.pravatar.cc/40?img=33' },
+          ],
         },
         {
           id: 'n2',
@@ -108,6 +115,7 @@ export const FEED: Record<Mode, FeedData> = {
           badgeTone: 'azure',
           thumb:
             'https://images.unsplash.com/photo-1478720568477-152d9b164e26?w=200&q=60&auto=format&fit=crop',
+          friends: [{ name: 'Iris', avatar: 'https://i.pravatar.cc/40?img=20' }],
         },
         {
           id: 'n5',
@@ -176,6 +184,10 @@ export const FEED: Record<Mode, FeedData> = {
           badgeTone: 'flare',
           thumb:
             'https://images.unsplash.com/photo-1518609878373-06d740f60d8b?w=200&q=60&auto=format&fit=crop',
+          friends: [
+            { name: 'Sam', avatar: 'https://i.pravatar.cc/40?img=59' },
+            { name: 'Roos', avatar: 'https://i.pravatar.cc/40?img=47' },
+          ],
         },
         {
           id: 'd3',
@@ -194,6 +206,7 @@ export const FEED: Record<Mode, FeedData> = {
           badgeTone: 'azure',
           thumb:
             'https://images.unsplash.com/photo-1517457373958-b7bdd4587205?w=200&q=60&auto=format&fit=crop',
+          friends: [{ name: 'Lotte', avatar: 'https://i.pravatar.cc/40?img=12' }],
         },
         {
           id: 'd5',
