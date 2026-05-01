@@ -10,8 +10,9 @@ export type FriendshipStatus = 'pending' | 'accepted';
 
 export type User = {
   id: string;
-  phone: string;
-  handle: string;
+  phoneNumber: string;
+  phoneNumberVerified: boolean;
+  handle: string | null;
   name: string;
   avatarUrl: string | null;
   modePreference: Mode;

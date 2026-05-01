@@ -103,4 +103,129 @@ export async function getVenue(slug: string): Promise<ApiVenueWithProgram> {
   return await request<ApiVenueWithProgram>(`/venues/${slug}`);
 }
 
+export type ApiMe = {
+  id: string;
+  phoneNumber: string;
+  phoneNumberVerified: boolean;
+  handle: string | null;
+  name: string;
+  avatarUrl: string | null;
+  modePreference: 'nacht' | 'dag';
+  createdAt: string;
+};
+
+import * as SecureStore from 'expo-secure-store';
+
+/**
+ * Haal het sessie-token uit de SecureStore die @better-auth/expo
+ * vult. De plugin schrijft een JSON-object onder `<prefix>_cookie`
+ * met per cookie een `{ value, expires }` paar. We pakken de
+ * `better-auth.session_token` waarde en sturen die als Bearer mee
+ * op onze eigen API-routes — better-auth's $fetch is voorbehouden
+ * aan /api/auth/* paden.
+ */
+type CookieEntry = { value: string; expires?: string };
+
+async function getSessionBearer(): Promise<string | null> {
+  const raw = await SecureStore.getItemAsync('andreas_cookie');
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as Record<string, CookieEntry>;
+    const entry = parsed['better-auth.session_token'];
+    if (!entry?.value) return null;
+    if (entry.expires && new Date(entry.expires) < new Date()) return null;
+    return entry.value;
+  } catch {
+    return null;
+  }
+}
+
+async function authedRequest<T>(
+  path: string,
+  init: RequestInit = {}
+): Promise<T> {
+  const token = await getSessionBearer();
+  const headers = new Headers(init.headers ?? {});
+  if (token) headers.set('Authorization', `Bearer ${token}`);
+  if (init.body && !headers.has('Content-Type')) {
+    headers.set('Content-Type', 'application/json');
+  }
+  const res = await fetch(`${BASE_URL}${path}`, { ...init, headers });
+  if (!res.ok) {
+    let msg = `Server fout (${res.status})`;
+    try {
+      const body = (await res.json()) as { error?: string };
+      if (body.error) msg = body.error;
+    } catch {
+      // body isn't JSON — keep default msg
+    }
+    throw new ApiError(msg, res.status);
+  }
+  return (await res.json()) as T;
+}
+
+export async function getMe(): Promise<ApiMe | null> {
+  try {
+    const { user } = await authedRequest<{ user: ApiMe }>('/me');
+    return user;
+  } catch (e) {
+    if (e instanceof ApiError && e.status === 401) return null;
+    throw e;
+  }
+}
+
+export async function updateMe(input: {
+  name: string;
+  handle: string;
+}): Promise<ApiMe> {
+  const { user } = await authedRequest<{ user: ApiMe }>('/me', {
+    method: 'PATCH',
+    body: JSON.stringify(input),
+  });
+  return user;
+}
+
+export async function uploadAvatar(input: {
+  uri: string;
+  mimeType?: string;
+}): Promise<ApiMe> {
+  const token = await getSessionBearer();
+  if (!token) throw new ApiError('Niet ingelogd.', 401);
+
+  const form = new FormData();
+  const ext =
+    input.mimeType?.includes('png')
+      ? 'png'
+      : input.mimeType?.includes('webp')
+        ? 'webp'
+        : 'jpg';
+  form.append('avatar', {
+    uri: input.uri,
+    name: `avatar.${ext}`,
+    type: input.mimeType ?? 'image/jpeg',
+  } as unknown as Blob);
+
+  const res = await fetch(`${BASE_URL}/me/avatar`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      // Geen Content-Type expliciet — RN stelt automatisch
+      // multipart/form-data + boundary in.
+    },
+    body: form,
+  });
+  if (!res.ok) {
+    let msg = `Upload mislukt (${res.status}).`;
+    try {
+      const body = (await res.json()) as { error?: string };
+      if (body.error) msg = body.error;
+    } catch {
+      // niet-JSON antwoord
+    }
+    throw new ApiError(msg, res.status);
+  }
+  const { user } = (await res.json()) as { user: ApiMe };
+  return user;
+}
+
 export { ApiError, BASE_URL };

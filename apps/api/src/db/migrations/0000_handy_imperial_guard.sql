@@ -22,6 +22,7 @@ CREATE TABLE "events" (
 	"ticket_url" text,
 	"image_url" text,
 	"category" "event_category" NOT NULL,
+	"featured" boolean DEFAULT false NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
@@ -54,12 +55,17 @@ CREATE TABLE "session" (
 --> statement-breakpoint
 CREATE TABLE "users" (
 	"id" text PRIMARY KEY NOT NULL,
-	"phone" text NOT NULL,
-	"handle" text NOT NULL,
-	"name" text NOT NULL,
+	"phone_number" text NOT NULL,
+	"phone_number_verified" boolean DEFAULT false NOT NULL,
+	"handle" text,
+	"name" text DEFAULT '' NOT NULL,
+	"email" text,
+	"email_verified" boolean DEFAULT false NOT NULL,
+	"image" text,
 	"avatar_url" text,
 	"mode_preference" "mode_pref" DEFAULT 'nacht' NOT NULL,
-	"created_at" timestamp with time zone DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "venue_follows" (
@@ -87,7 +93,8 @@ CREATE TABLE "verification" (
 	"identifier" text NOT NULL,
 	"value" text NOT NULL,
 	"expires_at" timestamp with time zone NOT NULL,
-	"created_at" timestamp with time zone DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 ALTER TABLE "account" ADD CONSTRAINT "account_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
@@ -101,7 +108,8 @@ ALTER TABLE "venue_follows" ADD CONSTRAINT "venue_follows_user_id_users_id_fk" F
 ALTER TABLE "venue_follows" ADD CONSTRAINT "venue_follows_venue_id_venues_id_fk" FOREIGN KEY ("venue_id") REFERENCES "public"."venues"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 CREATE INDEX "events_starts_at_idx" ON "events" USING btree ("starts_at");--> statement-breakpoint
 CREATE INDEX "events_venue_idx" ON "events" USING btree ("venue_id");--> statement-breakpoint
+CREATE INDEX "events_featured_idx" ON "events" USING btree ("featured");--> statement-breakpoint
 CREATE INDEX "friendships_to_idx" ON "friendships" USING btree ("to_user_id");--> statement-breakpoint
 CREATE INDEX "saves_event_idx" ON "saves" USING btree ("event_id");--> statement-breakpoint
-CREATE UNIQUE INDEX "users_phone_idx" ON "users" USING btree ("phone");--> statement-breakpoint
+CREATE UNIQUE INDEX "users_phone_number_idx" ON "users" USING btree ("phone_number");--> statement-breakpoint
 CREATE UNIQUE INDEX "users_handle_idx" ON "users" USING btree ("handle");

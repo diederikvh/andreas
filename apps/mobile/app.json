@@ -45,6 +45,13 @@
           "locationAlwaysAndWhenInUsePermission": "Andreas gebruikt je locatie alleen om events op de kaart in de buurt te tonen.",
           "locationWhenInUsePermission": "Andreas gebruikt je locatie alleen om events op de kaart in de buurt te tonen."
         }
+      ],
+      "expo-secure-store",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Andreas heeft toegang tot je foto's nodig om een profielfoto te kiezen."
+        }
       ]
     ],
     "experiments": {

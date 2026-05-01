@@ -32,17 +32,28 @@ export const users = pgTable(
   'users',
   {
     id: text().primaryKey(),
-    phone: text().notNull(),
-    handle: text().notNull(),
-    name: text().notNull(),
+    phoneNumber: text().notNull(),
+    phoneNumberVerified: boolean().notNull().default(false),
+    /** Andreas-handle. Wordt later in onboarding ingesteld; bij
+        phone-OTP signup nog niet bekend. */
+    handle: text(),
+    /** Display-name. better-auth verwacht dit veld. Default leeg. */
+    name: text().notNull().default(''),
+    /** Optioneel email-adres als recovery; phone-OTP signup heeft geen email. */
+    email: text(),
+    emailVerified: boolean().notNull().default(false),
+    image: text(),
     avatarUrl: text(),
     modePreference: modePref().notNull().default('nacht'),
     createdAt: timestamp({ withTimezone: true })
       .notNull()
       .default(sql`now()`),
+    updatedAt: timestamp({ withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
   },
   (t) => [
-    uniqueIndex('users_phone_idx').on(t.phone),
+    uniqueIndex('users_phone_number_idx').on(t.phoneNumber),
     uniqueIndex('users_handle_idx').on(t.handle),
   ]
 );
@@ -188,6 +199,9 @@ export const verification = pgTable('verification', {
   value: text().notNull(),
   expiresAt: timestamp({ withTimezone: true }).notNull(),
   createdAt: timestamp({ withTimezone: true })
+    .notNull()
+    .default(sql`now()`),
+  updatedAt: timestamp({ withTimezone: true })
     .notNull()
     .default(sql`now()`),
 });

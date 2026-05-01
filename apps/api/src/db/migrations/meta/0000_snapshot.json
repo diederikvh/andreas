@@ -1,5 +1,5 @@
 {
-  "id": "14fa1060-d228-48f4-9f43-bfc83342d92e",
+  "id": "58cd7601-c35c-47b7-b22c-7c12d0d5a5e1",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -140,6 +140,13 @@
           "primaryKey": false,
           "notNull": true
         },
+        "featured": {
+          "name": "featured",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -169,6 +176,21 @@
           "columns": [
             {
               "expression": "venue_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "events_featured_idx": {
+          "name": "events_featured_idx",
+          "columns": [
+            {
+              "expression": "featured",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -470,23 +492,50 @@
           "primaryKey": true,
           "notNull": true
         },
-        "phone": {
-          "name": "phone",
+        "phone_number": {
+          "name": "phone_number",
           "type": "text",
           "primaryKey": false,
           "notNull": true
+        },
+        "phone_number_verified": {
+          "name": "phone_number_verified",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
         },
         "handle": {
           "name": "handle",
           "type": "text",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
         },
         "name": {
           "name": "name",
           "type": "text",
           "primaryKey": false,
-          "notNull": true
+          "notNull": true,
+          "default": "''"
+        },
+        "email": {
+          "name": "email",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "email_verified": {
+          "name": "email_verified",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "image": {
+          "name": "image",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         },
         "avatar_url": {
           "name": "avatar_url",
@@ -508,14 +557,21 @@
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
         }
       },
       "indexes": {
-        "users_phone_idx": {
-          "name": "users_phone_idx",
+        "users_phone_number_idx": {
+          "name": "users_phone_number_idx",
           "columns": [
             {
-              "expression": "phone",
+              "expression": "phone_number",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -722,6 +778,13 @@
         },
         "created_at": {
           "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": true,
