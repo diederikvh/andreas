@@ -12,6 +12,8 @@ import {
   CATEGORY_TICK,
   DOW_NL_UPPER,
   formatTime,
+  isNachtHour,
+  socialWindow,
 } from '@/lib/eventDisplay';
 import { useEvents } from '@/lib/queries';
 import type { PhotoCard } from '@/mocks/feed';
@@ -33,39 +35,6 @@ function formatMeta(event: ApiEvent): string {
     .join(' · ');
 }
 
-// Avond is "vandaag" — slechts één dag. Wie meer wil, scrolt door
-// naar de Agenda.
-const HOME_WINDOW_DAYS = 1;
-
-/** Vanaf welk uur een event als "avond" geldt (anders: "overdag"). */
-const NACHT_HOUR_THRESHOLD = 17;
-
-function homeWindow(mode: 'nacht' | 'dag'): {
-  from: string;
-  to: string;
-  refDate: Date;
-  shifted: boolean;
-} {
-  const now = new Date();
-  const refDate = new Date(now);
-  refDate.setHours(0, 0, 0, 0);
-  // Dag-mode na 17:00: vandaag's overdag-window is voorbij, dus
-  // verschuif het venster naar morgen. Nacht-mode niet verschuiven —
-  // events die om 22:00 starten zijn ook om 02:00 nog "vanavond".
-  let shifted = false;
-  if (mode === 'dag' && now.getHours() >= NACHT_HOUR_THRESHOLD) {
-    refDate.setDate(refDate.getDate() + 1);
-    shifted = true;
-  }
-  const to = new Date(refDate);
-  to.setDate(to.getDate() + HOME_WINDOW_DAYS);
-  return {
-    from: refDate.toISOString(),
-    to: to.toISOString(),
-    refDate,
-    shifted,
-  };
-}
 
 const DOW_NL_LOWER = ['zo', 'ma', 'di', 'wo', 'do', 'vr', 'za'] as const;
 const MONTHS_NL_LONG = [
@@ -153,7 +122,7 @@ export default function Avond() {
   const scrollRef = useRef<ScrollView>(null);
   useScrollToTop(scrollRef);
 
-  const window = useMemo(() => homeWindow(mode), [mode]);
+  const window = useMemo(() => socialWindow(mode), [mode]);
   // Avond toont *alles* binnen het 3-daagse venster, gesplitst op
   // tijd-van-dag. De featured-flag dient alleen om één event als
   // hoofd-artikel boven uit te lichten — niet om de lijst eronder te
@@ -166,9 +135,7 @@ export default function Avond() {
     if (!events) return [];
     return events.filter((e) => {
       const hour = new Date(e.startsAt).getHours();
-      return mode === 'nacht'
-        ? hour >= NACHT_HOUR_THRESHOLD
-        : hour < NACHT_HOUR_THRESHOLD;
+      return mode === 'nacht' ? isNachtHour(hour) : !isNachtHour(hour);
     });
   }, [events, mode]);
   // Hoofd-artikel: random featured event uit de huidige split. Geen

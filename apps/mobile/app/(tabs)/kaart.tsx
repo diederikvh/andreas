@@ -18,12 +18,14 @@ import { AppHeader, HEADER_HEIGHT } from '@/components/AppHeader';
 import { Cross } from '@/components/Cross';
 import { TabIconAgenda, TabIconKaart } from '@/components/icons/TabIcons';
 import { brandEase } from '@/lib/easing';
-import type { ApiEvent } from '@/lib/api';
+import type { ApiEvent, ApiFriendBadge } from '@/lib/api';
 import {
   CATEGORY_DOT,
   CATEGORY_TICK,
   distanceKm,
   formatTime,
+  isNachtHour,
+  socialWindow,
   walkingMinutes,
 } from '@/lib/eventDisplay';
 import { useEvents } from '@/lib/queries';
@@ -49,7 +51,11 @@ const TONE = {
 
 const SHEET_OPEN = 200;
 const SHEET_CLOSED = 0;
-const SWITCH_HEIGHT = 44;
+// Hoogte van de extra controls onder de logo-rij in AppHeader:
+// context-line (paddingTop 4 + tekst + paddingBottom 14 ≈ 30) +
+// kaart/lijst switch + recentre (paddingHorizontal 18, height 36,
+// marginBottom 8 ≈ 44).
+const CONTROLS_HEIGHT = 76;
 const TABBAR_CLEARANCE = 60;
 
 // Default-centre voor de kaart wanneer device-locatie nog niet binnen
@@ -76,14 +82,28 @@ export default function Kaart() {
       : locationStatus.location;
   })();
 
-  const { data: events } = useEvents();
+  // Kaart toont dezelfde subset als Avond — events binnen het sociale
+  // venster (vannacht / overdag). "Wat speelt nu in de buurt?".
+  const window = useMemo(() => socialWindow(mode), [mode]);
+  const { data: events } = useEvents({
+    from: window.from,
+    to: window.to,
+  });
   const mapEvents: MapEvent[] = useMemo(() => {
     if (!events) return [];
-    return events.map((e) => ({
-      event: e,
-      minutes: walkingMinutes(centre, { lat: e.venue.lat, lng: e.venue.lng }),
-    }));
-  }, [events, centre]);
+    return events
+      .filter((e) => {
+        const hour = new Date(e.startsAt).getHours();
+        return mode === 'nacht' ? isNachtHour(hour) : !isNachtHour(hour);
+      })
+      .map((e) => ({
+        event: e,
+        minutes: walkingMinutes(centre, {
+          lat: e.venue.lat,
+          lng: e.venue.lng,
+        }),
+      }));
+  }, [events, centre, mode]);
   const sorted = useMemo(
     () => [...mapEvents].sort((a, b) => a.minutes - b.minutes),
     [mapEvents]
@@ -180,7 +200,7 @@ export default function Kaart() {
         <ScrollView
           showsVerticalScrollIndicator={false}
           contentContainerStyle={{
-            paddingTop: insets.top + HEADER_HEIGHT + SWITCH_HEIGHT + 8,
+            paddingTop: insets.top + HEADER_HEIGHT + CONTROLS_HEIGHT + 8,
             paddingBottom: insets.bottom + 110,
           }}
         >
@@ -196,6 +216,7 @@ export default function Kaart() {
           <MapView
             ref={mapRef}
             provider={PROVIDER_DEFAULT}
+            mapType={mode === 'nacht' ? 'mutedStandard' : 'standard'}
             style={StyleSheet.absoluteFill}
             initialRegion={{
               latitude: centre.lat,
@@ -301,7 +322,20 @@ export default function Kaart() {
         </>
       )}
 
-      <AppHeader>
+      <AppHeader solid={view === 'map'}>
+        <View style={styles.contextLine}>
+          <Text style={[styles.contextLabel, { color: roles.accent }]}>
+            {mode === 'nacht'
+              ? 'Vanavond'
+              : window.shifted
+                ? 'Morgen overdag'
+                : 'Vandaag overdag'}
+          </Text>
+          <Text style={[styles.contextMeta, { color: roles.fgMuted }]}>
+            {mapEvents.length}{' '}
+            {mapEvents.length === 1 ? 'plek in de buurt' : 'plekken in de buurt'}
+          </Text>
+        </View>
         <View style={styles.toolbar}>
           <View style={styles.toolbarSwitch}>
             <ViewSwitch view={view} onChange={setView} />
@@ -418,6 +452,7 @@ function SheetRow({ mapEvent }: { mapEvent: MapEvent }) {
   const roles = useRoles();
   const tone = TONE[mode][CATEGORY_TICK[mapEvent.event.category]];
   const tagBg = `${tone}26`;
+  const friends = mapEvent.event.friendsSaved ?? [];
 
   return (
     <Pressable
@@ -451,6 +486,9 @@ function SheetRow({ mapEvent }: { mapEvent: MapEvent }) {
           >
             {mapEvent.event.venue.name}
           </Text>
+          {friends.length > 0 && (
+            <FriendAvatarStack friends={friends} />
+          )}
         </View>
       </View>
       <Text style={[styles.sheetTime, { color: roles.fgMuted }]}>
@@ -508,14 +546,145 @@ function DrawerCard({ mapEvent }: { mapEvent: MapEvent }) {
               {mapEvent.event.description}
             </Text>
           )}
+          {(mapEvent.event.friendsSaved?.length ?? 0) > 0 && (
+            <View style={styles.cardFriendsWrap}>
+              <FriendsPill
+                friends={mapEvent.event.friendsSaved!}
+                accent={tone}
+              />
+            </View>
+          )}
         </View>
       </View>
     </Pressable>
   );
 }
 
+/** Standaard friends-pill (getinte bg + avatars + label). Zelfde
+ *  vorm als die op de event-rijen elders. */
+function FriendsPill({
+  friends,
+  accent,
+}: {
+  friends: ApiFriendBadge[];
+  accent: string;
+}) {
+  const mode = useMode();
+  const roles = useRoles();
+  const isNacht = mode === 'nacht';
+  const bg = `${accent}1f`;
+  const labelColor =
+    mode === 'nacht' ? lightenHexLocal(accent, 0.35) : accent;
+  return (
+    <View style={[styles.pill, { backgroundColor: bg }]}>
+      <FriendAvatarStack friends={friends} borderTone="bg" />
+      <Text
+        numberOfLines={1}
+        style={[styles.pillText, { color: labelColor }]}
+      >
+        {friendsLineLabel(friends.map((f) => f.name))}
+      </Text>
+    </View>
+  );
+}
+
+/** Kale avatar-stack zonder label en bg, voor compacte plaatsen. */
+function FriendAvatarStack({
+  friends,
+  borderTone = 'sheet',
+}: {
+  friends: ApiFriendBadge[];
+  borderTone?: 'sheet' | 'bg';
+}) {
+  const mode = useMode();
+  const roles = useRoles();
+  const isNacht = mode === 'nacht';
+  // sheet = drawer/sheet-bg (noir2/paper3); bg = page-bg (noir/paper3)
+  const borderColor =
+    borderTone === 'bg'
+      ? roles.bg
+      : isNacht
+        ? palette.noir2
+        : palette.paper3;
+  const max = 3;
+  const visible = friends.slice(0, max);
+  return (
+    <View style={styles.friendsAvStack}>
+      {visible.map((f, i) =>
+        f.avatarUrl ? (
+          <Image
+            key={f.id}
+            source={{ uri: f.avatarUrl }}
+            style={[
+              styles.friendsAv,
+              { marginLeft: i === 0 ? 0 : -6, borderColor },
+            ]}
+          />
+        ) : (
+          <View
+            key={f.id}
+            style={[
+              styles.friendsAv,
+              styles.friendsAvFallback,
+              {
+                marginLeft: i === 0 ? 0 : -6,
+                borderColor,
+                backgroundColor: isNacht ? palette.noir3 : palette.paper,
+              },
+            ]}
+          >
+            <Text style={[styles.friendsAvInitial, { color: roles.fgMuted }]}>
+              {(f.name.trim()[0] ?? '?').toUpperCase()}
+            </Text>
+          </View>
+        )
+      )}
+    </View>
+  );
+}
+
+function friendsLineLabel(names: string[]): string {
+  if (names.length === 1) return `${names[0]} ook`;
+  if (names.length === 2) return `${names[0]} & ${names[1]} ook`;
+  return `${names[0]} +${names.length - 1} ook`;
+}
+
+function lightenHexLocal(hex: string, amount: number): string {
+  const h = hex.replace('#', '');
+  if (h.length !== 6) return hex;
+  const r = parseInt(h.slice(0, 2), 16);
+  const g = parseInt(h.slice(2, 4), 16);
+  const b = parseInt(h.slice(4, 6), 16);
+  const blend = (c: number) =>
+    Math.round(c + (255 - c) * amount).toString(16).padStart(2, '0');
+  return `#${blend(r)}${blend(g)}${blend(b)}`;
+}
+
 const styles = StyleSheet.create({
   root: { flex: 1 },
+
+  // Context-regel boven de toolbar — wat zie je op de kaart?
+  contextLine: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+    paddingHorizontal: 18,
+    paddingTop: 4,
+    paddingBottom: 14,
+    gap: 10,
+  },
+  contextLabel: {
+    fontFamily: fontFamily.mono,
+    fontSize: 10,
+    letterSpacing: 1.4,
+    textTransform: 'uppercase',
+  },
+  contextMeta: {
+    fontFamily: fontFamily.mono,
+    fontSize: 10,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+  },
 
   // Toolbar row inside AppHeader (switch + recentre) — matches the
   // logo-lockup's 18px inset so they line up vertically.
@@ -772,4 +941,33 @@ const styles = StyleSheet.create({
     fontSize: 10,
     letterSpacing: 0.8,
   },
+
+  // Friends — avatars + optionele tinted pill
+  friendsAvStack: { flexDirection: 'row', marginLeft: 'auto' },
+  friendsAv: {
+    width: 18,
+    height: 18,
+    borderRadius: 999,
+    borderWidth: 1.5,
+  },
+  friendsAvFallback: { alignItems: 'center', justifyContent: 'center' },
+  friendsAvInitial: {
+    fontFamily: fontFamily.monoMedium,
+    fontSize: 9,
+  },
+  pill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    height: 24,
+    paddingLeft: 3,
+    paddingRight: 10,
+    borderRadius: 999,
+    alignSelf: 'flex-start',
+  },
+  pillText: {
+    fontFamily: fontFamily.medium,
+    fontSize: 11,
+  },
+  cardFriendsWrap: { marginTop: 8 },
 });

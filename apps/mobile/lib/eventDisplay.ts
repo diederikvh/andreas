@@ -54,6 +54,69 @@ export function walkingMinutes(
   return Math.max(1, Math.round(distanceKm(from, to) * 12));
 }
 
+// ─── Sociale dag-grenzen ──────────────────────────────────────────────
+// "Vanavond" loopt van 17:00 tot 05:00 's ochtends; daarbuiten is het
+// overdag. Wordt door Avond én Kaart gebruikt zodat "wat speelt nu"
+// op beide plekken hetzelfde betekent.
+
+export const NACHT_HOUR_THRESHOLD = 17;
+export const NACHT_END_HOUR = 5;
+
+export function isNachtHour(hour: number): boolean {
+  return hour >= NACHT_HOUR_THRESHOLD || hour < NACHT_END_HOUR;
+}
+
+export type SocialWindow = {
+  from: string;
+  to: string;
+  refDate: Date;
+  shifted: boolean;
+};
+
+/**
+ * Het "wat speelt nu / vandaag" venster — kleinst mogelijke subset.
+ * Nacht-mode: de 17:00→05:00 bubbel die je nu beleeft. Dag-mode:
+ * vandaag overdag, of (na 17:00) morgen overdag.
+ */
+export function socialWindow(mode: 'nacht' | 'dag'): SocialWindow {
+  const now = new Date();
+
+  if (mode === 'nacht') {
+    const start = new Date(now);
+    start.setHours(NACHT_HOUR_THRESHOLD, 0, 0, 0);
+    if (now.getHours() < NACHT_END_HOUR) {
+      start.setDate(start.getDate() - 1);
+    }
+    const end = new Date(start);
+    end.setDate(end.getDate() + 1);
+    end.setHours(NACHT_END_HOUR, 0, 0, 0);
+    const refDate = new Date(start);
+    refDate.setHours(0, 0, 0, 0);
+    return {
+      from: start.toISOString(),
+      to: end.toISOString(),
+      refDate,
+      shifted: false,
+    };
+  }
+
+  const refDate = new Date(now);
+  refDate.setHours(0, 0, 0, 0);
+  let shifted = false;
+  if (now.getHours() >= NACHT_HOUR_THRESHOLD) {
+    refDate.setDate(refDate.getDate() + 1);
+    shifted = true;
+  }
+  const to = new Date(refDate);
+  to.setDate(to.getDate() + 1);
+  return {
+    from: refDate.toISOString(),
+    to: to.toISOString(),
+    refDate,
+    shifted,
+  };
+}
+
 export function formatTime(iso: string): string {
   const d = new Date(iso);
   const hh = String(d.getHours()).padStart(2, '0');

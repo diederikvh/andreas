@@ -43,22 +43,16 @@ export function AppHeader({ children, solid = false }: AppHeaderProps = {}) {
   const insets = useSafeAreaInsets();
   return (
     <View style={[styles.wrap, { paddingTop: insets.top }]}>
-      <MaskedView
-        style={StyleSheet.absoluteFill}
-        maskElement={
-          <LinearGradient
-            colors={['#000', '#000', 'transparent']}
-            locations={[0, 0.92, 1]}
+      {solid ? (
+        // Solid header: blur + tint, géén fade — harde rand onderaan.
+        // Past bij schermen die een sticky-controls strip nodig
+        // hebben (Agenda chip-row, Kaart map-view).
+        <View style={StyleSheet.absoluteFill}>
+          <BlurView
+            intensity={40}
+            tint={mode === 'nacht' ? 'dark' : 'light'}
             style={StyleSheet.absoluteFill}
           />
-        }
-      >
-        <BlurView
-          intensity={40}
-          tint={mode === 'nacht' ? 'dark' : 'light'}
-          style={StyleSheet.absoluteFill}
-        />
-        {solid && (
           <View
             style={[
               StyleSheet.absoluteFill,
@@ -70,8 +64,28 @@ export function AppHeader({ children, solid = false }: AppHeaderProps = {}) {
               },
             ]}
           />
-        )}
-      </MaskedView>
+        </View>
+      ) : (
+        // Transparante header met blur die naar onderen wegvaagt —
+        // standaard treatment voor schermen waar content er onder
+        // doorscrollt.
+        <MaskedView
+          style={StyleSheet.absoluteFill}
+          maskElement={
+            <LinearGradient
+              colors={['#000', '#000', 'transparent']}
+              locations={[0, 0.7, 1]}
+              style={StyleSheet.absoluteFill}
+            />
+          }
+        >
+          <BlurView
+            intensity={40}
+            tint={mode === 'nacht' ? 'dark' : 'light'}
+            style={StyleSheet.absoluteFill}
+          />
+        </MaskedView>
+      )}
       <View style={styles.header}>
         <View style={styles.logoLockup}>
           <Text style={[styles.wordmark, { color: roles.fg }]}>Andreas</Text>
@@ -135,6 +149,10 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     zIndex: 10,
+    // Extra ruimte tussen de laatste controle-rij en de fade-edge
+    // van de blur — anders eindigt de fade te abrupt onder de
+    // tabbar/switch.
+    paddingBottom: 4,
   },
   header: {
     height: HEADER_HEIGHT,
