@@ -35,6 +35,13 @@ export const auth = betterAuth({
     'andreas://',
     ...(isDev ? ['exp://', 'exp://**', 'exp://192.168.*.*:*/**'] : []),
   ],
+  session: {
+    // Mobile-app default: ingelogd blijven tot je uitlogt. Sliding
+    // window — elke `updateAge` van activiteit schuift de expiry
+    // weer naar +6 maanden.
+    expiresIn: 60 * 60 * 24 * 180, // 180 dagen ≈ 6 maanden
+    updateAge: 60 * 60 * 24, // 1 dag — sessie wordt dagelijks ververst
+  },
   plugins: [
     expo(),
     // Mobile draagt sessie via Authorization: Bearer <token> i.p.v.

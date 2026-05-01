@@ -19,16 +19,14 @@ import Animated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import type { ApiEvent } from '@/lib/api';
+import { useSession } from '@/lib/authClient';
 import {
-  CATEGORY_TICK,
   DOW_NL_MIXED,
-  MONTHS_NL,
   formatPrice,
   formatTime,
 } from '@/lib/eventDisplay';
-import { useEvent } from '@/lib/queries';
+import { useEvent, useMySaves, useToggleSave } from '@/lib/queries';
 import { useMode, useRoles } from '@/store/mode';
-import { useIsSaved, useSavedStore, type SavedEvent } from '@/store/saved';
 import { fontFamily, palette } from '@/theme/tokens';
 
 const HERO_HEIGHT = 420;
@@ -213,7 +211,7 @@ export default function EventDetail() {
             </Text>
           </Animated.View>
           <View style={styles.heroActions}>
-            <HeartButton id={id} event={event} />
+            <HeartButton id={id} />
             <CircleButton icon="share-outline" />
           </View>
         </View>
@@ -305,27 +303,13 @@ function toViewModel(event: ApiEvent): ViewModel {
   };
 }
 
-function buildSnapshot(id: string, event: ApiEvent): SavedEvent {
-  const d = new Date(event.startsAt);
-  return {
-    id,
-    dow: DOW_NL_MIXED[d.getDay()],
-    num: String(d.getDate()).padStart(2, '0'),
-    month: MONTHS_NL[d.getMonth()],
-    time: formatTime(event.startsAt),
-    duration: event.category.toLowerCase(),
-    title: event.title,
-    venue: event.venue.name,
-    category: event.category,
-    tick: CATEGORY_TICK[event.category],
-    friends: [],
-  };
-}
-
-function HeartButton({ id, event }: { id: string; event: ApiEvent }) {
+function HeartButton({ id }: { id: string }) {
   const mode = useMode();
-  const isSaved = useIsSaved(id);
-  const toggle = useSavedStore((s) => s.toggle);
+  const { data: session } = useSession();
+  const authed = Boolean(session?.user?.id);
+  const { data: saves } = useMySaves({ enabled: authed });
+  const toggleMutation = useToggleSave();
+  const isSaved = Boolean(saves?.some((s) => s.id === id));
   const scale = useSharedValue(1);
 
   const animStyle = useAnimatedStyle(() => ({
@@ -333,16 +317,21 @@ function HeartButton({ id, event }: { id: string; event: ApiEvent }) {
   }));
 
   const onPress = () => {
-    const nowSaved = toggle(buildSnapshot(id, event));
+    if (!authed) {
+      // Niet ingelogd → naar de Jij-tab waar de inlog-flow leeft.
+      router.push('/jij');
+      return;
+    }
     scale.value = withSequence(
       withTiming(1.3, { duration: 140 }),
       withTiming(1, { duration: 180 })
     );
-    if (nowSaved) {
+    if (!isSaved) {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     } else {
       Haptics.selectionAsync();
     }
+    toggleMutation.mutate(id);
   };
 
   const iconName = isSaved ? 'heart' : 'heart-outline';

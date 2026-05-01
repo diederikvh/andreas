@@ -8,6 +8,7 @@ import { eq } from 'drizzle-orm';
 import { auth } from './auth.js';
 import { db, schema } from './db/index.js';
 import { eventsRoute } from './routes/events.js';
+import { savesRoute } from './routes/saves.js';
 import { venuesRoute } from './routes/venues.js';
 import { uploadToBunny } from './storage/bunny.js';
 
@@ -144,6 +145,7 @@ app.post('/me/avatar', async (c) => {
 
 app.route('/events', eventsRoute);
 app.route('/venues', venuesRoute);
+app.route('/saves', savesRoute);
 
 const port = Number(process.env.PORT ?? 8787);
 serve({ fetch: app.fetch, port });

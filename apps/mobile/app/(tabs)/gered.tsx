@@ -1,216 +1,216 @@
+import { Ionicons } from '@expo/vector-icons';
 import { useScrollToTop } from '@react-navigation/native';
 import { router } from 'expo-router';
-import { useMemo, useRef, useState } from 'react';
+import { useMemo, useRef } from 'react';
 import {
-  Dimensions,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
-import Animated, {
-  useAnimatedStyle,
-  useSharedValue,
-  withTiming,
-} from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-
-import { brandEase } from '@/lib/easing';
 
 import { AppHeader, HEADER_HEIGHT } from '@/components/AppHeader';
 import { EventListRow } from '@/components/EventListRow';
-import type { GeredItem, GeredView } from '@/mocks/gered';
-import { GERED, GERED_HEAD } from '@/mocks/gered';
+import type { ApiEvent } from '@/lib/api';
+import { useSession } from '@/lib/authClient';
+import {
+  CATEGORY_TICK,
+  type EventGroup,
+  formatTime,
+  groupEventsByDay,
+} from '@/lib/eventDisplay';
+import { useMySaves } from '@/lib/queries';
 import { useMode, useRoles } from '@/store/mode';
-import { useSavedList } from '@/store/saved';
-import { fontFamily } from '@/theme/tokens';
-
-const SCREEN_W = Dimensions.get('window').width;
-
-// Until a thumb is part of the data, fall back to a per-category image
-// so the saved rows look the same as the Agenda's.
-const CATEGORY_THUMB: Record<string, string> = {
-  Muziek:
-    'https://images.unsplash.com/photo-1470229722913-7c0e2dbbafd3?w=200&q=60&auto=format&fit=crop',
-  Theater:
-    'https://images.unsplash.com/photo-1516450360452-9312f5e86fc7?w=200&q=60&auto=format&fit=crop',
-  Literatuur:
-    'https://images.unsplash.com/photo-1485579149621-3123dd979885?w=200&q=60&auto=format&fit=crop',
-  Film: 'https://images.unsplash.com/photo-1478720568477-152d9b164e26?w=200&q=60&auto=format&fit=crop',
-};
-
-type Group = {
-  key: string;
-  dow: string;
-  num: string;
-  month: string;
-  items: GeredItem[];
-};
-
-function groupByDate(items: GeredItem[]): Group[] {
-  const map = new Map<string, Group>();
-  for (const item of items) {
-    const key = `${item.num}-${item.month}`;
-    const existing = map.get(key);
-    if (existing) {
-      existing.items.push(item);
-    } else {
-      map.set(key, {
-        key,
-        dow: item.dow,
-        num: item.num,
-        month: item.month,
-        items: [item],
-      });
-    }
-  }
-  return Array.from(map.values());
-}
+import { fontFamily, palette } from '@/theme/tokens';
 
 export default function Gered() {
   const mode = useMode();
   const roles = useRoles();
   const insets = useSafeAreaInsets();
-  const upRef = useRef<ScrollView>(null);
-  const pastRef = useRef<ScrollView>(null);
-  useScrollToTop(upRef);
-  useScrollToTop(pastRef);
+  const isNacht = mode === 'nacht';
+  const scrollRef = useRef<ScrollView>(null);
+  useScrollToTop(scrollRef);
 
-  const head = GERED_HEAD[mode];
-  const [view, setView] = useState<GeredView>('up');
-  const pos = useSharedValue(0);
-  const savedList = useSavedList();
+  const { data: session } = useSession();
+  const authed = Boolean(session?.user?.id);
+  const { data: saves, isLoading, error } = useMySaves({ enabled: authed });
 
-  const toggle = () => {
-    const next: GeredView = view === 'up' ? 'past' : 'up';
-    pos.value = withTiming(next === 'past' ? 1 : 0, {
-      duration: 320,
-      easing: brandEase,
-    });
-    setView(next);
-  };
+  const upcoming = useMemo(() => {
+    if (!saves) return [];
+    const now = Date.now();
+    return saves.filter(
+      (s) => new Date(s.endsAt ?? s.startsAt).getTime() >= now
+    );
+  }, [saves]);
+  const past = useMemo(() => {
+    if (!saves) return [];
+    const now = Date.now();
+    return saves
+      .filter((s) => new Date(s.endsAt ?? s.startsAt).getTime() < now)
+      .sort(
+        (a, b) =>
+          new Date(b.startsAt).getTime() - new Date(a.startsAt).getTime()
+      );
+  }, [saves]);
 
-  const pagesStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: -pos.value * SCREEN_W }],
-  }));
+  const upcomingDays: EventGroup[] = useMemo(
+    () => groupEventsByDay(upcoming),
+    [upcoming]
+  );
+  const pastDays: EventGroup[] = useMemo(
+    () => groupEventsByDay(past).reverse(),
+    [past]
+  );
 
   const topInset = insets.top + HEADER_HEIGHT;
   const bottomInset = insets.bottom + 96;
 
-  // Saves coming from the heart-button on the detail screen sit above
-  // the per-mode mock list under their own "Net opgeslagen" anchor.
-  // Filter out any id that is already in the mock so we don't double-render.
-  const mockIds = new Set(GERED[mode].up.map((i) => i.id));
-  const savedItems: GeredItem[] = savedList.filter((s) => !mockIds.has(s.id));
+  if (!authed) {
+    return (
+      <View style={[styles.root, { backgroundColor: roles.bg }]}>
+        <View
+          style={[
+            styles.emptyBody,
+            { paddingTop: topInset + 24, paddingBottom: bottomInset },
+          ]}
+        >
+          <Text style={[styles.kicker, { color: roles.accent }]}>Gered</Text>
+          <Text style={[styles.headTitle, { color: roles.fg }]}>Op uit.</Text>
+          <Text style={[styles.lead, { color: roles.fgRead }]}>
+            Tik op het hart bij een event om hem hier op te slaan. Inloggen
+            doe je via de Jij-tab.
+          </Text>
+          <Pressable
+            onPress={() => router.push('/jij')}
+            style={[
+              styles.cta,
+              { backgroundColor: isNacht ? palette.acid : palette.red },
+            ]}
+          >
+            <Text
+              style={[
+                styles.ctaText,
+                { color: isNacht ? palette.noir : palette.paper3 },
+              ]}
+            >
+              Naar inloggen
+            </Text>
+          </Pressable>
+        </View>
+        <AppHeader />
+      </View>
+    );
+  }
+
+  if (!isLoading && !error && saves && saves.length === 0) {
+    return (
+      <View style={[styles.root, { backgroundColor: roles.bg }]}>
+        <View
+          style={[
+            styles.emptyCenter,
+            { paddingTop: topInset, paddingBottom: bottomInset },
+          ]}
+        >
+          <Ionicons
+            name="heart-outline"
+            size={48}
+            color={roles.fgMuted}
+          />
+          <Text style={[styles.emptyTitle, { color: roles.fg }]}>
+            Nog niks opgeslagen.
+          </Text>
+          <Text style={[styles.emptySub, { color: roles.fgMuted }]}>
+            Tik op een hart bij een event om hem hier op te slaan.
+          </Text>
+        </View>
+        <AppHeader />
+      </View>
+    );
+  }
 
   return (
     <View style={[styles.root, { backgroundColor: roles.bg }]}>
-      <View style={styles.pagesViewport}>
-        <Animated.View style={[styles.pages, pagesStyle]}>
-          <Page
-            scrollRef={upRef}
-            kicker="Zin in"
-            title={head.title}
-            link="Geschiedenis →"
-            onLink={toggle}
-            items={GERED[mode].up}
-            savedItems={savedItems}
-            topInset={topInset}
-            bottomInset={bottomInset}
-          />
-          <Page
-            scrollRef={pastRef}
-            kicker="Goeie tijden"
-            title="Geweest."
-            link="Mijn planning →"
-            onLink={toggle}
-            items={GERED[mode].past}
-            topInset={topInset}
-            bottomInset={bottomInset}
-          />
-        </Animated.View>
-      </View>
+      <ScrollView
+        ref={scrollRef}
+        style={styles.page}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{
+          paddingTop: topInset,
+          paddingBottom: bottomInset,
+        }}
+      >
+        <View style={styles.head}>
+          <Text style={[styles.headKicker, { color: roles.accent }]}>
+            Zin in
+          </Text>
+          <Text style={[styles.headTitle, { color: roles.fg }]}>Op uit.</Text>
+        </View>
+
+        {isLoading && <ListState text="Laden…" />}
+        {error && <ListState text="Kon je saves niet laden." tone="error" />}
+
+        {upcomingDays.map((day) => (
+          <View key={`up-${day.id}`}>
+            <DateAnchor group={day} />
+            {day.events.map((e) => (
+              <SavedRow key={e.id} event={e} />
+            ))}
+          </View>
+        ))}
+
+        {pastDays.length > 0 && (
+          <>
+            <PastAnchor count={past.length} />
+            {pastDays.map((day) => (
+              <View key={`past-${day.id}`}>
+                <DateAnchor group={day} dim />
+                {day.events.map((e) => (
+                  <SavedRow key={e.id} event={e} dim />
+                ))}
+              </View>
+            ))}
+          </>
+        )}
+      </ScrollView>
       <AppHeader />
     </View>
   );
 }
 
-function Page({
-  scrollRef,
-  kicker,
-  title,
-  link,
-  onLink,
-  items,
-  savedItems,
-  topInset,
-  bottomInset,
+function DateAnchor({
+  group,
+  dim = false,
 }: {
-  scrollRef: React.RefObject<ScrollView | null>;
-  kicker: string;
-  title: string;
-  link: string;
-  onLink: () => void;
-  items: GeredItem[];
-  savedItems?: GeredItem[];
-  topInset: number;
-  bottomInset: number;
+  group: EventGroup;
+  dim?: boolean;
 }) {
   const roles = useRoles();
-  const groups = useMemo(() => groupByDate(items), [items]);
-  return (
-    <ScrollView
-      ref={scrollRef}
-      style={styles.page}
-      showsVerticalScrollIndicator={false}
-      contentContainerStyle={{
-        paddingTop: topInset,
-        paddingBottom: bottomInset,
-      }}
-    >
-      <View style={styles.head}>
-        <Text style={[styles.headKicker, { color: roles.accent }]}>
-          {kicker}
-        </Text>
-        <View style={styles.headTitleRow}>
-          <Text style={[styles.headTitle, { color: roles.fg }]}>{title}</Text>
-          <Pressable onPress={onLink} hitSlop={8}>
-            <Text style={[styles.archiefLink, { color: roles.fgMuted }]}>
-              {link}
-            </Text>
-          </Pressable>
-        </View>
-      </View>
-      {savedItems && savedItems.length > 0 && (
-        <View>
-          <SavedAnchor count={savedItems.length} />
-          {savedItems.map((item) => (
-            <GeredRow key={item.id} item={item} />
-          ))}
-        </View>
-      )}
-      {groups.map((group) => (
-        <View key={group.key}>
-          <DateAnchor group={group} />
-          {group.items.map((item) => (
-            <GeredRow key={item.id} item={item} />
-          ))}
-        </View>
-      ))}
-    </ScrollView>
-  );
-}
-
-function SavedAnchor({ count }: { count: number }) {
-  const roles = useRoles();
+  const fg = dim ? roles.fgMuted : roles.fg;
+  const meta = dim ? roles.fgPlaceholder : roles.fgMuted;
   return (
     <View style={styles.anchor}>
       <View style={styles.anchorLeft}>
-        <Text style={[styles.anchorDow, { color: roles.fg }]}>
-          Net opgeslagen
+        <Text style={[styles.anchorDow, { color: fg }]}>
+          {group.dow} {group.num}
+        </Text>
+        <Text style={[styles.anchorMonth, { color: meta }]}>
+          {group.month}
         </Text>
       </View>
+      <Text style={[styles.anchorCount, { color: roles.fgPlaceholder }]}>
+        {group.count} {group.count === 1 ? 'plan' : 'plannen'}
+      </Text>
+    </View>
+  );
+}
+
+function PastAnchor({ count }: { count: number }) {
+  const roles = useRoles();
+  return (
+    <View style={[styles.anchor, styles.pastAnchor]}>
+      <Text style={[styles.pastLabel, { color: roles.fgMuted }]}>Geweest</Text>
       <Text style={[styles.anchorCount, { color: roles.fgPlaceholder }]}>
         {count} {count === 1 ? 'plan' : 'plannen'}
       </Text>
@@ -218,60 +218,85 @@ function SavedAnchor({ count }: { count: number }) {
   );
 }
 
-function DateAnchor({ group }: { group: Group }) {
+function SavedRow({
+  event,
+  dim = false,
+}: {
+  event: ApiEvent;
+  dim?: boolean;
+}) {
+  const tone = CATEGORY_TICK[event.category];
+  return (
+    <View style={dim ? styles.rowDim : undefined}>
+      <EventListRow
+        time={formatTime(event.startsAt)}
+        duration={event.category.toLowerCase()}
+        thumb={event.imageUrl ?? ''}
+        title={event.title}
+        venue={event.venue.name}
+        tags={[{ label: event.category, tone }]}
+        tick={tone}
+        onPress={() => router.push(`/event/${event.id}`)}
+      />
+    </View>
+  );
+}
+
+function ListState({
+  text,
+  tone = 'muted',
+}: {
+  text: string;
+  tone?: 'muted' | 'error';
+}) {
   const roles = useRoles();
   return (
-    <View style={styles.anchor}>
-      <View style={styles.anchorLeft}>
-        <Text style={[styles.anchorDow, { color: roles.fg }]}>
-          {group.dow} {group.num}
-        </Text>
-        <Text style={[styles.anchorMonth, { color: roles.fgMuted }]}>
-          {group.month}
-        </Text>
-      </View>
-      <Text style={[styles.anchorCount, { color: roles.fgPlaceholder }]}>
-        {group.items.length} {group.items.length === 1 ? 'plan' : 'plannen'}
+    <View style={styles.listState}>
+      <Text
+        style={[
+          styles.listStateText,
+          { color: tone === 'error' ? '#c9453a' : roles.fgMuted },
+        ]}
+      >
+        {text}
       </Text>
     </View>
   );
 }
 
-function GeredRow({ item }: { item: GeredItem }) {
-  return (
-    <EventListRow
-      time={item.time}
-      duration={item.duration}
-      thumb={CATEGORY_THUMB[item.category] ?? CATEGORY_THUMB.Muziek}
-      title={item.title}
-      venue={item.venue}
-      tags={[{ label: item.category, tone: item.tick }]}
-      friends={item.friends}
-      tick={item.tick}
-      onPress={() => router.push(`/event/${item.id}`)}
-    />
-  );
-}
-
 const styles = StyleSheet.create({
   root: { flex: 1 },
+  page: { flex: 1 },
 
-  // Two-page swipeable container (up | past). The Animated.View is
-  // absolutely positioned so it stretches to fill the viewport's height
-  // — `flex: 1` together with a fixed `width: 2x` confused the layout
-  // and broke vertical scrolling on the inner ScrollViews.
-  pagesViewport: { flex: 1, overflow: 'hidden' },
-  pages: {
-    position: 'absolute',
-    top: 0,
-    bottom: 0,
-    left: 0,
-    flexDirection: 'row',
-    width: SCREEN_W * 2,
+  emptyBody: {
+    flex: 1,
+    paddingHorizontal: 22,
+    gap: 14,
   },
-  page: { width: SCREEN_W },
+  kicker: {
+    fontFamily: fontFamily.mono,
+    fontSize: 10,
+    letterSpacing: 1.4,
+    textTransform: 'uppercase',
+  },
+  lead: {
+    fontFamily: fontFamily.body,
+    fontSize: 13,
+    lineHeight: 19,
+    marginBottom: 4,
+  },
+  cta: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 18,
+    paddingVertical: 12,
+    borderRadius: 999,
+  },
+  ctaText: {
+    fontFamily: fontFamily.medium,
+    fontSize: 13,
+    letterSpacing: -0.07,
+  },
 
-  // Head — kicker + display title with a small archive link
   head: {
     paddingHorizontal: 22,
     paddingTop: 4,
@@ -283,27 +308,14 @@ const styles = StyleSheet.create({
     letterSpacing: 1.4,
     textTransform: 'uppercase',
   },
-  headTitleRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'baseline',
-    marginTop: 6,
-    gap: 10,
-  },
   headTitle: {
     fontFamily: fontFamily.display,
     fontSize: 30,
     letterSpacing: -0.9,
     lineHeight: 30,
-  },
-  archiefLink: {
-    fontFamily: fontFamily.monoMedium,
-    fontSize: 10,
-    letterSpacing: 1.2,
-    textTransform: 'uppercase',
+    marginTop: 6,
   },
 
-  // Date anchor
   anchor: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -331,5 +343,41 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
     textTransform: 'uppercase',
   },
+  pastAnchor: { marginTop: 22 },
+  pastLabel: {
+    fontFamily: fontFamily.mono,
+    fontSize: 11,
+    letterSpacing: 1.6,
+    textTransform: 'uppercase',
+  },
 
+  rowDim: { opacity: 0.55 },
+
+  // Centered empty state — heart icon + title + sub
+  emptyCenter: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 32,
+    gap: 12,
+  },
+  emptyTitle: {
+    fontFamily: fontFamily.display,
+    fontSize: 22,
+    letterSpacing: -0.55,
+    textAlign: 'center',
+  },
+  emptySub: {
+    fontFamily: fontFamily.body,
+    fontSize: 13,
+    lineHeight: 19,
+    textAlign: 'center',
+  },
+
+  listState: { paddingHorizontal: 22, paddingVertical: 14 },
+  listStateText: {
+    fontFamily: fontFamily.mono,
+    fontSize: 11,
+    letterSpacing: 0.8,
+  },
 });

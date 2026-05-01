@@ -185,6 +185,22 @@ export async function updateMe(input: {
   return user;
 }
 
+export type SavedApiEvent = ApiEvent & { savedAt: string };
+
+export async function getMySaves(): Promise<SavedApiEvent[]> {
+  const { events } = await authedRequest<{ events: SavedApiEvent[] }>(
+    '/saves'
+  );
+  return events;
+}
+
+export async function toggleSave(eventId: string): Promise<{ saved: boolean }> {
+  return await authedRequest<{ saved: boolean }>('/saves', {
+    method: 'POST',
+    body: JSON.stringify({ eventId }),
+  });
+}
+
 export async function uploadAvatar(input: {
   uri: string;
   mimeType?: string;
