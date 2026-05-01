@@ -9,6 +9,7 @@ import {
   declineFriendRequest,
   getEvent,
   getEvents,
+  getFriendDetail,
   getFriendRequests,
   getFriends,
   getMySaves,
@@ -28,6 +29,7 @@ export const queryKeys = {
   saves: () => ['saves'] as const,
   friends: () => ['friends'] as const,
   friendRequests: () => ['friend-requests'] as const,
+  friend: (id: string) => ['friend', id] as const,
   userSearch: (q: string) => ['user-search', q] as const,
 };
 
@@ -113,10 +115,21 @@ export function useUserSearch(q: string) {
   });
 }
 
+export function useFriend(id: string) {
+  return useQuery({
+    queryKey: queryKeys.friend(id),
+    queryFn: () => getFriendDetail(id),
+    enabled: Boolean(id),
+  });
+}
+
 function invalidateFriendsCaches(qc: ReturnType<typeof useQueryClient>) {
   qc.invalidateQueries({ queryKey: queryKeys.friends() });
   qc.invalidateQueries({ queryKey: queryKeys.friendRequests() });
   qc.invalidateQueries({ queryKey: ['user-search'] });
+  // Friend-pill data op event-rijen verandert mee als vrienden-set wijzigt.
+  qc.invalidateQueries({ queryKey: ['events'] });
+  qc.invalidateQueries({ queryKey: ['event'] });
 }
 
 export function useSendFriendRequest() {

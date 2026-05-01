@@ -91,12 +91,13 @@ export function EventListRow({
               {tags?.map((tag) => {
                 const tone = TONE[mode][tag.tone];
                 const bg = `${tone}26`; // ~15% alpha
+                const textColor = toneForLabelText(tone, mode);
                 return (
                   <View
                     key={tag.label}
                     style={[styles.tag, { backgroundColor: bg }]}
                   >
-                    <Text style={[styles.tagText, { color: tone }]}>
+                    <Text style={[styles.tagText, { color: textColor }]}>
                       {tag.label}
                     </Text>
                   </View>
@@ -123,6 +124,25 @@ export function EventListRow({
   );
 }
 
+// Mengt een hex-kleur met wit voor extra leesbaarheid op donkere bg.
+// `amount` = 0 (origineel) tot 1 (puur wit).
+function lightenHex(hex: string, amount: number): string {
+  const h = hex.replace('#', '');
+  if (h.length !== 6) return hex;
+  const r = parseInt(h.slice(0, 2), 16);
+  const g = parseInt(h.slice(2, 4), 16);
+  const b = parseInt(h.slice(4, 6), 16);
+  const blend = (c: number) =>
+    Math.round(c + (255 - c) * amount).toString(16).padStart(2, '0');
+  return `#${blend(r)}${blend(g)}${blend(b)}`;
+}
+
+/** Tone-kleur voor leesbare tekst-op-getinte-bg labels. Nacht-mode
+ *  krijgt een subtiele lift; dag-mode blijft de donkere variant. */
+function toneForLabelText(hex: string, mode: 'nacht' | 'dag'): string {
+  return mode === 'nacht' ? lightenHex(hex, 0.35) : hex;
+}
+
 function FriendsPill({
   friends,
   accent,
@@ -131,22 +151,44 @@ function FriendsPill({
   accent: string;
 }) {
   const roles = useRoles();
+  const mode = useMode();
   const bg = `${accent}1f`; // ~12% alpha
+  const textColor = toneForLabelText(accent, mode);
   return (
     <View style={[styles.friendsPill, { backgroundColor: bg }]}>
       <View style={styles.avstack}>
-        {friends.map((f, i) => (
-          <Image
-            key={f.name}
-            source={{ uri: f.avatar }}
-            style={[
-              styles.avatar,
-              { marginLeft: i === 0 ? 0 : -6, borderColor: roles.bg },
-            ]}
-          />
-        ))}
+        {friends.map((f, i) =>
+          f.avatar ? (
+            <Image
+              key={`${f.name}-${i}`}
+              source={{ uri: f.avatar }}
+              style={[
+                styles.avatar,
+                { marginLeft: i === 0 ? 0 : -6, borderColor: roles.bg },
+              ]}
+            />
+          ) : (
+            <View
+              key={`${f.name}-${i}`}
+              style={[
+                styles.avatar,
+                styles.avatarFallback,
+                {
+                  marginLeft: i === 0 ? 0 : -6,
+                  borderColor: roles.bg,
+                  backgroundColor:
+                    mode === 'nacht' ? palette.noir2 : palette.paper2,
+                },
+              ]}
+            >
+              <Text style={[styles.avatarInitial, { color: accent }]}>
+                {(f.name.trim()[0] ?? '?').toUpperCase()}
+              </Text>
+            </View>
+          )
+        )}
       </View>
-      <Text style={[styles.friendsText, { color: accent }]}>
+      <Text style={[styles.friendsText, { color: textColor }]}>
         {friendsLabel(friends.map((f) => f.name))}
       </Text>
     </View>
@@ -237,6 +279,12 @@ const styles = StyleSheet.create({
     height: 18,
     borderRadius: 999,
     borderWidth: 1.5,
+  },
+  avatarFallback: { alignItems: 'center', justifyContent: 'center' },
+  avatarInitial: {
+    fontFamily: fontFamily.monoMedium,
+    fontSize: 9,
+    letterSpacing: 0,
   },
   friendsText: {
     fontFamily: fontFamily.medium,

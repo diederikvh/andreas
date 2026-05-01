@@ -226,6 +226,10 @@ function SavedRow({
   dim?: boolean;
 }) {
   const tone = CATEGORY_TICK[event.category];
+  const friends = event.friendsSaved?.map((f) => ({
+    name: f.name,
+    avatar: f.avatarUrl,
+  }));
   return (
     <View style={dim ? styles.rowDim : undefined}>
       <EventListRow
@@ -235,6 +239,7 @@ function SavedRow({
         title={event.title}
         venue={event.venue.name}
         tags={[{ label: event.category, tone }]}
+        friends={friends && friends.length > 0 ? friends : undefined}
         tick={tone}
         onPress={() => router.push(`/event/${event.id}`)}
       />

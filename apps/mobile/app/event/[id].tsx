@@ -152,6 +152,73 @@ export default function EventDetail() {
             </Text>
           )}
 
+          {event.friendsSaved && event.friendsSaved.length > 0 && (
+            <Pressable
+              onPress={() =>
+                router.push(`/friend/${event.friendsSaved![0].id}` as never)
+              }
+              style={[
+                styles.friendsBlock,
+                {
+                  borderColor: isNacht ? '#232327' : palette.paper,
+                  backgroundColor: isNacht ? '#101012' : palette.paper2,
+                },
+              ]}
+            >
+              <View style={styles.friendsAvatars}>
+                {event.friendsSaved.slice(0, 3).map((f, i) =>
+                  f.avatarUrl ? (
+                    <Image
+                      key={f.id}
+                      source={{ uri: f.avatarUrl }}
+                      style={[
+                        styles.friendsAv,
+                        {
+                          marginLeft: i === 0 ? 0 : -10,
+                          borderColor: isNacht ? '#101012' : palette.paper2,
+                        },
+                      ]}
+                    />
+                  ) : (
+                    <View
+                      key={f.id}
+                      style={[
+                        styles.friendsAv,
+                        styles.friendsAvFallback,
+                        {
+                          marginLeft: i === 0 ? 0 : -10,
+                          borderColor: isNacht ? '#101012' : palette.paper2,
+                          backgroundColor: isNacht
+                            ? palette.noir3
+                            : palette.paper,
+                        },
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.friendsAvInitial,
+                          { color: roles.fgMuted },
+                        ]}
+                      >
+                        {(f.name.trim()[0] ?? '?').toUpperCase()}
+                      </Text>
+                    </View>
+                  )
+                )}
+              </View>
+              <Text
+                style={[styles.friendsLine, { color: roles.fgRead }]}
+                numberOfLines={2}
+              >
+                <Text style={[styles.friendsName, { color: roles.fg }]}>
+                  {event.friendsSaved.map((f) => f.name).join(', ')}
+                </Text>
+                {' '}
+                {event.friendsSaved.length === 1 ? 'heeft dit ook' : 'hebben dit ook'} opgeslagen.
+              </Text>
+            </Pressable>
+          )}
+
           <Pressable
             style={[
               styles.invite,
@@ -535,6 +602,31 @@ const styles = StyleSheet.create({
     lineHeight: 20.8,
     marginBottom: 12,
   },
+
+  // Friends-block — vrienden die dit event ook hebben opgeslagen
+  friendsBlock: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: 12,
+    marginTop: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  friendsAvatars: { flexDirection: 'row' },
+  friendsAv: { width: 28, height: 28, borderRadius: 999, borderWidth: 2 },
+  friendsAvFallback: { alignItems: 'center', justifyContent: 'center' },
+  friendsAvInitial: {
+    fontFamily: fontFamily.monoMedium,
+    fontSize: 12,
+  },
+  friendsLine: {
+    flex: 1,
+    fontFamily: fontFamily.body,
+    fontSize: 12.5,
+    lineHeight: 17.5,
+  },
+  friendsName: { fontFamily: fontFamily.bold },
 
   // Loading / error fallback
   fallbackBody: {

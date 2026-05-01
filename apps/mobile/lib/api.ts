@@ -10,6 +10,13 @@
 const BASE_URL =
   process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:8787';
 
+export type ApiFriendBadge = {
+  id: string;
+  name: string;
+  handle: string | null;
+  avatarUrl: string | null;
+};
+
 export type ApiEvent = {
   id: string;
   title: string;
@@ -31,6 +38,10 @@ export type ApiEvent = {
     description?: string | null;
     imageUrl?: string | null;
   };
+  /** Tot 3 vrienden die dit event ook hebben opgeslagen. */
+  friendsSaved?: ApiFriendBadge[];
+  /** Totale telling van vrienden die dit event hebben opgeslagen. */
+  friendsSavedCount?: number;
 };
 
 export type EventsFilter = {
@@ -52,15 +63,6 @@ class ApiError extends Error {
   }
 }
 
-async function request<T>(path: string): Promise<T> {
-  const res = await fetch(`${BASE_URL}${path}`);
-  if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    throw new ApiError(text || `Request failed (${res.status})`, res.status);
-  }
-  return (await res.json()) as T;
-}
-
 export async function getEvents(filter: EventsFilter = {}): Promise<ApiEvent[]> {
   const params = new URLSearchParams();
   if (filter.featured) params.set('featured', 'true');
@@ -70,14 +72,17 @@ export async function getEvents(filter: EventsFilter = {}): Promise<ApiEvent[]> 
   if (filter.q && filter.q.trim().length > 0) params.set('q', filter.q.trim());
   if (filter.limit) params.set('limit', String(filter.limit));
   const qs = params.toString();
-  const { events } = await request<{ events: ApiEvent[] }>(
+  // authedRequest stuurt de bearer mee als die er is, anders niet —
+  // /events werkt voor uitgelogde users (zonder friendsSaved data) en
+  // ingelogde users (mét friendsSaved).
+  const { events } = await authedRequest<{ events: ApiEvent[] }>(
     `/events${qs ? `?${qs}` : ''}`
   );
   return events;
 }
 
 export async function getEvent(id: string): Promise<ApiEvent> {
-  const { event } = await request<{ event: ApiEvent }>(`/events/${id}`);
+  const { event } = await authedRequest<{ event: ApiEvent }>(`/events/${id}`);
   return event;
 }
 
@@ -100,7 +105,7 @@ export type ApiVenueWithProgram = {
 };
 
 export async function getVenue(slug: string): Promise<ApiVenueWithProgram> {
-  return await request<ApiVenueWithProgram>(`/venues/${slug}`);
+  return await authedRequest<ApiVenueWithProgram>(`/venues/${slug}`);
 }
 
 export type ApiMe = {
@@ -266,6 +271,15 @@ export async function searchUsers(q: string): Promise<ApiSearchUser[]> {
     `/users/search?q=${encodeURIComponent(q)}`
   );
   return users;
+}
+
+export type ApiFriendDetail = {
+  user: ApiPublicUser;
+  events: ApiEvent[];
+};
+
+export async function getFriendDetail(id: string): Promise<ApiFriendDetail> {
+  return await authedRequest<ApiFriendDetail>(`/friends/${id}`);
 }
 
 export async function uploadAvatar(input: {

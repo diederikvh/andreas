@@ -156,7 +156,7 @@ export default function Agenda() {
           </View>
         ))}
       </ScrollView>
-      <AppHeader>
+      <AppHeader solid>
         <View style={{ height: DAYSTRIP_HEIGHT }}>
           {days.length > 0 && selected && (
             <DayStrip
@@ -416,6 +416,10 @@ function DateAnchor({ day }: { day: EventGroup }) {
 }
 
 function AgendaRow({ event }: { event: ApiEvent }) {
+  const friends = event.friendsSaved?.map((f) => ({
+    name: f.name,
+    avatar: f.avatarUrl,
+  }));
   return (
     <EventListRow
       time={formatTime(event.startsAt)}
@@ -424,6 +428,7 @@ function AgendaRow({ event }: { event: ApiEvent }) {
       title={event.title}
       venue={event.venue.name}
       tags={[{ label: event.category, tone: CATEGORY_TICK[event.category] }]}
+      friends={friends && friends.length > 0 ? friends : undefined}
       tick={CATEGORY_TICK[event.category]}
       onPress={() => router.push(`/event/${event.id}`)}
     />

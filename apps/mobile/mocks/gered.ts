@@ -10,7 +10,7 @@ import type { Mode } from '@/theme/tokens';
 
 export type Friend = {
   name: string;
-  avatar: string;
+  avatar: string | null;
 };
 
 export type GeredItem = {

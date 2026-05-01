@@ -336,12 +336,17 @@ function CategoryTabs() {
 }
 
 function ApiEventRow({ event }: { event: ApiEvent }) {
+  const friends = event.friendsSaved?.map((f) => ({
+    name: f.name,
+    avatar: f.avatarUrl,
+  }));
   return (
     <EventListRow
       thumb={event.imageUrl ?? ''}
       title={event.title}
       venue={formatMeta(event)}
       tags={[{ label: event.category, tone: CATEGORY_TICK[event.category] }]}
+      friends={friends && friends.length > 0 ? friends : undefined}
       tick={CATEGORY_TICK[event.category]}
       onPress={() => router.push(`/event/${event.id}`)}
     />

@@ -1,4 +1,4 @@
-import { and, desc, eq, ilike, inArray, isNotNull, ne, or } from 'drizzle-orm';
+import { and, asc, desc, eq, ilike, inArray, isNotNull, ne, or } from 'drizzle-orm';
 import { Hono, type Context } from 'hono';
 
 import { auth } from '../auth.js';
@@ -229,6 +229,78 @@ friendsRoute.post('/decline', async (c) => {
       )
     );
   return c.json({ ok: true });
+});
+
+friendsRoute.get('/:id', async (c) => {
+  const me = await requireUserId(c);
+  if (typeof me !== 'string') return me;
+
+  const friendId = c.req.param('id');
+  if (friendId === me) {
+    return c.json({ error: 'Niet je eigen profiel via deze route.' }, 400);
+  }
+
+  // TODO (privacy): later checken op users.privacy / per-friendship
+  // visibility-flag voordat we hun saves teruggeven.
+  const [friendship] = await db
+    .select()
+    .from(schema.friendships)
+    .where(
+      and(
+        eq(schema.friendships.status, 'accepted'),
+        or(
+          and(
+            eq(schema.friendships.fromUserId, me),
+            eq(schema.friendships.toUserId, friendId)
+          ),
+          and(
+            eq(schema.friendships.fromUserId, friendId),
+            eq(schema.friendships.toUserId, me)
+          )
+        )
+      )
+    )
+    .limit(1);
+  if (!friendship) {
+    return c.json({ error: 'Niet bevriend.' }, 403);
+  }
+
+  const [user] = await db
+    .select(publicUserCols)
+    .from(schema.users)
+    .where(eq(schema.users.id, friendId))
+    .limit(1);
+  if (!user) return c.json({ error: 'user not found' }, 404);
+
+  const events = await db
+    .select({
+      id: schema.events.id,
+      title: schema.events.title,
+      description: schema.events.description,
+      startsAt: schema.events.startsAt,
+      endsAt: schema.events.endsAt,
+      priceCents: schema.events.priceCents,
+      ticketUrl: schema.events.ticketUrl,
+      imageUrl: schema.events.imageUrl,
+      category: schema.events.category,
+      featured: schema.events.featured,
+      savedAt: schema.saves.createdAt,
+      venue: {
+        id: schema.venues.id,
+        slug: schema.venues.slug,
+        name: schema.venues.name,
+        address: schema.venues.address,
+        lat: schema.venues.lat,
+        lng: schema.venues.lng,
+      },
+    })
+    .from(schema.saves)
+    .innerJoin(schema.events, eq(schema.events.id, schema.saves.eventId))
+    .innerJoin(schema.venues, eq(schema.venues.id, schema.events.venueId))
+    .where(eq(schema.saves.userId, friendId))
+    .orderBy(asc(schema.events.startsAt));
+
+  return c.json({ user, events });
 });
 
 friendsRoute.delete('/:userId', async (c) => {

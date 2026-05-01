@@ -694,7 +694,10 @@ function SectionHead({
 function FriendRow({ friend }: { friend: ApiFriend }) {
   const roles = useRoles();
   return (
-    <View style={[styles.friend, { borderColor: roles.bgChip }]}>
+    <Pressable
+      onPress={() => router.push(`/friend/${friend.id}` as never)}
+      style={[styles.friend, { borderColor: roles.bgChip }]}
+    >
       <ProfileAvatar
         avatarUrl={friend.avatarUrl}
         name={friend.name}
@@ -716,7 +719,7 @@ function FriendRow({ friend }: { friend: ApiFriend }) {
           </Text>
         )}
       </View>
-    </View>
+    </Pressable>
   );
 }
 

@@ -20,6 +20,12 @@ type AppHeaderProps = {
    * BlurView so it reads as a single floating bar.
    */
   children?: ReactNode;
+  /**
+   * Steviger leesbaar maken — extra tinted overlay over de blur. Aan
+   * voor schermen met sticky controls die rust nodig hebben (Agenda's
+   * day-strip + chip-row); standaard uit zodat de blur het werk doet.
+   */
+  solid?: boolean;
 };
 
 /**
@@ -31,7 +37,7 @@ type AppHeaderProps = {
  * screen's ScrollView gets `paddingTop = insets.top + HEADER_HEIGHT`
  * (plus whatever children add).
  */
-export function AppHeader({ children }: AppHeaderProps = {}) {
+export function AppHeader({ children, solid = false }: AppHeaderProps = {}) {
   const mode = useMode();
   const roles = useRoles();
   const insets = useSafeAreaInsets();
@@ -52,20 +58,19 @@ export function AppHeader({ children }: AppHeaderProps = {}) {
           tint={mode === 'nacht' ? 'dark' : 'light'}
           style={StyleSheet.absoluteFill}
         />
-        {/* Extra getinte overlay zodat de header steviger leest dan
-            een pure blur — anders concurreert hij visueel met de
-            content die er onderdoor scrollt. */}
-        <View
-          style={[
-            StyleSheet.absoluteFill,
-            {
-              backgroundColor:
-                mode === 'nacht'
-                  ? 'rgba(10,10,11,0.78)'
-                  : 'rgba(245,241,232,0.82)',
-            },
-          ]}
-        />
+        {solid && (
+          <View
+            style={[
+              StyleSheet.absoluteFill,
+              {
+                backgroundColor:
+                  mode === 'nacht'
+                    ? 'rgba(10,10,11,0.78)'
+                    : 'rgba(245,241,232,0.82)',
+              },
+            ]}
+          />
+        )}
       </MaskedView>
       <View style={styles.header}>
         <View style={styles.logoLockup}>
