@@ -19,8 +19,14 @@ import Animated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import type { ApiEvent } from '@/lib/api';
+import {
+  CATEGORY_TICK,
+  DOW_NL_MIXED,
+  MONTHS_NL,
+  formatPrice,
+  formatTime,
+} from '@/lib/eventDisplay';
 import { useEvent } from '@/lib/queries';
-import type { BadgeTone } from '@/mocks/feed';
 import { useMode, useRoles } from '@/store/mode';
 import { useIsSaved, useSavedStore, type SavedEvent } from '@/store/saved';
 import { fontFamily, palette } from '@/theme/tokens';
@@ -265,19 +271,6 @@ function CircleButton({
   );
 }
 
-const DOW_NL_MIXED = ['Zo', 'Ma', 'Di', 'Wo', 'Do', 'Vr', 'Za'] as const;
-const MONTHS_NL = [
-  'JAN', 'FEB', 'MRT', 'APR', 'MEI', 'JUN',
-  'JUL', 'AUG', 'SEP', 'OKT', 'NOV', 'DEC',
-];
-
-const CATEGORY_TICK: Record<ApiEvent['category'], BadgeTone> = {
-  Muziek: 'acid',
-  Theater: 'flare',
-  Literatuur: 'plum',
-  Film: 'azure',
-};
-
 type ViewModel = {
   tag: string;
   title: string;
@@ -295,40 +288,27 @@ function toViewModel(event: ApiEvent): ViewModel {
   const dow = DOW_NL_MIXED[d.getDay()];
   const day = String(d.getDate()).padStart(2, '0');
   const month = String(d.getMonth() + 1).padStart(2, '0');
-  const hh = String(d.getHours()).padStart(2, '0');
-  const mm = String(d.getMinutes()).padStart(2, '0');
-  const price =
-    event.priceCents == null
-      ? '—'
-      : event.priceCents === 0
-        ? 'Gratis'
-        : `€${(event.priceCents / 100).toFixed(2).replace('.', ',')}`;
   return {
     tag: event.category,
     title: event.title,
     date: `${dow} ${day}.${month}`,
-    time: `${hh}:${mm}`,
+    time: formatTime(event.startsAt),
     venue: event.venue.name,
     description: event.description,
     photo: event.imageUrl,
-    price,
+    price: formatPrice(event.priceCents),
     priceNote: event.priceCents && event.priceCents > 0 ? 'incl. servicekosten' : null,
   };
 }
 
 function buildSnapshot(id: string, event: ApiEvent): SavedEvent {
   const d = new Date(event.startsAt);
-  const dow = DOW_NL_MIXED[d.getDay()];
-  const num = String(d.getDate()).padStart(2, '0');
-  const month = MONTHS_NL[d.getMonth()] ?? '';
-  const hh = String(d.getHours()).padStart(2, '0');
-  const mm = String(d.getMinutes()).padStart(2, '0');
   return {
     id,
-    dow,
-    num,
-    month,
-    time: `${hh}:${mm}`,
+    dow: DOW_NL_MIXED[d.getDay()],
+    num: String(d.getDate()).padStart(2, '0'),
+    month: MONTHS_NL[d.getMonth()],
+    time: formatTime(event.startsAt),
     duration: event.category.toLowerCase(),
     title: event.title,
     venue: event.venue.name,

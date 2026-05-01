@@ -8,33 +8,27 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppHeader, HEADER_HEIGHT } from '@/components/AppHeader';
 import { EventListRow } from '@/components/EventListRow';
 import type { ApiEvent } from '@/lib/api';
+import {
+  CATEGORY_TICK,
+  DOW_NL_UPPER,
+  formatTime,
+} from '@/lib/eventDisplay';
 import { useEvents } from '@/lib/queries';
-import type { BadgeTone, PhotoCard } from '@/mocks/feed';
+import type { PhotoCard } from '@/mocks/feed';
 import { FEED } from '@/mocks/feed';
 import { useMode, useRoles } from '@/store/mode';
 import { fontFamily, palette } from '@/theme/tokens';
 
-const DOW_NL = ['ZO', 'MA', 'DI', 'WO', 'DO', 'VR', 'ZA'] as const;
-
-const CATEGORY_TICK: Record<ApiEvent['category'], BadgeTone> = {
-  Muziek: 'acid',
-  Theater: 'flare',
-  Literatuur: 'plum',
-  Film: 'azure',
-};
-
 function formatMeta(event: ApiEvent): string {
   const d = new Date(event.startsAt);
-  const dow = DOW_NL[d.getDay()];
-  const hh = String(d.getHours()).padStart(2, '0');
-  const mm = String(d.getMinutes()).padStart(2, '0');
+  const dow = DOW_NL_UPPER[d.getDay()];
   const price =
     event.priceCents == null
       ? null
       : event.priceCents === 0
         ? 'gratis'
         : `€${(event.priceCents / 100).toFixed(0)}`;
-  return [dow, `${hh}:${mm}`, event.venue.name.toUpperCase(), price]
+  return [dow, formatTime(event.startsAt), event.venue.name.toUpperCase(), price]
     .filter(Boolean)
     .join(' · ');
 }

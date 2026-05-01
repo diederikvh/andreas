@@ -1,6 +1,6 @@
 import { useScrollToTop } from '@react-navigation/native';
 import { router } from 'expo-router';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   type LayoutChangeEvent,
   type NativeScrollEvent,
@@ -15,22 +15,37 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppHeader, HEADER_HEIGHT } from '@/components/AppHeader';
 import { EventListRow } from '@/components/EventListRow';
-import type { AgendaDay, AgendaItem } from '@/mocks/agenda';
-import { AGENDA } from '@/mocks/agenda';
-import { useMode, useRoles } from '@/store/mode';
+import type { ApiEvent } from '@/lib/api';
+import {
+  CATEGORY_TICK,
+  type EventGroup,
+  formatTime,
+  groupEventsByDay,
+} from '@/lib/eventDisplay';
+import { useEvents } from '@/lib/queries';
+import { useRoles } from '@/store/mode';
 import { fontFamily } from '@/theme/tokens';
 
 const DAYSTRIP_HEIGHT = 76;
 
 export default function Agenda() {
-  const mode = useMode();
   const roles = useRoles();
   const insets = useSafeAreaInsets();
-  const days = AGENDA[mode];
   const scrollRef = useRef<ScrollView>(null);
   useScrollToTop(scrollRef);
+
+  const { data: events, isLoading, error } = useEvents();
+  const days = useMemo(() => groupEventsByDay(events ?? []), [events]);
+
   const [positions, setPositions] = useState<Record<string, number>>({});
-  const [selected, setSelected] = useState<string>(days[0].id);
+  const [selected, setSelected] = useState<string | null>(null);
+
+  // Reset selectie wanneer de eerste echte day-group binnenkomt.
+  useEffect(() => {
+    if (!selected && days.length > 0) {
+      setSelected(days[0].id);
+    }
+  }, [days, selected]);
 
   const stickyOffset = insets.top + HEADER_HEIGHT + DAYSTRIP_HEIGHT;
 
@@ -52,10 +67,8 @@ export default function Agenda() {
 
   // Sync the active chip with the section currently below the day-strip.
   const onScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    if (days.length === 0) return;
     const scrollY = e.nativeEvent.contentOffset.y;
-    // Section X is "current" once its top has scrolled past the
-    // day-strip's bottom edge. 30px tolerance so the chip flips a beat
-    // before the anchor reaches the strip.
     const threshold = scrollY + stickyOffset + 30;
     let active = days[0].id;
     for (const day of days) {
@@ -78,21 +91,30 @@ export default function Agenda() {
           paddingBottom: insets.bottom + 96,
         }}
       >
+        {isLoading && <ListState text="Laden…" />}
+        {error && (
+          <ListState text="Kon agenda niet laden." tone="error" />
+        )}
+        {!isLoading && !error && days.length === 0 && (
+          <ListState text="Nog geen events." />
+        )}
         {days.map((day) => (
           <View key={day.id} onLayout={captureSectionY(day.id)}>
             <DateAnchor day={day} />
-            {day.items.map((item) => (
-              <AgendaRow key={item.id} item={item} />
+            {day.events.map((event) => (
+              <AgendaRow key={event.id} event={event} />
             ))}
           </View>
         ))}
       </ScrollView>
       <AppHeader>
-        <DayStrip
-          days={days}
-          selectedId={selected}
-          onSelect={selectDay}
-        />
+        {days.length > 0 && selected && (
+          <DayStrip
+            days={days}
+            selectedId={selected}
+            onSelect={selectDay}
+          />
+        )}
       </AppHeader>
     </View>
   );
@@ -103,7 +125,7 @@ function DayStrip({
   selectedId,
   onSelect,
 }: {
-  days: AgendaDay[];
+  days: EventGroup[];
   selectedId: string;
   onSelect: (id: string) => void;
 }) {
@@ -152,7 +174,7 @@ function DayChip({
   onPress,
   onLayout,
 }: {
-  day: AgendaDay;
+  day: EventGroup;
   active: boolean;
   onPress: () => void;
   onLayout: (x: number, width: number) => void;
@@ -186,7 +208,7 @@ function DayChip({
   );
 }
 
-function DateAnchor({ day }: { day: AgendaDay }) {
+function DateAnchor({ day }: { day: EventGroup }) {
   const roles = useRoles();
   return (
     <View style={styles.dateAnchor}>
@@ -205,20 +227,40 @@ function DateAnchor({ day }: { day: AgendaDay }) {
   );
 }
 
-function AgendaRow({ item }: { item: AgendaItem }) {
+function AgendaRow({ event }: { event: ApiEvent }) {
   return (
     <EventListRow
-      time={item.time}
-      duration={item.duration}
-      thumb={item.thumb}
-      title={item.title}
-      venue={item.venue}
-      tags={[{ label: item.badge, tone: item.badgeTone }]}
-      status={item.status}
-      friends={item.friends}
-      tick={item.tick}
-      onPress={() => router.push(`/event/${item.id}`)}
+      time={formatTime(event.startsAt)}
+      duration={event.category.toLowerCase()}
+      thumb={event.imageUrl ?? ''}
+      title={event.title}
+      venue={event.venue.name}
+      tags={[{ label: event.category, tone: CATEGORY_TICK[event.category] }]}
+      tick={CATEGORY_TICK[event.category]}
+      onPress={() => router.push(`/event/${event.id}`)}
     />
+  );
+}
+
+function ListState({
+  text,
+  tone = 'muted',
+}: {
+  text: string;
+  tone?: 'muted' | 'error';
+}) {
+  const roles = useRoles();
+  return (
+    <View style={styles.listState}>
+      <Text
+        style={[
+          styles.listStateText,
+          { color: tone === 'error' ? '#c9453a' : roles.fgMuted },
+        ]}
+      >
+        {text}
+      </Text>
+    </View>
   );
 }
 
@@ -284,4 +326,10 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
   },
 
+  listState: { paddingHorizontal: 22, paddingVertical: 14 },
+  listStateText: {
+    fontFamily: fontFamily.mono,
+    fontSize: 11,
+    letterSpacing: 0.8,
+  },
 });
