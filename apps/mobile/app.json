@@ -38,6 +38,13 @@
             "backgroundColor": "#000000"
           }
         }
+      ],
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Andreas gebruikt je locatie alleen om events op de kaart in de buurt te tonen.",
+          "locationWhenInUsePermission": "Andreas gebruikt je locatie alleen om events op de kaart in de buurt te tonen."
+        }
       ]
     ],
     "experiments": {

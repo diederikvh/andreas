@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
 import { Image } from 'expo-image';
 import { router, useFocusEffect, useNavigation } from 'expo-router';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import MapView, { Marker, PROVIDER_DEFAULT } from 'react-native-maps';
@@ -18,8 +18,17 @@ import { AppHeader, HEADER_HEIGHT } from '@/components/AppHeader';
 import { Cross } from '@/components/Cross';
 import { TabIconAgenda, TabIconKaart } from '@/components/icons/TabIcons';
 import { brandEase } from '@/lib/easing';
-import type { KaartVenue } from '@/mocks/kaart';
-import { KAART } from '@/mocks/kaart';
+import type { ApiEvent } from '@/lib/api';
+import {
+  CATEGORY_DOT,
+  CATEGORY_TICK,
+  distanceKm,
+  formatTime,
+  walkingMinutes,
+} from '@/lib/eventDisplay';
+import { useEvents } from '@/lib/queries';
+import { useDeviceLocation } from '@/lib/useDeviceLocation';
+import type { BadgeTone } from '@/mocks/feed';
 import { useMode, useRoles } from '@/store/mode';
 import { fontFamily, palette } from '@/theme/tokens';
 
@@ -39,45 +48,67 @@ const TONE = {
 } as const;
 
 const SHEET_OPEN = 200;
-const SHEET_CLOSED = 0; // fully tucked away — opens via marker tap
-const SWITCH_HEIGHT = 44; // Kaart/Lijst switch + its margins
-// Clearance between the bottom of the drawer card and the floating
-// tabbar — the tabbar sits on insets.bottom + 4 with ~48px height, so
-// 60px keeps the card just above it with breathing room.
+const SHEET_CLOSED = 0;
+const SWITCH_HEIGHT = 44;
 const TABBAR_CLEARANCE = 60;
+
+// Default-centre voor de kaart wanneer device-locatie nog niet binnen
+// is, geweigerd, of buiten de Amsterdam-bubbel valt (bv. iOS simulator
+// in Cupertino). Amsterdam CS — net zo bruikbaar voor nacht als dag.
+const AMSTERDAM_CS = { lat: 52.3791, lng: 4.9003 };
+/** Max afstand vanaf CS waarbij we de echte device-locatie nog gebruiken. */
+const AMSTERDAM_RADIUS_KM = 50;
+
+type MapEvent = {
+  event: ApiEvent;
+  minutes: number;
+};
 
 export default function Kaart() {
   const mode = useMode();
   const roles = useRoles();
   const insets = useSafeAreaInsets();
-  const data = KAART[mode];
+  const locationStatus = useDeviceLocation();
+  const centre = (() => {
+    if (locationStatus.status !== 'granted') return AMSTERDAM_CS;
+    return distanceKm(locationStatus.location, AMSTERDAM_CS) > AMSTERDAM_RADIUS_KM
+      ? AMSTERDAM_CS
+      : locationStatus.location;
+  })();
 
-  // Sort venues by walking time so the closest sit at the top of the sheet.
-  const sorted = [...data.venues].sort((a, b) => a.minutes - b.minutes);
+  const { data: events } = useEvents();
+  const mapEvents: MapEvent[] = useMemo(() => {
+    if (!events) return [];
+    return events.map((e) => ({
+      event: e,
+      minutes: walkingMinutes(centre, { lat: e.venue.lat, lng: e.venue.lng }),
+    }));
+  }, [events, centre]);
+  const sorted = useMemo(
+    () => [...mapEvents].sort((a, b) => a.minutes - b.minutes),
+    [mapEvents]
+  );
 
   const [view, setView] = useState<'map' | 'list'>('map');
-  // Drawer starts hidden — it opens when the user taps a marker.
   const sheetHeight = useSharedValue(0);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
   const mapRef = useRef<MapView>(null);
 
-  const activeVenue = data.venues.find((v) => v.id === activeId) ?? null;
+  const activeMapEvent = mapEvents.find((m) => m.event.id === activeId) ?? null;
 
   const recentre = useCallback(() => {
     mapRef.current?.animateToRegion(
       {
-        latitude: data.centre.lat,
-        longitude: data.centre.lng,
+        latitude: centre.lat,
+        longitude: centre.lng,
         latitudeDelta: 0.045,
         longitudeDelta: 0.04,
       },
       450
     );
-  }, [data.centre.lat, data.centre.lng]);
+  }, [centre.lat, centre.lng]);
 
-  // Re-centre on every tab tap — first nav and re-taps both fire
-  // tabPress, so a "double-click on the menu item" recenters the map.
   const navigation = useNavigation();
   useEffect(() => {
     const unsub = navigation.addListener('tabPress' as never, () => {
@@ -100,13 +131,12 @@ export default function Kaart() {
     setSheetOpen(open);
   };
 
-  const selectVenue = (id: string) => {
+  const selectEvent = (id: string) => {
     setActiveId(id);
     if (!sheetOpen) snapTo(true);
   };
 
-  // Reset selection on mode swap — the drawer would otherwise stay open
-  // showing a venue from the other mode.
+  // Reset selection on mode swap.
   useEffect(() => {
     setActiveId(null);
     sheetHeight.value = withTiming(SHEET_CLOSED, {
@@ -116,7 +146,6 @@ export default function Kaart() {
     setSheetOpen(false);
   }, [mode, sheetHeight]);
 
-  // Drag the handle to resize the sheet — snaps to open/closed on release.
   const dragStart = useSharedValue(0);
   const dragGesture = Gesture.Pan()
     .onStart(() => {
@@ -158,129 +187,117 @@ export default function Kaart() {
           <Text style={[styles.listKicker, { color: roles.fgMuted }]}>
             In de buurt
           </Text>
-          {sorted.map((v) => (
-            <SheetRow key={v.id} venue={v} />
+          {sorted.map((m) => (
+            <SheetRow key={m.event.id} mapEvent={m} />
           ))}
         </ScrollView>
       ) : (
         <>
           <MapView
-        ref={mapRef}
-        provider={PROVIDER_DEFAULT}
-        style={StyleSheet.absoluteFill}
-        initialRegion={{
-          latitude: data.centre.lat,
-          longitude: data.centre.lng,
-          latitudeDelta: 0.045,
-          longitudeDelta: 0.04,
-        }}
-        showsUserLocation={false}
-        showsCompass={false}
-        showsMyLocationButton={false}
-      >
-        {/* "You" — centre marker */}
-        <Marker
-          coordinate={{
-            latitude: data.centre.lat,
-            longitude: data.centre.lng,
-          }}
-          anchor={{ x: 0.5, y: 0.5 }}
-        >
-          <View style={[styles.you, { backgroundColor: roles.accent }]}>
-            <Cross size={14} thickness={3} color={roles.onAccent} />
-          </View>
-        </Marker>
-
-        {/* Friends */}
-        {data.friends.map((f) => (
-          <Marker
-            key={f.id}
-            coordinate={{ latitude: f.lat, longitude: f.lng }}
-            anchor={{ x: 0.5, y: 0.5 }}
+            ref={mapRef}
+            provider={PROVIDER_DEFAULT}
+            style={StyleSheet.absoluteFill}
+            initialRegion={{
+              latitude: centre.lat,
+              longitude: centre.lng,
+              latitudeDelta: 0.045,
+              longitudeDelta: 0.04,
+            }}
+            showsUserLocation={false}
+            showsCompass={false}
+            showsMyLocationButton={false}
           >
-            <View style={[styles.friend, { borderColor: roles.bg }]}>
-              <Image source={{ uri: f.avatar }} style={styles.friendImg} />
-            </View>
-          </Marker>
-        ))}
-
-        {/* Venues */}
-        {data.venues.map((v) => {
-          const isActive = activeId === v.id;
-          return (
-          <Marker
-            key={v.id}
-            coordinate={{ latitude: v.lat, longitude: v.lng }}
-            anchor={{ x: 0.5, y: 0.5 }}
-            onPress={() => selectVenue(v.id)}
-          >
-            <View
-              style={[
-                styles.marker,
-                {
-                  backgroundColor: isActive
-                    ? roles.accent
-                    : mode === 'nacht'
-                      ? palette.noir2
-                      : palette.paper3,
-                },
-              ]}
+            {/* "You" — centre marker */}
+            <Marker
+              coordinate={{ latitude: centre.lat, longitude: centre.lng }}
+              anchor={{ x: 0.5, y: 0.5 }}
             >
-              <View
-                style={[
-                  styles.dot,
-                  { backgroundColor: TONE[mode][v.tone] },
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.dotText,
-                    {
-                      color:
-                        mode === 'nacht' ? palette.noir : palette.paper3,
-                    },
-                  ]}
-                >
-                  {v.dot}
-                </Text>
+              <View style={[styles.you, { backgroundColor: roles.accent }]}>
+                <Cross size={14} thickness={3} color={roles.onAccent} />
               </View>
-              <Text
-                style={[
-                  styles.minutes,
-                  { color: isActive ? roles.onAccent : roles.fg },
-                ]}
-              >
-                {v.minutes}m
-              </Text>
-            </View>
-          </Marker>
-          );
-        })}
-      </MapView>
+            </Marker>
 
-      {/* Animated bottom sheet — drag the handle to resize, tap to toggle.
-          List scrolls all the way under the floating tabbar. */}
-      <Animated.View
-        style={[
-          styles.sheet,
-          {
-            backgroundColor: mode === 'nacht' ? palette.noir2 : palette.paper3,
-          },
-          sheetStyle,
-        ]}
-      >
-        <GestureDetector gesture={dragGesture}>
-          <Pressable
-            onPress={() => snapTo(!sheetOpen)}
-            style={styles.sheetHandleHit}
+            {/* Events as markers — friend-overlay komt terug zodra
+                friendships in de DB staan. */}
+            {mapEvents.map((m) => {
+              const isActive = activeId === m.event.id;
+              const tone: BadgeTone = CATEGORY_TICK[m.event.category];
+              return (
+                <Marker
+                  key={m.event.id}
+                  coordinate={{
+                    latitude: m.event.venue.lat,
+                    longitude: m.event.venue.lng,
+                  }}
+                  anchor={{ x: 0.5, y: 0.5 }}
+                  onPress={() => selectEvent(m.event.id)}
+                >
+                  <View
+                    style={[
+                      styles.marker,
+                      {
+                        backgroundColor: isActive
+                          ? roles.accent
+                          : mode === 'nacht'
+                            ? palette.noir2
+                            : palette.paper3,
+                      },
+                    ]}
+                  >
+                    <View
+                      style={[styles.dot, { backgroundColor: TONE[mode][tone] }]}
+                    >
+                      <Text
+                        style={[
+                          styles.dotText,
+                          {
+                            color:
+                              mode === 'nacht' ? palette.noir : palette.paper3,
+                          },
+                        ]}
+                      >
+                        {CATEGORY_DOT[m.event.category]}
+                      </Text>
+                    </View>
+                    <Text
+                      style={[
+                        styles.minutes,
+                        { color: isActive ? roles.onAccent : roles.fg },
+                      ]}
+                    >
+                      {m.minutes}m
+                    </Text>
+                  </View>
+                </Marker>
+              );
+            })}
+          </MapView>
+
+          <Animated.View
+            style={[
+              styles.sheet,
+              {
+                backgroundColor:
+                  mode === 'nacht' ? palette.noir2 : palette.paper3,
+              },
+              sheetStyle,
+            ]}
           >
-            <View
-              style={[styles.sheetHandle, { backgroundColor: roles.fgMuted }]}
-            />
-          </Pressable>
-        </GestureDetector>
-        {activeVenue && <DrawerCard venue={activeVenue} />}
-      </Animated.View>
+            <GestureDetector gesture={dragGesture}>
+              <Pressable
+                onPress={() => snapTo(!sheetOpen)}
+                style={styles.sheetHandleHit}
+              >
+                <View
+                  style={[
+                    styles.sheetHandle,
+                    { backgroundColor: roles.fgMuted },
+                  ]}
+                />
+              </Pressable>
+            </GestureDetector>
+            {activeMapEvent && <DrawerCard mapEvent={activeMapEvent} />}
+          </Animated.View>
         </>
       )}
 
@@ -396,148 +413,105 @@ function SwitchBtn({
   );
 }
 
-function SheetRow({
-  venue,
-  active,
-  onLayout,
-}: {
-  venue: KaartVenue;
-  active?: boolean;
-  onLayout?: (y: number) => void;
-}) {
+function SheetRow({ mapEvent }: { mapEvent: MapEvent }) {
   const mode = useMode();
   const roles = useRoles();
-  const tone = TONE[mode][venue.tone];
-  const tagBg = `${tone}26`; // ~15% alpha
+  const tone = TONE[mode][CATEGORY_TICK[mapEvent.event.category]];
+  const tagBg = `${tone}26`;
 
   return (
     <Pressable
-      onPress={() => router.push(`/event/${venue.id}`)}
-      onLayout={(e) => onLayout?.(e.nativeEvent.layout.y)}
-      style={[
-        styles.sheetRow,
-        { borderColor: roles.bgChip },
-        active && { backgroundColor: `${tone}1f` },
-      ]}
+      onPress={() => router.push(`/event/${mapEvent.event.id}`)}
+      style={[styles.sheetRow, { borderColor: roles.bgChip }]}
     >
       <View style={styles.sheetMin}>
         <Text style={[styles.sheetMinNum, { color: roles.fg }]}>
-          {venue.minutes}
+          {mapEvent.minutes}
         </Text>
-        <Text style={[styles.sheetMinUnit, { color: roles.fgMuted }]}>min</Text>
+        <Text style={[styles.sheetMinUnit, { color: roles.fgMuted }]}>
+          min
+        </Text>
       </View>
       <View style={styles.sheetBody}>
         <Text
           numberOfLines={1}
           style={[styles.sheetTitle, { color: roles.fg }]}
         >
-          {venue.title}
+          {mapEvent.event.title}
         </Text>
         <View style={styles.sheetMetaRow}>
           <View style={[styles.sheetTag, { backgroundColor: tagBg }]}>
             <Text style={[styles.sheetTagText, { color: tone }]}>
-              {venue.category}
+              {mapEvent.event.category}
             </Text>
           </View>
           <Text
             numberOfLines={1}
             style={[styles.sheetVenue, { color: roles.fgMuted }]}
           >
-            {venue.venue}
+            {mapEvent.event.venue.name}
           </Text>
         </View>
       </View>
       <Text style={[styles.sheetTime, { color: roles.fgMuted }]}>
-        {venue.time}
+        {formatTime(mapEvent.event.startsAt)}
       </Text>
     </Pressable>
   );
 }
 
-function DrawerCard({ venue }: { venue: KaartVenue }) {
+function DrawerCard({ mapEvent }: { mapEvent: MapEvent }) {
   const mode = useMode();
   const roles = useRoles();
-  const tone = TONE[mode][venue.tone];
+  const tone = TONE[mode][CATEGORY_TICK[mapEvent.event.category]];
   return (
     <Pressable
-      onPress={() => router.push(`/event/${venue.id}`)}
+      onPress={() => router.push(`/event/${mapEvent.event.id}`)}
       style={styles.cardWrap}
     >
       <View style={styles.cardTop}>
-        <Image
-          source={{ uri: venue.thumb }}
-          style={styles.cardThumb}
-          contentFit="cover"
-        />
+        {mapEvent.event.imageUrl && (
+          <Image
+            source={{ uri: mapEvent.event.imageUrl }}
+            style={styles.cardThumb}
+            contentFit="cover"
+          />
+        )}
         <View style={styles.cardBody}>
           <View style={styles.cardMetaRow}>
-            <View
-              style={[styles.cardTag, { backgroundColor: `${tone}26` }]}
-            >
+            <View style={[styles.cardTag, { backgroundColor: `${tone}26` }]}>
               <Text style={[styles.cardTagText, { color: tone }]}>
-                {venue.category}
+                {mapEvent.event.category}
               </Text>
             </View>
             <Text style={[styles.cardMeta, { color: roles.fgMuted }]}>
-              {venue.minutes} min · {venue.time}
+              {mapEvent.minutes} min · {formatTime(mapEvent.event.startsAt)}
             </Text>
           </View>
           <Text
             numberOfLines={2}
             style={[styles.cardTitle, { color: roles.fg }]}
           >
-            {venue.title}
+            {mapEvent.event.title}
           </Text>
           <Text
             numberOfLines={1}
             style={[styles.cardVenue, { color: roles.fgMuted }]}
           >
-            {venue.venue}
+            {mapEvent.event.venue.name}
           </Text>
-          <Text
-            numberOfLines={3}
-            style={[styles.cardIntro, { color: roles.fgRead }]}
-          >
-            {venue.intro}
-          </Text>
-          {venue.friends && venue.friends.length > 0 && (
-            <View
-              style={[styles.cardFriends, { backgroundColor: `${tone}1f` }]}
+          {mapEvent.event.description && (
+            <Text
+              numberOfLines={3}
+              style={[styles.cardIntro, { color: roles.fgRead }]}
             >
-              <View style={styles.cardAvstack}>
-                {venue.friends.map((f, i) => (
-                  <Image
-                    key={f.name}
-                    source={{ uri: f.avatar }}
-                    style={[
-                      styles.cardAvatar,
-                      {
-                        marginLeft: i === 0 ? 0 : -6,
-                        borderColor:
-                          mode === 'nacht' ? palette.noir2 : palette.paper3,
-                      },
-                    ]}
-                  />
-                ))}
-              </View>
-              <Text
-                numberOfLines={1}
-                style={[styles.cardFriendsText, { color: tone }]}
-              >
-                {friendsLabel(venue.friends.map((f) => f.name))}
-              </Text>
-            </View>
+              {mapEvent.event.description}
+            </Text>
           )}
         </View>
       </View>
     </Pressable>
   );
-}
-
-function friendsLabel(names: string[]): string {
-  if (names.length === 1) return `${names[0]} gaat ook`;
-  if (names.length === 2) return `${names[0]} & ${names[1]} gaan ook`;
-  return `${names[0]} +${names.length - 1} gaan ook`;
 }
 
 const styles = StyleSheet.create({
@@ -577,7 +551,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     letterSpacing: -0.06,
   },
-  // Tab-icons are 22×22; shrink to ~70% so they sit balanced beside the label.
   switchIcon: {
     width: 16,
     height: 16,
@@ -620,21 +593,6 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 6,
   },
-
-  // Friend marker
-  friend: {
-    width: 24,
-    height: 24,
-    borderRadius: 999,
-    borderWidth: 2,
-    overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  friendImg: { width: '100%', height: '100%' },
 
   // Venue marker — pill with category dot + walking minutes
   marker: {
@@ -685,7 +643,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
 
-  // Drawer single-venue card (map view)
+  // Drawer single-event card (map view)
   cardWrap: {
     paddingHorizontal: 16,
     gap: 12,
@@ -743,59 +701,14 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     marginTop: 4,
   },
-  cardFriends: {
-    alignSelf: 'flex-start',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingLeft: 4,
-    paddingRight: 12,
-    paddingVertical: 4,
-    borderRadius: 999,
-  },
-  cardAvstack: { flexDirection: 'row' },
-  cardAvatar: {
-    width: 22,
-    height: 22,
-    borderRadius: 999,
-    borderWidth: 1.5,
-  },
-  cardFriendsText: {
-    fontFamily: fontFamily.medium,
-    fontSize: 12,
-  },
-  cardActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 10,
-    marginTop: 6,
-  },
-  cardCta: {
-    paddingHorizontal: 16,
-    paddingVertical: 9,
-    borderRadius: 999,
-  },
-  cardCtaText: {
-    fontFamily: fontFamily.medium,
-    fontSize: 12,
-    letterSpacing: -0.06,
-  },
   sheetHandle: {
     width: 36,
     height: 4,
     borderRadius: 2,
     opacity: 0.4,
   },
-  sheetKicker: {
-    fontFamily: fontFamily.mono,
-    fontSize: 10,
-    letterSpacing: 1.4,
-    textTransform: 'uppercase',
-    marginBottom: 8,
-    paddingHorizontal: 22,
-  },
-  sheetList: { gap: 0 },
+
+  // List view rows
   sheetRow: {
     flexDirection: 'row',
     alignItems: 'center',

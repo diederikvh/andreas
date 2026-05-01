@@ -20,6 +20,40 @@ export const CATEGORY_TICK: Record<ApiEvent['category'], BadgeTone> = {
   Film: 'azure',
 };
 
+export const CATEGORY_DOT: Record<ApiEvent['category'], string> = {
+  Muziek: 'M',
+  Theater: 'T',
+  Literatuur: 'L',
+  Film: 'F',
+};
+
+/**
+ * Haversine afstand in km tussen twee punten op de aarde. Voldoende voor
+ * loopafstand binnen Amsterdam — geen geoid-correctie nodig.
+ */
+export function distanceKm(
+  a: { lat: number; lng: number },
+  b: { lat: number; lng: number }
+): number {
+  const R = 6371;
+  const dLat = ((b.lat - a.lat) * Math.PI) / 180;
+  const dLng = ((b.lng - a.lng) * Math.PI) / 180;
+  const lat1 = (a.lat * Math.PI) / 180;
+  const lat2 = (b.lat * Math.PI) / 180;
+  const h =
+    Math.sin(dLat / 2) ** 2 +
+    Math.sin(dLng / 2) ** 2 * Math.cos(lat1) * Math.cos(lat2);
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+
+/** Loopminuten tussen twee punten (5 km/u → 12 min/km). */
+export function walkingMinutes(
+  from: { lat: number; lng: number },
+  to: { lat: number; lng: number }
+): number {
+  return Math.max(1, Math.round(distanceKm(from, to) * 12));
+}
+
 export function formatTime(iso: string): string {
   const d = new Date(iso);
   const hh = String(d.getHours()).padStart(2, '0');
