@@ -42,7 +42,11 @@ Laatste sync: 2026-05-03 · branch `main`.
 
 ## Volgende slice — kandidaten
 
-Geen scherp afgekaderde slice klaar. Logische opties:
+**Eerst doen** (gemerkt tijdens TestFlight-test 2026-05-03):
+
+0. **Agenda filteren op vandaag + toekomst** — Agenda-tab toont nu *alle* events incl. verleden (gisteren, eergisteren). Default moet zijn: alleen vanaf vandaag (00:00) en de toekomst. Optioneel een knopje om "verleden" weer aan te zetten, maar verbergen tenzij expliciet gevraagd. Filter is server-side via de bestaande `from`-query op `GET /events`, of mobile-side in de Agenda-component vóór `groupEventsByDay`.
+
+Daarna:
 
 1. **Niet-leden uitnodigen — full path** — `share_invites` tabel met token + phone; bij phone-OTP signup koppelt Andreas op telefoonnummer en maakt friendship + event-invite automatisch. Bouwt op de share-knoppen die er al zijn.
 2. **Privacy-toggles op profiel** — "vrienden mogen mijn saves zien" toggle. Lost de open `TODO (privacy)` comments op in `buildFriendsByEvent` + `GET /friends/:id`. Backend + UI op Jij.
