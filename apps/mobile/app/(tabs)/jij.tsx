@@ -1007,7 +1007,7 @@ const styles = StyleSheet.create({
   },
   lead: {
     fontFamily: fontFamily.body,
-    fontSize: 13,
+    fontSize: 14.5,
     lineHeight: 19,
     marginBottom: 8,
   },
@@ -1232,7 +1232,7 @@ const styles = StyleSheet.create({
   inviteBody: { flex: 1, minWidth: 0 },
   inviteLine: {
     fontFamily: fontFamily.body,
-    fontSize: 13,
+    fontSize: 14.5,
     lineHeight: 18,
   },
   inviteName: { fontFamily: fontFamily.bold },
@@ -1277,7 +1277,7 @@ const styles = StyleSheet.create({
 
   emptyHint: {
     fontFamily: fontFamily.body,
-    fontSize: 12.5,
+    fontSize: 13.5,
     lineHeight: 17.5,
     paddingHorizontal: 22,
     paddingVertical: 8,

@@ -72,20 +72,25 @@ export default function Gered() {
       <View style={[styles.root, { backgroundColor: roles.bg }]}>
         <View
           style={[
-            styles.emptyBody,
-            { paddingTop: topInset + 24, paddingBottom: bottomInset },
+            styles.emptyCenter,
+            { paddingTop: topInset, paddingBottom: bottomInset },
           ]}
         >
-          <Text style={[styles.kicker, { color: roles.accent }]}>Gered</Text>
-          <Text style={[styles.headTitle, { color: roles.fg }]}>Op uit.</Text>
-          <Text style={[styles.lead, { color: roles.fgRead }]}>
-            Tik op het hart bij een event om hem hier op te slaan. Inloggen
-            doe je via de Jij-tab.
+          <Ionicons
+            name="log-in-outline"
+            size={48}
+            color={roles.fgMuted}
+          />
+          <Text style={[styles.emptyTitle, { color: roles.fg }]}>
+            Log in om je events te zien.
+          </Text>
+          <Text style={[styles.emptySub, { color: roles.fgMuted }]}>
+            Je persoonlijke agenda van favorieten.
           </Text>
           <Pressable
             onPress={() => router.push('/jij')}
             style={[
-              styles.cta,
+              styles.emptyCta,
               { backgroundColor: isNacht ? palette.acid : palette.red },
             ]}
           >
@@ -95,7 +100,7 @@ export default function Gered() {
                 { color: isNacht ? palette.noir : palette.paper3 },
               ]}
             >
-              Naar inloggen
+              Inloggen
             </Text>
           </Pressable>
         </View>
@@ -286,7 +291,7 @@ const styles = StyleSheet.create({
   },
   lead: {
     fontFamily: fontFamily.body,
-    fontSize: 13,
+    fontSize: 14.5,
     lineHeight: 19,
     marginBottom: 4,
   },
@@ -298,7 +303,7 @@ const styles = StyleSheet.create({
   },
   ctaText: {
     fontFamily: fontFamily.medium,
-    fontSize: 13,
+    fontSize: 14.5,
     letterSpacing: -0.07,
   },
 
@@ -374,9 +379,15 @@ const styles = StyleSheet.create({
   },
   emptySub: {
     fontFamily: fontFamily.body,
-    fontSize: 13,
+    fontSize: 14.5,
     lineHeight: 19,
     textAlign: 'center',
+  },
+  emptyCta: {
+    marginTop: 12,
+    paddingHorizontal: 22,
+    paddingVertical: 13,
+    borderRadius: 999,
   },
 
   listState: { paddingHorizontal: 22, paddingVertical: 14 },

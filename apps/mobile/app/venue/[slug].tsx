@@ -5,7 +5,7 @@ import * as Haptics from 'expo-haptics';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, useLocalSearchParams } from 'expo-router';
-import { Linking, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Linking, Platform, Pressable, Share, StyleSheet, Text, View } from 'react-native';
 import Animated, {
   Extrapolation,
   interpolate,
@@ -236,7 +236,10 @@ export default function VenueDetail() {
               {venue.name}
             </Text>
           </Animated.View>
-          <SaveVenueIcon slug={venue.slug} />
+          <View style={styles.topBarActions}>
+            <SaveVenueIcon slug={venue.slug} />
+            <ShareVenueButton slug={venue.slug} name={venue.name} />
+          </View>
         </View>
       </View>
     </View>
@@ -284,7 +287,7 @@ function SaveVenueIcon({ slug }: { slug: string }) {
     }
   };
 
-  const iconName = isSaved ? 'bookmark' : 'bookmark-outline';
+  const iconName = isSaved ? 'heart' : 'heart-outline';
   const iconColor = isSaved
     ? mode === 'nacht'
       ? palette.acid
@@ -297,6 +300,28 @@ function SaveVenueIcon({ slug }: { slug: string }) {
         <Ionicons name={iconName} size={20} color={iconColor} />
       </Pressable>
     </Animated.View>
+  );
+}
+
+function ShareVenueButton({ slug, name }: { slug: string; name: string }) {
+  const onPress = async () => {
+    const url = `https://andreas.amsterdam/v/${encodeURIComponent(slug)}`;
+    const messageBody = `${name} via Andreas — ${url}`;
+    try {
+      await Share.share(
+        Platform.OS === 'ios'
+          ? { url, message: messageBody }
+          : { message: messageBody }
+      );
+      Haptics.selectionAsync();
+    } catch {
+      // Cancel of share-error — geen actie nodig.
+    }
+  };
+  return (
+    <Pressable onPress={onPress} style={styles.circleBtn}>
+      <Ionicons name="share-outline" size={20} color={palette.ink} />
+    </Pressable>
   );
 }
 
@@ -435,6 +460,7 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
   },
+  topBarActions: { flexDirection: 'row', gap: 8 },
   stickyTitle: {
     fontFamily: fontFamily.bold,
     fontSize: 14,
@@ -477,13 +503,13 @@ const styles = StyleSheet.create({
   },
   actionPrimaryText: {
     fontFamily: fontFamily.medium,
-    fontSize: 13,
+    fontSize: 14.5,
     letterSpacing: -0.07,
   },
 
   desc: {
     fontFamily: fontFamily.body,
-    fontSize: 13,
+    fontSize: 14.5,
     lineHeight: 20.8,
     marginTop: 4,
   },
@@ -541,7 +567,7 @@ const styles = StyleSheet.create({
   },
   fallbackActionText: {
     fontFamily: fontFamily.medium,
-    fontSize: 13,
+    fontSize: 14.5,
     letterSpacing: -0.07,
   },
 });

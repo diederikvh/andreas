@@ -866,7 +866,7 @@ const styles = StyleSheet.create({
   },
   cardIntro: {
     fontFamily: fontFamily.body,
-    fontSize: 13,
+    fontSize: 14.5,
     lineHeight: 18,
     marginTop: 4,
   },

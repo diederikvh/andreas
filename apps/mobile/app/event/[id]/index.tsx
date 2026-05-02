@@ -6,7 +6,7 @@ import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useMemo } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Platform, Pressable, Share, StyleSheet, Text, View } from 'react-native';
 import Animated, {
   Extrapolation,
   interpolate,
@@ -220,7 +220,7 @@ export default function EventDetail() {
           </Animated.View>
           <View style={styles.heroActions}>
             <HeartButton id={id} />
-            <CircleButton icon="share-outline" />
+            <ShareButton event={event} />
           </View>
         </View>
       </View>
@@ -436,6 +436,32 @@ function toViewModel(event: ApiEvent): ViewModel {
     price: formatPrice(event.priceCents),
     priceNote: event.priceCents && event.priceCents > 0 ? 'incl. servicekosten' : null,
   };
+}
+
+function ShareButton({ event }: { event: ApiEvent }) {
+  const { data: session } = useSession();
+  const onPress = async () => {
+    const refQs = session?.user?.id
+      ? `?ref=${encodeURIComponent(session.user.id)}`
+      : '';
+    const url = `https://andreas.amsterdam/e/${encodeURIComponent(event.id)}${refQs}`;
+    const messageBody = `Ik ga naar ${event.title} via Andreas. Wil je mee?\n${url}`;
+    try {
+      await Share.share(
+        Platform.OS === 'ios'
+          ? { url, message: messageBody }
+          : { message: messageBody }
+      );
+      Haptics.selectionAsync();
+    } catch {
+      // Cancel of share-error — geen actie nodig.
+    }
+  };
+  return (
+    <Pressable onPress={onPress} style={styles.circleBtn}>
+      <Ionicons name="share-outline" size={20} color={palette.ink} />
+    </Pressable>
+  );
 }
 
 function HeartButton({ id }: { id: string }) {
@@ -666,7 +692,7 @@ const styles = StyleSheet.create({
 
   bodyText: {
     fontFamily: fontFamily.body,
-    fontSize: 13,
+    fontSize: 14.5,
     lineHeight: 20.8,
     marginBottom: 12,
   },
@@ -702,7 +728,7 @@ const styles = StyleSheet.create({
   crewAvFallback: { alignItems: 'center', justifyContent: 'center' },
   crewAvInitial: {
     fontFamily: fontFamily.monoMedium,
-    fontSize: 13,
+    fontSize: 14.5,
   },
   crewName: {
     flex: 1,
@@ -755,7 +781,7 @@ const styles = StyleSheet.create({
   },
   fallbackActionText: {
     fontFamily: fontFamily.medium,
-    fontSize: 13,
+    fontSize: 14.5,
     letterSpacing: -0.07,
   },
 
@@ -773,7 +799,7 @@ const styles = StyleSheet.create({
   inviteText: {
     flex: 1,
     fontFamily: fontFamily.medium,
-    fontSize: 13,
+    fontSize: 14.5,
     letterSpacing: -0.07,
   },
   inviteChev: { fontFamily: fontFamily.mono, fontSize: 14 },
@@ -811,7 +837,7 @@ const styles = StyleSheet.create({
   },
   ctaText: {
     fontFamily: fontFamily.medium,
-    fontSize: 13,
+    fontSize: 14.5,
     letterSpacing: -0.07,
   },
 });

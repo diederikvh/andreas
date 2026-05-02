@@ -8,7 +8,6 @@ import {
   Platform,
   Pressable,
   ScrollView,
-  Share,
   StyleSheet,
   Text,
   TextInput,
@@ -19,7 +18,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Cross } from '@/components/Cross';
 import { EventListRow } from '@/components/EventListRow';
 import type { ApiEventInviteRecord, ApiPublicUser } from '@/lib/api';
-import { useSession } from '@/lib/authClient';
 import { CATEGORY_TICK, formatTime } from '@/lib/eventDisplay';
 import {
   useEvent,
@@ -41,7 +39,6 @@ export default function InviteModal() {
   const { data: event } = useEvent(eventId);
   const { data: friends } = useFriends();
   const { data: outgoing } = useOutgoingFriendRequests();
-  const { data: session } = useSession();
   const sendInvites = useSendInvites();
 
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -109,25 +106,6 @@ export default function InviteModal() {
       return next;
     });
     Haptics.selectionAsync();
-  };
-
-  const onShareLink = async () => {
-    if (!event) return;
-    const refQs = session?.user?.id
-      ? `?ref=${encodeURIComponent(session.user.id)}`
-      : '';
-    const url = `https://andreas.amsterdam/e/${encodeURIComponent(event.id)}${refQs}`;
-    const messageBody = `Ik ga naar ${event.title} via Andreas. Wil je mee?\n${url}`;
-    try {
-      await Share.share(
-        Platform.OS === 'ios'
-          ? { url, message: messageBody }
-          : { message: messageBody }
-      );
-      Haptics.selectionAsync();
-    } catch {
-      // User cancelled or share failed — geen actie nodig.
-    }
   };
 
   const onSend = async () => {
@@ -207,45 +185,6 @@ export default function InviteModal() {
           Nodig iemand uit
         </Text>
 
-        {/* Universele share-row — werkt voor vrienden in de app, vrienden
-            zonder Andreas, en mensen buiten je netwerk. Open de native
-            share-sheet zodat de afzender zelf het kanaal kiest. */}
-        <Pressable
-          onPress={onShareLink}
-          style={[
-            styles.shareRow,
-            {
-              borderTopColor: roles.bgChip,
-              borderBottomColor: roles.bgChip,
-            },
-          ]}
-        >
-          <View
-            style={[
-              styles.shareIcon,
-              { backgroundColor: isNacht ? palette.noir2 : palette.paper2 },
-            ]}
-          >
-            <Ionicons
-              name="share-outline"
-              size={18}
-              color={roles.fg}
-            />
-          </View>
-          <View style={styles.shareBody}>
-            <Text style={[styles.shareTitle, { color: roles.fg }]}>
-              Stuur via bericht
-            </Text>
-            <Text style={[styles.shareSub, { color: roles.fgMuted }]}>
-              Werkt ook voor wie nog geen Andreas heeft
-            </Text>
-          </View>
-          <Ionicons
-            name="chevron-forward"
-            size={16}
-            color={roles.fgPlaceholder}
-          />
-        </Pressable>
 
         {rows.map((r) => (
           <FriendCheckRow
@@ -259,11 +198,20 @@ export default function InviteModal() {
         ))}
 
         {!hasSelectable && (
-          <View style={styles.emptyWrap}>
+          <>
+            <View
+              style={[styles.divider, { backgroundColor: roles.bgChip }]}
+            />
+            <Text style={[styles.emptyHeading, { color: roles.fg }]}>
+              {rows.length === 0
+                ? 'Voeg eerst een vriend toe'
+                : 'Iemand anders erbij?'}
+            </Text>
+            <View style={styles.emptyWrap}>
             <Text style={[styles.empty, { color: roles.fgMuted }]}>
               {rows.length === 0
-                ? 'Je hebt nog geen vrienden op Andreas. Voeg er eerst eentje toe.'
-                : 'Iedereen die je kent is al uitgenodigd of staat in de wachtkamer. Voeg een nieuwe vriend toe om mee te vragen.'}
+                ? 'Je hebt nog geen vrienden op Andreas. Voeg er eentje toe om iemand mee te kunnen vragen.'
+                : 'De beste avonden zijn die waar je achteraf iemand over kunt bellen met ‘zag je dat ook?’. Voeg iemand toe die er ook op gaat staan.'}
             </Text>
             <Pressable
               onPress={() => {
@@ -277,7 +225,8 @@ export default function InviteModal() {
                 Vriend zoeken
               </Text>
             </Pressable>
-          </View>
+            </View>
+          </>
         )}
 
         {hasSelectable && (
@@ -508,37 +457,20 @@ const styles = StyleSheet.create({
     paddingTop: 22,
     paddingBottom: 10,
   },
-  shareRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
+  divider: {
+    height: StyleSheet.hairlineWidth,
+    marginHorizontal: 22,
+    marginTop: 18,
+    marginBottom: 18,
+  },
+  emptyHeading: {
+    fontFamily: fontFamily.display,
+    fontSize: 22,
+    lineHeight: 22,
+    letterSpacing: -0.5,
     paddingHorizontal: 22,
-    paddingVertical: 12,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    marginBottom: 4,
+    paddingBottom: 8,
   },
-  shareIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 999,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  shareBody: { flex: 1, minWidth: 0 },
-  shareTitle: {
-    fontFamily: fontFamily.medium,
-    fontSize: 14,
-    letterSpacing: -0.14,
-  },
-  shareSub: {
-    fontFamily: fontFamily.mono,
-    fontSize: 10,
-    letterSpacing: 0.7,
-    textTransform: 'uppercase',
-    marginTop: 4,
-  },
-
   emptyWrap: {
     paddingHorizontal: 22,
     paddingTop: 4,
@@ -548,7 +480,7 @@ const styles = StyleSheet.create({
   },
   empty: {
     fontFamily: fontFamily.body,
-    fontSize: 13,
+    fontSize: 14.5,
     lineHeight: 18,
   },
   emptyAction: {
@@ -562,7 +494,7 @@ const styles = StyleSheet.create({
   },
   emptyActionText: {
     fontFamily: fontFamily.medium,
-    fontSize: 13,
+    fontSize: 14.5,
     letterSpacing: -0.07,
   },
 
@@ -665,7 +597,7 @@ const styles = StyleSheet.create({
   },
   ctaText: {
     fontFamily: fontFamily.medium,
-    fontSize: 13,
+    fontSize: 14.5,
     letterSpacing: -0.07,
   },
 });

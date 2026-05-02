@@ -35,6 +35,11 @@
               "scheme": "https",
               "host": "andreas.amsterdam",
               "pathPrefix": "/e"
+            },
+            {
+              "scheme": "https",
+              "host": "andreas.amsterdam",
+              "pathPrefix": "/v"
             }
           ],
           "category": ["BROWSABLE", "DEFAULT"]
