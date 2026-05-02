@@ -11,16 +11,33 @@ import { eventsRoute } from './routes/events.js';
 import { friendsRoute, usersRoute } from './routes/friends.js';
 import { invitesRoute } from './routes/invites.js';
 import { savesRoute } from './routes/saves.js';
+import { shareRoute } from './routes/share.js';
 import { venuesRoute } from './routes/venues.js';
 import { uploadToBunny } from './storage/bunny.js';
 
 const app = new Hono();
 
 app.use('*', logger());
+
+// CORS — prod-origins (web/share-pagina + Expo dev clients). In dev
+// laten we alles toe; in prod lijst we expliciet zodat het session-
+// cookie/bearer-pad alleen voor onze eigen domeinen werkt.
+const isProd = process.env.NODE_ENV === 'production';
+const PROD_ORIGINS = new Set([
+  'https://andreas.amsterdam',
+  'https://api.andreas.amsterdam',
+]);
 app.use(
   '*',
   cors({
-    origin: (origin) => origin ?? '*',
+    origin: (origin) => {
+      if (!origin) return origin ?? '*';
+      if (!isProd) return origin;
+      if (PROD_ORIGINS.has(origin)) return origin;
+      // Expo Go / dev-client tijdens TestFlight-test (andreas:// scheme
+      // doet geen Origin-header, dus alleen web-origins hier).
+      return null;
+    },
     credentials: true,
   })
 );
@@ -152,6 +169,13 @@ app.route('/friends', friendsRoute);
 app.route('/users', usersRoute);
 app.route('/invites', invitesRoute);
 
+// Publieke web-routes (share-pagina + AASA + home). Geen auth.
+// Mounten als laatste zodat de JSON-API-routes voorrang krijgen op
+// `/` matches.
+app.route('/', shareRoute);
+
 const port = Number(process.env.PORT ?? 8787);
-serve({ fetch: app.fetch, port });
-console.log(`andreas-api listening on :${port}`);
+// Op Fly draait de container achter een proxy; bind expliciet op
+// 0.0.0.0 zodat het container-network 'm vindt.
+serve({ fetch: app.fetch, port, hostname: '0.0.0.0' });
+console.log(`andreas-api listening on 0.0.0.0:${port}`);

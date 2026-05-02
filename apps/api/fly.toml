@@ -1,0 +1,35 @@
+# Fly.io app config voor @andreas/api.
+# Deploy: vanuit repo-root → `fly deploy --config apps/api/fly.toml --dockerfile apps/api/Dockerfile`.
+
+app = "andreas-api"
+primary_region = "ams"
+
+[build]
+  # Dockerfile-pad relatief vanuit repo-root tijdens deploy. Fly past
+  # de build-context automatisch aan op de directory waar je `fly
+  # deploy` draait — dus run vanuit repo-root.
+
+[env]
+  PORT = "8787"
+  BETTER_AUTH_URL = "https://api.andreas.amsterdam"
+  PUBLIC_BASE_URL = "https://andreas.amsterdam"
+
+[http_service]
+  internal_port = 8787
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+  processes = ["app"]
+
+  [[http_service.checks]]
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "10s"
+    method = "GET"
+    path = "/health"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"
+  cpus = 1

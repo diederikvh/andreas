@@ -8,6 +8,7 @@ import {
   Platform,
   Pressable,
   ScrollView,
+  Share,
   StyleSheet,
   Text,
   TextInput,
@@ -18,6 +19,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Cross } from '@/components/Cross';
 import { EventListRow } from '@/components/EventListRow';
 import type { ApiEventInviteRecord, ApiPublicUser } from '@/lib/api';
+import { useSession } from '@/lib/authClient';
 import { CATEGORY_TICK, formatTime } from '@/lib/eventDisplay';
 import {
   useEvent,
@@ -39,6 +41,7 @@ export default function InviteModal() {
   const { data: event } = useEvent(eventId);
   const { data: friends } = useFriends();
   const { data: outgoing } = useOutgoingFriendRequests();
+  const { data: session } = useSession();
   const sendInvites = useSendInvites();
 
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -106,6 +109,25 @@ export default function InviteModal() {
       return next;
     });
     Haptics.selectionAsync();
+  };
+
+  const onShareLink = async () => {
+    if (!event) return;
+    const refQs = session?.user?.id
+      ? `?ref=${encodeURIComponent(session.user.id)}`
+      : '';
+    const url = `https://andreas.amsterdam/e/${encodeURIComponent(event.id)}${refQs}`;
+    const messageBody = `Ik ga naar ${event.title} via Andreas. Wil je mee?\n${url}`;
+    try {
+      await Share.share(
+        Platform.OS === 'ios'
+          ? { url, message: messageBody }
+          : { message: messageBody }
+      );
+      Haptics.selectionAsync();
+    } catch {
+      // User cancelled or share failed — geen actie nodig.
+    }
   };
 
   const onSend = async () => {
@@ -184,6 +206,46 @@ export default function InviteModal() {
         <Text style={[styles.sectionTitle, { color: roles.fg }]}>
           Nodig iemand uit
         </Text>
+
+        {/* Universele share-row — werkt voor vrienden in de app, vrienden
+            zonder Andreas, en mensen buiten je netwerk. Open de native
+            share-sheet zodat de afzender zelf het kanaal kiest. */}
+        <Pressable
+          onPress={onShareLink}
+          style={[
+            styles.shareRow,
+            {
+              borderTopColor: roles.bgChip,
+              borderBottomColor: roles.bgChip,
+            },
+          ]}
+        >
+          <View
+            style={[
+              styles.shareIcon,
+              { backgroundColor: isNacht ? palette.noir2 : palette.paper2 },
+            ]}
+          >
+            <Ionicons
+              name="share-outline"
+              size={18}
+              color={roles.fg}
+            />
+          </View>
+          <View style={styles.shareBody}>
+            <Text style={[styles.shareTitle, { color: roles.fg }]}>
+              Stuur via bericht
+            </Text>
+            <Text style={[styles.shareSub, { color: roles.fgMuted }]}>
+              Werkt ook voor wie nog geen Andreas heeft
+            </Text>
+          </View>
+          <Ionicons
+            name="chevron-forward"
+            size={16}
+            color={roles.fgPlaceholder}
+          />
+        </Pressable>
 
         {rows.map((r) => (
           <FriendCheckRow
@@ -446,6 +508,37 @@ const styles = StyleSheet.create({
     paddingTop: 22,
     paddingBottom: 10,
   },
+  shareRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: 22,
+    paddingVertical: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    marginBottom: 4,
+  },
+  shareIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  shareBody: { flex: 1, minWidth: 0 },
+  shareTitle: {
+    fontFamily: fontFamily.medium,
+    fontSize: 14,
+    letterSpacing: -0.14,
+  },
+  shareSub: {
+    fontFamily: fontFamily.mono,
+    fontSize: 10,
+    letterSpacing: 0.7,
+    textTransform: 'uppercase',
+    marginTop: 4,
+  },
+
   emptyWrap: {
     paddingHorizontal: 22,
     paddingTop: 4,
