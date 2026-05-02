@@ -317,6 +317,8 @@ export default function Jij() {
                   placeholderTextColor={roles.fgPlaceholder}
                   keyboardType="phone-pad"
                   autoFocus
+                  textContentType="telephoneNumber"
+                  autoComplete="tel"
                   style={[styles.input, { color: roles.fg }]}
                   returnKeyType="done"
                   onSubmitEditing={sendCode}
@@ -344,6 +346,11 @@ export default function Jij() {
                   placeholderTextColor={roles.fgPlaceholder}
                   keyboardType="number-pad"
                   maxLength={6}
+                  // iOS toont de OTP-code in de QuickType-bar zodra de
+                  // SMS binnenkomt; Android vult automatisch in.
+                  textContentType="oneTimeCode"
+                  autoComplete="one-time-code"
+                  importantForAutofill="yes"
                   style={[styles.input, styles.codeInput, { color: roles.fg }]}
                   returnKeyType="done"
                   onSubmitEditing={verifyCode}
