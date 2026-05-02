@@ -25,6 +25,11 @@ export const friendshipStatus = pgEnum('friendship_status', [
   'pending',
   'accepted',
 ]);
+export const inviteStatus = pgEnum('invite_status', [
+  'pending',
+  'accepted',
+  'declined',
+]);
 
 // ─── Domain ───────────────────────────────────────────────────────────────
 
@@ -136,6 +141,33 @@ export const saves = pgTable(
   (t) => [
     primaryKey({ columns: [t.userId, t.eventId] }),
     index('saves_event_idx').on(t.eventId),
+  ]
+);
+
+export const invites = pgTable(
+  'invites',
+  {
+    id: text().primaryKey(),
+    fromUserId: text()
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    toUserId: text()
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    eventId: text()
+      .notNull()
+      .references(() => events.id, { onDelete: 'cascade' }),
+    message: text(),
+    status: inviteStatus().notNull().default('pending'),
+    createdAt: timestamp({ withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+  },
+  (t) => [
+    // Voorkom duplicate invites tussen dezelfde from/to/event paar.
+    uniqueIndex('invites_unique_idx').on(t.fromUserId, t.toUserId, t.eventId),
+    index('invites_to_status_idx').on(t.toUserId, t.status),
+    index('invites_event_idx').on(t.eventId),
   ]
 );
 

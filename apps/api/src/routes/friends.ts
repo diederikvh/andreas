@@ -77,6 +77,34 @@ friendsRoute.get('/', async (c) => {
   return c.json({ friends });
 });
 
+friendsRoute.get('/outgoing', async (c) => {
+  const me = await requireUserId(c);
+  if (typeof me !== 'string') return me;
+
+  const outgoing = await db
+    .select({
+      id: publicUserCols.id,
+      name: publicUserCols.name,
+      handle: publicUserCols.handle,
+      avatarUrl: publicUserCols.avatarUrl,
+      requestedAt: schema.friendships.createdAt,
+    })
+    .from(schema.friendships)
+    .innerJoin(
+      schema.users,
+      eq(schema.users.id, schema.friendships.toUserId)
+    )
+    .where(
+      and(
+        eq(schema.friendships.fromUserId, me),
+        eq(schema.friendships.status, 'pending')
+      )
+    )
+    .orderBy(desc(schema.friendships.createdAt));
+
+  return c.json({ outgoing });
+});
+
 friendsRoute.get('/requests', async (c) => {
   const me = await requireUserId(c);
   if (typeof me !== 'string') return me;

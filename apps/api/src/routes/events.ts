@@ -220,11 +220,47 @@ eventsRoute.get('/:id', async (c) => {
   const friendsMap = me ? await buildFriendsByEvent(me, [row.id]) : new Map();
   const entry = friendsMap.get(row.id);
 
+  // Mijn eigen verstuurde invites voor dit event — gebruikt op detail
+  // (toont wie ik gevraagd heb + status) én op de invite-modal (om
+  // dubbele invites te blokkeren).
+  const myInvites = me
+    ? await db
+        .select({
+          id: schema.invites.id,
+          status: schema.invites.status,
+          message: schema.invites.message,
+          toUserId: schema.users.id,
+          toName: schema.users.name,
+          toHandle: schema.users.handle,
+          toAvatarUrl: schema.users.avatarUrl,
+        })
+        .from(schema.invites)
+        .innerJoin(schema.users, eq(schema.users.id, schema.invites.toUserId))
+        .where(
+          and(
+            eq(schema.invites.fromUserId, me),
+            eq(schema.invites.eventId, row.id)
+          )
+        )
+        .orderBy(asc(schema.invites.createdAt))
+    : [];
+
   return c.json({
     event: {
       ...row,
       friendsSaved: entry?.friends ?? [],
       friendsSavedCount: entry?.count ?? 0,
+      myInvites: myInvites.map((i) => ({
+        id: i.id,
+        status: i.status,
+        message: i.message,
+        to: {
+          id: i.toUserId,
+          name: i.toName,
+          handle: i.toHandle,
+          avatarUrl: i.toAvatarUrl,
+        },
+      })),
     },
   });
 });

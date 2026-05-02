@@ -27,7 +27,7 @@ Laatste sync: 2026-05-02 · branch `main`.
 - ✅ Mobile data-laag: TanStack Query hooks (`useEvents`, `useEvent`, `useVenue`, `useMySaves`, `useFriends`, `useFriendRequests`, `useFriend`, `useUserSearch`).
 - ✅ Avond + Agenda + Kaart + Gered + Detail allemaal live op de API.
 - ✅ Friend-pill op event-rijen + friends-blok op event-detail. Privacy-gates moeten later (TODO-comment in `buildFriendsByEvent` en `GET /friends/:id`).
-- ⬜ Invite-modal (zie volgende slice).
+- ✅ Invite-flow — `invites` tabel + endpoints (`GET/POST /invites`, `:id/accept`, `:id/decline`, `GET /friends/outgoing`); `/event/[id]/invite` modal met EventListRow + vrienden-checklist (incl. pending outgoing als gedimde rijen) + bericht; "Door jou uitgenodigd" gemerged met "vrienden bij event" tot één Crew-blok onder de description (heading "Wie gaat erheen?"); Jij toont "Uitnodigingen" + "Aangevraagd" secties; accept maakt automatisch een save aan.
 - ⬜ QR genereren + scannen op `/add-friend`.
 - ⬜ Privacy-toggles op profiel (zichtbaarheid van saves voor vrienden).
 - ⬜ Push notificaties (`expo-notifications`).
@@ -37,18 +37,11 @@ Laatste sync: 2026-05-02 · branch `main`.
 
 ## Volgende slice
 
-### Invite-flow — "Vraag iemand mee"
+### Niet-leden uitnodigen via deeplink (viral)
 
-1. **API**:
-   - Schema: `invites` tabel toevoegen (`fromUserId`, `toUserId`, `eventId`, `message`, `status` enum `pending|accepted|declined`, `createdAt`).
-   - `POST /invites` met `{ eventId, toUserIds: string[], message? }` — schrijft één rij per ontvanger; weiger duplicates en self-invites.
-   - `GET /invites` — mijn ontvangen invites (status pending), met inviter-profiel + event-info gejoind.
-   - `POST /invites/:id/accept` + `POST /invites/:id/decline` — ontvanger only.
-2. **Mobile**:
-   - `/event/[id]/invite` route (modal-presentatie). Vrienden-checklist (uit `useFriends`), optionele message-textarea, "Stuur uitnodiging".
-   - Op detail-screen: de bestaande "Vraag iemand anders mee" pill triggert deze route.
-   - Op Jij: nieuwe "Uitnodigingen" sectie boven Vrienden, lijstje van ontvangen invites met accept/decline.
-3. **Optioneel later**: bij accept ook automatisch een save aanmaken voor de ontvanger.
+1. **Light**: share-row in invite-modal die `Sharing.shareAsync` opent met tekst + deeplink (`https://andreas.app/e/<eventId>?ref=<myUserId>`); geen server-state.
+2. **Full**: `share_invites` tabel met token; bij phone-OTP signup koppelt Andreas op telefoonnummer en maakt friendship + event-invite automatisch.
+3. Universal links + Expo Linking config zodat `andreas://event/<id>` en `https://andreas.app/e/<id>` allebei naar de detail-route routeren.
 
 ---
 
@@ -61,6 +54,14 @@ Laatste sync: 2026-05-02 · branch `main`.
 - **Drizzle Studio** (`pnpm studio`) is een handige DB-browser tijdens dev. Niet uitchecken.
 - **Kaart-tab dev-scripts**: `apps/api/scripts/{drop-all,clear-users,show-friendships,show-sessions,check-friends-pill}.ts` zijn dev-utilities. Niet automatisch draaien tijdens shared dev — `clear-users` wist sessies en haalt je inlog onderuit.
 - **Mock-files**: `apps/mobile/mocks/{feed,agenda,gered,jij,kaart}.ts` worden alleen nog op een paar plekken in Avond/Jij gebruikt voor copy-fallbacks (hero-strings, photoBand). Volledig uitfaseren wanneer die strings server-side komen.
+
+---
+
+## Wensen — als alles klaar is
+
+- **Doorzoekbare venue-lijst** — een eigen route/scherm waar je alle venues kan browsen + zoeken (op naam, buurt, type). Nu zijn venues alleen indirect bereikbaar via events of de kaart.
+- **Volgen van een venue in drie stadia** — `volgen` (boost: programmering komt extra omhoog in Avond/Vandaag), `normaal` (default, geen voorkeur), `blokken` (venue + diens events worden nergens meer getoond). Vervangt de huidige binaire follow-toggle op `/venue/[slug]`. Schema: `venue_follows.state` enum, of een aparte `venue_blocks` tabel.
+- **Kaart venue ↔ events switch** — toolbar-toggle op de Kaart-tab tussen "venues" (één pin per locatie, samengevoegde info) en "events" (één pin per event, kan meerdere op zelfde venue tonen). Beide modi delen de bestaande sheet/listrow.
 
 ---
 

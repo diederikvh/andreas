@@ -20,14 +20,24 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppHeader, HEADER_HEIGHT } from '@/components/AppHeader';
 import { Cross } from '@/components/Cross';
-import type { ApiFriend, ApiFriendRequest, ApiMe } from '@/lib/api';
+import type {
+  ApiFriend,
+  ApiFriendRequest,
+  ApiInvite,
+  ApiMe,
+} from '@/lib/api';
 import { getMe, updateMe, uploadAvatar } from '@/lib/api';
 import { authClient, useSession } from '@/lib/authClient';
+import { DOW_NL_MIXED, formatTime } from '@/lib/eventDisplay';
 import {
   useAcceptFriendRequest,
+  useAcceptInvite,
   useDeclineFriendRequest,
+  useDeclineInvite,
   useFriendRequests,
   useFriends,
+  useInvites,
+  useOutgoingFriendRequests,
 } from '@/lib/queries';
 import { useMode, useModeStore, useRoles } from '@/store/mode';
 import { fontFamily, palette } from '@/theme/tokens';
@@ -54,8 +64,14 @@ export default function Jij() {
   const authedAndOnboarded = Boolean(session?.user?.id && me?.handle);
   const { data: friends } = useFriends({ enabled: authedAndOnboarded });
   const { data: requests } = useFriendRequests({ enabled: authedAndOnboarded });
+  const { data: outgoing } = useOutgoingFriendRequests({
+    enabled: authedAndOnboarded,
+  });
+  const { data: invites } = useInvites({ enabled: authedAndOnboarded });
   const acceptRequest = useAcceptFriendRequest();
   const declineRequest = useDeclineFriendRequest();
+  const acceptInvite = useAcceptInvite();
+  const declineInvite = useDeclineInvite();
 
   // Stage uit sessie + me afgeleid; tijdelijke override voor de
   // "code"-stap die geen server-state heeft.
@@ -586,6 +602,21 @@ export default function Jij() {
           {error && <Text style={styles.error}>{error}</Text>}
         </View>
 
+        {invites && invites.length > 0 && (
+          <>
+            <SectionHead label="Uitnodigingen" count={invites.length} />
+            {invites.map((inv) => (
+              <InviteRow
+                key={inv.id}
+                invite={inv}
+                onAccept={() => acceptInvite.mutate(inv.id)}
+                onDecline={() => declineInvite.mutate(inv.id)}
+                busy={acceptInvite.isPending || declineInvite.isPending}
+              />
+            ))}
+          </>
+        )}
+
         <SectionHead
           label="Vrienden"
           count={friends?.length ?? 0}
@@ -598,6 +629,15 @@ export default function Jij() {
           </Text>
         ) : (
           friends!.map((f) => <FriendRow key={f.id} friend={f} />)
+        )}
+
+        {outgoing && outgoing.length > 0 && (
+          <>
+            <SectionHead label="Aangevraagd" count={outgoing.length} />
+            {outgoing.map((o) => (
+              <PendingRow key={o.id} user={o} />
+            ))}
+          </>
         )}
 
         {requests && requests.length > 0 && (
@@ -776,6 +816,120 @@ function RequestRow({
         >
           <Ionicons name="checkmark" size={18} color={roles.onAccent} />
         </Pressable>
+      </View>
+    </View>
+  );
+}
+
+function InviteRow({
+  invite,
+  onAccept,
+  onDecline,
+  busy,
+}: {
+  invite: ApiInvite;
+  onAccept: () => void;
+  onDecline: () => void;
+  busy: boolean;
+}) {
+  const roles = useRoles();
+  const d = new Date(invite.event.startsAt);
+  const dateLabel = `${DOW_NL_MIXED[d.getDay()]} · ${formatTime(invite.event.startsAt)}`;
+  return (
+    <Pressable
+      onPress={() => router.push(`/event/${invite.event.id}` as never)}
+      style={[styles.invite, { borderColor: roles.bgChip }]}
+    >
+      <ProfileAvatar
+        avatarUrl={invite.from.avatarUrl}
+        name={invite.from.name}
+        size={36}
+      />
+      <View style={styles.inviteBody}>
+        <Text
+          numberOfLines={2}
+          style={[styles.inviteLine, { color: roles.fgRead }]}
+        >
+          <Text style={[styles.inviteName, { color: roles.fg }]}>
+            {invite.from.name}
+          </Text>
+          {' vraagt je mee naar '}
+          <Text style={[styles.inviteEvent, { color: roles.fg }]}>
+            {invite.event.title}
+          </Text>
+          .
+        </Text>
+        <Text
+          numberOfLines={1}
+          style={[styles.inviteMeta, { color: roles.fgMuted }]}
+        >
+          {dateLabel} · {invite.event.venueName}
+        </Text>
+        {invite.message && (
+          <Text
+            numberOfLines={2}
+            style={[styles.inviteMessage, { color: roles.fgMuted }]}
+          >
+            “{invite.message}”
+          </Text>
+        )}
+      </View>
+      <View style={styles.twin}>
+        <Pressable
+          onPress={onDecline}
+          disabled={busy}
+          hitSlop={6}
+          style={[styles.twinBtn, { borderColor: roles.fgPlaceholder }]}
+        >
+          <Cross size={16} thickness={3.2} color={roles.fgMuted} />
+        </Pressable>
+        <Pressable
+          onPress={onAccept}
+          disabled={busy}
+          hitSlop={6}
+          style={[
+            styles.twinBtn,
+            { backgroundColor: roles.accent, borderColor: roles.accent },
+          ]}
+        >
+          <Ionicons name="checkmark" size={18} color={roles.onAccent} />
+        </Pressable>
+      </View>
+    </Pressable>
+  );
+}
+
+function PendingRow({ user }: { user: ApiFriendRequest }) {
+  const roles = useRoles();
+  return (
+    <View style={[styles.friend, { borderColor: roles.bgChip }]}>
+      <ProfileAvatar
+        avatarUrl={user.avatarUrl}
+        name={user.name}
+        size={36}
+      />
+      <View style={styles.friendBody}>
+        <Text
+          numberOfLines={1}
+          style={[styles.friendName, { color: roles.fg }]}
+        >
+          {user.name}
+        </Text>
+        {user.handle && (
+          <Text
+            numberOfLines={1}
+            style={[styles.friendMeta, { color: roles.fgMuted }]}
+          >
+            @{user.handle}
+          </Text>
+        )}
+      </View>
+      <View
+        style={[styles.pendingPill, { borderColor: `${roles.fgMuted}80` }]}
+      >
+        <Text style={[styles.pendingPillText, { color: roles.fgMuted }]}>
+          Wacht op acceptatie
+        </Text>
       </View>
     </View>
   );
@@ -1059,6 +1213,51 @@ const styles = StyleSheet.create({
     letterSpacing: 1.2,
     textTransform: 'uppercase',
   },
+  // Invite-row — dezelfde container als FriendRow, met extra body-lijnen.
+  invite: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: 22,
+    paddingVertical: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  inviteBody: { flex: 1, minWidth: 0 },
+  inviteLine: {
+    fontFamily: fontFamily.body,
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  inviteName: { fontFamily: fontFamily.bold },
+  inviteEvent: { fontFamily: fontFamily.bold },
+  inviteMeta: {
+    fontFamily: fontFamily.mono,
+    fontSize: 9.5,
+    letterSpacing: 1.1,
+    textTransform: 'uppercase',
+    marginTop: 4,
+  },
+  inviteMessage: {
+    fontFamily: fontFamily.body,
+    fontStyle: 'italic',
+    fontSize: 12,
+    lineHeight: 16.5,
+    marginTop: 6,
+  },
+
+  pendingPill: {
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
+  pendingPillText: {
+    fontFamily: fontFamily.monoMedium,
+    fontSize: 9,
+    letterSpacing: 1.1,
+    textTransform: 'uppercase',
+  },
+
   twin: { flexDirection: 'row', gap: 6 },
   twinBtn: {
     width: 32,

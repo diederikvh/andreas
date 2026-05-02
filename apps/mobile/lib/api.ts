@@ -42,6 +42,15 @@ export type ApiEvent = {
   friendsSaved?: ApiFriendBadge[];
   /** Totale telling van vrienden die dit event hebben opgeslagen. */
   friendsSavedCount?: number;
+  /** Door mij verstuurde invites voor dit event (alleen op detail). */
+  myInvites?: ApiEventInviteRecord[];
+};
+
+export type ApiEventInviteRecord = {
+  id: string;
+  status: 'pending' | 'accepted' | 'declined';
+  message: string | null;
+  to: ApiPublicUser;
 };
 
 export type EventsFilter = {
@@ -233,6 +242,13 @@ export async function getFriendRequests(): Promise<ApiFriendRequest[]> {
   return requests;
 }
 
+export async function getOutgoingFriendRequests(): Promise<ApiFriendRequest[]> {
+  const { outgoing } = await authedRequest<{ outgoing: ApiFriendRequest[] }>(
+    '/friends/outgoing'
+  );
+  return outgoing;
+}
+
 export async function sendFriendRequest(
   handle: string
 ): Promise<{ status: 'pending' | 'accepted' }> {
@@ -280,6 +296,56 @@ export type ApiFriendDetail = {
 
 export async function getFriendDetail(id: string): Promise<ApiFriendDetail> {
   return await authedRequest<ApiFriendDetail>(`/friends/${id}`);
+}
+
+// ─── Invites ──────────────────────────────────────────────────────────
+
+export type ApiInvite = {
+  id: string;
+  message: string | null;
+  createdAt: string;
+  from: ApiPublicUser;
+  event: {
+    id: string;
+    title: string;
+    startsAt: string;
+    category: ApiEvent['category'];
+    imageUrl: string | null;
+    venueId: string;
+    venueSlug: string;
+    venueName: string;
+  };
+};
+
+export async function getInvites(): Promise<ApiInvite[]> {
+  const { invites } = await authedRequest<{ invites: ApiInvite[] }>('/invites');
+  return invites;
+}
+
+export async function sendInvites(input: {
+  eventId: string;
+  toUserIds: string[];
+  message?: string;
+}): Promise<{ created: number; sent: string[] }> {
+  return await authedRequest<{ created: number; sent: string[] }>('/invites', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+export async function acceptInvite(
+  id: string
+): Promise<{ status: 'accepted'; eventId: string }> {
+  return await authedRequest<{ status: 'accepted'; eventId: string }>(
+    `/invites/${id}/accept`,
+    { method: 'POST' }
+  );
+}
+
+export async function declineInvite(id: string): Promise<{ ok: true }> {
+  return await authedRequest<{ ok: true }>(`/invites/${id}/decline`, {
+    method: 'POST',
+  });
 }
 
 export async function uploadAvatar(input: {

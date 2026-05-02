@@ -6,17 +6,22 @@ import {
 
 import {
   acceptFriendRequest,
+  acceptInvite,
   declineFriendRequest,
+  declineInvite,
   getEvent,
   getEvents,
   getFriendDetail,
   getFriendRequests,
   getFriends,
+  getInvites,
+  getOutgoingFriendRequests,
   getMySaves,
   getVenue,
   removeFriend,
   searchUsers,
   sendFriendRequest,
+  sendInvites,
   toggleSave,
   type EventsFilter,
   type SavedApiEvent,
@@ -29,8 +34,10 @@ export const queryKeys = {
   saves: () => ['saves'] as const,
   friends: () => ['friends'] as const,
   friendRequests: () => ['friend-requests'] as const,
+  outgoingFriendRequests: () => ['outgoing-friend-requests'] as const,
   friend: (id: string) => ['friend', id] as const,
   userSearch: (q: string) => ['user-search', q] as const,
+  invites: () => ['invites'] as const,
 };
 
 export function useEvents(filter: EventsFilter = {}) {
@@ -107,6 +114,14 @@ export function useFriendRequests(opts: { enabled?: boolean } = {}) {
   });
 }
 
+export function useOutgoingFriendRequests(opts: { enabled?: boolean } = {}) {
+  return useQuery({
+    queryKey: queryKeys.outgoingFriendRequests(),
+    queryFn: () => getOutgoingFriendRequests(),
+    enabled: opts.enabled ?? true,
+  });
+}
+
 export function useUserSearch(q: string) {
   return useQuery({
     queryKey: queryKeys.userSearch(q),
@@ -126,6 +141,7 @@ export function useFriend(id: string) {
 function invalidateFriendsCaches(qc: ReturnType<typeof useQueryClient>) {
   qc.invalidateQueries({ queryKey: queryKeys.friends() });
   qc.invalidateQueries({ queryKey: queryKeys.friendRequests() });
+  qc.invalidateQueries({ queryKey: queryKeys.outgoingFriendRequests() });
   qc.invalidateQueries({ queryKey: ['user-search'] });
   // Friend-pill data op event-rijen verandert mee als vrienden-set wijzigt.
   qc.invalidateQueries({ queryKey: ['events'] });
@@ -161,5 +177,62 @@ export function useRemoveFriend() {
   return useMutation({
     mutationFn: (userId: string) => removeFriend(userId),
     onSettled: () => invalidateFriendsCaches(qc),
+  });
+}
+
+// ─── Invites ────────────────────────────────────────────────────────
+
+export function useInvites(opts: { enabled?: boolean } = {}) {
+  return useQuery({
+    queryKey: queryKeys.invites(),
+    queryFn: () => getInvites(),
+    enabled: opts.enabled ?? true,
+  });
+}
+
+export function useSendInvites() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: {
+      eventId: string;
+      toUserIds: string[];
+      message?: string;
+    }) => sendInvites(input),
+    onSettled: (_data, _err, vars) => {
+      qc.invalidateQueries({ queryKey: queryKeys.invites() });
+      // Inviter ziet `myInvites` op event-detail — refreshen zodat de
+      // nieuwe rijen direct verschijnen.
+      qc.invalidateQueries({ queryKey: queryKeys.event(vars.eventId) });
+    },
+  });
+}
+
+export function useAcceptInvite() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => acceptInvite(id),
+    onSettled: (data) => {
+      qc.invalidateQueries({ queryKey: queryKeys.invites() });
+      qc.invalidateQueries({ queryKey: queryKeys.saves() });
+      if (data?.eventId) {
+        qc.invalidateQueries({ queryKey: queryKeys.event(data.eventId) });
+      }
+      // Friend-pills op andere events kunnen veranderen omdat ik nu een
+      // save voor dit event heb.
+      qc.invalidateQueries({ queryKey: ['events'] });
+    },
+  });
+}
+
+export function useDeclineInvite() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => declineInvite(id),
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.invites() });
+      // Inviter's myInvites wordt geüpdatet bij de volgende fetch van
+      // het event — geen specifieke eventId beschikbaar hier.
+      qc.invalidateQueries({ queryKey: ['event'] });
+    },
   });
 }

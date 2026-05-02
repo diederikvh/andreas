@@ -9,6 +9,7 @@ import { auth } from './auth.js';
 import { db, schema } from './db/index.js';
 import { eventsRoute } from './routes/events.js';
 import { friendsRoute, usersRoute } from './routes/friends.js';
+import { invitesRoute } from './routes/invites.js';
 import { savesRoute } from './routes/saves.js';
 import { venuesRoute } from './routes/venues.js';
 import { uploadToBunny } from './storage/bunny.js';
@@ -149,6 +150,7 @@ app.route('/venues', venuesRoute);
 app.route('/saves', savesRoute);
 app.route('/friends', friendsRoute);
 app.route('/users', usersRoute);
+app.route('/invites', invitesRoute);
 
 const port = Number(process.env.PORT ?? 8787);
 serve({ fetch: app.fetch, port });
