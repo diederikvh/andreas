@@ -11,12 +11,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "amsterdam.andreas.app",
-      "associatedDomains": [
-        "applinks:andreas.amsterdam",
-        "applinks:andreas.amsterdam",
-        "applinks:andreas.amsterdam",
-        "applinks:andreas.amsterdam"
-      ],
+      "associatedDomains": ["applinks:andreas.amsterdam"],
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       }
@@ -42,31 +37,10 @@
               "pathPrefix": "/e"
             }
           ],
-          "category": [
-            "BROWSABLE",
-            "DEFAULT"
-          ]
-        },
-        {
-          "action": "VIEW",
-          "autoVerify": true,
-          "data": [
-            {
-              "scheme": "https",
-              "host": "andreas.amsterdam",
-              "pathPrefix": "/e"
-            }
-          ],
-          "category": [
-            "BROWSABLE",
-            "DEFAULT"
-          ]
+          "category": ["BROWSABLE", "DEFAULT"]
         }
       ],
       "permissions": [
-        "android.permission.ACCESS_COARSE_LOCATION",
-        "android.permission.ACCESS_FINE_LOCATION",
-        "android.permission.RECORD_AUDIO",
         "android.permission.ACCESS_COARSE_LOCATION",
         "android.permission.ACCESS_FINE_LOCATION",
         "android.permission.RECORD_AUDIO"
