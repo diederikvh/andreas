@@ -1,39 +1,51 @@
 /**
- * Minimal MessageBird (Bird) SMS sender for the OTP flow.
- * Uses their REST API directly — no SDK dependency.
+ * SMS sender via Bird (voorheen MessageBird) Channels API.
+ * Endpoint: POST /workspaces/<ws>/channels/<ch>/messages
+ *
+ * Env vars:
+ *   - MESSAGEBIRD_ACCESS_KEY  (heet historisch zo; werkt op Bird)
+ *   - BIRD_WORKSPACE_ID
+ *   - BIRD_CHANNEL_ID
+ *
+ * Als één van die drie ontbreekt loggen we de OTP naar de server-
+ * console en sturen we niets — handig voor lokaal én TestFlight-beta
+ * zonder credit te verbranden.
  */
 
-const ENDPOINT = 'https://rest.messagebird.com/messages';
+const ENDPOINT_BASE = 'https://api.bird.com';
 
 export async function sendSms(opts: { to: string; body: string }) {
   const key = process.env.MESSAGEBIRD_ACCESS_KEY;
-  const originator = process.env.MESSAGEBIRD_ORIGINATOR ?? 'Andreas';
+  const workspaceId = process.env.BIRD_WORKSPACE_ID;
+  const channelId = process.env.BIRD_CHANNEL_ID;
 
-  if (!key) {
-    if (process.env.NODE_ENV !== 'production') {
-      // Development fallback: log to console so the OTP flow is testable
-      // without burning SMS credit.
-      console.log(`[sms:dev] → ${opts.to}: ${opts.body}`);
-      return;
-    }
-    throw new Error('MESSAGEBIRD_ACCESS_KEY is not set');
+  if (!key || !workspaceId || !channelId) {
+    console.warn(
+      `[sms:fallback] ontbrekende Bird-config (key=${!!key} ws=${!!workspaceId} ch=${!!channelId}) → ${opts.to}: ${opts.body}`
+    );
+    return;
   }
 
-  const res = await fetch(ENDPOINT, {
+  const url = `${ENDPOINT_BASE}/workspaces/${workspaceId}/channels/${channelId}/messages`;
+  const res = await fetch(url, {
     method: 'POST',
     headers: {
       Authorization: `AccessKey ${key}`,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      originator,
-      recipients: [opts.to],
-      body: opts.body,
+      receiver: {
+        contacts: [{ identifierValue: opts.to }],
+      },
+      body: {
+        type: 'text',
+        text: { text: opts.body },
+      },
     }),
   });
 
   if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`MessageBird send failed: ${res.status} ${text}`);
+    const text = await res.text().catch(() => '');
+    throw new Error(`Bird send failed: ${res.status} ${text}`);
   }
 }

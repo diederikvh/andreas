@@ -145,7 +145,12 @@ async function getSessionBearer(): Promise<string | null> {
   if (!raw) return null;
   try {
     const parsed = JSON.parse(raw) as Record<string, CookieEntry>;
-    const entry = parsed['better-auth.session_token'];
+    // Better-auth voegt automatisch een `__Secure-` prefix toe aan de
+    // cookie-naam wanneer de baseURL HTTPS is (per browser-spec). In
+    // dev (http://localhost) is het de plain naam. We proberen beide.
+    const entry =
+      parsed['__Secure-better-auth.session_token'] ??
+      parsed['better-auth.session_token'];
     if (!entry?.value) return null;
     if (entry.expires && new Date(entry.expires) < new Date()) return null;
     return entry.value;

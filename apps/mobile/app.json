@@ -13,6 +13,8 @@
       "bundleIdentifier": "amsterdam.andreas.app",
       "associatedDomains": [
         "applinks:andreas.amsterdam",
+        "applinks:andreas.amsterdam",
+        "applinks:andreas.amsterdam",
         "applinks:andreas.amsterdam"
       ],
       "infoPlist": {
@@ -44,9 +46,27 @@
             "BROWSABLE",
             "DEFAULT"
           ]
+        },
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            {
+              "scheme": "https",
+              "host": "andreas.amsterdam",
+              "pathPrefix": "/e"
+            }
+          ],
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
         }
       ],
       "permissions": [
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.RECORD_AUDIO",
         "android.permission.ACCESS_COARSE_LOCATION",
         "android.permission.ACCESS_FINE_LOCATION",
         "android.permission.RECORD_AUDIO"
@@ -95,6 +115,12 @@
         "projectId": "bd092e0d-3947-4492-838d-1a7460aecd9d"
       }
     },
-    "owner": "diederikvh"
+    "owner": "diederikvh",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/bd092e0d-3947-4492-838d-1a7460aecd9d"
+    }
   }
 }
