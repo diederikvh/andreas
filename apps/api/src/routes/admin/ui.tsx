@@ -25,6 +25,47 @@ function shortId(): string {
 const CATEGORIES = ['Muziek', 'Theater', 'Literatuur', 'Film'] as const;
 type Category = (typeof CATEGORIES)[number];
 
+const VENUE_TYPES = [
+  'galerie',
+  'museum',
+  'podium',
+  'club',
+  'film',
+  'ruimte',
+  'boekhandel-cafe',
+] as const;
+type VenueType = (typeof VENUE_TYPES)[number];
+
+const DAY_NIGHT = ['day', 'night', 'both'] as const;
+type DayNight = (typeof DAY_NIGHT)[number];
+
+const WIJKEN = [
+  'centrum',
+  'noord',
+  'oost',
+  'west',
+  'zuid',
+  'zuidoost',
+  'nieuw-west',
+] as const;
+type Wijk = (typeof WIJKEN)[number];
+
+function parseEnumField<T extends string>(
+  list: readonly T[],
+  value: string | undefined
+): T | null {
+  if (!value) return null;
+  return (list as readonly string[]).includes(value) ? (value as T) : null;
+}
+
+function parseTagsField(value: string | undefined): string[] {
+  if (!value) return [];
+  return value
+    .split(',')
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+}
+
 function slugify(input: string): string {
   return input
     .toLowerCase()
@@ -509,8 +550,9 @@ adminUi.get('/venues', async (c) => {
         <thead>
           <tr>
             <th>Naam</th>
-            <th>Slug</th>
-            <th>Adres</th>
+            <th>Type</th>
+            <th>Dag/nacht</th>
+            <th>Wijk</th>
             <th>Categorieën</th>
             <th>Status</th>
             <th></th>
@@ -520,8 +562,9 @@ adminUi.get('/venues', async (c) => {
           {rows.map((v) => (
             <tr class={v.published ? '' : 'row-unpub'}>
               <td><a href={`/admin/venues/${encodeURIComponent(v.id)}`}>{v.name}</a></td>
-              <td><code>{v.slug}</code></td>
-              <td style="font-size:13px;opacity:0.8;">{v.address}</td>
+              <td style="font-size:12px;">{v.type ?? '—'}</td>
+              <td style="font-size:12px;">{v.dayNight ?? '—'}</td>
+              <td style="font-size:12px;">{v.wijk ?? '—'}</td>
               <td style="font-size:12px;">{v.categories.join(', ')}</td>
               <td><PublishedPill published={v.published} /></td>
               <td class="actions">
@@ -566,6 +609,10 @@ adminUi.post('/venues/new', async (c) => {
     description: (form.description as string) || null,
     imageUrl: (form.imageUrl as string) || null,
     categories: parseCategoriesField(String(form.categories ?? '')),
+    type: parseEnumField(VENUE_TYPES, String(form.type ?? '')) ?? undefined,
+    dayNight: parseEnumField(DAY_NIGHT, String(form.dayNight ?? '')) ?? undefined,
+    wijk: parseEnumField(WIJKEN, String(form.wijk ?? '')) ?? undefined,
+    subtype: parseTagsField(String(form.subtype ?? '')),
     published: form.published !== 'off',
   });
   return c.redirect('/admin/venues');
@@ -617,6 +664,10 @@ adminUi.post('/venues/:id', async (c) => {
       description: (form.description as string) || null,
       imageUrl: (form.imageUrl as string) || null,
       categories: parseCategoriesField(String(form.categories ?? '')),
+      type: parseEnumField(VENUE_TYPES, String(form.type ?? '')),
+      dayNight: parseEnumField(DAY_NIGHT, String(form.dayNight ?? '')),
+      wijk: parseEnumField(WIJKEN, String(form.wijk ?? '')),
+      subtype: parseTagsField(String(form.subtype ?? '')),
       published: form.published !== 'off',
     })
     .where(eq(schema.venues.id, id));
@@ -676,12 +727,49 @@ function VenueForm({
           <input type="number" name="lng" step="0.000001" value={venue?.lng ?? ''} />
         </label>
       </div>
+      <div class="grid-3">
+        <label>
+          Type
+          <select name="type">
+            <option value="" selected={!venue?.type}>—</option>
+            {VENUE_TYPES.map((t) => (
+              <option value={t} selected={venue?.type === t}>{t}</option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Dag / nacht
+          <select name="dayNight">
+            <option value="" selected={!venue?.dayNight}>—</option>
+            {DAY_NIGHT.map((d) => (
+              <option value={d} selected={venue?.dayNight === d}>{d}</option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Wijk
+          <select name="wijk">
+            <option value="" selected={!venue?.wijk}>—</option>
+            {WIJKEN.map((w) => (
+              <option value={w} selected={venue?.wijk === w}>{w}</option>
+            ))}
+          </select>
+        </label>
+      </div>
       <label>
         Categorieën (comma-separated, uit: Muziek, Theater, Literatuur, Film)
         <input
           type="text"
           name="categories"
           value={(venue?.categories ?? []).join(', ')}
+        />
+      </label>
+      <label>
+        Subtype-tags (comma-separated, vrij — bv. techno, queer, arthouse)
+        <input
+          type="text"
+          name="subtype"
+          value={(venue?.subtype ?? []).join(', ')}
         />
       </label>
       <label>

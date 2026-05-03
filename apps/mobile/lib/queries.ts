@@ -77,9 +77,24 @@ export function useVenue(slug: string) {
 export function useVenues(input: {
   q?: string;
   category?: 'Muziek' | 'Theater' | 'Literatuur' | 'Film';
+  type?:
+    | 'galerie'
+    | 'museum'
+    | 'podium'
+    | 'club'
+    | 'film'
+    | 'ruimte'
+    | 'boekhandel-cafe';
+  dayNight?: 'day' | 'night' | 'both';
 } = {}) {
   return useQuery({
-    queryKey: queryKeys.venues({ q: input.q, category: input.category }),
+    queryKey: [
+      'venues',
+      input.q ?? '',
+      input.category ?? '',
+      input.type ?? '',
+      input.dayNight ?? '',
+    ] as const,
     queryFn: () => getVenues(input),
   });
 }

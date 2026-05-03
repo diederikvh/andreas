@@ -26,10 +26,32 @@ export const venuesRoute = new Hono();
  * deblokkeren — er staat een hint op de UI dat ze geblokkeerd zijn.
  */
 const VALID_CATEGORIES = new Set(['Muziek', 'Theater', 'Literatuur', 'Film']);
+const VALID_VENUE_TYPES = new Set([
+  'galerie',
+  'museum',
+  'podium',
+  'club',
+  'film',
+  'ruimte',
+  'boekhandel-cafe',
+]);
+const VALID_DAY_NIGHT = new Set(['day', 'night', 'both']);
+const VALID_WIJKEN = new Set([
+  'centrum',
+  'noord',
+  'oost',
+  'west',
+  'zuid',
+  'zuidoost',
+  'nieuw-west',
+]);
 
 venuesRoute.get('/', async (c) => {
   const q = (c.req.query('q') ?? '').trim();
   const category = c.req.query('category');
+  const type = c.req.query('type');
+  const dn = c.req.query('dayNight');
+  const wijk = c.req.query('wijk');
 
   const conditions: SQL[] = [eq(schema.venues.published, true)];
   if (q.length > 0) {
@@ -46,6 +68,31 @@ venuesRoute.get('/', async (c) => {
       ])
     );
   }
+  if (type && VALID_VENUE_TYPES.has(type)) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    conditions.push(eq(schema.venues.type, type as any));
+  }
+  // dayNight-filter: 'day' of 'night' includeert ook 'both' (venues
+  // die beide kanten op kunnen). Alleen ophalen waar dayNight expliciet
+  // is gezet — venues zonder waarde vallen buiten de filter.
+  if (dn && VALID_DAY_NIGHT.has(dn)) {
+    if (dn === 'both') {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      conditions.push(eq(schema.venues.dayNight, 'both' as any));
+    } else {
+      const matchDn = or(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        eq(schema.venues.dayNight, dn as any),
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        eq(schema.venues.dayNight, 'both' as any)
+      );
+      if (matchDn) conditions.push(matchDn);
+    }
+  }
+  if (wijk && VALID_WIJKEN.has(wijk)) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    conditions.push(eq(schema.venues.wijk, wijk as any));
+  }
   const where = conditions.length > 0 ? and(...conditions) : undefined;
 
   const rows = await db
@@ -59,6 +106,10 @@ venuesRoute.get('/', async (c) => {
       imageUrl: schema.venues.imageUrl,
       description: schema.venues.description,
       categories: schema.venues.categories,
+      type: schema.venues.type,
+      dayNight: schema.venues.dayNight,
+      wijk: schema.venues.wijk,
+      subtype: schema.venues.subtype,
     })
     .from(schema.venues)
     .where(where)

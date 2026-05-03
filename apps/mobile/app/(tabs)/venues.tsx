@@ -71,7 +71,7 @@ export default function Venues() {
   // Filter is een union: 'alles' (default), 'volgend' (alleen venues
   // die ik volg, client-side filter), of een VenueCategory.
   type Filter = 'alles' | 'volgend' | VenueCategory;
-  const params = useLocalSearchParams<{ cat?: string; q?: string }>();
+  const params = useLocalSearchParams<{ cat?: string; q?: string; dn?: string }>();
   const activeFilter = useMemo<Filter>(() => {
     if (!params.cat) return 'alles';
     if (params.cat === 'volgend') return 'volgend';
@@ -88,6 +88,16 @@ export default function Venues() {
     return () => clearTimeout(t);
   }, [q]);
 
+  // dayNight-filter: default volgt de app-modus (nacht-modus → 'night'-
+  // venues + 'both', dag-modus → 'day' + 'both'). Met `?dn=alles` zet
+  // je 'em uit en zie je alles.
+  const dnOverride = params.dn === 'alles';
+  const dayNightParam: 'day' | 'night' | undefined = dnOverride
+    ? undefined
+    : mode === 'nacht'
+      ? 'night'
+      : 'day';
+
   // Server filtert op category (en query). 'volgend' is een client-
   // side filter — we hebben de hele lijst sowieso al, en `volgend`
   // hangt af van per-user state.
@@ -98,6 +108,7 @@ export default function Venues() {
   const { data: venuesAll, isLoading } = useVenues({
     q: debouncedQ,
     category: categoryParam,
+    dayNight: dayNightParam,
   });
   const venues = useMemo(() => {
     if (!venuesAll) return [];
@@ -141,6 +152,10 @@ export default function Venues() {
           query={q}
           onFilter={setFilter}
           onQuery={setQ}
+          dnOverride={dnOverride}
+          onDnOverride={(next) =>
+            router.setParams({ dn: next ? 'alles' : '' })
+          }
         />
 
         {isLoading ? (
@@ -355,11 +370,15 @@ function ChipRow({
   query,
   onFilter,
   onQuery,
+  dnOverride,
+  onDnOverride,
 }: {
   activeFilter: 'alles' | 'volgend' | VenueCategory;
   query: string;
   onFilter: (f: 'alles' | 'volgend' | VenueCategory) => void;
   onQuery: (q: string) => void;
+  dnOverride: boolean;
+  onDnOverride: (next: boolean) => void;
 }) {
   const mode = useMode();
   const roles = useRoles();
@@ -429,6 +448,11 @@ function ChipRow({
         label="Alles"
         active={activeFilter === 'alles'}
         onPress={() => onFilter('alles')}
+      />
+      <CatChip
+        label={mode === 'nacht' ? '+ Dag' : '+ Nacht'}
+        active={dnOverride}
+        onPress={() => onDnOverride(!dnOverride)}
       />
       <CatChip
         label="Volgend"

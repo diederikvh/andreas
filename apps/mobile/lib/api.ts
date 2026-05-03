@@ -108,6 +108,26 @@ export async function getEvent(id: string): Promise<ApiEvent> {
 
 export type VenueCategory = 'Muziek' | 'Theater' | 'Literatuur' | 'Film';
 
+export type VenueType =
+  | 'galerie'
+  | 'museum'
+  | 'podium'
+  | 'club'
+  | 'film'
+  | 'ruimte'
+  | 'boekhandel-cafe';
+
+export type VenueDayNight = 'day' | 'night' | 'both';
+
+export type VenueWijk =
+  | 'centrum'
+  | 'noord'
+  | 'oost'
+  | 'west'
+  | 'zuid'
+  | 'zuidoost'
+  | 'nieuw-west';
+
 export type ApiVenue = {
   id: string;
   slug: string;
@@ -118,6 +138,10 @@ export type ApiVenue = {
   imageUrl: string | null;
   description: string | null;
   categories: VenueCategory[];
+  type: VenueType | null;
+  dayNight: VenueDayNight | null;
+  wijk: VenueWijk | null;
+  subtype: string[];
 };
 
 export type ApiVenueProgramItem = Omit<ApiEvent, 'venue'>;
@@ -143,10 +167,16 @@ export type ApiVenueListItem = ApiVenue & {
 export async function getVenues(input: {
   q?: string;
   category?: VenueCategory;
+  type?: VenueType;
+  dayNight?: VenueDayNight;
+  wijk?: VenueWijk;
 } = {}): Promise<ApiVenueListItem[]> {
   const params = new URLSearchParams();
   if (input.q && input.q.trim().length > 0) params.set('q', input.q.trim());
   if (input.category) params.set('category', input.category);
+  if (input.type) params.set('type', input.type);
+  if (input.dayNight) params.set('dayNight', input.dayNight);
+  if (input.wijk) params.set('wijk', input.wijk);
   const qs = params.toString();
   const { venues } = await authedRequest<{ venues: ApiVenueListItem[] }>(
     `/venues${qs ? `?${qs}` : ''}`

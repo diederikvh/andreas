@@ -38,6 +38,25 @@ export const venueFollowState = pgEnum('venue_follow_state', [
   'volgen',
   'blokken',
 ]);
+export const venueType = pgEnum('venue_type', [
+  'galerie',
+  'museum',
+  'podium',
+  'club',
+  'film',
+  'ruimte',
+  'boekhandel-cafe',
+]);
+export const dayNight = pgEnum('day_night', ['day', 'night', 'both']);
+export const wijk = pgEnum('wijk', [
+  'centrum',
+  'noord',
+  'oost',
+  'west',
+  'zuid',
+  'zuidoost',
+  'nieuw-west',
+]);
 
 // ─── Domain ───────────────────────────────────────────────────────────────
 
@@ -94,6 +113,22 @@ export const venues = pgTable('venues', {
     .array()
     .notNull()
     .default(sql`ARRAY[]::event_category[]`),
+  /** Primaire venue-classifier — galerie / museum / podium / club /
+      film / ruimte / boekhandel-cafe. Stuurt de chip-row op de
+      Venues-tab. Optioneel zodat oude rijen blijven werken. */
+  type: venueType(),
+  /** Wanneer past deze venue: overdag, 's nachts, of beide. Auto-
+      gefilterd op de huidige app-modus zodat dag-modus geen clubs
+      voorstelt en nacht-modus geen musea. `both` is altijd zichtbaar. */
+  dayNight: dayNight(),
+  /** Stadsdeel — voor "in de buurt"-filter. Optioneel. */
+  wijk: wijk(),
+  /** Vrije tags: techno / queer / arthouse / artist-run /
+      experimenteel / klassiek / etc. Niet enum want lijst groeit. */
+  subtype: text()
+    .array()
+    .notNull()
+    .default(sql`ARRAY[]::text[]`),
   /** Admin-toggle: false = verbergen uit publieke endpoints zonder
       data te verliezen (saves blijven, events blijven). Default true. */
   published: boolean().notNull().default(true),

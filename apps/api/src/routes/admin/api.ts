@@ -18,6 +18,47 @@ import { requireAdminAny } from './auth.js';
 const CATEGORIES = ['Muziek', 'Theater', 'Literatuur', 'Film'] as const;
 type Category = (typeof CATEGORIES)[number];
 
+const VENUE_TYPES = [
+  'galerie',
+  'museum',
+  'podium',
+  'club',
+  'film',
+  'ruimte',
+  'boekhandel-cafe',
+] as const;
+type VenueType = (typeof VENUE_TYPES)[number];
+
+const DAY_NIGHT = ['day', 'night', 'both'] as const;
+type DayNight = (typeof DAY_NIGHT)[number];
+
+const WIJKEN = [
+  'centrum',
+  'noord',
+  'oost',
+  'west',
+  'zuid',
+  'zuidoost',
+  'nieuw-west',
+] as const;
+type Wijk = (typeof WIJKEN)[number];
+
+function parseEnum<T extends string>(
+  list: readonly T[],
+  value: unknown
+): T | null {
+  if (typeof value !== 'string') return null;
+  return (list as readonly string[]).includes(value) ? (value as T) : null;
+}
+
+function parseStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((v) => typeof v === 'string')
+    .map((v) => (v as string).trim())
+    .filter((v) => v.length > 0);
+}
+
 function shortId(): string {
   return randomBytes(5).toString('hex');
 }
@@ -275,6 +316,10 @@ adminApi.post('/venues', async (c) => {
         description: body.description ? String(body.description) : null,
         imageUrl: body.imageUrl ? String(body.imageUrl) : null,
         categories: parseCategoryArr(body.categories),
+        type: parseEnum(VENUE_TYPES, body.type) ?? undefined,
+        dayNight: parseEnum(DAY_NIGHT, body.dayNight) ?? undefined,
+        wijk: parseEnum(WIJKEN, body.wijk) ?? undefined,
+        subtype: parseStringArray(body.subtype),
         published: body.published == null ? true : Boolean(body.published),
       })
       .returning();
@@ -308,6 +353,10 @@ adminApi.patch('/venues/:id', async (c) => {
   if ('description' in body) updates.description = body.description ? String(body.description) : null;
   if ('imageUrl' in body) updates.imageUrl = body.imageUrl ? String(body.imageUrl) : null;
   if ('categories' in body) updates.categories = parseCategoryArr(body.categories);
+  if ('type' in body) updates.type = parseEnum(VENUE_TYPES, body.type);
+  if ('dayNight' in body) updates.dayNight = parseEnum(DAY_NIGHT, body.dayNight);
+  if ('wijk' in body) updates.wijk = parseEnum(WIJKEN, body.wijk);
+  if ('subtype' in body) updates.subtype = parseStringArray(body.subtype);
   if ('published' in body) updates.published = Boolean(body.published);
   if (Object.keys(updates).length === 0) {
     return c.json({ error: 'geen velden om te updaten' }, 400);
