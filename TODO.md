@@ -2,7 +2,7 @@
 
 Live status van het project. Cross-checken met `HANDOFF.md` voor de oorspronkelijke briefing en met de huidige codebase voor de waarheid. Per open punt staat genoeg context om een agent zelfstandig te laten werken.
 
-Laatste sync: 2026-05-03 (avond) · branch `main`.
+Laatste sync: 2026-05-03 (laat-avond) · branch `main`.
 
 ## Stand
 
@@ -36,6 +36,7 @@ Laatste sync: 2026-05-03 (avond) · branch `main`.
 - ✅ **QR-code voor handle**: `react-native-qrcode-svg` op profiel (modal-sheet met Andreas-X als logo-overlay, ECL=H zodat scan blijft werken). `expo-camera` scanner op `/add-friend` (parse-regex voor `andreas://u/<handle>` + `https://andreas.amsterdam/u/<handle>`). Server `GET /u/:handle` share-pagina + AASA `/u/*` zodat een gescande QR direct in de app opent. Vier action-pills op Jij (Mijn QR / Scan QR / Vrienden zoeken / Bewerk profiel) + Uitloggen onderaan, allemaal full-width met `bgChip`-border en medium-font normale-case.
 - ✅ **Agenda filtering**: alleen events vanaf vandaag 00:00 (server-side `from`-query). Geen verleden events meer.
 - ✅ **PendingRow X-knop**: uitstaand vriendschapsverzoek terugtrekken via confirm-alert + bestaande DELETE /friends/:userId endpoint.
+- ✅ **Venue-features** — `venue_follows.state` enum (volgen|blokken; geen rij = normaal) + `venues.categories[]` array. Endpoints: `POST /venue-follows`, `GET /venues` (q+category filter), `myFollowState` op `/venues/:slug` + lijst-rijen, `venueFollowed` op events. Kaart uit tab-bar (`href:null`); nieuwe **Venues-tab** met kicker+title hero, chip-row (Alles · Volgend · 4 categorieën, agenda-styling), zoekveld + categorie-tags op rijen + follow-badge. Venue-detail: action-sheet met drie opties (Volgen/Niet volgen/Blokkeren) + uitleg per optie. Avond: photoBand vervangen door **Kaart-banner** met accent-tinted icon-tile; events nu gegroepeerd in "Venues die je volgt" + "Ook interessant" secties.
 - ⬜ Native build nodig zodra associatedDomains/intentFilters wijzigen — bv. extra share-paden toevoegen. iOS pakt AASA-changes server-side op binnen ~24h.
 - ⬜ Push notificaties (`expo-notifications`).
 - ⬜ Niet-leden uitnodigen via deeplink (full token-flow + auto-friendship op signup).
@@ -44,9 +45,8 @@ Laatste sync: 2026-05-03 (avond) · branch `main`.
 
 ## Volgende slices — volgorde
 
-1. **Venue-features** (scope nog vast te stellen): doorzoekbare venue-lijst + venue-volgen in drie stadia (volgen / normaal / blokken) — zie Wensen-sectie hieronder.
-2. **Push notificaties** — `expo-notifications` + Apple Push Key (al via EAS gegenereerd) + server endpoint dat tokens registreert + verstuurt bij invite-accept, friend-request, etc.
-3. **Niet-leden uitnodigen — token-flow** (zie `## Toekomstige slice` hieronder voor design).
+1. **Push notificaties** — `expo-notifications` + Apple Push Key (al via EAS gegenereerd) + server endpoint dat tokens registreert + verstuurt bij invite-accept, friend-request, etc.
+2. **Niet-leden uitnodigen — token-flow** (zie `## Toekomstige slice` hieronder voor design).
 
 ---
 
@@ -125,9 +125,7 @@ Geschat: ~150 regels backend, ~80 regels mobile, ~2-3u.
 
 ## Wensen — als alles klaar is
 
-- **Doorzoekbare venue-lijst** — een eigen route/scherm waar je alle venues kan browsen + zoeken (op naam, buurt, type). Nu zijn venues alleen indirect bereikbaar via events of de kaart.
-- **Volgen van een venue in drie stadia** — `volgen` (boost: programmering komt extra omhoog in Avond/Vandaag), `normaal` (default, geen voorkeur), `blokken` (venue + diens events worden nergens meer getoond). Vervangt de huidige binaire follow-toggle op `/venue/[slug]`. Schema: `venue_follows.state` enum, of een aparte `venue_blocks` tabel.
-- **Kaart venue ↔ events switch** — toolbar-toggle op de Kaart-tab tussen "venues" (één pin per locatie, samengevoegde info) en "events" (één pin per event, kan meerdere op zelfde venue tonen). Beide modi delen de bestaande sheet/listrow.
+- **Kaart in venues-context** — zoals events nu een map+list-toggle hebben op de Kaart-route, zou een "venues op kaart"-modus ook fijn zijn (pins voor alle venues geografisch, niet beperkt tot vandaag-events). Nu via de Venues-tab als alfabetische lijst.
 
 ---
 
