@@ -16,7 +16,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppHeader, HEADER_HEIGHT } from '@/components/AppHeader';
 import { Cross } from '@/components/Cross';
-import { TabIconAgenda, TabIconKaart } from '@/components/icons/TabIcons';
+import { TabIconAgenda, TabIconVenues } from '@/components/icons/TabIcons';
 import { brandEase } from '@/lib/easing';
 import type { ApiEvent, ApiFriendBadge } from '@/lib/api';
 import {
@@ -340,35 +340,30 @@ export default function Kaart() {
           <View style={styles.toolbarSwitch}>
             <ViewSwitch view={view} onChange={setView} />
           </View>
-          <Pressable
-            onPress={view === 'map' ? recentre : undefined}
-            disabled={view === 'list'}
-            style={[
-              styles.recentre,
-              {
-                borderColor: roles.bgChip,
-                opacity: view === 'list' ? 0.4 : 1,
-              },
-            ]}
-          >
-            <BlurView
-              intensity={40}
-              tint={mode === 'nacht' ? 'dark' : 'light'}
-              style={StyleSheet.absoluteFill}
-            />
-            <View
-              style={[
-                StyleSheet.absoluteFill,
-                {
-                  backgroundColor:
-                    mode === 'nacht'
-                      ? 'rgba(23,23,26,0.65)'
-                      : 'rgba(235,230,216,0.7)',
-                },
-              ]}
-            />
-            <Ionicons name="locate" size={16} color={roles.fgMuted} />
-          </Pressable>
+          {view === 'map' && (
+            <Pressable
+              onPress={recentre}
+              style={[styles.recentre, { borderColor: roles.bgChip }]}
+            >
+              <BlurView
+                intensity={40}
+                tint={mode === 'nacht' ? 'dark' : 'light'}
+                style={StyleSheet.absoluteFill}
+              />
+              <View
+                style={[
+                  StyleSheet.absoluteFill,
+                  {
+                    backgroundColor:
+                      mode === 'nacht'
+                        ? 'rgba(23,23,26,0.65)'
+                        : 'rgba(235,230,216,0.7)',
+                  },
+                ]}
+              />
+              <Ionicons name="locate" size={16} color={roles.fgMuted} />
+            </Pressable>
+          )}
         </View>
       </AppHeader>
     </View>
@@ -403,7 +398,7 @@ function ViewSwitch({
         ]}
       />
       <SwitchBtn
-        Icon={TabIconKaart}
+        Icon={TabIconVenues}
         label="Kaart"
         active={view === 'map'}
         onPress={() => onChange('map')}

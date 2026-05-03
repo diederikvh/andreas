@@ -31,7 +31,12 @@ export function TabIconAgenda({ color }: IconProps) {
   );
 }
 
-export function TabIconKaart({ color }: IconProps) {
+/**
+ * Wiebertje — geometric brand-element (geërfd van het oude Kaart-
+ * icoon). Wordt nu gebruikt voor de Venues-tab; Kaart is verplaatst
+ * naar een banner op Avond en heeft geen eigen tab-icoon meer.
+ */
+export function TabIconVenues({ color }: IconProps) {
   return (
     <View style={styles.box}>
       <View style={[styles.diamond, { backgroundColor: color }]} />

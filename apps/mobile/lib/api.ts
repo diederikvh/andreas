@@ -44,6 +44,8 @@ export type ApiEvent = {
   friendsSavedCount?: number;
   /** Door mij verstuurde invites voor dit event (alleen op detail). */
   myInvites?: ApiEventInviteRecord[];
+  /** Volg ik de venue van dit event? Mobile groepeert hierop. */
+  venueFollowed?: boolean;
 };
 
 export type ApiEventInviteRecord = {
@@ -95,6 +97,8 @@ export async function getEvent(id: string): Promise<ApiEvent> {
   return event;
 }
 
+export type VenueCategory = 'Muziek' | 'Theater' | 'Literatuur' | 'Film';
+
 export type ApiVenue = {
   id: string;
   slug: string;
@@ -104,17 +108,49 @@ export type ApiVenue = {
   lng: number;
   imageUrl: string | null;
   description: string | null;
+  categories: VenueCategory[];
 };
 
 export type ApiVenueProgramItem = Omit<ApiEvent, 'venue'>;
 
+export type VenueFollowState = 'volgen' | 'normaal' | 'blokken';
+
 export type ApiVenueWithProgram = {
   venue: ApiVenue;
   events: ApiVenueProgramItem[];
+  myFollowState: VenueFollowState;
 };
 
 export async function getVenue(slug: string): Promise<ApiVenueWithProgram> {
   return await authedRequest<ApiVenueWithProgram>(`/venues/${slug}`);
+}
+
+export type ApiVenueListItem = ApiVenue & {
+  myFollowState: VenueFollowState;
+};
+
+export async function getVenues(input: {
+  q?: string;
+  category?: VenueCategory;
+} = {}): Promise<ApiVenueListItem[]> {
+  const params = new URLSearchParams();
+  if (input.q && input.q.trim().length > 0) params.set('q', input.q.trim());
+  if (input.category) params.set('category', input.category);
+  const qs = params.toString();
+  const { venues } = await authedRequest<{ venues: ApiVenueListItem[] }>(
+    `/venues${qs ? `?${qs}` : ''}`
+  );
+  return venues;
+}
+
+export async function setVenueFollow(input: {
+  venueId: string;
+  state: VenueFollowState;
+}): Promise<{ state: VenueFollowState }> {
+  return await authedRequest<{ state: VenueFollowState }>('/venue-follows', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
 }
 
 export type ApiMe = {

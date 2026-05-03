@@ -9,17 +9,20 @@ import {
   TabIconAvond,
   TabIconGered,
   TabIconJij,
-  TabIconKaart,
+  TabIconVenues,
 } from '@/components/icons/TabIcons';
 import { useMode, useRoles } from '@/store/mode';
 import { palette } from '@/theme/tokens';
 
 type IconCmp = ComponentType<{ color: string }>;
 
+// Kaart heeft `href: null` in de tabs-config, maar verschijnt nog wel
+// in `state.routes`. Door 'm hier weg te laten valt 'ie via de
+// `if (!Icon) return null;` automatisch uit de tab-bar.
 const TAB_ICONS: Record<string, IconCmp> = {
   avond: TabIconAvond,
   agenda: TabIconAgenda,
-  kaart: TabIconKaart,
+  venues: TabIconVenues,
   gered: TabIconGered,
   jij: TabIconJij,
 };

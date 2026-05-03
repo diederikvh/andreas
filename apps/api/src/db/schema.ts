@@ -34,6 +34,10 @@ export const savesVisibility = pgEnum('saves_visibility', [
   'friends',
   'private',
 ]);
+export const venueFollowState = pgEnum('venue_follow_state', [
+  'volgen',
+  'blokken',
+]);
 
 // ─── Domain ───────────────────────────────────────────────────────────────
 
@@ -83,6 +87,13 @@ export const venues = pgTable('venues', {
   lng: doublePrecision().notNull(),
   imageUrl: text(),
   description: text(),
+  /** Eén of meer categorieën — venues hebben vaak meerdere genres
+      (bv. Paradiso doet Muziek + Film). Gebruikt door de
+      Venues-bladerlijst voor categorie-filter. */
+  categories: eventCategory()
+    .array()
+    .notNull()
+    .default(sql`ARRAY[]::event_category[]`),
   createdAt: timestamp({ withTimezone: true })
     .notNull()
     .default(sql`now()`),
@@ -191,6 +202,10 @@ export const venueFollows = pgTable(
     venueId: text()
       .notNull()
       .references(() => venues.id, { onDelete: 'cascade' }),
+    /** Expliciete staat: `volgen` (boost in feed) of `blokken`
+        (verbergt deze venue overal). Geen rij = `normaal` (default,
+        geen voorkeur). */
+    state: venueFollowState().notNull().default('volgen'),
     createdAt: timestamp({ withTimezone: true })
       .notNull()
       .default(sql`now()`),

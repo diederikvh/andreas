@@ -1,3 +1,4 @@
+import { Ionicons } from '@expo/vector-icons';
 import { useScrollToTop } from '@react-navigation/native';
 import { Image } from 'expo-image';
 import { router } from 'expo-router';
@@ -16,7 +17,6 @@ import {
   socialWindow,
 } from '@/lib/eventDisplay';
 import { useEvents } from '@/lib/queries';
-import type { PhotoCard } from '@/mocks/feed';
 import { FEED } from '@/mocks/feed';
 import { useMode, useRoles } from '@/store/mode';
 import { fontFamily, palette } from '@/theme/tokens';
@@ -151,6 +151,18 @@ export default function Avond() {
   }, [filtered]);
   const rest = lead ? filtered.filter((e) => e.id !== lead.id) : filtered;
 
+  // Splits in 'venues die je volgt' versus 'ook interessant'. Lead-event
+  // (de featured-card bovenaan) telt niet mee in de secties — die heeft
+  // z'n eigen plek bovenaan ongeacht volgde-status.
+  const followedRest = useMemo(
+    () => rest.filter((e) => e.venueFollowed),
+    [rest]
+  );
+  const otherRest = useMemo(
+    () => rest.filter((e) => !e.venueFollowed),
+    [rest]
+  );
+
   const hero = buildHero(mode, filtered.length, window.refDate, window.shifted);
 
   return (
@@ -207,29 +219,38 @@ export default function Avond() {
             }
           />
         )}
-        {rest.length > 0 && (
+        {followedRest.length > 0 && (
+          <>
+            <SectionTitle
+              title="Venues die je volgt"
+              meta="Alles →"
+              onMetaPress={() => router.push('/agenda')}
+            />
+            {followedRest.map((e) => <ApiEventRow key={e.id} event={e} />)}
+          </>
+        )}
+        {otherRest.length > 0 && (
           <>
             <SectionTitle
               title={
-                mode === 'nacht'
-                  ? 'Vanavond'
-                  : window.shifted
-                    ? 'Morgen overdag'
-                    : 'Overdag'
+                followedRest.length > 0
+                  ? 'Ook interessant'
+                  : mode === 'nacht'
+                    ? 'Vanavond'
+                    : window.shifted
+                      ? 'Morgen overdag'
+                      : 'Overdag'
               }
               meta="Alles →"
               onMetaPress={() => router.push('/agenda')}
             />
-            {rest.map((e) => <ApiEventRow key={e.id} event={e} />)}
+            {otherRest.map((e) => <ApiEventRow key={e.id} event={e} />)}
           </>
         )}
 
-        <View style={{ height: 28 }} />
-        <SectionTitle
-          title={data.photoBand.sectionTitle}
-          meta={data.photoBand.sectionMeta}
-        />
-        <PhotoBand cards={data.photoBand.cards} />
+        {(followedRest.length > 0 || otherRest.length > 0) && (
+          <KaartBanner />
+        )}
       </ScrollView>
       <AppHeader />
     </View>
@@ -426,29 +447,45 @@ function SectionTitle({
   );
 }
 
-function PhotoBand({ cards }: { cards: PhotoCard[] }) {
+function KaartBanner() {
+  const mode = useMode();
+  const roles = useRoles();
+  const isNacht = mode === 'nacht';
   return (
-    <View style={styles.photoBand}>
-      {cards.map((c) => (
-        <View key={c.id} style={styles.photoCard}>
-          <Image
-            source={{ uri: c.photo }}
-            style={StyleSheet.absoluteFill}
-            contentFit="cover"
-          />
-          <View
-            style={[
-              StyleSheet.absoluteFill,
-              { backgroundColor: 'rgba(0,0,0,0.35)' },
-            ]}
-          />
-          <View style={styles.photoCardContent}>
-            <Text style={styles.pcKicker}>{c.kicker}</Text>
-            <Text style={styles.pcTitle}>{c.title}</Text>
-          </View>
-        </View>
-      ))}
-    </View>
+    <Pressable
+      onPress={() => router.push('/kaart' as never)}
+      style={[
+        styles.kaartBanner,
+        {
+          borderColor: isNacht ? '#232327' : palette.paper,
+          backgroundColor: isNacht ? '#101012' : palette.paper2,
+        },
+      ]}
+    >
+      {/* Accent-tinted icon-tile + accent-icoon: brand-pop zonder de
+          rest van de banner te overstemmen. */}
+      <View
+        style={[
+          styles.kaartIconWrap,
+          { backgroundColor: `${roles.accent}26` },
+        ]}
+      >
+        <Ionicons name="map-outline" size={22} color={roles.accent} />
+      </View>
+      <View style={styles.kaartBody}>
+        <Text style={[styles.kaartKicker, { color: roles.accent }]}>
+          Op de kaart
+        </Text>
+        <Text style={[styles.kaartTitle, { color: roles.fg }]}>
+          Zie wat er nu speelt in de buurt.
+        </Text>
+      </View>
+      <Ionicons
+        name="chevron-forward"
+        size={18}
+        color={roles.fgPlaceholder}
+      />
+    </Pressable>
   );
 }
 
@@ -555,37 +592,37 @@ const styles = StyleSheet.create({
   },
 
   // Photo band
-  photoBand: {
-    paddingHorizontal: 18,
-    paddingBottom: 20,
+  // Kaart-banner — prominent CTA onder de events-lijst die naar
+  // /kaart pusht (Kaart heeft geen eigen tab meer).
+  kaartBanner: {
     flexDirection: 'row',
-    gap: 10,
-  },
-  photoCard: {
-    flex: 1,
-    aspectRatio: 3 / 4,
+    alignItems: 'center',
+    gap: 14,
+    marginHorizontal: 22,
+    marginTop: 22,
+    padding: 16,
     borderRadius: 14,
-    overflow: 'hidden',
+    borderWidth: 1,
   },
-  photoCardContent: {
-    position: 'absolute',
-    left: 10,
-    right: 10,
-    bottom: 10,
+  kaartIconWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  pcKicker: {
+  kaartBody: { flex: 1, minWidth: 0 },
+  kaartKicker: {
     fontFamily: fontFamily.mono,
-    fontSize: 9,
-    letterSpacing: 1.1,
+    fontSize: 10,
+    letterSpacing: 1.4,
     textTransform: 'uppercase',
-    color: palette.ink,
     marginBottom: 4,
   },
-  pcTitle: {
-    fontFamily: fontFamily.display,
-    fontSize: 17,
-    lineHeight: 17 * 0.95,
-    letterSpacing: -0.42,
-    color: palette.ink,
+  kaartTitle: {
+    fontFamily: fontFamily.medium,
+    fontSize: 14,
+    lineHeight: 19,
+    letterSpacing: -0.14,
   },
 });

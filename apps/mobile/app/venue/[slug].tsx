@@ -5,30 +5,38 @@ import * as Haptics from 'expo-haptics';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, useLocalSearchParams } from 'expo-router';
-import { Linking, Platform, Pressable, Share, StyleSheet, Text, View } from 'react-native';
+import { useState } from 'react';
+import {
+  Linking,
+  Modal,
+  Platform,
+  Pressable,
+  Share,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import Animated, {
   Extrapolation,
   interpolate,
   useAnimatedRef,
   useAnimatedStyle,
   useScrollViewOffset,
-  useSharedValue,
-  withSequence,
-  withTiming,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { Cross } from '@/components/Cross';
 import { EventListRow } from '@/components/EventListRow';
-import type { ApiVenueProgramItem } from '@/lib/api';
+import type { ApiVenueProgramItem, VenueFollowState } from '@/lib/api';
 import {
   CATEGORY_TICK,
   DOW_NL_MIXED,
   MONTHS_NL,
   formatTime,
 } from '@/lib/eventDisplay';
-import { useVenue } from '@/lib/queries';
+import { useSession } from '@/lib/authClient';
+import { useSetVenueFollow, useVenue } from '@/lib/queries';
 import { useMode, useRoles } from '@/store/mode';
-import { useIsVenueSaved, useSavedVenuesStore } from '@/store/savedVenues';
 import { fontFamily, palette } from '@/theme/tokens';
 
 const HERO_HEIGHT = 380;
@@ -237,7 +245,11 @@ export default function VenueDetail() {
             </Text>
           </Animated.View>
           <View style={styles.topBarActions}>
-            <SaveVenueIcon slug={venue.slug} />
+            <FollowVenueButton
+              venueId={venue.id}
+              name={venue.name}
+              state={data?.myFollowState ?? 'normaal'}
+            />
             <ShareVenueButton slug={venue.slug} name={venue.name} />
           </View>
         </View>
@@ -265,41 +277,199 @@ function ProgramRow({ event }: { event: ApiVenueProgramItem }) {
   );
 }
 
-function SaveVenueIcon({ slug }: { slug: string }) {
+function FollowVenueButton({
+  venueId,
+  name,
+  state,
+}: {
+  venueId: string;
+  name: string;
+  state: VenueFollowState;
+}) {
   const mode = useMode();
-  const isSaved = useIsVenueSaved(slug);
-  const toggle = useSavedVenuesStore((s) => s.toggle);
-  const scale = useSharedValue(1);
-  const animStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: scale.value }],
-  }));
+  const { data: session } = useSession();
+  const authed = Boolean(session?.user?.id);
+  const setFollow = useSetVenueFollow();
+  const [sheetOpen, setSheetOpen] = useState(false);
 
-  const onPress = () => {
-    const nowSaved = toggle(slug);
-    scale.value = withSequence(
-      withTiming(1.3, { duration: 140 }),
-      withTiming(1, { duration: 180 })
-    );
-    if (nowSaved) {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    } else {
-      Haptics.selectionAsync();
-    }
+  const iconName: keyof typeof Ionicons.glyphMap =
+    state === 'volgen'
+      ? 'heart'
+      : state === 'blokken'
+        ? 'ban-outline'
+        : 'heart-outline';
+  const iconColor =
+    state === 'volgen'
+      ? mode === 'nacht'
+        ? palette.acid
+        : palette.red
+      : state === 'blokken'
+        ? palette.ink
+        : palette.ink;
+
+  const onPick = (next: VenueFollowState) => {
+    setSheetOpen(false);
+    if (next === state) return;
+    Haptics.selectionAsync();
+    setFollow.mutate({ venueId, state: next });
   };
 
-  const iconName = isSaved ? 'heart' : 'heart-outline';
-  const iconColor = isSaved
-    ? mode === 'nacht'
-      ? palette.acid
-      : palette.red
-    : palette.ink;
+  const onTap = () => {
+    if (!authed) {
+      // Niet ingelogd → naar Jij waar de inlog-flow leeft. Andreas
+      // onthoudt geen lokale follow-state meer (server-only).
+      router.push('/jij');
+      return;
+    }
+    setSheetOpen(true);
+  };
 
   return (
-    <Animated.View style={animStyle}>
-      <Pressable onPress={onPress} style={styles.circleBtn}>
+    <>
+      <Pressable onPress={onTap} style={styles.circleBtn}>
         <Ionicons name={iconName} size={20} color={iconColor} />
       </Pressable>
-    </Animated.View>
+      <Modal
+        visible={sheetOpen}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setSheetOpen(false)}
+      >
+        <FollowVenueSheet
+          name={name}
+          current={state}
+          onPick={onPick}
+          onClose={() => setSheetOpen(false)}
+        />
+      </Modal>
+    </>
+  );
+}
+
+function FollowVenueSheet({
+  name,
+  current,
+  onPick,
+  onClose,
+}: {
+  name: string;
+  current: VenueFollowState;
+  onPick: (next: VenueFollowState) => void;
+  onClose: () => void;
+}) {
+  const mode = useMode();
+  const roles = useRoles();
+  const isNacht = mode === 'nacht';
+
+  const options: {
+    state: VenueFollowState;
+    title: string;
+    sub: string;
+    icon: keyof typeof Ionicons.glyphMap;
+  }[] = [
+    {
+      state: 'volgen',
+      title: 'Volgen',
+      sub: 'Events van deze venue komen prominent in je feed.',
+      icon: 'heart',
+    },
+    {
+      state: 'normaal',
+      title: 'Niet volgen',
+      sub: 'Standaard. Events worden gewoon getoond, geen voorkeur.',
+      icon: 'heart-outline',
+    },
+    {
+      state: 'blokken',
+      title: 'Blokkeren',
+      sub: 'Events van deze venue verschijnen nergens meer in de app.',
+      icon: 'ban-outline',
+    },
+  ];
+
+  return (
+    <View style={[styles.sheetRoot, { backgroundColor: roles.bg }]}>
+      <View style={styles.sheetDragHandleWrap}>
+        <View
+          style={[
+            styles.sheetDragHandle,
+            { backgroundColor: roles.fgPlaceholder },
+          ]}
+        />
+      </View>
+      {Platform.OS !== 'ios' && (
+        <Pressable
+          onPress={onClose}
+          hitSlop={8}
+          style={[
+            styles.sheetCloseBtn,
+            { backgroundColor: isNacht ? palette.noir2 : palette.paper2 },
+          ]}
+        >
+          <Cross size={14} thickness={2.6} color={roles.fg} />
+        </Pressable>
+      )}
+      <View style={styles.sheetBody}>
+        <Text style={[styles.sheetTitle, { color: roles.fg }]}>{name}</Text>
+        <Text style={[styles.sheetLead, { color: roles.fgMuted }]}>
+          Hoe wil je deze venue zien?
+        </Text>
+
+        <View style={styles.sheetOptions}>
+          {options.map((opt) => {
+            const active = opt.state === current;
+            const accent =
+              opt.state === 'blokken'
+                ? '#c9453a'
+                : isNacht
+                  ? palette.acid
+                  : palette.red;
+            return (
+              <Pressable
+                key={opt.state}
+                onPress={() => onPick(opt.state)}
+                style={[
+                  styles.sheetOption,
+                  {
+                    borderColor: active ? accent : roles.bgChip,
+                    backgroundColor: active
+                      ? `${accent}14`
+                      : 'transparent',
+                  },
+                ]}
+              >
+                <Ionicons
+                  name={opt.icon}
+                  size={22}
+                  color={active ? accent : roles.fgMuted}
+                />
+                <View style={styles.sheetOptionBody}>
+                  <Text
+                    style={[
+                      styles.sheetOptionTitle,
+                      { color: active ? accent : roles.fg },
+                    ]}
+                  >
+                    {opt.title}
+                  </Text>
+                  <Text
+                    style={[
+                      styles.sheetOptionSub,
+                      { color: roles.fgMuted },
+                    ]}
+                  >
+                    {opt.sub}
+                  </Text>
+                </View>
+                {active && (
+                  <Ionicons name="checkmark" size={20} color={accent} />
+                )}
+              </Pressable>
+            );
+          })}
+        </View>
+      </View>
+    </View>
   );
 }
 
@@ -461,6 +631,69 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   topBarActions: { flexDirection: 'row', gap: 8 },
+
+  // Follow action-sheet
+  sheetRoot: { flex: 1 },
+  sheetDragHandleWrap: {
+    alignItems: 'center',
+    paddingTop: 8,
+    paddingBottom: 8,
+  },
+  sheetDragHandle: {
+    width: 44,
+    height: 5,
+    borderRadius: 2.5,
+    opacity: 0.6,
+  },
+  sheetCloseBtn: {
+    position: 'absolute',
+    top: 16,
+    right: 16,
+    width: 36,
+    height: 36,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sheetBody: {
+    flex: 1,
+    paddingHorizontal: 22,
+    paddingTop: 24,
+  },
+  sheetTitle: {
+    fontFamily: fontFamily.display,
+    fontSize: 24,
+    lineHeight: 24 * 1.05,
+    letterSpacing: -0.6,
+  },
+  sheetLead: {
+    fontFamily: fontFamily.body,
+    fontSize: 14,
+    lineHeight: 20,
+    marginTop: 6,
+    marginBottom: 22,
+  },
+  sheetOptions: { gap: 10 },
+  sheetOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    padding: 16,
+    borderRadius: 14,
+    borderWidth: 1,
+  },
+  sheetOptionBody: { flex: 1, minWidth: 0 },
+  sheetOptionTitle: {
+    fontFamily: fontFamily.medium,
+    fontSize: 15,
+    letterSpacing: -0.15,
+  },
+  sheetOptionSub: {
+    fontFamily: fontFamily.body,
+    fontSize: 13,
+    lineHeight: 18,
+    marginTop: 4,
+  },
   stickyTitle: {
     fontFamily: fontFamily.bold,
     fontSize: 14,

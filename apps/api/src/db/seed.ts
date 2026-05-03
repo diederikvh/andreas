@@ -21,6 +21,7 @@ const VENUES: SeededVenue[] = [
       'https://images.unsplash.com/photo-1470229722913-7c0e2dbbafd3?w=600&q=70&auto=format&fit=crop',
     description:
       'Ongesubsidieerde concertkelder in zuid. Klein podium, scherp programma — punk, drone, experimentele elektronica.',
+    categories: ['Muziek'],
   },
   {
     id: 'paradiso',
@@ -32,6 +33,7 @@ const VENUES: SeededVenue[] = [
     imageUrl:
       'https://images.unsplash.com/photo-1501386761578-eac5c94b800a?w=600&q=70&auto=format&fit=crop',
     description: 'De pop-tempel in een oud kerkgebouw aan de Weteringschans.',
+    categories: ['Muziek', 'Film'],
   },
   {
     id: 'perdu',
@@ -43,6 +45,7 @@ const VENUES: SeededVenue[] = [
     imageUrl:
       'https://images.unsplash.com/photo-1485579149621-3123dd979885?w=600&q=70&auto=format&fit=crop',
     description: 'Podium voor poëzie, essay en literaire lezingen.',
+    categories: ['Literatuur'],
   },
   {
     id: 'eye',
@@ -54,6 +57,7 @@ const VENUES: SeededVenue[] = [
     imageUrl:
       'https://images.unsplash.com/photo-1478720568477-152d9b164e26?w=600&q=70&auto=format&fit=crop',
     description: 'Filmhuis aan het IJ — retrospectives, premières, matinees.',
+    categories: ['Film'],
   },
   {
     id: 'frascati',
@@ -65,10 +69,12 @@ const VENUES: SeededVenue[] = [
     imageUrl:
       'https://images.unsplash.com/photo-1516450360452-9312f5e86fc7?w=600&q=70&auto=format&fit=crop',
     description: 'Theaterhuis in de Nes met vier zalen — voorstelling tot late nacht.',
+    categories: ['Theater', 'Literatuur'],
   },
 ];
 
 type VenueId = 'occii' | 'paradiso' | 'perdu' | 'eye' | 'frascati';
+type Category = 'Muziek' | 'Theater' | 'Literatuur' | 'Film';
 
 type SeededVenue = {
   id: VenueId;
@@ -79,6 +85,7 @@ type SeededVenue = {
   lng: number;
   imageUrl: string;
   description: string;
+  categories: Category[];
 };
 
 type SeededEvent = {

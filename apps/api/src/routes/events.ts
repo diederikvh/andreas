@@ -1,8 +1,12 @@
-import { and, asc, eq, gte, ilike, inArray, lte, or, type SQL } from 'drizzle-orm';
+import { and, asc, eq, gte, ilike, inArray, lte, not, or, type SQL } from 'drizzle-orm';
 import { Hono, type Context } from 'hono';
 
 import { auth } from '../auth.js';
 import { db, schema } from '../db/index.js';
+import {
+  getBlockedVenueIds,
+  getFollowedVenueIds,
+} from './venue-follows.js';
 
 const VALID_CATEGORIES = new Set(['Muziek', 'Theater', 'Literatuur', 'Film']);
 
@@ -138,6 +142,16 @@ eventsRoute.get('/', async (c) => {
     if (combined) conditions.push(combined);
   }
 
+  // Blokken-filter: events bij venues die ik geblokkeerd heb komen
+  // niet in de feed terecht. Anonieme requests zien alles.
+  const me = await maybeUserId(c);
+  if (me) {
+    const blocked = await getBlockedVenueIds(me);
+    if (blocked.length > 0) {
+      conditions.push(not(inArray(schema.events.venueId, blocked)));
+    }
+  }
+
   const where = conditions.length > 0 ? and(...conditions) : undefined;
 
   const rows = await db
@@ -167,7 +181,6 @@ eventsRoute.get('/', async (c) => {
     .orderBy(asc(schema.events.startsAt))
     .limit(limit);
 
-  const me = await maybeUserId(c);
   const friendsMap = me
     ? await buildFriendsByEvent(
         me,
@@ -175,12 +188,18 @@ eventsRoute.get('/', async (c) => {
       )
     : new Map();
 
+  // Markeer events bij venues die ik volg — mobile groepeert hierop.
+  const followedVenueIds = me
+    ? new Set(await getFollowedVenueIds(me))
+    : new Set<string>();
+
   const events = rows.map((r) => {
     const entry = friendsMap.get(r.id);
     return {
       ...r,
       friendsSaved: entry?.friends ?? [],
       friendsSavedCount: entry?.count ?? 0,
+      venueFollowed: followedVenueIds.has(r.venue.id),
     };
   });
 

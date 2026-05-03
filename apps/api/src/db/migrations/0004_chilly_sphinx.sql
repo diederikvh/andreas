@@ -1,0 +1,1 @@
+ALTER TABLE "venues" ADD COLUMN "categories" "event_category"[] DEFAULT ARRAY[]::event_category[] NOT NULL;

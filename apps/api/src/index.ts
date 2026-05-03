@@ -12,6 +12,7 @@ import { friendsRoute, usersRoute } from './routes/friends.js';
 import { invitesRoute } from './routes/invites.js';
 import { savesRoute } from './routes/saves.js';
 import { shareRoute } from './routes/share.js';
+import { venueFollowsRoute } from './routes/venue-follows.js';
 import { venuesRoute } from './routes/venues.js';
 import { uploadToBunny } from './storage/bunny.js';
 
@@ -201,6 +202,7 @@ app.route('/saves', savesRoute);
 app.route('/friends', friendsRoute);
 app.route('/users', usersRoute);
 app.route('/invites', invitesRoute);
+app.route('/venue-follows', venueFollowsRoute);
 
 // Publieke web-routes (share-pagina + AASA + home). Geen auth.
 // Mounten als laatste zodat de JSON-API-routes voorrang krijgen op

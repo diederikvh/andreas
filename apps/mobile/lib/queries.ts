@@ -18,19 +18,24 @@ import {
   getOutgoingFriendRequests,
   getMySaves,
   getVenue,
+  getVenues,
   removeFriend,
   searchUsers,
   sendFriendRequest,
   sendInvites,
+  setVenueFollow,
   toggleSave,
   type EventsFilter,
   type SavedApiEvent,
+  type VenueFollowState,
 } from '@/lib/api';
 
 export const queryKeys = {
   events: (filter: EventsFilter = {}) => ['events', filter] as const,
   event: (id: string) => ['event', id] as const,
   venue: (slug: string) => ['venue', slug] as const,
+  venues: (input: { q?: string; category?: string } = {}) =>
+    ['venues', input.q ?? '', input.category ?? ''] as const,
   saves: () => ['saves'] as const,
   friends: () => ['friends'] as const,
   friendRequests: () => ['friend-requests'] as const,
@@ -60,6 +65,16 @@ export function useVenue(slug: string) {
     queryKey: queryKeys.venue(slug),
     queryFn: () => getVenue(slug),
     enabled: Boolean(slug),
+  });
+}
+
+export function useVenues(input: {
+  q?: string;
+  category?: 'Muziek' | 'Theater' | 'Literatuur' | 'Film';
+} = {}) {
+  return useQuery({
+    queryKey: queryKeys.venues({ q: input.q, category: input.category }),
+    queryFn: () => getVenues(input),
   });
 }
 
@@ -220,6 +235,43 @@ export function useAcceptInvite() {
       // Friend-pills op andere events kunnen veranderen omdat ik nu een
       // save voor dit event heb.
       qc.invalidateQueries({ queryKey: ['events'] });
+    },
+  });
+}
+
+export function useSetVenueFollow() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { venueId: string; state: VenueFollowState }) =>
+      setVenueFollow(input),
+    onMutate: async ({ venueId, state }) => {
+      // Optimistisch: update myFollowState in elke gecachete venue.
+      await qc.cancelQueries({ queryKey: ['venue'] });
+      const prev = qc.getQueriesData<{
+        venue: { id: string };
+        myFollowState: VenueFollowState;
+      }>({ queryKey: ['venue'] });
+      for (const [key, value] of prev) {
+        if (value && value.venue.id === venueId) {
+          qc.setQueryData(key, { ...value, myFollowState: state });
+        }
+      }
+      return { prev };
+    },
+    onError: (_err, _vars, ctx) => {
+      if (!ctx?.prev) return;
+      for (const [key, value] of ctx.prev) {
+        qc.setQueryData(key, value);
+      }
+    },
+    onSettled: (_data, _err, vars) => {
+      // Events lijst kan veranderen (blokken filtert events). Refetch.
+      qc.invalidateQueries({ queryKey: ['events'] });
+      qc.invalidateQueries({ queryKey: ['event'] });
+      // Eigen venue-detail. Slug onbekend hier dus invalidate alle venue-keys
+      // — tanstack matcht prefix.
+      qc.invalidateQueries({ queryKey: ['venue'] });
+      qc.invalidateQueries({ queryKey: ['venues'] });
     },
   });
 }
