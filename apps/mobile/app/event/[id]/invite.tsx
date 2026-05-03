@@ -218,10 +218,10 @@ export default function InviteModal() {
                 router.back();
                 router.push('/add-friend' as never);
               }}
-              style={[styles.emptyAction, { borderColor: roles.fgMuted }]}
+              style={[styles.emptyAction, { borderColor: roles.bgChip }]}
             >
-              <Ionicons name="person-add-outline" size={14} color={roles.fg} />
-              <Text style={[styles.emptyActionText, { color: roles.fg }]}>
+              <Ionicons name="person-add-outline" size={16} color={roles.fgMuted} />
+              <Text style={[styles.emptyActionText, { color: roles.fgMuted }]}>
                 Vriend zoeken
               </Text>
             </Pressable>
@@ -476,7 +476,7 @@ const styles = StyleSheet.create({
     paddingTop: 4,
     paddingBottom: 16,
     gap: 12,
-    alignItems: 'flex-start',
+    alignItems: 'stretch',
   },
   empty: {
     fontFamily: fontFamily.body,
@@ -486,16 +486,17 @@ const styles = StyleSheet.create({
   emptyAction: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
+    justifyContent: 'center',
+    gap: 6,
+    paddingHorizontal: 18,
+    paddingVertical: 13,
     borderRadius: 999,
     borderWidth: 1,
   },
   emptyActionText: {
     fontFamily: fontFamily.medium,
-    fontSize: 14.5,
-    letterSpacing: -0.07,
+    fontSize: 14,
+    letterSpacing: -0.14,
   },
 
   row: {

@@ -51,6 +51,9 @@ async function buildFriendsByEvent(
   );
   if (friendIds.length === 0) return map;
 
+  // Privacy-gate: alleen vrienden die hun saves zichtbaar voor vrienden
+  // hebben staan tellen mee. `savesVisibility = 'private'` verbergt
+  // hun saves volledig in friend-pills.
   const rows = await db
     .select({
       eventId: schema.saves.eventId,
@@ -64,7 +67,8 @@ async function buildFriendsByEvent(
     .where(
       and(
         inArray(schema.saves.userId, friendIds),
-        inArray(schema.saves.eventId, eventIds)
+        inArray(schema.saves.eventId, eventIds),
+        eq(schema.users.savesVisibility, 'friends')
       )
     );
 

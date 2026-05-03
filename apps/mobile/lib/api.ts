@@ -125,6 +125,8 @@ export type ApiMe = {
   name: string;
   avatarUrl: string | null;
   modePreference: 'nacht' | 'dag';
+  savesVisibility: 'friends' | 'private';
+  discoverable: boolean;
   createdAt: string;
 };
 
@@ -194,8 +196,10 @@ export async function getMe(): Promise<ApiMe | null> {
 }
 
 export async function updateMe(input: {
-  name: string;
-  handle: string;
+  name?: string;
+  handle?: string;
+  savesVisibility?: 'friends' | 'private';
+  discoverable?: boolean;
 }): Promise<ApiMe> {
   const { user } = await authedRequest<{ user: ApiMe }>('/me', {
     method: 'PATCH',
@@ -297,6 +301,7 @@ export async function searchUsers(q: string): Promise<ApiSearchUser[]> {
 export type ApiFriendDetail = {
   user: ApiPublicUser;
   events: ApiEvent[];
+  savesPrivate?: boolean;
 };
 
 export async function getFriendDetail(id: string): Promise<ApiFriendDetail> {

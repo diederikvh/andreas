@@ -7,15 +7,19 @@ import * as ImagePicker from 'expo-image-picker';
 import { router } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import {
+  Alert,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
   View,
 } from 'react-native';
+import QRCode from 'react-native-qrcode-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppHeader, HEADER_HEIGHT } from '@/components/AppHeader';
@@ -38,8 +42,9 @@ import {
   useFriends,
   useInvites,
   useOutgoingFriendRequests,
+  useRemoveFriend,
 } from '@/lib/queries';
-import { useMode, useModeStore, useRoles } from '@/store/mode';
+import { useMode, useRoles } from '@/store/mode';
 import { fontFamily, palette } from '@/theme/tokens';
 
 type Stage = 'phone' | 'code' | 'profile' | 'authed';
@@ -217,6 +222,7 @@ export default function Jij() {
   };
 
   const [avatarUploading, setAvatarUploading] = useState(false);
+  const [showQr, setShowQr] = useState(false);
   const onPickAvatar = async () => {
     if (avatarUploading) return;
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -255,12 +261,6 @@ export default function Jij() {
     } finally {
       setAvatarUploading(false);
     }
-  };
-
-  const resetOnboarding = async () => {
-    await useModeStore.persist.clearStorage();
-    useModeStore.setState({ mode: 'nacht', hasOnboarded: false });
-    router.replace('/');
   };
 
   // ─── Auth views ─────────────────────────────────────────────────────
@@ -598,14 +598,60 @@ export default function Jij() {
           <Text style={[styles.profileHandle, { color: roles.fgMuted }]}>
             {displayHandle}
           </Text>
-          <Pressable
-            onPress={onEditProfile}
-            style={[styles.editBtn, { borderColor: roles.fgMuted }]}
-          >
-            <Text style={[styles.editBtnText, { color: roles.fgMuted }]}>
-              Bewerk profiel
-            </Text>
-          </Pressable>
+          <View style={styles.profileActions}>
+            {me?.handle && (
+              <Pressable
+                onPress={() => setShowQr(true)}
+                style={[styles.editBtn, { borderColor: roles.bgChip }]}
+              >
+                <Ionicons
+                  name="qr-code-outline"
+                  size={12}
+                  color={roles.fgMuted}
+                  style={{ marginRight: 4 }}
+                />
+                <Text style={[styles.editBtnText, { color: roles.fgMuted }]}>
+                  Mijn QR
+                </Text>
+              </Pressable>
+            )}
+            <Pressable
+              onPress={() => router.push('/add-friend?scan=1' as never)}
+              style={[styles.editBtn, { borderColor: roles.bgChip }]}
+            >
+              <Ionicons
+                name="scan-outline"
+                size={16}
+                color={roles.fgMuted}
+                style={{ marginRight: 6 }}
+              />
+              <Text style={[styles.editBtnText, { color: roles.fgMuted }]}>
+                Scan QR
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={() => router.push('/add-friend' as never)}
+              style={[styles.editBtn, { borderColor: roles.bgChip }]}
+            >
+              <Ionicons
+                name="search-outline"
+                size={16}
+                color={roles.fgMuted}
+                style={{ marginRight: 6 }}
+              />
+              <Text style={[styles.editBtnText, { color: roles.fgMuted }]}>
+                Vrienden zoeken
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={onEditProfile}
+              style={[styles.editBtn, { borderColor: roles.bgChip }]}
+            >
+              <Text style={[styles.editBtnText, { color: roles.fgMuted }]}>
+                Bewerk profiel
+              </Text>
+            </Pressable>
+          </View>
           {error && <Text style={styles.error}>{error}</Text>}
         </View>
 
@@ -624,18 +670,11 @@ export default function Jij() {
           </>
         )}
 
-        <SectionHead
-          label="Vrienden"
-          count={friends?.length ?? 0}
-          action="+ Toevoegen"
-          onAction={() => router.push('/add-friend' as never)}
-        />
-        {(friends ?? []).length === 0 ? (
-          <Text style={[styles.emptyHint, { color: roles.fgMuted }]}>
-            Nog geen vrienden. Tik op + Toevoegen om iemand te zoeken.
-          </Text>
-        ) : (
-          friends!.map((f) => <FriendRow key={f.id} friend={f} />)
+        {friends && friends.length > 0 && (
+          <>
+            <SectionHead label="Vrienden" count={friends.length} />
+            {friends.map((f) => <FriendRow key={f.id} friend={f} />)}
+          </>
         )}
 
         {outgoing && outgoing.length > 0 && (
@@ -662,31 +701,35 @@ export default function Jij() {
           </>
         )}
 
-        <SectionHead label="Account" />
-        <View style={styles.devWrap}>
+        {me && <PrivacySection me={me} onUpdated={refetchMe} />}
+
+        <View style={styles.logoutWrap}>
           <Pressable
             onPress={onLogout}
-            style={[styles.devBtn, { borderColor: roles.fgMuted }]}
+            style={[styles.editBtn, { borderColor: roles.bgChip }]}
           >
-            <Text style={[styles.devLabel, { color: roles.fgMuted }]}>
+            <Text style={[styles.editBtnText, { color: roles.fgMuted }]}>
               Uitloggen
-            </Text>
-          </Pressable>
-        </View>
-
-        <SectionHead label="DEV" />
-        <View style={styles.devWrap}>
-          <Pressable
-            onPress={resetOnboarding}
-            style={[styles.devBtn, { borderColor: roles.fgPlaceholder }]}
-          >
-            <Text style={[styles.devLabel, { color: roles.fgMuted }]}>
-              Reset onboarding
             </Text>
           </Pressable>
         </View>
       </ScrollView>
       <AppHeader />
+      <Modal
+        visible={showQr && Boolean(me?.handle)}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setShowQr(false)}
+      >
+        {me?.handle && (
+          <MyQrSheet
+            handle={me.handle}
+            name={displayName}
+            avatarUrl={me.avatarUrl}
+            onClose={() => setShowQr(false)}
+          />
+        )}
+      </Modal>
     </View>
   );
 }
@@ -906,8 +949,199 @@ function InviteRow({
   );
 }
 
+function MyQrSheet({
+  handle,
+  name,
+  avatarUrl: _avatarUrl,
+  onClose,
+}: {
+  handle: string;
+  name: string;
+  avatarUrl: string | null;
+  onClose: () => void;
+}) {
+  const mode = useMode();
+  const roles = useRoles();
+  const isNacht = mode === 'nacht';
+  const url = `https://andreas.amsterdam/u/${handle}`;
+  // iOS pageSheet heeft een ingebouwde drag-handle bovenin + swipe-down
+  // dismiss. Op Android valt 't terug op een fullscreen modal — daar
+  // dient de losse close-knop voor.
+  return (
+    <View style={[styles.qrSheet, { backgroundColor: roles.bg }]}>
+      {/* Drag-handle: zichtbare hint dat je 'm naar beneden kunt vegen.
+          Op iOS zit hier nog een UIKit-handle bovenop maar deze maakt
+          'm extra leesbaar; op Android is dit de enige indicatie. */}
+      <View style={styles.qrDragHandleWrap}>
+        <View
+          style={[
+            styles.qrDragHandle,
+            { backgroundColor: roles.fgPlaceholder },
+          ]}
+        />
+      </View>
+
+      <View style={styles.qrBody}>
+        <View
+          style={[
+            styles.qrCard,
+            { backgroundColor: isNacht ? palette.ink : palette.paper3 },
+          ]}
+        >
+          <QRCode
+            value={url}
+            size={240}
+            color={palette.noir}
+            backgroundColor={isNacht ? palette.ink : palette.paper3}
+            // High error-correction (~30%) zodat de logo-overlay in
+            // het midden geen scan-problemen geeft.
+            ecl="H"
+          />
+          {/* Andreas-X als logo-overlay. Centreren via inset+flex —
+              dat is robuuster dan margin-half. Dark mode: zwart vierkant
+              met acid-X. Light mode: cream vierkant met red-X. */}
+          <View pointerEvents="none" style={styles.qrLogoOverlay}>
+            <View
+              style={[
+                styles.qrLogoBg,
+                { backgroundColor: isNacht ? palette.noir : palette.paper3 },
+              ]}
+            >
+              <Cross size={36} thickness={10} color={roles.accent} />
+            </View>
+          </View>
+        </View>
+        <Text style={[styles.qrName, { color: roles.fg }]}>{name}</Text>
+        <Text style={[styles.qrHandle, { color: roles.fgMuted }]}>
+          @{handle}
+        </Text>
+        <Text style={[styles.qrLead, { color: roles.fgMuted }]}>
+          Scan to connect.
+        </Text>
+      </View>
+    </View>
+  );
+}
+
+function PrivacySection({
+  me,
+  onUpdated,
+}: {
+  me: ApiMe;
+  onUpdated: () => void;
+}) {
+  const mode = useMode();
+  const roles = useRoles();
+  const isNacht = mode === 'nacht';
+
+  // Optimistische lokale state — voor snappy switch-animatie. Server-call
+  // komt erna; bij fout rollen we terug en tonen we niets bijzonders
+  // (de switch springt simpelweg terug).
+  const [savesPrivate, setSavesPrivate] = useState(
+    me.savesVisibility === 'private'
+  );
+  const [discoverable, setDiscoverable] = useState(me.discoverable);
+
+  useEffect(() => {
+    setSavesPrivate(me.savesVisibility === 'private');
+    setDiscoverable(me.discoverable);
+  }, [me.savesVisibility, me.discoverable]);
+
+  const trackOn = roles.accent;
+  const trackOff = isNacht ? '#2a2a2d' : palette.paper;
+  const thumb = isNacht ? palette.ink : palette.paper3;
+
+  const onSavesToggle = async (next: boolean) => {
+    const prev = savesPrivate;
+    setSavesPrivate(next);
+    try {
+      await updateMe({ savesVisibility: next ? 'private' : 'friends' });
+      onUpdated();
+    } catch {
+      setSavesPrivate(prev);
+    }
+  };
+
+  const onDiscoverableToggle = async (next: boolean) => {
+    const prev = discoverable;
+    setDiscoverable(next);
+    try {
+      await updateMe({ discoverable: next });
+      onUpdated();
+    } catch {
+      setDiscoverable(prev);
+    }
+  };
+
+  return (
+    <>
+      <SectionHead label="Privacy" />
+      <View style={styles.privacyWrap}>
+        <View style={styles.privacyRow}>
+          <View style={styles.privacyBody}>
+            <Text style={[styles.privacyLabel, { color: roles.fg }]}>
+              Vrienden zien mijn opgeslagen events
+            </Text>
+            <Text style={[styles.privacySub, { color: roles.fgMuted }]}>
+              Uit zetten verbergt jouw saves bij vrienden in friend-pills en op
+              je profiel.
+            </Text>
+          </View>
+          <Switch
+            // value=true betekent "vrienden mogen het zien" (sluit aan
+            // bij de label-richting); intern is dat savesVisibility =
+            // 'friends'.
+            value={!savesPrivate}
+            onValueChange={(v) => onSavesToggle(!v)}
+            trackColor={{ true: trackOn, false: trackOff }}
+            thumbColor={thumb}
+            ios_backgroundColor={trackOff}
+          />
+        </View>
+        <View style={[styles.privacyDivider, { backgroundColor: roles.bgChip }]} />
+        <View style={styles.privacyRow}>
+          <View style={styles.privacyBody}>
+            <Text style={[styles.privacyLabel, { color: roles.fg }]}>
+              Vindbaar via zoeken
+            </Text>
+            <Text style={[styles.privacySub, { color: roles.fgMuted }]}>
+              Anderen kunnen jou vinden via @handle. Uit betekent dat alleen
+              mensen die jij toevoegt vrienden met je kunnen worden.
+            </Text>
+          </View>
+          <Switch
+            value={discoverable}
+            onValueChange={onDiscoverableToggle}
+            trackColor={{ true: trackOn, false: trackOff }}
+            thumbColor={thumb}
+            ios_backgroundColor={trackOff}
+          />
+        </View>
+      </View>
+    </>
+  );
+}
+
 function PendingRow({ user }: { user: ApiFriendRequest }) {
   const roles = useRoles();
+  const removeFriend = useRemoveFriend();
+
+  const onCancel = () => {
+    const firstName = user.name.split(' ')[0] || `@${user.handle ?? ''}`;
+    Alert.alert(
+      'Verzoek terugtrekken?',
+      `${firstName} krijgt geen melding hierover.`,
+      [
+        { text: 'Annuleer', style: 'cancel' },
+        {
+          text: 'Terugtrekken',
+          style: 'destructive',
+          onPress: () => removeFriend.mutate(user.id),
+        },
+      ]
+    );
+  };
+
   return (
     <View style={[styles.friend, { borderColor: roles.bgChip }]}>
       <ProfileAvatar
@@ -938,6 +1172,20 @@ function PendingRow({ user }: { user: ApiFriendRequest }) {
           Wacht op acceptatie
         </Text>
       </View>
+      <Pressable
+        onPress={onCancel}
+        disabled={removeFriend.isPending}
+        hitSlop={6}
+        style={[
+          styles.twinBtn,
+          {
+            borderColor: roles.bgChip,
+            opacity: removeFriend.isPending ? 0.5 : 1,
+          },
+        ]}
+      >
+        <Cross size={14} thickness={2.6} color={roles.fgMuted} />
+      </Pressable>
     </View>
   );
 }
@@ -1130,18 +1378,25 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     textAlign: 'center',
   },
+  profileActions: {
+    flexDirection: 'column',
+    alignSelf: 'stretch',
+    gap: 8,
+    marginTop: 16,
+  },
   editBtn: {
-    marginTop: 4,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 18,
+    paddingVertical: 13,
     borderRadius: 999,
     borderWidth: 1,
   },
   editBtnText: {
-    fontFamily: fontFamily.monoMedium,
-    fontSize: 10,
-    letterSpacing: 1.2,
-    textTransform: 'uppercase',
+    fontFamily: fontFamily.medium,
+    fontSize: 14,
+    letterSpacing: -0.14,
   },
   cancelLink: {
     fontFamily: fontFamily.mono,
@@ -1283,7 +1538,109 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
 
-  // Account / DEV
+  // QR sheet (gepresenteerd als iOS pageSheet)
+  qrSheet: { flex: 1 },
+  qrDragHandleWrap: {
+    alignItems: 'center',
+    paddingTop: 8,
+    paddingBottom: 8,
+  },
+  qrDragHandle: {
+    width: 44,
+    height: 5,
+    borderRadius: 2.5,
+    opacity: 0.6,
+  },
+  qrCloseBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  qrTopTitle: {
+    flex: 1,
+    fontFamily: fontFamily.bold,
+    fontSize: 14,
+    letterSpacing: -0.21,
+    textAlign: 'center',
+  },
+  qrBody: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 32,
+    gap: 10,
+  },
+  qrCard: {
+    padding: 20,
+    borderRadius: 18,
+    marginBottom: 12,
+    position: 'relative',
+  },
+  qrLogoOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  qrLogoBg: {
+    width: 64,
+    height: 64,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  qrName: {
+    fontFamily: fontFamily.display,
+    fontSize: 26,
+    letterSpacing: -0.65,
+    lineHeight: 26 * 1.02,
+    textAlign: 'center',
+  },
+  qrHandle: {
+    fontFamily: fontFamily.mono,
+    fontSize: 11,
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
+  },
+  qrLead: {
+    fontFamily: fontFamily.body,
+    fontSize: 13.5,
+    lineHeight: 18.5,
+    textAlign: 'center',
+    marginTop: 8,
+  },
+
+  // Privacy
+  privacyWrap: { paddingHorizontal: 22, paddingTop: 4 },
+  privacyRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    paddingVertical: 12,
+  },
+  privacyBody: { flex: 1 },
+  privacyLabel: {
+    fontFamily: fontFamily.medium,
+    fontSize: 14.5,
+    letterSpacing: -0.14,
+  },
+  privacySub: {
+    fontFamily: fontFamily.body,
+    fontSize: 12.5,
+    lineHeight: 17,
+    marginTop: 4,
+  },
+  privacyDivider: { height: StyleSheet.hairlineWidth },
+
+  // Uitloggen — full-width pill onderaan, zelfde stijl als profile-actions
+  logoutWrap: {
+    paddingHorizontal: 22,
+    paddingTop: 28,
+    paddingBottom: 8,
+  },
+
+  // Account / DEV (legacy, devWrap nu alleen voor sectie-spacing)
   devWrap: { paddingHorizontal: 22, paddingTop: 4 },
   devBtn: {
     alignSelf: 'flex-start',

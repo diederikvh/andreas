@@ -69,27 +69,60 @@ app.patch('/me', async (c) => {
   });
   if (!session) return c.json({ error: 'unauthorized' }, 401);
 
-  const body = (await c.req.json()) as { name?: string; handle?: string };
-  const name = (body.name ?? '').trim();
-  const handle = (body.handle ?? '').trim().toLowerCase();
+  const body = (await c.req.json()) as {
+    name?: string;
+    handle?: string;
+    savesVisibility?: 'friends' | 'private';
+    discoverable?: boolean;
+  };
 
-  if (name.length < 1 || name.length > 60) {
-    return c.json({ error: 'Naam is verplicht (1–60 tekens).' }, 400);
+  // Bouw alleen de update-set op met velden die meekwamen — zo kan
+  // de profielpagina alleen naam/handle posten en de privacy-toggles
+  // alleen hun eigen veld zonder de rest aan te raken.
+  const updates: Record<string, unknown> = {
+    updatedAt: new Date(),
+  };
+
+  if (body.name !== undefined) {
+    const name = body.name.trim();
+    if (name.length < 1 || name.length > 60) {
+      return c.json({ error: 'Naam is verplicht (1–60 tekens).' }, 400);
+    }
+    updates.name = name;
   }
-  if (!/^[a-z0-9_]{3,20}$/.test(handle)) {
-    return c.json(
-      {
-        error:
-          'Handle: 3–20 tekens, alleen kleine letters, cijfers en underscore.',
-      },
-      400
-    );
+
+  if (body.handle !== undefined) {
+    const handle = body.handle.trim().toLowerCase();
+    if (!/^[a-z0-9_]{3,20}$/.test(handle)) {
+      return c.json(
+        {
+          error:
+            'Handle: 3–20 tekens, alleen kleine letters, cijfers en underscore.',
+        },
+        400
+      );
+    }
+    updates.handle = handle;
+  }
+
+  if (body.savesVisibility !== undefined) {
+    if (body.savesVisibility !== 'friends' && body.savesVisibility !== 'private') {
+      return c.json({ error: 'savesVisibility moet "friends" of "private" zijn.' }, 400);
+    }
+    updates.savesVisibility = body.savesVisibility;
+  }
+
+  if (body.discoverable !== undefined) {
+    if (typeof body.discoverable !== 'boolean') {
+      return c.json({ error: 'discoverable moet true of false zijn.' }, 400);
+    }
+    updates.discoverable = body.discoverable;
   }
 
   try {
     await db
       .update(schema.users)
-      .set({ name, handle, updatedAt: new Date() })
+      .set(updates)
       .where(eq(schema.users.id, session.user.id));
   } catch (e) {
     // Postgres unique-violation = 23505. Drizzle's neon-serverless

@@ -294,41 +294,57 @@ friendsRoute.get('/:id', async (c) => {
   }
 
   const [user] = await db
-    .select(publicUserCols)
+    .select({
+      ...publicUserCols,
+      savesVisibility: schema.users.savesVisibility,
+    })
     .from(schema.users)
     .where(eq(schema.users.id, friendId))
     .limit(1);
   if (!user) return c.json({ error: 'user not found' }, 404);
 
-  const events = await db
-    .select({
-      id: schema.events.id,
-      title: schema.events.title,
-      description: schema.events.description,
-      startsAt: schema.events.startsAt,
-      endsAt: schema.events.endsAt,
-      priceCents: schema.events.priceCents,
-      ticketUrl: schema.events.ticketUrl,
-      imageUrl: schema.events.imageUrl,
-      category: schema.events.category,
-      featured: schema.events.featured,
-      savedAt: schema.saves.createdAt,
-      venue: {
-        id: schema.venues.id,
-        slug: schema.venues.slug,
-        name: schema.venues.name,
-        address: schema.venues.address,
-        lat: schema.venues.lat,
-        lng: schema.venues.lng,
-      },
-    })
-    .from(schema.saves)
-    .innerJoin(schema.events, eq(schema.events.id, schema.saves.eventId))
-    .innerJoin(schema.venues, eq(schema.venues.id, schema.events.venueId))
-    .where(eq(schema.saves.userId, friendId))
-    .orderBy(asc(schema.events.startsAt));
+  // Privacy-gate: als de friend z'n saves prive heeft staan, retourneren
+  // we een leeg events-lijstje. We tonen wel het profiel zelf — zo weet
+  // ik nog dat we vrienden zijn, alleen geen activiteiten.
+  const isPrivate = user.savesVisibility === 'private';
+  const events = isPrivate
+    ? []
+    : await db
+        .select({
+          id: schema.events.id,
+          title: schema.events.title,
+          description: schema.events.description,
+          startsAt: schema.events.startsAt,
+          endsAt: schema.events.endsAt,
+          priceCents: schema.events.priceCents,
+          ticketUrl: schema.events.ticketUrl,
+          imageUrl: schema.events.imageUrl,
+          category: schema.events.category,
+          featured: schema.events.featured,
+          savedAt: schema.saves.createdAt,
+          venue: {
+            id: schema.venues.id,
+            slug: schema.venues.slug,
+            name: schema.venues.name,
+            address: schema.venues.address,
+            lat: schema.venues.lat,
+            lng: schema.venues.lng,
+          },
+        })
+        .from(schema.saves)
+        .innerJoin(schema.events, eq(schema.events.id, schema.saves.eventId))
+        .innerJoin(schema.venues, eq(schema.venues.id, schema.events.venueId))
+        .where(eq(schema.saves.userId, friendId))
+        .orderBy(asc(schema.events.startsAt));
 
-  return c.json({ user, events });
+  // savesVisibility hoeft niet naar de client — gebruikt om events leeg
+  // te laten en niets meer.
+  const { savesVisibility: _omit, ...publicUser } = user;
+  return c.json({
+    user: publicUser,
+    events,
+    savesPrivate: isPrivate,
+  });
 });
 
 friendsRoute.delete('/:userId', async (c) => {
@@ -366,6 +382,10 @@ usersRoute.get('/search', async (c) => {
   const q = (c.req.query('q') ?? '').trim().toLowerCase();
   if (q.length < 2) return c.json({ users: [] });
 
+  // Privacy-gate: alleen users met `discoverable = true` verschijnen
+  // in zoekresultaten. Bestaande vrienden blijven via /friends bereik-
+  // baar; mensen die jou een verzoek hebben gestuurd staan in
+  // /friends/requests.
   const rows = await db
     .select({
       id: publicUserCols.id,
@@ -378,7 +398,8 @@ usersRoute.get('/search', async (c) => {
       and(
         ne(schema.users.id, me),
         isNotNull(schema.users.handle),
-        ilike(schema.users.handle, `${q}%`)
+        ilike(schema.users.handle, `${q}%`),
+        eq(schema.users.discoverable, true)
       )
     )
     .limit(20);

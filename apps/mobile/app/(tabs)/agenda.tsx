@@ -51,7 +51,16 @@ export default function Agenda() {
       : null;
   const query = params.q ?? '';
 
-  const { data: events, isLoading, error } = useEvents();
+  // Vanaf vandaag 00:00 — geen verleden events op de Agenda. Geheugen
+  // door de hele render zodat de query-key stabiel blijft binnen één
+  // sessie (cross-midnight refresh komt vanzelf bij re-mount).
+  const todayStartIso = useMemo(() => {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    return d.toISOString();
+  }, []);
+
+  const { data: events, isLoading, error } = useEvents({ from: todayStartIso });
 
   // Cliëntside filter — events-lijst is klein, geen API-call nodig.
   const filteredEvents = useMemo(() => {

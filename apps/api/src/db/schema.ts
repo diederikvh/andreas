@@ -30,6 +30,10 @@ export const inviteStatus = pgEnum('invite_status', [
   'accepted',
   'declined',
 ]);
+export const savesVisibility = pgEnum('saves_visibility', [
+  'friends',
+  'private',
+]);
 
 // ─── Domain ───────────────────────────────────────────────────────────────
 
@@ -50,6 +54,13 @@ export const users = pgTable(
     image: text(),
     avatarUrl: text(),
     modePreference: modePref().notNull().default('nacht'),
+    /** Mogen vrienden zien welke events ik heb opgeslagen (friend-pills,
+        events-lijst op friend-detail)? Default `friends` (open). */
+    savesVisibility: savesVisibility().notNull().default('friends'),
+    /** Verschijn ik in `/users/search` voor mensen die mij nog niet
+        kennen? Default `true`. Bestaande vrienden + verzoek-flow blijven
+        werken ongeacht deze flag. */
+    discoverable: boolean().notNull().default(true),
     createdAt: timestamp({ withTimezone: true })
       .notNull()
       .default(sql`now()`),

@@ -40,6 +40,11 @@
               "scheme": "https",
               "host": "andreas.amsterdam",
               "pathPrefix": "/v"
+            },
+            {
+              "scheme": "https",
+              "host": "andreas.amsterdam",
+              "pathPrefix": "/u"
             }
           ],
           "category": ["BROWSABLE", "DEFAULT"]
@@ -81,6 +86,13 @@
         "expo-image-picker",
         {
           "photosPermission": "Andreas heeft toegang tot je foto's nodig om een profielfoto te kiezen."
+        }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Andreas gebruikt de camera alleen om een vriend-QR te scannen.",
+          "recordAudioAndroid": false
         }
       ]
     ],

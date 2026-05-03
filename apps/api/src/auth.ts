@@ -33,7 +33,24 @@ export const auth = betterAuth({
   baseURL: process.env.BETTER_AUTH_URL ?? 'http://localhost:8787',
   trustedOrigins: [
     'andreas://',
-    ...(isDev ? ['exp://', 'exp://**', 'exp://192.168.*.*:*/**'] : []),
+    'https://andreas.amsterdam',
+    'https://api.andreas.amsterdam',
+    ...(isDev
+      ? [
+          // Expo Go fetched bundle / dev-client
+          'exp://',
+          'exp://**',
+          // Metro / browser dev-server
+          'http://localhost',
+          'http://localhost:**',
+          'http://127.0.0.1',
+          'http://127.0.0.1:**',
+          // Telefoon hangt aan LAN-IP van je laptop (Expo Go fetch
+          // hits API rechtstreeks vanaf het toestel)
+          'http://192.168.*.*:**',
+          'http://10.*.*.*:**',
+        ]
+      : []),
   ],
   session: {
     // Mobile-app default: ingelogd blijven tot je uitlogt. Sliding

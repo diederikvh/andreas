@@ -19,6 +19,15 @@ export async function sendSms(opts: { to: string; body: string }) {
   const workspaceId = process.env.BIRD_WORKSPACE_ID;
   const channelId = process.env.BIRD_CHANNEL_ID;
 
+  // In dev/test draaien we Bird niet — log de OTP gewoon naar de
+  // server-console. Voorkomt dat lokaal testen credit verbrandt of
+  // echte SMS'jes naar je telefoon stuurt. Productie (NODE_ENV=
+  // production, gezet in Dockerfile) gebruikt Bird wel.
+  if (process.env.NODE_ENV !== 'production') {
+    console.log(`[sms:dev] → ${opts.to}: ${opts.body}`);
+    return;
+  }
+
   if (!key || !workspaceId || !channelId) {
     console.warn(
       `[sms:fallback] ontbrekende Bird-config (key=${!!key} ws=${!!workspaceId} ch=${!!channelId}) → ${opts.to}: ${opts.body}`

@@ -37,6 +37,7 @@ shareRoute.get('/.well-known/apple-app-site-association', (c) => {
           components: [
             { '/': '/e/*', comment: 'Event-share-links' },
             { '/': '/v/*', comment: 'Venue-share-links' },
+            { '/': '/u/*', comment: 'User-handle (QR) share-links' },
             { '/': '/', comment: 'Home' },
             { '/': '/api/*', exclude: true, comment: 'API-calls' },
           ],
@@ -204,6 +205,76 @@ shareRoute.get('/v/:slug', async (c) => {
     <h1>${escapeHtml(venueName)}</h1>
     <p>${escapeHtml(row?.address ?? '')}</p>
     <a class="cta" href="${escapeHtml(appLink)}" id="open">Open in Andreas</a>
+    <a class="fallback" href="${escapeHtml(APP_STORE_URL)}">Nog geen Andreas? Download in de App Store</a>
+  </main>
+  <script>
+    (function () {
+      var app = ${JSON.stringify(appLink)};
+      var store = ${JSON.stringify(APP_STORE_URL)};
+      var t = setTimeout(function () { window.location.href = store; }, 1200);
+      window.addEventListener('pagehide', function () { clearTimeout(t); });
+      window.location.href = app;
+    })();
+  </script>
+</body>
+</html>`;
+
+  c.header('Content-Type', 'text/html; charset=utf-8');
+  c.header('Cache-Control', 'public, max-age=300');
+  return c.body(html);
+});
+
+shareRoute.get('/u/:handle', async (c) => {
+  const rawHandle = c.req.param('handle');
+  const handle = rawHandle.toLowerCase().replace(/[^a-z0-9_]/g, '');
+
+  const [row] = await db
+    .select({
+      name: schema.users.name,
+      handle: schema.users.handle,
+      avatarUrl: schema.users.avatarUrl,
+    })
+    .from(schema.users)
+    .where(eq(schema.users.handle, handle))
+    .limit(1);
+
+  const displayName = row?.name && !row.name.startsWith('+') ? row.name : '';
+  const handleLabel = row?.handle ?? handle;
+  const appLink = `andreas://u/${encodeURIComponent(handleLabel)}`;
+  const universalLink = `https://andreas.amsterdam/u/${encodeURIComponent(handleLabel)}`;
+
+  const html = `<!doctype html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>@${escapeHtml(handleLabel)} · Andreas</title>
+  <meta property="og:title" content="${escapeHtml(displayName || `@${handleLabel}`)} op Andreas" />
+  <meta property="og:description" content="Voeg ${escapeHtml(displayName || `@${handleLabel}`)} toe als vriend op Andreas." />
+  ${row?.avatarUrl ? `<meta property="og:image" content="${escapeHtml(row.avatarUrl)}" />` : ''}
+  <meta property="og:url" content="${escapeHtml(universalLink)}" />
+  <meta property="og:type" content="website" />
+  <meta name="apple-itunes-app" content="app-id=000000000, app-argument=${escapeHtml(appLink)}" />
+  <style>
+    :root { color-scheme: dark; }
+    body { margin: 0; background: #0a0a0b; color: #f2f2ef; font-family: -apple-system, system-ui, sans-serif; }
+    main { max-width: 420px; margin: 0 auto; padding: 56px 24px; text-align: center; }
+    h1 { font-size: 28px; line-height: 1.05; letter-spacing: -1px; margin: 16px 0 4px; font-weight: 900; }
+    p.handle { font-family: ui-monospace, monospace; font-size: 12px; letter-spacing: 1.4px; text-transform: uppercase; color: #9a9a94; margin: 0 0 28px; }
+    p { color: #9a9a94; margin: 4px 0 24px; font-size: 14px; }
+    a.cta { display: inline-block; background: #d4ff3a; color: #0a0a0b; padding: 14px 22px; border-radius: 999px; text-decoration: none; font-weight: 600; }
+    a.fallback { display: block; margin-top: 16px; color: #9a9a94; font-size: 12px; }
+    .avatar { width: 96px; height: 96px; border-radius: 999px; object-fit: cover; background: #17171a; margin: 0 auto; }
+    .kicker { font-family: ui-monospace, monospace; font-size: 11px; letter-spacing: 1.4px; text-transform: uppercase; color: #d4ff3a; }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="kicker">Andreas · vrienden</div>
+    ${row?.avatarUrl ? `<img class="avatar" src="${escapeHtml(row.avatarUrl)}" alt="" />` : '<div class="avatar"></div>'}
+    <h1>${escapeHtml(displayName || `@${handleLabel}`)}</h1>
+    <p class="handle">@${escapeHtml(handleLabel)}</p>
+    <a class="cta" href="${escapeHtml(appLink)}" id="open">Voeg toe in Andreas</a>
     <a class="fallback" href="${escapeHtml(APP_STORE_URL)}">Nog geen Andreas? Download in de App Store</a>
   </main>
   <script>

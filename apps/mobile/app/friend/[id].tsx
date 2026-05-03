@@ -87,7 +87,7 @@ export default function FriendDetail() {
     );
   }
 
-  const { user, events } = data;
+  const { user, events, savesPrivate } = data;
   const upcoming = events.filter(
     (e) => new Date(e.endsAt ?? e.startsAt).getTime() >= Date.now()
   );
@@ -141,7 +141,7 @@ export default function FriendDetail() {
             style={[
               styles.unfollowBtn,
               {
-                borderColor: roles.fgMuted,
+                borderColor: roles.bgChip,
                 opacity: removeFriend.isPending ? 0.5 : 1,
               },
             ]}
@@ -154,7 +154,9 @@ export default function FriendDetail() {
 
         {upcomingDays.length === 0 && (
           <Text style={[styles.empty, { color: roles.fgMuted }]}>
-            Niks aankomends opgeslagen.
+            {savesPrivate
+              ? `${user.name.split(' ')[0]} heeft saves op privé staan.`
+              : 'Niks aankomends opgeslagen.'}
           </Text>
         )}
         {upcomingDays.map((day) => (
@@ -253,17 +255,21 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
   },
   unfollowBtn: {
-    marginTop: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
+    alignSelf: 'stretch',
+    marginTop: 16,
+    marginHorizontal: 22,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 18,
+    paddingVertical: 13,
     borderRadius: 999,
     borderWidth: 1,
   },
   unfollowText: {
-    fontFamily: fontFamily.monoMedium,
-    fontSize: 10,
-    letterSpacing: 1.2,
-    textTransform: 'uppercase',
+    fontFamily: fontFamily.medium,
+    fontSize: 14,
+    letterSpacing: -0.14,
   },
 
   empty: {
