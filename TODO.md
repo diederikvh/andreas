@@ -40,18 +40,54 @@ Laatste sync: 2026-05-03 · branch `main`.
 
 ---
 
-## Volgende slice — kandidaten
+## Volgende slices — volgorde
 
-**Eerst doen** (gemerkt tijdens TestFlight-test 2026-05-03):
-
-0. **Agenda filteren op vandaag + toekomst** — Agenda-tab toont nu *alle* events incl. verleden (gisteren, eergisteren). Default moet zijn: alleen vanaf vandaag (00:00) en de toekomst. Optioneel een knopje om "verleden" weer aan te zetten, maar verbergen tenzij expliciet gevraagd. Filter is server-side via de bestaande `from`-query op `GET /events`, of mobile-side in de Agenda-component vóór `groupEventsByDay`.
-
-Daarna:
-
-1. **Niet-leden uitnodigen — full path** — `share_invites` tabel met token + phone; bij phone-OTP signup koppelt Andreas op telefoonnummer en maakt friendship + event-invite automatisch. Bouwt op de share-knoppen die er al zijn.
-2. **Privacy-toggles op profiel** — "vrienden mogen mijn saves zien" toggle. Lost de open `TODO (privacy)` comments op in `buildFriendsByEvent` + `GET /friends/:id`. Backend + UI op Jij.
+1. **Privacy-toggles op profiel** — "vrienden mogen mijn saves zien" toggle. Schema: `users.savesVisibility` enum (`friends` default, `private`). Backend: `buildFriendsByEvent` + `GET /friends/:id` filteren op deze flag. Mobile: nieuwe sectie op Jij ("Privacy"), één switch. Sluit de open `TODO (privacy)` comments af.
+2. **Venue-features** (scope nog vast te stellen): doorzoekbare venue-lijst + venue-volgen in drie stadia (volgen / normaal / blokken) — zie Wensen-sectie hieronder.
 3. **Push notificaties** — `expo-notifications` + Apple Push Key (al via EAS gegenereerd) + server endpoint dat tokens registreert + verstuurt bij invite-accept, friend-request, etc.
-4. **QR-code voor handle** op `/add-friend` (toon eigen QR + camera om te scannen).
+4. **Niet-leden uitnodigen — token-flow** (zie `## Toekomstige slice` hieronder voor design).
+5. **QR-code voor handle** op `/add-friend` (toon eigen QR + camera om te scannen).
+
+---
+
+## Toekomstige slice — niet-leden uitnodigen via token
+
+Ontworpen 2026-05-03, niet ingebouwd omdat de basis (share-buttons + universal-links) al volstaat voor v1.
+
+**User-flow:**
+- Inviter tikt share-button → app vraagt server om een share-token → URL = `https://andreas.amsterdam/{e|v}/<id>?ref=<TOKEN>`.
+- Ontvanger tikt link:
+  - **Heeft app, ingelogd, al bevriend** → claim creëert alleen een save voor het event.
+  - **Heeft app, ingelogd, nog geen vriend** → claim creëert friendship (direct accepted, klik IS bevestiging) + save.
+  - **Heeft app niet** → App Store fallback → na install + re-tap op de WhatsApp-link → zelfde flow als hierboven.
+- Niet meegenomen v1: deferred deep-link voor scenario zonder re-tap (App Store carrieert de URL niet door op iOS).
+
+**Schema:**
+```sql
+share_invites (
+  id text primary key,
+  from_user_id text not null references users(id) on delete cascade,
+  event_id text references events(id) on delete cascade,
+  venue_id text references venues(id) on delete cascade,
+  token text not null unique,
+  claimed_by_user_id text references users(id) on delete set null,
+  claimed_at timestamptz,
+  expires_at timestamptz not null,
+  created_at timestamptz not null default now()
+)
+```
+Token = random URL-safe string van 16-24 chars, expiry default 30 dagen.
+
+**Endpoints:**
+- `POST /share-invites { eventId? venueId? }` — auth-only, retourneert `{ token, url }`.
+- `POST /share-invites/:token/claim` — auth-only, idempotent. Effecten: friendship upsert (accepted), event-invite upsert (accepted, auto-save), share_invite.claimedBy/At zetten.
+
+**Mobile:**
+- Share-button niet meer client-side een URL bouwen — `POST /share-invites` → URL → share-sheet.
+- `app/e/[id].tsx` + `app/v/[slug].tsx` redirect-routes lezen `ref` uit URL-params, saven token in AsyncStorage.
+- Nieuwe `useClaimPendingShare` hook in root-layout: bij app-launch checkt op token in AsyncStorage, claim-call als ingelogd, toast met "Je bent nu vrienden met X en gaat naar Y."
+
+Geschat: ~150 regels backend, ~80 regels mobile, ~2-3u.
 
 ---
 
