@@ -2,7 +2,7 @@
 
 Live status van het project. Cross-checken met `HANDOFF.md` voor de oorspronkelijke briefing en met de huidige codebase voor de waarheid. Per open punt staat genoeg context om een agent zelfstandig te laten werken.
 
-Laatste sync: 2026-05-03 · branch `main`.
+Laatste sync: 2026-05-03 (avond) · branch `main`.
 
 ## Stand
 
@@ -14,8 +14,8 @@ Laatste sync: 2026-05-03 · branch `main`.
 - ✅ Save-flow op event-detail (server-backed, heart toggle met optimistic update + haptic).
 - ✅ `/friend/[id]` detail met avatar/handle + ontvolgen-knop + lijst van toekomstige saves.
 - ✅ `/venue/[slug]` venue-detail met programma, "Route openen" naar device maps, lokale venue-save.
-- ⬜ `/event/[id]/invite` modal — staat als open punt voor volgende slice (zie hieronder).
-- ⬜ `/add-friend` heeft nu handle-search; QR-genereren + scannen nog niet (later).
+- ✅ `/event/[id]/invite` modal — uitnodigen met checklist + universele share-link.
+- ✅ `/add-friend` — handle-search + QR-scanner via `expo-camera` + auto-prefill via `?handle=` of `?scan=1`.
 
 **Fase 4 — Backend**: ✅ live op productie.
 - ✅ Monorepo (`apps/mobile`, `apps/api`, `packages/shared`) met pnpm workspaces + `node-linker=hoisted` voor RN+Metro.
@@ -32,9 +32,11 @@ Laatste sync: 2026-05-03 · branch `main`.
 - ✅ **EAS Update + TestFlight**: app gepubliceerd in TestFlight (bundle id `amsterdam.andreas.app`), expo-updates wired naar `production` channel. Volgende JS-fixes via `cd apps/mobile && eas update --branch production --message "..."` — geen rebuild nodig zolang native config niet wijzigt.
 - ✅ **SMS via Bird Channels API**: workspace `80dad4a0-…` + channel `8bfa1eee-…` + access key in Fly secrets. UseCase "2FA" geregistreerd; alphanumeric originator `Andreas` voor NL.
 - ✅ **Universal-link share-buttons**: top-right knop op event- en venue-detail (volgorde hart, share, beide met `heart` + `share-outline`). Opent native share-sheet met `https://andreas.amsterdam/{e|v}/<id>?ref=<userId>`.
+- ✅ **Privacy-toggles**: `users.savesVisibility` (`friends`|`private`) + `users.discoverable` (boolean) op schema. PATCH /me ondersteunt partial updates. `buildFriendsByEvent` + `GET /friends/:id` filteren saves van `private`-users; `GET /users/search` skipt non-discoverable. Twee Switches in nieuwe Privacy-sectie op Jij. Friend-detail toont "X heeft saves op privé staan." als de friend het uitstaat.
+- ✅ **QR-code voor handle**: `react-native-qrcode-svg` op profiel (modal-sheet met Andreas-X als logo-overlay, ECL=H zodat scan blijft werken). `expo-camera` scanner op `/add-friend` (parse-regex voor `andreas://u/<handle>` + `https://andreas.amsterdam/u/<handle>`). Server `GET /u/:handle` share-pagina + AASA `/u/*` zodat een gescande QR direct in de app opent. Vier action-pills op Jij (Mijn QR / Scan QR / Vrienden zoeken / Bewerk profiel) + Uitloggen onderaan, allemaal full-width met `bgChip`-border en medium-font normale-case.
+- ✅ **Agenda filtering**: alleen events vanaf vandaag 00:00 (server-side `from`-query). Geen verleden events meer.
+- ✅ **PendingRow X-knop**: uitstaand vriendschapsverzoek terugtrekken via confirm-alert + bestaande DELETE /friends/:userId endpoint.
 - ⬜ Native build nodig zodra associatedDomains/intentFilters wijzigen — bv. extra share-paden toevoegen. iOS pakt AASA-changes server-side op binnen ~24h.
-- ⬜ QR genereren + scannen op `/add-friend`.
-- ⬜ Privacy-toggles op profiel (zichtbaarheid van saves voor vrienden).
 - ⬜ Push notificaties (`expo-notifications`).
 - ⬜ Niet-leden uitnodigen via deeplink (full token-flow + auto-friendship op signup).
 
@@ -42,11 +44,9 @@ Laatste sync: 2026-05-03 · branch `main`.
 
 ## Volgende slices — volgorde
 
-1. **Privacy-toggles op profiel** — "vrienden mogen mijn saves zien" toggle. Schema: `users.savesVisibility` enum (`friends` default, `private`). Backend: `buildFriendsByEvent` + `GET /friends/:id` filteren op deze flag. Mobile: nieuwe sectie op Jij ("Privacy"), één switch. Sluit de open `TODO (privacy)` comments af.
-2. **Venue-features** (scope nog vast te stellen): doorzoekbare venue-lijst + venue-volgen in drie stadia (volgen / normaal / blokken) — zie Wensen-sectie hieronder.
-3. **Push notificaties** — `expo-notifications` + Apple Push Key (al via EAS gegenereerd) + server endpoint dat tokens registreert + verstuurt bij invite-accept, friend-request, etc.
-4. **Niet-leden uitnodigen — token-flow** (zie `## Toekomstige slice` hieronder voor design).
-5. **QR-code voor handle** op `/add-friend` (toon eigen QR + camera om te scannen).
+1. **Venue-features** (scope nog vast te stellen): doorzoekbare venue-lijst + venue-volgen in drie stadia (volgen / normaal / blokken) — zie Wensen-sectie hieronder.
+2. **Push notificaties** — `expo-notifications` + Apple Push Key (al via EAS gegenereerd) + server endpoint dat tokens registreert + verstuurt bij invite-accept, friend-request, etc.
+3. **Niet-leden uitnodigen — token-flow** (zie `## Toekomstige slice` hieronder voor design).
 
 ---
 

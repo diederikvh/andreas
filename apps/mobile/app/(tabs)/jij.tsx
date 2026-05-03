@@ -513,8 +513,14 @@ export default function Jij() {
             </Text>
           </Pressable>
           {isEditing && (
-            <Pressable onPress={onCancelProfileEdit} hitSlop={8}>
-              <Text style={[styles.cancelLink, { color: roles.fgMuted }]}>
+            <Pressable
+              onPress={onCancelProfileEdit}
+              style={[
+                styles.editBtn,
+                { borderColor: roles.bgChip, marginTop: 10 },
+              ]}
+            >
+              <Text style={[styles.editBtnText, { color: roles.fgMuted }]}>
                 Annuleren
               </Text>
             </Pressable>
@@ -1397,14 +1403,6 @@ const styles = StyleSheet.create({
     fontFamily: fontFamily.medium,
     fontSize: 14,
     letterSpacing: -0.14,
-  },
-  cancelLink: {
-    fontFamily: fontFamily.mono,
-    fontSize: 11,
-    letterSpacing: 0.5,
-    textAlign: 'center',
-    marginTop: 12,
-    textDecorationLine: 'underline',
   },
 
   // Section header
