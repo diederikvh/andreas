@@ -24,6 +24,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppHeader, HEADER_HEIGHT } from '@/components/AppHeader';
 import { Cross } from '@/components/Cross';
+import { SpinningCross } from '@/components/SpinningCross';
 import type {
   ApiFriend,
   ApiFriendRequest,
@@ -60,12 +61,16 @@ export default function Jij() {
   useScrollToTop(scrollRef);
 
   const queryClient = useQueryClient();
-  const { data: session } = useSession();
+  const { data: session, isPending: sessionPending } = useSession();
   const { data: me, refetch: refetchMe } = useQuery<ApiMe | null>({
     queryKey: ['me', session?.user?.id ?? null],
     queryFn: () => getMe(),
     enabled: Boolean(session?.user?.id),
   });
+  // Tussen "session er is" en "me terug van server" is sessionStage
+  // tijdelijk 'profile' (omdat me?.handle nog undefined is). Dat gaf
+  // een flash van "wat is je naam?". Behandel die periode als loading.
+  const stageUnknown = sessionPending || (Boolean(session?.user?.id) && me === undefined);
   const authedAndOnboarded = Boolean(session?.user?.id && me?.handle);
   const { data: friends } = useFriends({ enabled: authedAndOnboarded });
   const { data: requests } = useFriendRequests({ enabled: authedAndOnboarded });
@@ -262,6 +267,17 @@ export default function Jij() {
       setAvatarUploading(false);
     }
   };
+
+  // ─── Loading: stage nog niet bekend ─────────────────────────────────
+
+  if (stageUnknown) {
+    return (
+      <View style={[styles.root, styles.loadingRoot, { backgroundColor: roles.bg }]}>
+        <SpinningCross size={28} thickness={5} color={roles.fgPlaceholder} />
+        <AppHeader />
+      </View>
+    );
+  }
 
   // ─── Auth views ─────────────────────────────────────────────────────
 
@@ -1243,6 +1259,7 @@ function ProfileAvatar({
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
+  loadingRoot: { alignItems: 'center', justifyContent: 'center' },
 
   // Auth-form copy
   kicker: {
