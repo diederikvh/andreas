@@ -27,6 +27,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Cross } from '@/components/Cross';
 import { EventListRow } from '@/components/EventListRow';
+import { SpinningCross } from '@/components/SpinningCross';
 import type { ApiVenueProgramItem, VenueFollowState } from '@/lib/api';
 import {
   CATEGORY_TICK,
@@ -73,7 +74,7 @@ export default function VenueDetail() {
   const { data, isLoading, error } = useVenue(slug);
 
   if (isLoading || (!data && !error)) {
-    return <VenueFallback>Laden…</VenueFallback>;
+    return <VenueFallback>{undefined}</VenueFallback>;
   }
   if (error || !data) {
     return (
@@ -187,6 +188,30 @@ export default function VenueDetail() {
             </Text>
           )}
         </View>
+
+        {data.series && data.series.length > 0 && (
+          <View style={styles.seriesBar}>
+            <Text style={[styles.seriesBarLabel, { color: roles.fgMuted }]}>
+              Hier speelt
+            </Text>
+            <View style={styles.seriesBarChips}>
+              {data.series.map((s) => (
+                <Pressable
+                  key={s.id}
+                  onPress={() => router.push(`/series/${s.slug}` as never)}
+                  style={[
+                    styles.seriesChip,
+                    { borderColor: roles.accent },
+                  ]}
+                >
+                  <Text style={[styles.seriesChipText, { color: roles.fg }]}>
+                    {s.name}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          </View>
+        )}
 
         <View style={styles.progHead}>
           <Text style={[styles.progLabel, { color: roles.fg }]}>Programma</Text>
@@ -513,7 +538,7 @@ function VenueFallback({
   children,
   tone = 'muted',
 }: {
-  children: string;
+  children?: string;
   tone?: 'muted' | 'error';
 }) {
   const mode = useMode();
@@ -533,14 +558,18 @@ function VenueFallback({
         </View>
       </View>
       <View style={styles.fallbackBody}>
-        <Text
-          style={[
-            styles.fallbackText,
-            { color: tone === 'error' ? '#c9453a' : roles.fgMuted },
-          ]}
-        >
-          {children}
-        </Text>
+        {children ? (
+          <Text
+            style={[
+              styles.fallbackText,
+              { color: tone === 'error' ? '#c9453a' : roles.fgMuted },
+            ]}
+          >
+            {children}
+          </Text>
+        ) : (
+          <SpinningCross size={32} thickness={5} color={roles.fgPlaceholder} />
+        )}
         {tone === 'error' && (
           <Pressable
             onPress={() => router.back()}
@@ -745,6 +774,37 @@ const styles = StyleSheet.create({
     fontSize: 14.5,
     lineHeight: 20.8,
     marginTop: 4,
+  },
+
+  // Series-bar — chips voor series die in deze venue spelen, tussen de
+  // body en het programma.
+  seriesBar: {
+    paddingHorizontal: 22,
+    paddingTop: 6,
+    paddingBottom: 4,
+    gap: 8,
+  },
+  seriesBarLabel: {
+    fontFamily: fontFamily.mono,
+    fontSize: 10,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+  },
+  seriesBarChips: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  seriesChip: {
+    paddingHorizontal: 11,
+    paddingVertical: 6,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
+  seriesChipText: {
+    fontFamily: fontFamily.medium,
+    fontSize: 12,
+    letterSpacing: -0.1,
   },
 
   // Programma header — outside the body padding, matches Agenda inset.

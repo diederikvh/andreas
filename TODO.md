@@ -2,7 +2,7 @@
 
 Live status van het project. Cross-checken met `HANDOFF.md` voor de oorspronkelijke briefing en met de huidige codebase voor de waarheid. Per open punt staat genoeg context om een agent zelfstandig te laten werken.
 
-Laatste sync: 2026-05-03 (laat-avond) · branch `main`.
+Laatste sync: 2026-05-03 · branch `main`.
 
 ## Stand
 
@@ -37,6 +37,11 @@ Laatste sync: 2026-05-03 (laat-avond) · branch `main`.
 - ✅ **Agenda filtering**: alleen events vanaf vandaag 00:00 (server-side `from`-query). Geen verleden events meer.
 - ✅ **PendingRow X-knop**: uitstaand vriendschapsverzoek terugtrekken via confirm-alert + bestaande DELETE /friends/:userId endpoint.
 - ✅ **Venue-features** — `venue_follows.state` enum (volgen|blokken; geen rij = normaal) + `venues.categories[]` array. Endpoints: `POST /venue-follows`, `GET /venues` (q+category filter), `myFollowState` op `/venues/:slug` + lijst-rijen, `venueFollowed` op events. Kaart uit tab-bar (`href:null`); nieuwe **Venues-tab** met kicker+title hero, chip-row (Alles · Volgend · 4 categorieën, agenda-styling), zoekveld + categorie-tags op rijen + follow-badge. Venue-detail: action-sheet met drie opties (Volgen/Niet volgen/Blokkeren) + uitleg per optie. Avond: photoBand vervangen door **Kaart-banner** met accent-tinted icon-tile; events nu gegroepeerd in "Venues die je volgt" + "Ook interessant" secties.
+- ✅ **Admin webview + JSON-API** — `/admin/*` op de bestaande Hono-API. Wachtwoord-auth (`ADMIN_PASSWORD` Fly secret) zet httpOnly cookie; n8n-koppeling via `Authorization: Bearer <ADMIN_API_KEY>`. Webview is server-rendered HTML met Pico.css (CDN, geen build), JSX via `hono/jsx`. Pages: dashboard met counts, en CRUD voor events/venues/series met "uitzetten"-toggle. Series-detail koppelt/ontkoppelt events. JSON-mirror onder `/admin/api/*` (`GET/POST /events`, `PATCH/DELETE /events/:id`, idem voor venues + series, plus `POST/DELETE /series/:id/events/:eventId`). Alle entiteiten hebben een `published` boolean (default true) — public endpoints (`/events`, `/venues`, `/series`, `/saves`, friend-detail) filteren erop. Bestaande saves/invites/series-koppelingen blijven intact wanneer iets wordt uitgezet.
+- ✅ **Bunny image-uploads via admin API** — `POST /admin/api/uploads` ondersteunt twee modi: JSON met `{ sourceUrl, kind }` (server fetcht externe URL → uploadt naar Bunny) of multipart `file` field. Returnt `{ url }` op CDN (`https://andreas-x.b-cdn.net/media/<kind>/<ts>-<rand>.<ext>`). Gebruikt door n8n-flows om externe foto's op onze EU-CDN te zetten. Limiet 8 MB, alleen `image/*` MIME. Documentatie + voorbeelden in [docs/n8n.md](docs/n8n.md).
+- ✅ **Landing + privacy/voorwaarden** — `/` rendert een gecentreerde landing in [share.ts](apps/api/src/routes/share.ts): Archivo-wordmark + acid ✕ (CSS-rechthoeken zoals Cross-component), kicker "Amsterdam · 2026", twee outline-buttons (App Store + Google Play, via `APP_STORE_URL` / `PLAY_STORE_URL` env vars), footer met privacy/voorwaarden + "Gemaakt in Amsterdam · gehost in Frankfurt, Ljubljana en Amsterdam". `/privacy` en `/voorwaarden` in [legal.ts](apps/api/src/routes/legal.ts) — neutrale toon, sub-verwerker-tabel (Neon Frankfurt, Fly AMS, Bunny Ljubljana, Bird AMS, Apple IE), bewaartermijnen, AVG-rechten, contact `wij@andreas.amsterdam`. Datum-stempel in `LAST_UPDATED`-constant — bumpen bij elke wijziging.
+- ✅ **App icon + splash** — Andreas-X kruis op noir achtergrond. Master assets in `assets/icons/{ios,android}/{dag,nacht}/` + `assets/splash/{dag,nacht}/`. Statische default = nacht (matcht app-default), iOS via 1024 App Store source, Android via adaptive foreground/background, splash-screen plugin met nacht-icon op `#0a0a0b` voor zowel light als dark system-mode. Live in TestFlight via native EAS build.
+- ✅ **Series (festivals/cycli)** — `series` tabel + `events_in_series` M:N join. Endpoints: `GET /series` (lijst met eventCount, q+category filter), `GET /series/:slug` (detail incl. events). `series[]` ook genest op `GET /events*` en `GET /venues/:slug`. Mobile: `/series/[slug]` detail-scherm (hero, datum-range, programma met EventListRow inclusief venue-naam). "Onderdeel van"-pills onder meta-row op event-detail; "Hier speelt"-chips boven programma op venue-detail; horizontale Series-sectie boven Venues-tab; subtiele monospace-tag op EventListRow in Avond/Agenda/Gered/Friend. **Auto-expiry**: alle series-pills/lijsten filteren op `series.endsAt > now()` (NULL = doorlopend), zodat ADE niet blijft hangen op Paradiso na oktober. Detail-pagina blijft toegankelijk via gedeelde links. Geen follow-systeem in v1. Seed-script `scripts/seed-series.ts` met ADE 2026 (cross-venue) + Lenteballet 2026 (single-venue, drie zalen).
 - ⬜ Native build nodig zodra associatedDomains/intentFilters wijzigen — bv. extra share-paden toevoegen. iOS pakt AASA-changes server-side op binnen ~24h.
 - ⬜ Push notificaties (`expo-notifications`).
 - ⬜ Niet-leden uitnodigen via deeplink (full token-flow + auto-friendship op signup).
@@ -45,8 +50,13 @@ Laatste sync: 2026-05-03 (laat-avond) · branch `main`.
 
 ## Volgende slices — volgorde
 
-1. **Push notificaties** — `expo-notifications` + Apple Push Key (al via EAS gegenereerd) + server endpoint dat tokens registreert + verstuurt bij invite-accept, friend-request, etc.
-2. **Niet-leden uitnodigen — token-flow** (zie `## Toekomstige slice` hieronder voor design).
+**Vulling & content**:
+1. **n8n-workflows per venue** — eerste batch: Paradiso, Melkweg, OCCII, Frascati, EYE, Perdu. Elke flow scrapet de venue-agenda → upload poster naar onze CDN → POST events naar `/admin/api/events`. Stabiele `id`-conventie + draft-via-`published:false` zoals beschreven in [docs/n8n.md](docs/n8n.md). Daarna festival-flows (ADE, Lenteballet, London Calling) die events koppelen aan series.
+
+**App-features**:
+2. **Push notificaties** — `expo-notifications` + Apple Push Key (al via EAS gegenereerd) + server endpoint dat tokens registreert + verstuurt bij invite-accept, friend-request, etc.
+3. **Niet-leden uitnodigen — token-flow** (zie `## Toekomstige slice` hieronder voor design).
+4. **Dynamic app-icon (iOS)** — `expo-alternate-app-icons` plugin + JS-call vanuit `useMode()` om het home-screen-icoon mee te laten kleuren met nacht/dag. Vereist native rebuild + brengt iOS-systeem-popup bij elke wissel. Optioneel.
 
 ---
 
@@ -103,8 +113,14 @@ Geschat: ~150 regels backend, ~80 regels mobile, ~2-3u.
 | SMS / OTP | Bird (voorheen MessageBird) Channels API | Live keys in Fly secrets |
 | TestFlight | App Store Connect "Andreas" | EAS Cloud builds + `eas submit` |
 | OTA-updates | Expo Updates, channel `production` | `cd apps/mobile && eas update --branch production --message "..."` |
+| Admin-panel | `https://api.andreas.amsterdam/admin` | Wachtwoord-login (`ADMIN_PASSWORD`), één-user superadmin |
 
-**Fly secrets** (live in andreas-api): `DATABASE_URL`, `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL=https://api.andreas.amsterdam`, `BUNNY_STORAGE_ZONE`, `BUNNY_STORAGE_PASSWORD`, `BUNNY_PULL_ZONE_URL`, `MESSAGEBIRD_ORIGINATOR=Andreas`, `MESSAGEBIRD_ACCESS_KEY`, `BIRD_WORKSPACE_ID`, `BIRD_CHANNEL_ID`, `APPLE_TEAM_ID=ZV933BZL7W`, `APPLE_BUNDLE_ID=amsterdam.andreas.app`.
+**Fly secrets** (live in andreas-api): `DATABASE_URL`, `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL=https://api.andreas.amsterdam`, `BUNNY_STORAGE_ZONE`, `BUNNY_STORAGE_PASSWORD`, `BUNNY_PULL_ZONE_URL`, `MESSAGEBIRD_ORIGINATOR=Andreas`, `MESSAGEBIRD_ACCESS_KEY`, `BIRD_WORKSPACE_ID`, `BIRD_CHANNEL_ID`, `APPLE_TEAM_ID=ZV933BZL7W`, `APPLE_BUNDLE_ID=amsterdam.andreas.app`, `ADMIN_PASSWORD`, `ADMIN_API_KEY`.
+
+**Admin + n8n koppeling**:
+- Webview: `https://api.andreas.amsterdam/admin/login` → wachtwoord → 30-dagen httpOnly cookie. CRUD voor events/venues/series met "uitzetten"-toggle.
+- n8n: `Authorization: Bearer <ADMIN_API_KEY>` op `https://api.andreas.amsterdam/admin/api/*`. Endpoints: `GET/POST /events`, `PATCH/DELETE /events/:id`, idem voor `venues` en `series`. Plus `POST /series/:id/events/:eventId` (koppel) en `DELETE` (ontkoppel). Velden zijn 1-op-1 de DB-kolommen; alle ints/dates worden gepareerd, categorie-arrays gefilterd op de 4 enum-waardes.
+- Voor go-live: `fly secrets set ADMIN_PASSWORD=... ADMIN_API_KEY=$(openssl rand -hex 32) -a andreas-api`. Nieuwe API-deploy nodig om `/admin`-routes te activeren.
 
 **Belangrijk** — als `app.json` `ios.associatedDomains`, `android.intentFilters`, plugins, of `bundleIdentifier` wijzigen, is het géén OTA maar een nieuwe `eas build`. Pure JS / styling / copy-veranderingen → OTA.
 
@@ -126,6 +142,7 @@ Geschat: ~150 regels backend, ~80 regels mobile, ~2-3u.
 ## Wensen — als alles klaar is
 
 - **Kaart in venues-context** — zoals events nu een map+list-toggle hebben op de Kaart-route, zou een "venues op kaart"-modus ook fijn zijn (pins voor alle venues geografisch, niet beperkt tot vandaag-events). Nu via de Venues-tab als alfabetische lijst.
+- **Series volgen/blokken** — zelfde 3-state-systeem als venues (`series_follows.state` enum). Gevolgde series boosten in Avond, geblokkeerde verbergen al hun events overal. Post-v1.
 
 ---
 

@@ -197,6 +197,7 @@ function FriendSavedRow({ event }: { event: ApiEvent }) {
       title={event.title}
       venue={event.venue.name}
       tags={[{ label: event.category, tone: CATEGORY_TICK[event.category] }]}
+      seriesLabel={event.series?.[0]?.name}
       tick={CATEGORY_TICK[event.category]}
       onPress={() => router.push(`/event/${event.id}`)}
     />

@@ -46,6 +46,15 @@ export type ApiEvent = {
   myInvites?: ApiEventInviteRecord[];
   /** Volg ik de venue van dit event? Mobile groepeert hierop. */
   venueFollowed?: boolean;
+  /** Series waar dit event onderdeel van is (bv. ADE, Lenteballet). */
+  series?: ApiSeriesBadge[];
+};
+
+export type ApiSeriesBadge = {
+  id: string;
+  slug: string;
+  name: string;
+  imageUrl: string | null;
 };
 
 export type ApiEventInviteRecord = {
@@ -119,6 +128,8 @@ export type ApiVenueWithProgram = {
   venue: ApiVenue;
   events: ApiVenueProgramItem[];
   myFollowState: VenueFollowState;
+  /** Series waarvan minstens één toekomstig event in deze venue speelt. */
+  series: ApiSeriesBadge[];
 };
 
 export async function getVenue(slug: string): Promise<ApiVenueWithProgram> {
@@ -141,6 +152,46 @@ export async function getVenues(input: {
     `/venues${qs ? `?${qs}` : ''}`
   );
   return venues;
+}
+
+// ─── Series ───────────────────────────────────────────────────────────
+
+export type ApiSeries = {
+  id: string;
+  slug: string;
+  name: string;
+  description: string | null;
+  imageUrl: string | null;
+  startsAt: string | null;
+  endsAt: string | null;
+  categories: VenueCategory[];
+};
+
+export type ApiSeriesListItem = ApiSeries & {
+  eventCount: number;
+};
+
+export type ApiSeriesWithEvents = {
+  series: ApiSeries;
+  events: ApiEvent[];
+};
+
+export async function getSeriesList(input: {
+  q?: string;
+  category?: VenueCategory;
+} = {}): Promise<ApiSeriesListItem[]> {
+  const params = new URLSearchParams();
+  if (input.q && input.q.trim().length > 0) params.set('q', input.q.trim());
+  if (input.category) params.set('category', input.category);
+  const qs = params.toString();
+  const { series } = await authedRequest<{ series: ApiSeriesListItem[] }>(
+    `/series${qs ? `?${qs}` : ''}`
+  );
+  return series;
+}
+
+export async function getSeries(slug: string): Promise<ApiSeriesWithEvents> {
+  return await authedRequest<ApiSeriesWithEvents>(`/series/${slug}`);
 }
 
 export async function setVenueFollow(input: {

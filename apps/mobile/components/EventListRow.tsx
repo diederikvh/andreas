@@ -34,6 +34,10 @@ type Props = {
   tags?: EventTag[];
   /** Optional outline tag, e.g. "Uitverkocht" / "nog 3". */
   status?: string;
+  /** Naam van een serie waar dit event onderdeel van is (bv. "ADE 2026").
+      Niet-tappable in de rij — render als subtiele monospace-tag voor
+      ontdekking; de doorklik gaat via event-detail. */
+  seriesLabel?: string;
   friends?: Friend[];
   /** Side accent stripe colour. */
   tick: BadgeTone;
@@ -54,6 +58,7 @@ export function EventListRow({
   venue,
   tags,
   status,
+  seriesLabel,
   friends,
   tick,
   onPress,
@@ -86,7 +91,7 @@ export function EventListRow({
           >
             {[time, duration, venue].filter(Boolean).join(' · ')}
           </Text>
-          {(tags?.length || status || friends?.length) && (
+          {(tags?.length || status || seriesLabel || friends?.length) && (
             <View style={styles.rowTags}>
               {tags?.map((tag) => {
                 const tone = TONE[mode][tag.tone];
@@ -109,6 +114,18 @@ export function EventListRow({
                 >
                   <Text style={[styles.tagText, { color: roles.fgMuted }]}>
                     {status}
+                  </Text>
+                </View>
+              )}
+              {seriesLabel && (
+                <View
+                  style={[
+                    styles.seriesTag,
+                    { borderColor: roles.fgMuted },
+                  ]}
+                >
+                  <Text style={[styles.seriesTagText, { color: roles.fg }]}>
+                    {seriesLabel}
                   </Text>
                 </View>
               )}
@@ -249,6 +266,19 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  seriesTag: {
+    height: 24,
+    paddingHorizontal: 10,
+    borderRadius: 999,
+    borderWidth: StyleSheet.hairlineWidth,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  seriesTagText: {
+    fontFamily: fontFamily.medium,
+    fontSize: 10,
+    letterSpacing: 0.2,
   },
   tagText: {
     fontFamily: fontFamily.mono,

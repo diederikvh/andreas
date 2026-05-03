@@ -17,6 +17,8 @@ import {
   getInvites,
   getOutgoingFriendRequests,
   getMySaves,
+  getSeries,
+  getSeriesList,
   getVenue,
   getVenues,
   removeFriend,
@@ -27,6 +29,7 @@ import {
   toggleSave,
   type EventsFilter,
   type SavedApiEvent,
+  type VenueCategory,
   type VenueFollowState,
 } from '@/lib/api';
 
@@ -36,6 +39,9 @@ export const queryKeys = {
   venue: (slug: string) => ['venue', slug] as const,
   venues: (input: { q?: string; category?: string } = {}) =>
     ['venues', input.q ?? '', input.category ?? ''] as const,
+  series: (slug: string) => ['series', slug] as const,
+  seriesList: (input: { q?: string; category?: string } = {}) =>
+    ['series-list', input.q ?? '', input.category ?? ''] as const,
   saves: () => ['saves'] as const,
   friends: () => ['friends'] as const,
   friendRequests: () => ['friend-requests'] as const,
@@ -75,6 +81,23 @@ export function useVenues(input: {
   return useQuery({
     queryKey: queryKeys.venues({ q: input.q, category: input.category }),
     queryFn: () => getVenues(input),
+  });
+}
+
+export function useSeries(slug: string) {
+  return useQuery({
+    queryKey: queryKeys.series(slug),
+    queryFn: () => getSeries(slug),
+    enabled: Boolean(slug),
+  });
+}
+
+export function useSeriesList(
+  input: { q?: string; category?: VenueCategory } = {}
+) {
+  return useQuery({
+    queryKey: queryKeys.seriesList({ q: input.q, category: input.category }),
+    queryFn: () => getSeriesList(input),
   });
 }
 

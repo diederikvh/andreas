@@ -295,29 +295,193 @@ shareRoute.get('/u/:handle', async (c) => {
 });
 
 shareRoute.get('/', (c) => {
+  const playStoreUrl =
+    process.env.PLAY_STORE_URL ?? 'https://play.google.com/store/apps/details?id=amsterdam.andreas.app';
   const html = `<!doctype html>
 <html lang="nl">
 <head>
   <meta charset="utf-8" />
-  <title>Andreas — uitgaan in Amsterdam</title>
+  <title>Andreas</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta property="og:title" content="Andreas" />
+  <meta property="og:description" content="Uitgaan in Amsterdam, op uitnodiging." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;700;900&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
   <style>
     :root { color-scheme: dark; }
-    body { margin: 0; background: #0a0a0b; color: #f2f2ef; font-family: -apple-system, system-ui, sans-serif; min-height: 100vh; display: grid; place-items: center; }
-    main { text-align: center; padding: 24px; }
-    h1 { font-size: 36px; letter-spacing: -1.5px; font-weight: 900; margin: 0 0 8px; }
-    p { color: #9a9a94; margin: 0; }
-    a { color: #d4ff3a; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: #0a0a0b;
+      color: #f2f2ef;
+      font-family: 'Archivo', -apple-system, system-ui, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    main {
+      flex: 1;
+      max-width: 560px;
+      width: 100%;
+      margin: 0 auto;
+      padding: 48px 28px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+    }
+
+    /* Logo — wordmark in Archivo Black + acid ✕ als twee gedraaide
+       rechthoeken, exact zoals de Cross-component in de app. */
+    .logo {
+      display: inline-flex;
+      align-items: center;
+      gap: 18px;
+    }
+    .logo-text {
+      font-family: 'Archivo', sans-serif;
+      font-weight: 900;
+      font-size: 64px;
+      letter-spacing: -2.4px;
+      line-height: 1;
+      color: #f2f2ef;
+    }
+    .cross {
+      position: relative;
+      width: 50px;
+      height: 50px;
+      flex-shrink: 0;
+    }
+    .cross::before, .cross::after {
+      content: "";
+      position: absolute;
+      top: 50%;
+      left: 0;
+      width: 100%;
+      height: 11px;
+      margin-top: -5.5px;
+      background: #d4ff3a;
+    }
+    .cross::before { transform: rotate(45deg); }
+    .cross::after { transform: rotate(-45deg); }
+
+    .kicker {
+      font-family: 'JetBrains Mono', ui-monospace, monospace;
+      font-size: 11px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: #9a9a94;
+      margin: 18px 0 0;
+    }
+
+    .stores {
+      margin-top: 64px;
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      justify-content: center;
+      width: 100%;
+    }
+    .store-btn {
+      flex: 1;
+      min-width: 160px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 14px 20px;
+      border: 1px solid #2a2a2d;
+      border-radius: 999px;
+      color: #f2f2ef;
+      text-decoration: none;
+      font-size: 14px;
+      letter-spacing: -0.1px;
+      transition: border-color 120ms, color 120ms;
+      text-align: center;
+    }
+    .store-btn:hover { border-color: #d4ff3a; color: #d4ff3a; }
+    .store-btn small {
+      display: block;
+      font-family: 'JetBrains Mono', ui-monospace, monospace;
+      font-size: 9px;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: #6a6a64;
+      margin-bottom: 2px;
+    }
+    .store-btn:hover small { color: #d4ff3a; }
+    .store-btn span { font-weight: 700; }
+
+    /* Footer in dezelfde gecentreerde stack onder de buttons. */
+    footer { padding-top: 56px; width: 100%; max-width: 360px; }
+    hr {
+      border: 0;
+      border-top: 1px solid #1d1d20;
+      margin: 0 0 20px;
+    }
+    .colofon {
+      font-family: 'JetBrains Mono', ui-monospace, monospace;
+      font-size: 11px;
+      letter-spacing: 0.6px;
+      color: #6a6a64;
+      line-height: 1.8;
+      margin: 0;
+      text-align: center;
+    }
+    .colofon a {
+      color: #9a9a94;
+      text-decoration: none;
+      border-bottom: 1px solid #2a2a2d;
+    }
+    .colofon a:hover { color: #d4ff3a; border-color: #d4ff3a; }
+
+    @media (max-width: 480px) {
+      main { padding: 64px 22px 32px; }
+      .logo { gap: 14px; }
+      .logo-text { font-size: 48px; letter-spacing: -1.8px; }
+      .cross { width: 38px; height: 38px; }
+      .cross::before, .cross::after { height: 9px; margin-top: -4.5px; }
+      .stores { margin-top: 48px; }
+    }
   </style>
 </head>
 <body>
   <main>
-    <h1>Andreas</h1>
-    <p>Anti-algoritme uitgaan, alleen via je vrienden.<br/><a href="${escapeHtml(APP_STORE_URL)}">Download in de App Store</a></p>
+    <div class="logo">
+      <span class="logo-text">Andreas</span>
+      <span class="cross" aria-hidden="true"></span>
+    </div>
+    <p class="kicker">Amsterdam · ${new Date().getFullYear()}</p>
+
+    <div class="stores">
+      <a class="store-btn" href="${escapeHtml(APP_STORE_URL)}">
+        <div>
+          <small>Download op de</small>
+          <span>App Store</span>
+        </div>
+      </a>
+      <a class="store-btn" href="${escapeHtml(playStoreUrl)}">
+        <div>
+          <small>Verkrijgbaar via</small>
+          <span>Google Play</span>
+        </div>
+      </a>
+    </div>
+
+    <footer>
+      <hr/>
+      <p class="colofon">
+        <a href="/privacy">Privacy</a> · <a href="/voorwaarden">Voorwaarden</a><br/>
+        Gemaakt in Amsterdam · gehost in Frankfurt, Ljubljana en Amsterdam.
+      </p>
+    </footer>
   </main>
 </body>
 </html>`;
   c.header('Content-Type', 'text/html; charset=utf-8');
+  c.header('Cache-Control', 'public, max-age=300');
   return c.body(html);
 });
 

@@ -6,7 +6,7 @@ import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useMemo } from 'react';
-import { Platform, Pressable, Share, StyleSheet, Text, View } from 'react-native';
+import { Linking, Platform, Pressable, Share, StyleSheet, Text, View } from 'react-native';
 import Animated, {
   Extrapolation,
   interpolate,
@@ -19,6 +19,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { SpinningCross } from '@/components/SpinningCross';
 import type { ApiEvent } from '@/lib/api';
 import { useSession } from '@/lib/authClient';
 import {
@@ -68,7 +69,7 @@ export default function EventDetail() {
   const { data: event, isLoading, error } = useEvent(id);
 
   if (isLoading || (!event && !error)) {
-    return <DetailFallback>Laden…</DetailFallback>;
+    return <DetailFallback>{undefined}</DetailFallback>;
   }
   if (error || !event) {
     return (
@@ -146,6 +147,33 @@ export default function EventDetail() {
               onPress={() => router.push(`/venue/${event.venue.slug}`)}
             />
           </View>
+
+          {event.series && event.series.length > 0 && (
+            <View style={styles.seriesRow}>
+              {event.series.map((s) => (
+                <Pressable
+                  key={s.id}
+                  onPress={() => router.push(`/series/${s.slug}` as never)}
+                  style={[
+                    styles.seriesPill,
+                    { borderColor: roles.accent },
+                  ]}
+                >
+                  <Text style={[styles.seriesPillLabel, { color: roles.fgMuted }]}>
+                    Onderdeel van
+                  </Text>
+                  <Text style={[styles.seriesPillName, { color: roles.fg }]}>
+                    {s.name}
+                  </Text>
+                  <Ionicons
+                    name="chevron-forward"
+                    size={14}
+                    color={roles.fgPlaceholder}
+                  />
+                </Pressable>
+              ))}
+            </View>
+          )}
 
           {view.description && (
             <Text style={[styles.bodyText, { color: roles.fgRead }]}>
@@ -247,21 +275,29 @@ export default function EventDetail() {
             </Text>
           )}
         </View>
-        <Pressable
-          style={[
-            styles.cta,
-            { backgroundColor: isNacht ? palette.acid : palette.soil },
-          ]}
-        >
-          <Text
+        {event.ticketUrl && (
+          <Pressable
+            onPress={() => {
+              Haptics.selectionAsync();
+              Linking.openURL(event.ticketUrl!).catch(() => {
+                // Geen schade — meestal betekent dit dat de URL ongeldig is.
+              });
+            }}
             style={[
-              styles.ctaText,
-              { color: isNacht ? palette.noir : palette.paper3 },
+              styles.cta,
+              { backgroundColor: isNacht ? palette.acid : palette.soil },
             ]}
           >
-            Reserveer
-          </Text>
-        </Pressable>
+            <Text
+              style={[
+                styles.ctaText,
+                { color: isNacht ? palette.noir : palette.paper3 },
+              ]}
+            >
+              Tickets
+            </Text>
+          </Pressable>
+        )}
       </View>
     </View>
   );
@@ -515,7 +551,7 @@ function DetailFallback({
   children,
   tone = 'muted',
 }: {
-  children: string;
+  children?: string;
   tone?: 'muted' | 'error';
 }) {
   const mode = useMode();
@@ -535,14 +571,18 @@ function DetailFallback({
         </View>
       </View>
       <View style={styles.fallbackBody}>
-        <Text
-          style={[
-            styles.fallbackText,
-            { color: tone === 'error' ? '#c9453a' : roles.fgMuted },
-          ]}
-        >
-          {children}
-        </Text>
+        {children ? (
+          <Text
+            style={[
+              styles.fallbackText,
+              { color: tone === 'error' ? '#c9453a' : roles.fgMuted },
+            ]}
+          >
+            {children}
+          </Text>
+        ) : (
+          <SpinningCross size={32} thickness={5} color={roles.fgPlaceholder} />
+        )}
         {tone === 'error' && (
           <Pressable
             onPress={() => router.back()}
@@ -695,6 +735,31 @@ const styles = StyleSheet.create({
     fontSize: 14.5,
     lineHeight: 20.8,
     marginBottom: 12,
+  },
+
+  // Series-pill — "Onderdeel van [ADE]" tappable strook onder de meta
+  // row. Stack als event in meerdere series zit.
+  seriesRow: { gap: 8, marginBottom: 16 },
+  seriesPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  seriesPillLabel: {
+    fontFamily: fontFamily.mono,
+    fontSize: 9,
+    letterSpacing: 0.9,
+    textTransform: 'uppercase',
+  },
+  seriesPillName: {
+    flex: 1,
+    fontFamily: fontFamily.medium,
+    fontSize: 14,
+    letterSpacing: -0.14,
   },
 
   // Crew heading — boven crew-block + invite-CTA, geeft duiding aan

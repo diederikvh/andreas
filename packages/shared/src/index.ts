@@ -45,6 +45,19 @@ export type Event = {
   category: EventCategory;
 };
 
+export type Series = {
+  id: string;
+  slug: string;
+  name: string;
+  description: string | null;
+  imageUrl: string | null;
+  startsAt: string | null;
+  endsAt: string | null;
+  categories: EventCategory[];
+};
+
+export type SeriesSummary = Pick<Series, 'id' | 'slug' | 'name' | 'imageUrl'>;
+
 export type Friendship = {
   fromUserId: string;
   toUserId: string;

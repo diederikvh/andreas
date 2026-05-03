@@ -7,10 +7,13 @@ import { eq } from 'drizzle-orm';
 
 import { auth } from './auth.js';
 import { db, schema } from './db/index.js';
+import { adminRoute } from './routes/admin/index.js';
 import { eventsRoute } from './routes/events.js';
 import { friendsRoute, usersRoute } from './routes/friends.js';
 import { invitesRoute } from './routes/invites.js';
+import { legalRoute } from './routes/legal.js';
 import { savesRoute } from './routes/saves.js';
+import { seriesRoute } from './routes/series.js';
 import { shareRoute } from './routes/share.js';
 import { venueFollowsRoute } from './routes/venue-follows.js';
 import { venuesRoute } from './routes/venues.js';
@@ -198,15 +201,19 @@ app.post('/me/avatar', async (c) => {
 
 app.route('/events', eventsRoute);
 app.route('/venues', venuesRoute);
+app.route('/series', seriesRoute);
 app.route('/saves', savesRoute);
 app.route('/friends', friendsRoute);
 app.route('/users', usersRoute);
 app.route('/invites', invitesRoute);
 app.route('/venue-follows', venueFollowsRoute);
+app.route('/admin', adminRoute);
 
-// Publieke web-routes (share-pagina + AASA + home). Geen auth.
-// Mounten als laatste zodat de JSON-API-routes voorrang krijgen op
-// `/` matches.
+// Publieke web-routes (landing + share-pagina's + AASA + privacy/voorwaarden).
+// Geen auth. Mounten als laatste zodat de JSON-API-routes voorrang
+// krijgen op `/` matches. Legal eerst zodat /privacy en /voorwaarden
+// niet door shareRoute worden opgevangen.
+app.route('/', legalRoute);
 app.route('/', shareRoute);
 
 const port = Number(process.env.PORT ?? 8787);

@@ -9,10 +9,12 @@ import {
   Text,
   View,
 } from 'react-native';
+import Animated, { FadeIn } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppHeader, HEADER_HEIGHT } from '@/components/AppHeader';
 import { EventListRow } from '@/components/EventListRow';
+import { SpinningCross } from '@/components/SpinningCross';
 import type { ApiEvent } from '@/lib/api';
 import { useSession } from '@/lib/authClient';
 import {
@@ -153,30 +155,38 @@ export default function Gered() {
           <Text style={[styles.headTitle, { color: roles.fg }]}>Op uit.</Text>
         </View>
 
-        {isLoading && <ListState text="Laden…" />}
+        {isLoading && (
+          <View style={styles.loadingWrap}>
+            <SpinningCross size={28} thickness={5} color={roles.fgPlaceholder} />
+          </View>
+        )}
         {error && <ListState text="Kon je saves niet laden." tone="error" />}
 
-        {upcomingDays.map((day) => (
-          <View key={`up-${day.id}`}>
-            <DateAnchor group={day} />
-            {day.events.map((e) => (
-              <SavedRow key={e.id} event={e} />
-            ))}
-          </View>
-        ))}
-
-        {pastDays.length > 0 && (
-          <>
-            <PastAnchor count={past.length} />
-            {pastDays.map((day) => (
-              <View key={`past-${day.id}`}>
-                <DateAnchor group={day} dim />
+        {!isLoading && !error && (
+          <Animated.View entering={FadeIn.duration(220)}>
+            {upcomingDays.map((day) => (
+              <View key={`up-${day.id}`}>
+                <DateAnchor group={day} />
                 {day.events.map((e) => (
-                  <SavedRow key={e.id} event={e} dim />
+                  <SavedRow key={e.id} event={e} />
                 ))}
               </View>
             ))}
-          </>
+
+            {pastDays.length > 0 && (
+              <>
+                <PastAnchor count={past.length} />
+                {pastDays.map((day) => (
+                  <View key={`past-${day.id}`}>
+                    <DateAnchor group={day} dim />
+                    {day.events.map((e) => (
+                      <SavedRow key={e.id} event={e} dim />
+                    ))}
+                  </View>
+                ))}
+              </>
+            )}
+          </Animated.View>
         )}
       </ScrollView>
       <AppHeader />
@@ -244,6 +254,7 @@ function SavedRow({
         title={event.title}
         venue={event.venue.name}
         tags={[{ label: event.category, tone }]}
+        seriesLabel={event.series?.[0]?.name}
         friends={friends && friends.length > 0 ? friends : undefined}
         tick={tone}
         onPress={() => router.push(`/event/${event.id}`)}
@@ -391,6 +402,11 @@ const styles = StyleSheet.create({
   },
 
   listState: { paddingHorizontal: 22, paddingVertical: 14 },
+  loadingWrap: {
+    paddingVertical: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   listStateText: {
     fontFamily: fontFamily.mono,
     fontSize: 11,

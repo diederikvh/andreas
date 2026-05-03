@@ -1,105 +1,18 @@
 import { and, asc, eq, gte, ilike, inArray, lte, not, or, type SQL } from 'drizzle-orm';
-import { Hono, type Context } from 'hono';
+import { Hono } from 'hono';
 
-import { auth } from '../auth.js';
 import { db, schema } from '../db/index.js';
+import {
+  buildFriendsByEvent,
+  buildSeriesByEvent,
+  maybeUserId,
+} from './_helpers.js';
 import {
   getBlockedVenueIds,
   getFollowedVenueIds,
 } from './venue-follows.js';
 
 const VALID_CATEGORIES = new Set(['Muziek', 'Theater', 'Literatuur', 'Film']);
-
-const FRIEND_PILL_LIMIT = 3;
-
-type FriendBadge = {
-  id: string;
-  name: string;
-  handle: string | null;
-  avatarUrl: string | null;
-};
-
-/**
- * Voor een gegeven set event-IDs: welke van mijn vrienden hebben elk
- * event opgeslagen? Limiet per event = FRIEND_PILL_LIMIT, in
- * naam-volgorde, plus een totaal-tellertje.
- *
- * TODO (privacy): later checken op users.privacy / per-friendship
- * "kan zien wat ik save" voordat hier een save zichtbaar wordt.
- */
-async function buildFriendsByEvent(
-  meId: string,
-  eventIds: string[]
-): Promise<Map<string, { friends: FriendBadge[]; count: number }>> {
-  const map = new Map<string, { friends: FriendBadge[]; count: number }>();
-  if (eventIds.length === 0) return map;
-
-  // Mijn vrienden — beide richtingen, accepted.
-  const friendships = await db
-    .select({
-      fromUserId: schema.friendships.fromUserId,
-      toUserId: schema.friendships.toUserId,
-    })
-    .from(schema.friendships)
-    .where(
-      and(
-        eq(schema.friendships.status, 'accepted'),
-        or(
-          eq(schema.friendships.fromUserId, meId),
-          eq(schema.friendships.toUserId, meId)
-        )
-      )
-    );
-  const friendIds = friendships.map((f) =>
-    f.fromUserId === meId ? f.toUserId : f.fromUserId
-  );
-  if (friendIds.length === 0) return map;
-
-  // Privacy-gate: alleen vrienden die hun saves zichtbaar voor vrienden
-  // hebben staan tellen mee. `savesVisibility = 'private'` verbergt
-  // hun saves volledig in friend-pills.
-  const rows = await db
-    .select({
-      eventId: schema.saves.eventId,
-      id: schema.users.id,
-      name: schema.users.name,
-      handle: schema.users.handle,
-      avatarUrl: schema.users.avatarUrl,
-    })
-    .from(schema.saves)
-    .innerJoin(schema.users, eq(schema.users.id, schema.saves.userId))
-    .where(
-      and(
-        inArray(schema.saves.userId, friendIds),
-        inArray(schema.saves.eventId, eventIds),
-        eq(schema.users.savesVisibility, 'friends')
-      )
-    );
-
-  for (const r of rows) {
-    const entry = map.get(r.eventId) ?? { friends: [], count: 0 };
-    entry.count += 1;
-    if (entry.friends.length < FRIEND_PILL_LIMIT) {
-      entry.friends.push({
-        id: r.id,
-        name: r.name,
-        handle: r.handle,
-        avatarUrl: r.avatarUrl,
-      });
-    }
-    map.set(r.eventId, entry);
-  }
-  // Stabiele volgorde: naam alfabetisch.
-  for (const entry of map.values()) {
-    entry.friends.sort((a, b) => a.name.localeCompare(b.name));
-  }
-  return map;
-}
-
-async function maybeUserId(c: Context): Promise<string | null> {
-  const session = await auth.api.getSession({ headers: c.req.raw.headers });
-  return session?.user.id ?? null;
-}
 
 export const eventsRoute = new Hono();
 
@@ -112,7 +25,10 @@ eventsRoute.get('/', async (c) => {
   const category = c.req.query('category');
   const q = c.req.query('q');
 
-  const conditions: SQL[] = [];
+  const conditions: SQL[] = [
+    eq(schema.events.published, true),
+    eq(schema.venues.published, true),
+  ];
 
   if (featured === 'true') {
     conditions.push(eq(schema.events.featured, true));
@@ -181,12 +97,11 @@ eventsRoute.get('/', async (c) => {
     .orderBy(asc(schema.events.startsAt))
     .limit(limit);
 
+  const eventIds = rows.map((r) => r.id);
   const friendsMap = me
-    ? await buildFriendsByEvent(
-        me,
-        rows.map((r) => r.id)
-      )
+    ? await buildFriendsByEvent(me, eventIds)
     : new Map();
+  const seriesMap = await buildSeriesByEvent(eventIds);
 
   // Markeer events bij venues die ik volg — mobile groepeert hierop.
   const followedVenueIds = me
@@ -200,6 +115,7 @@ eventsRoute.get('/', async (c) => {
       friendsSaved: entry?.friends ?? [],
       friendsSavedCount: entry?.count ?? 0,
       venueFollowed: followedVenueIds.has(r.venue.id),
+      series: seriesMap.get(r.id) ?? [],
     };
   });
 
@@ -234,7 +150,13 @@ eventsRoute.get('/:id', async (c) => {
     })
     .from(schema.events)
     .innerJoin(schema.venues, eq(schema.events.venueId, schema.venues.id))
-    .where(eq(schema.events.id, id))
+    .where(
+      and(
+        eq(schema.events.id, id),
+        eq(schema.events.published, true),
+        eq(schema.venues.published, true)
+      )
+    )
     .limit(1);
 
   if (!row) return c.json({ error: 'event not found' }, 404);
@@ -242,6 +164,7 @@ eventsRoute.get('/:id', async (c) => {
   const me = await maybeUserId(c);
   const friendsMap = me ? await buildFriendsByEvent(me, [row.id]) : new Map();
   const entry = friendsMap.get(row.id);
+  const seriesMap = await buildSeriesByEvent([row.id]);
 
   // Mijn eigen verstuurde invites voor dit event — gebruikt op detail
   // (toont wie ik gevraagd heb + status) én op de invite-modal (om
@@ -273,6 +196,7 @@ eventsRoute.get('/:id', async (c) => {
       ...row,
       friendsSaved: entry?.friends ?? [],
       friendsSavedCount: entry?.count ?? 0,
+      series: seriesMap.get(row.id) ?? [],
       myInvites: myInvites.map((i) => ({
         id: i.id,
         status: i.status,

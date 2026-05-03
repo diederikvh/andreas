@@ -4,10 +4,12 @@ import { Image } from 'expo-image';
 import { router } from 'expo-router';
 import { useMemo, useRef } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import Animated, { FadeIn } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppHeader, HEADER_HEIGHT } from '@/components/AppHeader';
 import { EventListRow } from '@/components/EventListRow';
+import { SpinningCross } from '@/components/SpinningCross';
 import type { ApiEvent } from '@/lib/api';
 import {
   CATEGORY_TICK,
@@ -206,50 +208,61 @@ export default function Avond() {
           </Pressable>
         )}
 
-        {isLoading && <ListState text="Laden…" />}
+        {isLoading && (
+          <View style={styles.loadingWrap}>
+            <SpinningCross size={28} thickness={5} color={roles.fgPlaceholder} />
+          </View>
+        )}
         {error && <ListState text="Kon events niet laden." tone="error" />}
-        {!isLoading && !error && filtered.length === 0 && events && (
-          <ListState
-            text={
-              mode === 'nacht'
-                ? 'Vanavond niets gepland.'
-                : window.shifted
-                  ? 'Morgen overdag niets gepland.'
-                  : 'Overdag niets gepland.'
-            }
-          />
-        )}
-        {followedRest.length > 0 && (
-          <>
-            <SectionTitle
-              title="Venues die je volgt"
-              meta="Alles →"
-              onMetaPress={() => router.push('/agenda')}
-            />
-            {followedRest.map((e) => <ApiEventRow key={e.id} event={e} />)}
-          </>
-        )}
-        {otherRest.length > 0 && (
-          <>
-            <SectionTitle
-              title={
-                followedRest.length > 0
-                  ? 'Ook interessant'
-                  : mode === 'nacht'
-                    ? 'Vanavond'
+        {!isLoading && !error && (
+          <Animated.View entering={FadeIn.duration(220)}>
+            {filtered.length === 0 && events && (
+              <ListState
+                text={
+                  mode === 'nacht'
+                    ? 'Vanavond niets gepland.'
                     : window.shifted
-                      ? 'Morgen overdag'
-                      : 'Overdag'
-              }
-              meta="Alles →"
-              onMetaPress={() => router.push('/agenda')}
-            />
-            {otherRest.map((e) => <ApiEventRow key={e.id} event={e} />)}
-          </>
-        )}
-
-        {(followedRest.length > 0 || otherRest.length > 0) && (
-          <KaartBanner />
+                      ? 'Morgen overdag niets gepland.'
+                      : 'Overdag niets gepland.'
+                }
+              />
+            )}
+            {followedRest.length > 0 && (
+              <>
+                <SectionTitle
+                  title="Venues die je volgt"
+                  meta="Alles →"
+                  onMetaPress={() => router.push('/agenda')}
+                />
+                {followedRest.map((e) => (
+                  <ApiEventRow key={e.id} event={e} />
+                ))}
+              </>
+            )}
+            {otherRest.length > 0 && (
+              <>
+                <SectionTitle
+                  title={
+                    followedRest.length > 0
+                      ? 'Ook interessant'
+                      : mode === 'nacht'
+                        ? 'Vanavond'
+                        : window.shifted
+                          ? 'Morgen overdag'
+                          : 'Overdag'
+                  }
+                  meta="Alles →"
+                  onMetaPress={() => router.push('/agenda')}
+                />
+                {otherRest.map((e) => (
+                  <ApiEventRow key={e.id} event={e} />
+                ))}
+              </>
+            )}
+            {(followedRest.length > 0 || otherRest.length > 0) && (
+              <KaartBanner />
+            )}
+          </Animated.View>
         )}
       </ScrollView>
       <AppHeader />
@@ -334,6 +347,7 @@ function ApiEventRow({ event }: { event: ApiEvent }) {
       title={event.title}
       venue={formatMeta(event)}
       tags={[{ label: event.category, tone: CATEGORY_TICK[event.category] }]}
+      seriesLabel={event.series?.[0]?.name}
       friends={friends && friends.length > 0 ? friends : undefined}
       tick={CATEGORY_TICK[event.category]}
       onPress={() => router.push(`/event/${event.id}`)}
@@ -592,6 +606,12 @@ const styles = StyleSheet.create({
   },
 
   // Photo band
+  loadingWrap: {
+    paddingVertical: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
   // Kaart-banner — prominent CTA onder de events-lijst die naar
   // /kaart pusht (Kaart heeft geen eigen tab meer).
   kaartBanner: {

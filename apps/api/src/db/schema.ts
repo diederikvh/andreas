@@ -94,6 +94,9 @@ export const venues = pgTable('venues', {
     .array()
     .notNull()
     .default(sql`ARRAY[]::event_category[]`),
+  /** Admin-toggle: false = verbergen uit publieke endpoints zonder
+      data te verliezen (saves blijven, events blijven). Default true. */
+  published: boolean().notNull().default(true),
   createdAt: timestamp({ withTimezone: true })
     .notNull()
     .default(sql`now()`),
@@ -116,6 +119,10 @@ export const events = pgTable(
     category: eventCategory().notNull(),
     /** Editorial-pick voor de Avond-tab. Curator zet deze aan. */
     featured: boolean().notNull().default(false),
+    /** Admin-toggle: false = verbergen uit publieke endpoints
+        (Avond/Agenda/Kaart/Gered/detail) zonder saves of invites
+        kwijt te raken. Default true. */
+    published: boolean().notNull().default(true),
     createdAt: timestamp({ withTimezone: true })
       .notNull()
       .default(sql`now()`),
@@ -190,6 +197,45 @@ export const invites = pgTable(
     uniqueIndex('invites_unique_idx').on(t.fromUserId, t.toUserId, t.eventId),
     index('invites_to_status_idx').on(t.toUserId, t.status),
     index('invites_event_idx').on(t.eventId),
+  ]
+);
+
+export const series = pgTable('series', {
+  id: text().primaryKey(),
+  slug: text().notNull().unique(),
+  name: text().notNull(),
+  description: text(),
+  imageUrl: text(),
+  /** Optionele datum-range (bv. ADE 14 – 18 okt). Eén of beide kunnen leeg
+      zijn voor doorlopende cycli zonder vast eindpunt. */
+  startsAt: timestamp({ withTimezone: true }),
+  endsAt: timestamp({ withTimezone: true }),
+  categories: eventCategory()
+    .array()
+    .notNull()
+    .default(sql`ARRAY[]::event_category[]`),
+  /** Admin-toggle: false = verbergen uit publieke endpoints
+      (pills + Venues-tab) zonder de koppelingen kwijt te raken. */
+  published: boolean().notNull().default(true),
+  createdAt: timestamp({ withTimezone: true })
+    .notNull()
+    .default(sql`now()`),
+});
+
+export const eventsInSeries = pgTable(
+  'events_in_series',
+  {
+    eventId: text()
+      .notNull()
+      .references(() => events.id, { onDelete: 'cascade' }),
+    seriesId: text()
+      .notNull()
+      .references(() => series.id, { onDelete: 'cascade' }),
+  },
+  (t) => [
+    primaryKey({ columns: [t.eventId, t.seriesId] }),
+    index('eis_series_idx').on(t.seriesId),
+    index('eis_event_idx').on(t.eventId),
   ]
 );
 

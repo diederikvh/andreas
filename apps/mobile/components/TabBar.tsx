@@ -1,7 +1,14 @@
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { BlurView } from 'expo-blur';
 import type { ComponentType } from 'react';
+import { useEffect } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
+import Animated, {
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+  Easing,
+} from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
@@ -41,6 +48,31 @@ export function TabBar({ state, navigation }: BottomTabBarProps) {
   const idle = mode === 'nacht' ? '#6a6a68' : '#8a7e6b';
   const bottom = Math.max(insets.bottom - 16, 4);
 
+  // Filter naar alleen zichtbare tabs (kaart heeft href:null, valt af).
+  const visible = state.routes.filter((r) => TAB_ICONS[r.name]);
+  const visibleIndex = Math.max(
+    0,
+    visible.findIndex((r) => r.key === state.routes[state.index]?.key)
+  );
+  const N = visible.length;
+
+  // Geanimeerde "blob" achter de actieve tab. We animeren een gedeelde
+  // value tussen 0..N-1; de transform-x is dan progress * buttonWidth.
+  // Buttons hebben flex:1 binnen de row, dus we positioneren via een
+  // percentage-shift: blob zit op `${(progress / N) * 100}%`.
+  const progress = useSharedValue(visibleIndex);
+  useEffect(() => {
+    progress.value = withTiming(visibleIndex, {
+      duration: 280,
+      easing: Easing.bezier(0.65, 0, 0.35, 1),
+    });
+  }, [visibleIndex, progress]);
+
+  const blobStyle = useAnimatedStyle(() => ({
+    width: `${100 / N}%`,
+    transform: [{ translateX: `${progress.value * 100}%` }],
+  }));
+
   return (
     <View style={[styles.bar, { bottom, borderColor: border }]}>
       <BlurView
@@ -49,6 +81,10 @@ export function TabBar({ state, navigation }: BottomTabBarProps) {
         style={StyleSheet.absoluteFill}
       />
       <View style={[StyleSheet.absoluteFill, { backgroundColor: tint }]} />
+      <Animated.View
+        pointerEvents="none"
+        style={[styles.blob, blobStyle, { backgroundColor: roles.accent }]}
+      />
       {state.routes.map((route, index) => {
         const Icon = TAB_ICONS[route.name];
         if (!Icon) return null;
@@ -69,10 +105,7 @@ export function TabBar({ state, navigation }: BottomTabBarProps) {
             accessibilityRole="button"
             accessibilityState={focused ? { selected: true } : {}}
             onPress={onPress}
-            style={[
-              styles.button,
-              focused && { backgroundColor: roles.accent },
-            ]}
+            style={styles.button}
           >
             <Icon color={focused ? roles.onAccent : idle} />
           </Pressable>
@@ -100,5 +133,12 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  blob: {
+    position: 'absolute',
+    top: 6,
+    left: 6,
+    bottom: 6,
+    borderRadius: 999,
   },
 });

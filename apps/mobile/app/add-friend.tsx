@@ -8,6 +8,7 @@ import { BackButton } from '@/components/BackButton';
 import { Cross } from '@/components/Cross';
 import { useEffect, useState } from 'react';
 import {
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -60,6 +61,13 @@ export default function AddFriend() {
   }, [initialHandle]);
 
   const [scannerOpen, setScannerOpen] = useState(params.scan === '1');
+
+  // Search-input wil normaal direct focus pakken (handle-search). Maar
+  // als we via ?scan=1 of via de QR-knop binnenkomen openen we eerst
+  // de scanner — dan moet 't keyboard juist weg.
+  useEffect(() => {
+    if (scannerOpen) Keyboard.dismiss();
+  }, [scannerOpen]);
   // Onthoud of de gebruiker hier puur voor de scanner kwam (vanuit
   // de Jij-tab). Zo ja, en de scanner sluit zonder dat er gescand is,
   // dan terug naar de vorige route i.p.v. blijven hangen op de
@@ -117,7 +125,10 @@ export default function AddFriend() {
             placeholderTextColor={roles.fgPlaceholder}
             autoCapitalize="none"
             autoCorrect={false}
-            autoFocus
+            // Niet autofocussen wanneer de gebruiker direct doorgaat
+            // naar de scanner — anders pop-upt 't keyboard tussen
+            // scanner en page door.
+            autoFocus={!scanOnlyEntry}
             style={[styles.searchInput, { color: roles.fg }]}
           />
         </View>

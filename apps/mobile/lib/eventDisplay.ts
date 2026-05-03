@@ -46,12 +46,43 @@ export function distanceKm(
   return 2 * R * Math.asin(Math.sqrt(h));
 }
 
-/** Loopminuten tussen twee punten (5 km/u → 12 min/km). */
+export type TransportMode = 'walk' | 'bike';
+
+// Snelheid in km/u: 5 voor wandel, 15 voor stadse fiets.
+const KMH: Record<TransportMode, number> = {
+  walk: 5,
+  bike: 15,
+};
+
+// Correctie-factor op hemelsbrede afstand om de werkelijke route in
+// Amsterdam te benaderen (grachten + eenrichting + omlopen). Wandelaars
+// raken meer omleidingen; fietsers volgen netter de rechte lijn.
+const ROUTE_FACTOR: Record<TransportMode, number> = {
+  walk: 1.3,
+  bike: 1.15,
+};
+
+/**
+ * Geschatte reisminuten tussen twee punten voor de gekozen mode.
+ * Basis is hemelsbreed (Haversine) × route-factor om de Amsterdam-
+ * realiteit te benaderen — geen externe routing-API.
+ */
+export function travelMinutes(
+  from: { lat: number; lng: number },
+  to: { lat: number; lng: number },
+  mode: TransportMode = 'walk'
+): number {
+  const km = distanceKm(from, to) * ROUTE_FACTOR[mode];
+  const minutes = (km / KMH[mode]) * 60;
+  return Math.max(1, Math.round(minutes));
+}
+
+/** @deprecated gebruik `travelMinutes(from, to, 'walk')`. */
 export function walkingMinutes(
   from: { lat: number; lng: number },
   to: { lat: number; lng: number }
 ): number {
-  return Math.max(1, Math.round(distanceKm(from, to) * 12));
+  return travelMinutes(from, to, 'walk');
 }
 
 // ─── Sociale dag-grenzen ──────────────────────────────────────────────

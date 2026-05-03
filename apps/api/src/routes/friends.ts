@@ -334,7 +334,13 @@ friendsRoute.get('/:id', async (c) => {
         .from(schema.saves)
         .innerJoin(schema.events, eq(schema.events.id, schema.saves.eventId))
         .innerJoin(schema.venues, eq(schema.venues.id, schema.events.venueId))
-        .where(eq(schema.saves.userId, friendId))
+        .where(
+          and(
+            eq(schema.saves.userId, friendId),
+            eq(schema.events.published, true),
+            eq(schema.venues.published, true)
+          )
+        )
         .orderBy(asc(schema.events.startsAt));
 
   // savesVisibility hoeft niet naar de client — gebruikt om events leeg

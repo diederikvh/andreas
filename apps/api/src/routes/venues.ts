@@ -3,9 +3,11 @@ import {
   arrayContains,
   asc,
   eq,
+  gt,
   gte,
   ilike,
   inArray,
+  isNull,
   or,
   type SQL,
 } from 'drizzle-orm';
@@ -29,7 +31,7 @@ venuesRoute.get('/', async (c) => {
   const q = (c.req.query('q') ?? '').trim();
   const category = c.req.query('category');
 
-  const conditions: SQL[] = [];
+  const conditions: SQL[] = [eq(schema.venues.published, true)];
   if (q.length > 0) {
     const needle = `%${q}%`;
     const matchName = ilike(schema.venues.name, needle);
@@ -96,7 +98,9 @@ venuesRoute.get('/:slug', async (c) => {
   const [venue] = await db
     .select()
     .from(schema.venues)
-    .where(eq(schema.venues.slug, slug))
+    .where(
+      and(eq(schema.venues.slug, slug), eq(schema.venues.published, true))
+    )
     .limit(1);
 
   if (!venue) return c.json({ error: 'venue not found' }, 404);
@@ -117,6 +121,7 @@ venuesRoute.get('/:slug', async (c) => {
     .where(
       and(
         eq(schema.events.venueId, venue.id),
+        eq(schema.events.published, true),
         gte(schema.events.startsAt, new Date())
       )
     )
@@ -129,5 +134,38 @@ venuesRoute.get('/:slug', async (c) => {
     ? await getVenueFollowState(session.user.id, venue.id)
     : 'normaal';
 
-  return c.json({ venue, events, myFollowState });
+  // Welke series spelen er in deze venue? Distinct op series.id, alleen
+  // als er minstens één toekomstig event in deze venue speelt dat in
+  // die serie zit. Series waarvan `endsAt` in het verleden ligt komen
+  // niet meer terug — anders blijft "Hier speelt: ADE" hangen lang
+  // nadat ADE voorbij is.
+  const now = new Date();
+  const seriesRows = await db
+    .selectDistinct({
+      id: schema.series.id,
+      slug: schema.series.slug,
+      name: schema.series.name,
+      imageUrl: schema.series.imageUrl,
+    })
+    .from(schema.series)
+    .innerJoin(
+      schema.eventsInSeries,
+      eq(schema.eventsInSeries.seriesId, schema.series.id)
+    )
+    .innerJoin(
+      schema.events,
+      eq(schema.events.id, schema.eventsInSeries.eventId)
+    )
+    .where(
+      and(
+        eq(schema.events.venueId, venue.id),
+        eq(schema.events.published, true),
+        eq(schema.series.published, true),
+        gte(schema.events.startsAt, now),
+        or(isNull(schema.series.endsAt), gt(schema.series.endsAt, now))
+      )
+    )
+    .orderBy(asc(schema.series.name));
+
+  return c.json({ venue, events, myFollowState, series: seriesRows });
 });

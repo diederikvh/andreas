@@ -41,7 +41,13 @@ savesRoute.get('/', async (c) => {
     .from(schema.saves)
     .innerJoin(schema.events, eq(schema.saves.eventId, schema.events.id))
     .innerJoin(schema.venues, eq(schema.events.venueId, schema.venues.id))
-    .where(eq(schema.saves.userId, userId))
+    .where(
+      and(
+        eq(schema.saves.userId, userId),
+        eq(schema.events.published, true),
+        eq(schema.venues.published, true)
+      )
+    )
     .orderBy(asc(schema.events.startsAt));
 
   return c.json({ events: rows });

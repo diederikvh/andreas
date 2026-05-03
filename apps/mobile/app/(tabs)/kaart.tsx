@@ -26,7 +26,8 @@ import {
   formatTime,
   isNachtHour,
   socialWindow,
-  walkingMinutes,
+  travelMinutes,
+  type TransportMode,
 } from '@/lib/eventDisplay';
 import { useEvents } from '@/lib/queries';
 import { useDeviceLocation } from '@/lib/useDeviceLocation';
@@ -82,6 +83,9 @@ export default function Kaart() {
       : locationStatus.location;
   })();
 
+  const [view, setView] = useState<'map' | 'list'>('map');
+  const [transport, setTransport] = useState<TransportMode>('walk');
+
   // Kaart toont dezelfde subset als Avond — events binnen het sociale
   // venster (vannacht / overdag). "Wat speelt nu in de buurt?".
   const window = useMemo(() => socialWindow(mode), [mode]);
@@ -98,18 +102,17 @@ export default function Kaart() {
       })
       .map((e) => ({
         event: e,
-        minutes: walkingMinutes(centre, {
-          lat: e.venue.lat,
-          lng: e.venue.lng,
-        }),
+        minutes: travelMinutes(
+          centre,
+          { lat: e.venue.lat, lng: e.venue.lng },
+          transport
+        ),
       }));
-  }, [events, centre, mode]);
+  }, [events, centre, mode, transport]);
   const sorted = useMemo(
     () => [...mapEvents].sort((a, b) => a.minutes - b.minutes),
     [mapEvents]
   );
-
-  const [view, setView] = useState<'map' | 'list'>('map');
   const sheetHeight = useSharedValue(0);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -245,12 +248,16 @@ export default function Kaart() {
               const tone: BadgeTone = CATEGORY_TICK[m.event.category];
               return (
                 <Marker
-                  key={m.event.id}
+                  // Key bevat minutes + active-state zodat de marker remount
+                  // bij wijziging — anders cached react-native-maps de
+                  // custom-view en tonen ze leeg tot je de kaart aantikt.
+                  key={`${m.event.id}-${m.minutes}-${isActive ? '1' : '0'}`}
                   coordinate={{
                     latitude: m.event.venue.lat,
                     longitude: m.event.venue.lng,
                   }}
                   anchor={{ x: 0.5, y: 0.5 }}
+                  tracksViewChanges={false}
                   onPress={() => selectEvent(m.event.id)}
                 >
                   <View
@@ -340,6 +347,10 @@ export default function Kaart() {
           <View style={styles.toolbarSwitch}>
             <ViewSwitch view={view} onChange={setView} />
           </View>
+          <TransportToggle
+            transport={transport}
+            onChange={setTransport}
+          />
           {view === 'map' && (
             <Pressable
               onPress={recentre}
@@ -410,6 +421,47 @@ function ViewSwitch({
         onPress={() => onChange('list')}
       />
     </View>
+  );
+}
+
+function TransportToggle({
+  transport,
+  onChange,
+}: {
+  transport: TransportMode;
+  onChange: (next: TransportMode) => void;
+}) {
+  const mode = useMode();
+  const roles = useRoles();
+  const isWalk = transport === 'walk';
+  return (
+    <Pressable
+      onPress={() => onChange(isWalk ? 'bike' : 'walk')}
+      hitSlop={6}
+      style={[styles.transport, { borderColor: roles.bgChip }]}
+    >
+      <BlurView
+        intensity={40}
+        tint={mode === 'nacht' ? 'dark' : 'light'}
+        style={StyleSheet.absoluteFill}
+      />
+      <View
+        style={[
+          StyleSheet.absoluteFill,
+          {
+            backgroundColor:
+              mode === 'nacht'
+                ? 'rgba(23,23,26,0.65)'
+                : 'rgba(235,230,216,0.7)',
+          },
+        ]}
+      />
+      <Ionicons
+        name={isWalk ? 'walk-outline' : 'bicycle-outline'}
+        size={18}
+        color={roles.fgMuted}
+      />
+    </Pressable>
   );
 }
 
@@ -744,6 +796,17 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
 
+  // Transport-mode toggle (walk/bike) — zelfde pill-stijl als recentre.
+  transport: {
+    width: 36,
+    height: 36,
+    borderRadius: 999,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+
   // "You" marker
   you: {
     width: 36,
@@ -882,16 +945,20 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
   sheetMin: {
-    width: 38,
+    width: 52,
     flexDirection: 'row',
     alignItems: 'baseline',
-    gap: 2,
+    gap: 5,
   },
   sheetMinNum: {
     fontFamily: fontFamily.display,
     fontSize: 18,
     letterSpacing: -0.18,
     lineHeight: 18,
+    // Reserveer minimaal 2 cijfers breed zodat "min" voor 1- en 2-cijfer
+    // waarden op dezelfde positie blijft staan.
+    minWidth: 22,
+    textAlign: 'right',
   },
   sheetMinUnit: {
     fontFamily: fontFamily.mono,

@@ -13,12 +13,18 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import Animated, { FadeIn } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppHeader, HEADER_HEIGHT } from '@/components/AppHeader';
-import type { ApiVenueListItem, VenueCategory } from '@/lib/api';
-import { CATEGORY_TICK } from '@/lib/eventDisplay';
-import { useVenues } from '@/lib/queries';
+import { SpinningCross } from '@/components/SpinningCross';
+import type {
+  ApiSeriesListItem,
+  ApiVenueListItem,
+  VenueCategory,
+} from '@/lib/api';
+import { CATEGORY_TICK, MONTHS_NL } from '@/lib/eventDisplay';
+import { useSeriesList, useVenues } from '@/lib/queries';
 import { useMode, useRoles } from '@/store/mode';
 import { fontFamily, palette } from '@/theme/tokens';
 
@@ -128,6 +134,8 @@ export default function Venues() {
           </Text>
         </View>
 
+        <SeriesSection />
+
         <ChipRow
           activeFilter={activeFilter}
           query={q}
@@ -136,24 +144,127 @@ export default function Venues() {
         />
 
         {isLoading ? (
-          <Text style={[styles.hint, { color: roles.fgMuted }]}>Laden…</Text>
-        ) : venues.length === 0 ? (
-          <Text style={[styles.hint, { color: roles.fgMuted }]}>
-            {debouncedQ.length > 0
-              ? `Geen venue gevonden voor "${debouncedQ}".`
-              : activeFilter === 'volgend'
-                ? 'Je volgt nog geen venues.'
-                : activeFilter !== 'alles'
-                  ? `Geen ${activeFilter.toLowerCase()}-venues op dit moment.`
-                  : 'Geen venues om te tonen.'}
-          </Text>
+          <View style={styles.loadingWrap}>
+            <SpinningCross size={28} thickness={5} color={roles.fgPlaceholder} />
+          </View>
         ) : (
-          venues.map((v) => <VenueRow key={v.id} venue={v} />)
+          <Animated.View entering={FadeIn.duration(220)}>
+            {venues.length === 0 ? (
+              <Text style={[styles.hint, { color: roles.fgMuted }]}>
+                {debouncedQ.length > 0
+                  ? `Geen venue gevonden voor "${debouncedQ}".`
+                  : activeFilter === 'volgend'
+                    ? 'Je volgt nog geen venues.'
+                    : activeFilter !== 'alles'
+                      ? `Geen ${activeFilter.toLowerCase()}-venues op dit moment.`
+                      : 'Geen venues om te tonen.'}
+              </Text>
+            ) : (
+              venues.map((v) => <VenueRow key={v.id} venue={v} />)
+            )}
+          </Animated.View>
         )}
       </ScrollView>
       <AppHeader />
     </KeyboardAvoidingView>
   );
+}
+
+function SeriesSection() {
+  const mode = useMode();
+  const roles = useRoles();
+  const isNacht = mode === 'nacht';
+  const { data, isLoading } = useSeriesList();
+  if (isLoading || !data || data.length === 0) return null;
+
+  return (
+    <View style={styles.seriesSection}>
+      <View style={styles.seriesHead}>
+        <Text style={[styles.seriesHeadLabel, { color: roles.fg }]}>
+          Series
+        </Text>
+        <Text style={[styles.seriesHeadCount, { color: roles.fgMuted }]}>
+          {data.length} actief
+        </Text>
+      </View>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.seriesScroller}
+      >
+        {data.map((s) => (
+          <SeriesCard key={s.id} series={s} />
+        ))}
+      </ScrollView>
+    </View>
+  );
+}
+
+function SeriesCard({ series }: { series: ApiSeriesListItem }) {
+  const mode = useMode();
+  const roles = useRoles();
+  const isNacht = mode === 'nacht';
+  const dateRange = formatSeriesRange(series.startsAt, series.endsAt);
+  return (
+    <Pressable
+      onPress={() => router.push(`/series/${series.slug}` as never)}
+      style={[
+        styles.seriesCard,
+        {
+          backgroundColor: isNacht ? palette.noir2 : palette.paper2,
+          borderColor: isNacht ? '#2a2a2d' : palette.paper,
+        },
+      ]}
+    >
+      {series.imageUrl ? (
+        <Image
+          source={{ uri: series.imageUrl }}
+          style={styles.seriesCardImg}
+          contentFit="cover"
+        />
+      ) : (
+        <View
+          style={[
+            styles.seriesCardImg,
+            { backgroundColor: isNacht ? palette.noir3 : palette.paper },
+          ]}
+        />
+      )}
+      <View style={styles.seriesCardBody}>
+        <Text
+          numberOfLines={1}
+          style={[styles.seriesCardName, { color: roles.fg }]}
+        >
+          {series.name}
+        </Text>
+        <Text
+          numberOfLines={1}
+          style={[styles.seriesCardMeta, { color: roles.fgMuted }]}
+        >
+          {[dateRange, `${series.eventCount} event${series.eventCount === 1 ? '' : 's'}`]
+            .filter(Boolean)
+            .join(' · ')}
+        </Text>
+      </View>
+    </Pressable>
+  );
+}
+
+function formatSeriesRange(
+  startsAt: string | null,
+  endsAt: string | null
+): string | null {
+  if (!startsAt) return null;
+  const start = new Date(startsAt);
+  const end = endsAt ? new Date(endsAt) : null;
+  const monthName = (d: Date) => MONTHS_NL[d.getMonth()].toLowerCase();
+  const day = (d: Date) => String(d.getDate());
+  if (!end) return `Vanaf ${day(start)} ${monthName(start)}`;
+  const sameMonth =
+    start.getFullYear() === end.getFullYear() &&
+    start.getMonth() === end.getMonth();
+  if (sameMonth) return `${day(start)} – ${day(end)} ${monthName(start)}`;
+  return `${day(start)} ${monthName(start)} – ${day(end)} ${monthName(end)}`;
 }
 
 function VenueRow({ venue }: { venue: ApiVenueListItem }) {
@@ -428,6 +539,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 22,
     paddingVertical: 14,
   },
+  loadingWrap: {
+    paddingVertical: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
 
   // Chip-row — gespiegeld op Agenda zodat 't visueel matcht
   chipRow: {
@@ -518,6 +634,62 @@ const styles = StyleSheet.create({
     fontFamily: fontFamily.mono,
     fontSize: 9,
     letterSpacing: 0.9,
+    textTransform: 'uppercase',
+  },
+
+  // Series-sectie — horizontale rij kaarten boven de chip-row.
+  seriesSection: {
+    paddingTop: 4,
+    paddingBottom: 4,
+  },
+  seriesHead: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'baseline',
+    paddingHorizontal: 22,
+    paddingTop: 6,
+    paddingBottom: 8,
+  },
+  seriesHeadLabel: {
+    fontFamily: fontFamily.bold,
+    fontSize: 12,
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+  },
+  seriesHeadCount: {
+    fontFamily: fontFamily.mono,
+    fontSize: 10,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+  },
+  seriesScroller: {
+    gap: 10,
+    paddingHorizontal: 22,
+    paddingBottom: 8,
+  },
+  seriesCard: {
+    width: 220,
+    borderRadius: 12,
+    borderWidth: 1,
+    overflow: 'hidden',
+  },
+  seriesCardImg: {
+    width: '100%',
+    height: 100,
+  },
+  seriesCardBody: {
+    padding: 12,
+    gap: 4,
+  },
+  seriesCardName: {
+    fontFamily: fontFamily.bold,
+    fontSize: 14,
+    letterSpacing: -0.21,
+  },
+  seriesCardMeta: {
+    fontFamily: fontFamily.mono,
+    fontSize: 10,
+    letterSpacing: 0.8,
     textTransform: 'uppercase',
   },
 

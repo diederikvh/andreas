@@ -13,10 +13,12 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import Animated, { FadeIn } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppHeader, HEADER_HEIGHT } from '@/components/AppHeader';
 import { EventListRow } from '@/components/EventListRow';
+import { SpinningCross } from '@/components/SpinningCross';
 import type { ApiEvent } from '@/lib/api';
 import {
   CATEGORY_TICK,
@@ -143,27 +145,35 @@ export default function Agenda() {
           paddingBottom: insets.bottom + 96,
         }}
       >
-        {isLoading && <ListState text="Laden…" />}
+        {isLoading && (
+          <View style={styles.loadingWrap}>
+            <SpinningCross size={28} thickness={5} color={roles.fgPlaceholder} />
+          </View>
+        )}
         {error && (
           <ListState text="Kon agenda niet laden." tone="error" />
         )}
-        {!isLoading && !error && days.length === 0 && (
-          <ListState
-            text={
-              activeCat || query
-                ? 'Geen events voor deze filter.'
-                : 'Nog geen events.'
-            }
-          />
-        )}
-        {days.map((day) => (
-          <View key={day.id} onLayout={captureSectionY(day.id)}>
-            <DateAnchor day={day} />
-            {day.events.map((event) => (
-              <AgendaRow key={event.id} event={event} />
+        {!isLoading && !error && (
+          <Animated.View entering={FadeIn.duration(220)}>
+            {days.length === 0 && (
+              <ListState
+                text={
+                  activeCat || query
+                    ? 'Geen events voor deze filter.'
+                    : 'Nog geen events.'
+                }
+              />
+            )}
+            {days.map((day) => (
+              <View key={day.id} onLayout={captureSectionY(day.id)}>
+                <DateAnchor day={day} />
+                {day.events.map((event) => (
+                  <AgendaRow key={event.id} event={event} />
+                ))}
+              </View>
             ))}
-          </View>
-        ))}
+          </Animated.View>
+        )}
       </ScrollView>
       <AppHeader solid>
         <View style={{ height: DAYSTRIP_HEIGHT }}>
@@ -437,6 +447,7 @@ function AgendaRow({ event }: { event: ApiEvent }) {
       title={event.title}
       venue={event.venue.name}
       tags={[{ label: event.category, tone: CATEGORY_TICK[event.category] }]}
+      seriesLabel={event.series?.[0]?.name}
       friends={friends && friends.length > 0 ? friends : undefined}
       tick={CATEGORY_TICK[event.category]}
       onPress={() => router.push(`/event/${event.id}`)}
@@ -572,6 +583,11 @@ const styles = StyleSheet.create({
   },
 
   listState: { paddingHorizontal: 22, paddingVertical: 14 },
+  loadingWrap: {
+    paddingVertical: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   listStateText: {
     fontFamily: fontFamily.mono,
     fontSize: 11,
