@@ -450,9 +450,9 @@ const styles = StyleSheet.create({
 
   sectionTitle: {
     fontFamily: fontFamily.display,
-    fontSize: 22,
-    lineHeight: 22,
-    letterSpacing: -0.5,
+    fontSize: 18,
+    lineHeight: 18,
+    letterSpacing: -0.36,
     paddingHorizontal: 22,
     paddingTop: 22,
     paddingBottom: 10,
@@ -465,9 +465,9 @@ const styles = StyleSheet.create({
   },
   emptyHeading: {
     fontFamily: fontFamily.display,
-    fontSize: 22,
-    lineHeight: 22,
-    letterSpacing: -0.5,
+    fontSize: 18,
+    lineHeight: 18,
+    letterSpacing: -0.36,
     paddingHorizontal: 22,
     paddingBottom: 8,
   },

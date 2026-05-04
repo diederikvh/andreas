@@ -38,6 +38,9 @@ type Props = {
       Niet-tappable in de rij — render als subtiele monospace-tag voor
       ontdekking; de doorklik gaat via event-detail. */
   seriesLabel?: string;
+  /** Eerste genre van het event (bv. "techno"). Zelfde stijl als
+      seriesLabel — neutrale `bgTag` mono uppercase. */
+  genreLabel?: string;
   friends?: Friend[];
   /** Side accent stripe colour. */
   tick: BadgeTone;
@@ -59,6 +62,7 @@ export function EventListRow({
   tags,
   status,
   seriesLabel,
+  genreLabel,
   friends,
   tick,
   onPress,
@@ -91,7 +95,7 @@ export function EventListRow({
           >
             {[time, duration, venue].filter(Boolean).join(' · ')}
           </Text>
-          {(tags?.length || status || seriesLabel || friends?.length) && (
+          {(tags?.length || status || seriesLabel || genreLabel || friends?.length) && (
             <View style={styles.rowTags}>
               {tags?.map((tag) => {
                 const tone = TONE[mode][tag.tone];
@@ -121,11 +125,23 @@ export function EventListRow({
                 <View
                   style={[
                     styles.seriesTag,
-                    { borderColor: roles.fgMuted },
+                    { backgroundColor: roles.bgTag },
                   ]}
                 >
                   <Text style={[styles.seriesTagText, { color: roles.fg }]}>
                     {seriesLabel}
+                  </Text>
+                </View>
+              )}
+              {genreLabel && (
+                <View
+                  style={[
+                    styles.seriesTag,
+                    { backgroundColor: roles.bgTag },
+                  ]}
+                >
+                  <Text style={[styles.seriesTagText, { color: roles.fg }]}>
+                    {genreLabel}
                   </Text>
                 </View>
               )}
@@ -271,14 +287,14 @@ const styles = StyleSheet.create({
     height: 24,
     paddingHorizontal: 10,
     borderRadius: 999,
-    borderWidth: StyleSheet.hairlineWidth,
     alignItems: 'center',
     justifyContent: 'center',
   },
   seriesTagText: {
-    fontFamily: fontFamily.medium,
-    fontSize: 10,
-    letterSpacing: 0.2,
+    fontFamily: fontFamily.mono,
+    fontSize: 9,
+    letterSpacing: 0.9,
+    textTransform: 'uppercase',
   },
   tagText: {
     fontFamily: fontFamily.mono,

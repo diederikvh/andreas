@@ -10,6 +10,7 @@ import {
   declineFriendRequest,
   declineInvite,
   getEvent,
+  getEventGenres,
   getEvents,
   getFriendDetail,
   getFriendRequests,
@@ -36,6 +37,7 @@ import {
 export const queryKeys = {
   events: (filter: EventsFilter = {}) => ['events', filter] as const,
   event: (id: string) => ['event', id] as const,
+  eventGenres: () => ['event-genres'] as const,
   venue: (slug: string) => ['venue', slug] as const,
   venues: (input: { q?: string; category?: string } = {}) =>
     ['venues', input.q ?? '', input.category ?? ''] as const,
@@ -66,6 +68,14 @@ export function useEvent(id: string) {
   });
 }
 
+export function useEventGenres() {
+  return useQuery({
+    queryKey: queryKeys.eventGenres(),
+    queryFn: () => getEventGenres(),
+    staleTime: 5 * 60 * 1000, // 5 min — distinct genres muteren langzaam
+  });
+}
+
 export function useVenue(slug: string) {
   return useQuery({
     queryKey: queryKeys.venue(slug),
@@ -86,6 +96,7 @@ export function useVenues(input: {
     | 'ruimte'
     | 'boekhandel-cafe';
   dayNight?: 'day' | 'night' | 'both';
+  scene?: 'mainstream' | 'alternatief' | 'underground' | 'fringe';
 } = {}) {
   return useQuery({
     queryKey: [
@@ -94,6 +105,7 @@ export function useVenues(input: {
       input.category ?? '',
       input.type ?? '',
       input.dayNight ?? '',
+      input.scene ?? '',
     ] as const,
     queryFn: () => getVenues(input),
   });

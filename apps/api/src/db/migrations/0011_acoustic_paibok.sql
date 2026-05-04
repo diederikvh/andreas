@@ -1,0 +1,1 @@
+ALTER TABLE "events" ADD COLUMN "genres" text[] DEFAULT ARRAY[]::text[] NOT NULL;

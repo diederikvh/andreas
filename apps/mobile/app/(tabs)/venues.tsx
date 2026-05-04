@@ -4,7 +4,9 @@ import { Image } from 'expo-image';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Alert,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -17,24 +19,58 @@ import Animated, { FadeIn } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppHeader, HEADER_HEIGHT } from '@/components/AppHeader';
+import { Cross } from '@/components/Cross';
 import { SpinningCross } from '@/components/SpinningCross';
 import type {
   ApiSeriesListItem,
   ApiVenueListItem,
-  VenueCategory,
+  VenueDayNight,
+  VenueScene,
+  VenueType,
 } from '@/lib/api';
-import { CATEGORY_TICK, MONTHS_NL } from '@/lib/eventDisplay';
+import { MONTHS_NL, VENUE_TYPE_TICK } from '@/lib/eventDisplay';
 import { useSeriesList, useVenues } from '@/lib/queries';
 import { useMode, useRoles } from '@/store/mode';
+import {
+  isSavedVenueSearchActive,
+  type SavedVenueSearch,
+  useAddSavedVenueSearch,
+  useRemoveSavedVenueSearch,
+  useSavedVenueSearches,
+} from '@/store/savedVenueSearches';
 import { fontFamily, palette } from '@/theme/tokens';
 
-const CATEGORIES: VenueCategory[] = [
-  'Muziek',
-  'Theater',
-  'Literatuur',
-  'Film',
+// Filter-opties voor de unified filter-sheet. Geordend zodat de meest
+// gebruikte chips bovenaan staan binnen elke sectie.
+const DAYNIGHT_CHIPS: { value: VenueDayNight; label: string }[] = [
+  { value: 'day', label: 'Dag' },
+  { value: 'night', label: 'Nacht' },
+  { value: 'both', label: 'Beide' },
 ];
+const DN_VALUES: VenueDayNight[] = DAYNIGHT_CHIPS.map((c) => c.value);
 
+const TYPE_CHIPS: { value: VenueType; label: string }[] = [
+  { value: 'podium', label: 'Podium' },
+  { value: 'club', label: 'Club' },
+  { value: 'galerie', label: 'Galerie' },
+  { value: 'museum', label: 'Museum' },
+  { value: 'film', label: 'Film' },
+  { value: 'ruimte', label: 'Ruimte' },
+  { value: 'boekhandel-cafe', label: 'Boekhandel' },
+];
+const TYPE_VALUES: VenueType[] = TYPE_CHIPS.map((c) => c.value);
+
+const SCENE_CHIPS: { value: VenueScene; label: string }[] = [
+  { value: 'mainstream', label: 'Mainstream' },
+  { value: 'alternatief', label: 'Alternatief' },
+  { value: 'underground', label: 'Underground' },
+  { value: 'fringe', label: 'Fringe' },
+];
+const SCENE_VALUES: VenueScene[] = SCENE_CHIPS.map((c) => c.value);
+
+// Tone-mapping voor mode-aware kleuren — zelfde shape als de TONE-map
+// in EventListRow zodat venue-types en event-categorieën dezelfde
+// brand-palette delen.
 const TONE: Record<
   'nacht' | 'dag',
   Record<'acid' | 'flare' | 'plum' | 'azure', string>
@@ -68,17 +104,42 @@ export default function Venues() {
   const scrollRef = useRef<ScrollView>(null);
   useScrollToTop(scrollRef);
 
-  // Filter is een union: 'alles' (default), 'volgend' (alleen venues
-  // die ik volg, client-side filter), of een VenueCategory.
-  type Filter = 'alles' | 'volgend' | VenueCategory;
-  const params = useLocalSearchParams<{ cat?: string; q?: string; dn?: string }>();
-  const activeFilter = useMemo<Filter>(() => {
-    if (!params.cat) return 'alles';
-    if (params.cat === 'volgend') return 'volgend';
-    return (CATEGORIES as string[]).includes(params.cat)
-      ? (params.cat as VenueCategory)
-      : 'alles';
-  }, [params.cat]);
+  // URL-state — alle filters multi-select (comma-separated) zodat
+  // saved-searches 1-op-1 in een URL passen. Volgen is een booleantje.
+  const params = useLocalSearchParams<{
+    q?: string;
+    dn?: string;
+    t?: string;
+    sc?: string;
+    vo?: string;
+  }>();
+  const activeDn = useMemo<VenueDayNight[]>(
+    () =>
+      (params.dn ?? '')
+        .split(',')
+        .map((x) => x.trim())
+        .filter((x): x is VenueDayNight => (DN_VALUES as string[]).includes(x)),
+    [params.dn]
+  );
+  const activeType = useMemo<VenueType[]>(
+    () =>
+      (params.t ?? '')
+        .split(',')
+        .map((x) => x.trim())
+        .filter((x): x is VenueType => (TYPE_VALUES as string[]).includes(x)),
+    [params.t]
+  );
+  const activeScene = useMemo<VenueScene[]>(
+    () =>
+      (params.sc ?? '')
+        .split(',')
+        .map((x) => x.trim())
+        .filter((x): x is VenueScene =>
+          (SCENE_VALUES as string[]).includes(x)
+        ),
+    [params.sc]
+  );
+  const onlyVolgend = params.vo === '1';
   const initialQ = params.q ?? '';
 
   const [q, setQ] = useState(initialQ);
@@ -88,39 +149,26 @@ export default function Venues() {
     return () => clearTimeout(t);
   }, [q]);
 
-  // dayNight-filter: default volgt de app-modus (nacht-modus → 'night'-
-  // venues + 'both', dag-modus → 'day' + 'both'). Met `?dn=alles` zet
-  // je 'em uit en zie je alles.
-  const dnOverride = params.dn === 'alles';
-  const dayNightParam: 'day' | 'night' | undefined = dnOverride
-    ? undefined
-    : mode === 'nacht'
-      ? 'night'
-      : 'day';
-
-  // Server filtert op category (en query). 'volgend' is een client-
-  // side filter — we hebben de hele lijst sowieso al, en `volgend`
-  // hangt af van per-user state.
-  const categoryParam =
-    activeFilter === 'alles' || activeFilter === 'volgend'
-      ? undefined
-      : activeFilter;
-  const { data: venuesAll, isLoading } = useVenues({
-    q: debouncedQ,
-    category: categoryParam,
-    dayNight: dayNightParam,
-  });
+  // Server-side filter alleen op de zoekterm — alle andere filters
+  // gebeuren clientside, want de venue-lijst is klein (< 200 items)
+  // en multi-select past niet in de huidige API-shape.
+  const { data: venuesAll, isLoading } = useVenues({ q: debouncedQ });
   const venues = useMemo(() => {
     if (!venuesAll) return [];
-    if (activeFilter === 'volgend') {
-      return venuesAll.filter((v) => v.myFollowState === 'volgen');
-    }
-    return venuesAll;
-  }, [venuesAll, activeFilter]);
-
-  const setFilter = (f: Filter) => {
-    router.setParams({ cat: f === 'alles' ? '' : f });
-  };
+    return venuesAll.filter((v) => {
+      if (onlyVolgend && v.myFollowState !== 'volgen') return false;
+      if (activeDn.length > 0) {
+        if (!v.dayNight || !activeDn.includes(v.dayNight)) return false;
+      }
+      if (activeType.length > 0) {
+        if (!v.type || !activeType.includes(v.type)) return false;
+      }
+      if (activeScene.length > 0) {
+        if (!v.scene || !activeScene.includes(v.scene)) return false;
+      }
+      return true;
+    });
+  }, [venuesAll, onlyVolgend, activeDn, activeType, activeScene]);
 
   return (
     <KeyboardAvoidingView
@@ -148,14 +196,22 @@ export default function Venues() {
         <SeriesSection />
 
         <ChipRow
-          activeFilter={activeFilter}
           query={q}
-          onFilter={setFilter}
           onQuery={setQ}
-          dnOverride={dnOverride}
-          onDnOverride={(next) =>
-            router.setParams({ dn: next ? 'alles' : '' })
+          activeDn={activeDn}
+          activeType={activeType}
+          activeScene={activeScene}
+          onlyVolgend={onlyVolgend}
+          onDn={(next) =>
+            router.setParams({ dn: next.length > 0 ? next.join(',') : '' })
           }
+          onType={(next) =>
+            router.setParams({ t: next.length > 0 ? next.join(',') : '' })
+          }
+          onScene={(next) =>
+            router.setParams({ sc: next.length > 0 ? next.join(',') : '' })
+          }
+          onVolgend={(next) => router.setParams({ vo: next ? '1' : '' })}
         />
 
         {isLoading ? (
@@ -168,10 +224,13 @@ export default function Venues() {
               <Text style={[styles.hint, { color: roles.fgMuted }]}>
                 {debouncedQ.length > 0
                   ? `Geen venue gevonden voor "${debouncedQ}".`
-                  : activeFilter === 'volgend'
+                  : onlyVolgend
                     ? 'Je volgt nog geen venues.'
-                    : activeFilter !== 'alles'
-                      ? `Geen ${activeFilter.toLowerCase()}-venues op dit moment.`
+                    : activeDn.length +
+                          activeType.length +
+                          activeScene.length >
+                        0
+                      ? 'Geen venues voor deze filter.'
                       : 'Geen venues om te tonen.'}
               </Text>
             ) : (
@@ -315,23 +374,41 @@ function VenueRow({ venue }: { venue: ApiVenueListItem }) {
         >
           {venue.address}
         </Text>
-        {(venue.categories ?? []).length > 0 && (
+        {(venue.type || venue.scene || (venue.subtype ?? []).length > 0) && (
           <View style={styles.tags}>
-            {(venue.categories ?? []).map((cat) => {
-              const tone = TONE[mode][CATEGORY_TICK[cat]];
+            {venue.type && (() => {
+              const tone = TONE[mode][VENUE_TYPE_TICK[venue.type]];
               return (
                 <View
-                  key={cat}
                   style={[styles.tag, { backgroundColor: `${tone}26` }]}
                 >
                   <Text
                     style={[styles.tagText, { color: toneText(tone, mode) }]}
                   >
-                    {cat}
+                    {venue.type}
                   </Text>
                 </View>
               );
-            })}
+            })()}
+            {venue.scene && (
+              <View
+                style={[styles.subtypeTag, { backgroundColor: roles.bgTag }]}
+              >
+                <Text style={[styles.subtypeTagText, { color: roles.fg }]}>
+                  {venue.scene}
+                </Text>
+              </View>
+            )}
+            {(venue.subtype ?? []).slice(0, 2).map((s) => (
+              <View
+                key={s}
+                style={[styles.subtypeTag, { backgroundColor: roles.bgTag }]}
+              >
+                <Text style={[styles.subtypeTagText, { color: roles.fg }]}>
+                  {s}
+                </Text>
+              </View>
+            ))}
           </View>
         )}
       </View>
@@ -366,28 +443,37 @@ function FollowBadge({
 }
 
 function ChipRow({
-  activeFilter,
   query,
-  onFilter,
   onQuery,
-  dnOverride,
-  onDnOverride,
+  activeDn,
+  activeType,
+  activeScene,
+  onlyVolgend,
+  onDn,
+  onType,
+  onScene,
+  onVolgend,
 }: {
-  activeFilter: 'alles' | 'volgend' | VenueCategory;
   query: string;
-  onFilter: (f: 'alles' | 'volgend' | VenueCategory) => void;
   onQuery: (q: string) => void;
-  dnOverride: boolean;
-  onDnOverride: (next: boolean) => void;
+  activeDn: VenueDayNight[];
+  activeType: VenueType[];
+  activeScene: VenueScene[];
+  onlyVolgend: boolean;
+  onDn: (next: VenueDayNight[]) => void;
+  onType: (next: VenueType[]) => void;
+  onScene: (next: VenueScene[]) => void;
+  onVolgend: (next: boolean) => void;
 }) {
   const mode = useMode();
   const roles = useRoles();
   const isNacht = mode === 'nacht';
   const [focused, setFocused] = useState(false);
+  const [filterOpen, setFilterOpen] = useState(false);
   const inputRef = useRef<TextInput>(null);
-  // Het zoekveld is "open" zodra het focus heeft of tekst bevat. Idle
-  // = alleen de magnifier; open = ruim genoeg om te typen, en groeit
-  // mee met de inhoud zodat lange queries niet worden afgekapt.
+  const saved = useSavedVenueSearches();
+  const removeSaved = useRemoveSavedVenueSearch();
+
   const open = focused || query.length > 0;
   const COLLAPSED_W = 36;
   const MIN_OPEN_W = 110;
@@ -406,76 +492,497 @@ function ChipRow({
     }
   };
 
+  const filterCount =
+    activeDn.length +
+    activeType.length +
+    activeScene.length +
+    (onlyVolgend ? 1 : 0);
+  const filterActive = filterCount > 0;
+
+  const current = {
+    dn: activeDn,
+    type: activeType,
+    sc: activeScene,
+    vo: onlyVolgend,
+    q: query,
+  };
+
+  const applySaved = (s: SavedVenueSearch) => {
+    const active = isSavedVenueSearchActive(s, current);
+    if (active) {
+      onDn([]);
+      onType([]);
+      onScene([]);
+      onVolgend(false);
+      onQuery('');
+      return;
+    }
+    onDn(s.dn);
+    onType(s.type);
+    onScene(s.sc);
+    onVolgend(s.vo);
+    onQuery(s.q);
+  };
+
+  const onLongPressSaved = (s: SavedVenueSearch) => {
+    Alert.alert(
+      'Verwijderen',
+      `"${s.name}" verwijderen uit je opgeslagen filters?`,
+      [
+        { text: 'Annuleren', style: 'cancel' },
+        {
+          text: 'Verwijder',
+          style: 'destructive',
+          onPress: () => removeSaved(s.id),
+        },
+      ]
+    );
+  };
+
   return (
-    <ScrollView
-      horizontal
-      showsHorizontalScrollIndicator={false}
-      contentContainerStyle={styles.chipRow}
-      keyboardShouldPersistTaps="handled"
-    >
-      <View
-        style={[
-          styles.searchChip,
-          {
-            backgroundColor: isNacht ? palette.noir2 : palette.paper2,
-            borderColor: isNacht ? '#2a2a2d' : palette.paper,
-            width,
-          },
-        ]}
+    <>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.chipRow}
+        keyboardShouldPersistTaps="handled"
       >
-        <Pressable onPress={onIconPress} hitSlop={6} style={styles.searchIcon}>
-          <Ionicons
-            name={open ? 'close' : 'search'}
-            size={14}
-            color={roles.fgMuted}
+        <View
+          style={[
+            styles.searchChip,
+            {
+              backgroundColor: isNacht ? palette.noir2 : palette.paper2,
+              borderColor: isNacht ? '#2a2a2d' : palette.paper,
+              width,
+            },
+          ]}
+        >
+          <Pressable onPress={onIconPress} hitSlop={6} style={styles.searchIcon}>
+            <Ionicons
+              name={open ? 'close' : 'search'}
+              size={14}
+              color={roles.fgMuted}
+            />
+          </Pressable>
+          <TextInput
+            ref={inputRef}
+            value={query}
+            onChangeText={onQuery}
+            onFocus={() => setFocused(true)}
+            onBlur={() => setFocused(false)}
+            placeholder={open ? 'ZOEK' : ''}
+            placeholderTextColor={roles.fgPlaceholder}
+            autoCapitalize="characters"
+            autoCorrect={false}
+            returnKeyType="search"
+            style={[styles.searchInput, { color: roles.fg }]}
           />
+        </View>
+        <Pressable
+          onPress={() => setFilterOpen(true)}
+          style={[
+            styles.catChip,
+            {
+              borderColor: filterActive
+                ? roles.fg
+                : isNacht
+                  ? '#2a2a2d'
+                  : palette.paper,
+              backgroundColor: filterActive
+                ? roles.fg
+                : isNacht
+                  ? palette.noir2
+                  : palette.paper2,
+              flexDirection: 'row',
+              gap: 4,
+            },
+          ]}
+        >
+          <Ionicons
+            name="options-outline"
+            size={12}
+            color={filterActive ? roles.bg : roles.fgMuted}
+          />
+          <Text
+            style={[
+              styles.catChipText,
+              { color: filterActive ? roles.bg : roles.fgMuted },
+            ]}
+          >
+            {filterActive ? `Filter · ${filterCount}` : 'Filter'}
+          </Text>
         </Pressable>
-        <TextInput
-          ref={inputRef}
-          value={query}
-          onChangeText={onQuery}
-          onFocus={() => setFocused(true)}
-          onBlur={() => setFocused(false)}
-          placeholder={open ? 'ZOEK' : ''}
-          placeholderTextColor={roles.fgPlaceholder}
-          autoCapitalize="characters"
-          autoCorrect={false}
-          returnKeyType="search"
-          style={[styles.searchInput, { color: roles.fg }]}
+        {saved.map((s) => {
+          const active = isSavedVenueSearchActive(s, current);
+          return (
+            <Pressable
+              key={s.id}
+              onPress={() => applySaved(s)}
+              onLongPress={() => onLongPressSaved(s)}
+              delayLongPress={400}
+              style={[
+                styles.catChip,
+                {
+                  borderColor: active
+                    ? roles.accent
+                    : isNacht
+                      ? '#2a2a2d'
+                      : palette.paper,
+                  backgroundColor: active
+                    ? `${isNacht ? palette.acid : palette.red}1f`
+                    : isNacht
+                      ? palette.noir2
+                      : palette.paper2,
+                  flexDirection: 'row',
+                  gap: 4,
+                },
+              ]}
+            >
+              <Ionicons
+                name="bookmark"
+                size={11}
+                color={active ? roles.accent : roles.fgMuted}
+              />
+              <Text
+                style={[
+                  styles.catChipText,
+                  { color: active ? roles.accent : roles.fgMuted },
+                ]}
+              >
+                {s.name}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </ScrollView>
+      <Modal
+        visible={filterOpen}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setFilterOpen(false)}
+      >
+        <FilterSheet
+          activeDn={activeDn}
+          activeType={activeType}
+          activeScene={activeScene}
+          onlyVolgend={onlyVolgend}
+          query={query}
+          onDn={onDn}
+          onType={onType}
+          onScene={onScene}
+          onVolgend={onVolgend}
+          onClose={() => setFilterOpen(false)}
         />
-      </View>
-      <CatChip
-        label="Alles"
-        active={activeFilter === 'alles'}
-        onPress={() => onFilter('alles')}
-      />
-      <CatChip
-        label={mode === 'nacht' ? '+ Dag' : '+ Nacht'}
-        active={dnOverride}
-        onPress={() => onDnOverride(!dnOverride)}
-      />
-      <CatChip
-        label="Volgend"
-        active={activeFilter === 'volgend'}
-        onPress={() =>
-          onFilter(activeFilter === 'volgend' ? 'alles' : 'volgend')
-        }
-      />
-      {CATEGORIES.map((cat) => (
-        <CatChip
-          key={cat}
-          label={cat}
-          active={activeFilter === cat}
-          onPress={() =>
-            onFilter(activeFilter === cat ? 'alles' : cat)
-          }
-        />
-      ))}
-    </ScrollView>
+      </Modal>
+    </>
   );
 }
 
-function CatChip({
+function FilterSheet({
+  activeDn,
+  activeType,
+  activeScene,
+  onlyVolgend,
+  query,
+  onDn,
+  onType,
+  onScene,
+  onVolgend,
+  onClose,
+}: {
+  activeDn: VenueDayNight[];
+  activeType: VenueType[];
+  activeScene: VenueScene[];
+  onlyVolgend: boolean;
+  query: string;
+  onDn: (next: VenueDayNight[]) => void;
+  onType: (next: VenueType[]) => void;
+  onScene: (next: VenueScene[]) => void;
+  onVolgend: (next: boolean) => void;
+  onClose: () => void;
+}) {
+  const mode = useMode();
+  const roles = useRoles();
+  const isNacht = mode === 'nacht';
+  const addSaved = useAddSavedVenueSearch();
+  const [saveOpen, setSaveOpen] = useState(false);
+  const [saveName, setSaveName] = useState('');
+
+  const toggleDn = (v: VenueDayNight) => {
+    if (activeDn.includes(v)) onDn(activeDn.filter((x) => x !== v));
+    else onDn([...activeDn, v]);
+  };
+  const toggleType = (v: VenueType) => {
+    if (activeType.includes(v)) onType(activeType.filter((x) => x !== v));
+    else onType([...activeType, v]);
+  };
+  const toggleScene = (v: VenueScene) => {
+    if (activeScene.includes(v)) onScene(activeScene.filter((x) => x !== v));
+    else onScene([...activeScene, v]);
+  };
+
+  const filterCount =
+    activeDn.length +
+    activeType.length +
+    activeScene.length +
+    (onlyVolgend ? 1 : 0);
+
+  const onClearAll = () => {
+    onDn([]);
+    onType([]);
+    onScene([]);
+    onVolgend(false);
+  };
+
+  const onSave = () => {
+    const name = saveName.trim();
+    if (name.length === 0) return;
+    addSaved({
+      name,
+      dn: activeDn,
+      type: activeType,
+      sc: activeScene,
+      vo: onlyVolgend,
+      q: query,
+    });
+    setSaveOpen(false);
+    setSaveName('');
+    onClose();
+  };
+
+  return (
+    <KeyboardAvoidingView
+      style={[styles.sheetRoot, { backgroundColor: roles.bg }]}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 60 : 0}
+    >
+      <View style={styles.sheetDragHandleWrap}>
+        <View
+          style={[
+            styles.sheetDragHandle,
+            { backgroundColor: roles.fgPlaceholder },
+          ]}
+        />
+      </View>
+      {Platform.OS !== 'ios' && (
+        <Pressable
+          onPress={onClose}
+          hitSlop={8}
+          style={[
+            styles.sheetCloseBtn,
+            { backgroundColor: isNacht ? palette.noir2 : palette.paper2 },
+          ]}
+        >
+          <Cross size={14} thickness={2.6} color={roles.fg} />
+        </Pressable>
+      )}
+      <View style={styles.sheetHead}>
+        <Text style={[styles.sheetTitle, { color: roles.fg }]}>Filter</Text>
+        <Text style={[styles.sheetLead, { color: roles.fgMuted }]}>
+          Combineer dag/nacht, type, scene en volg-status. Sla 'm op om de
+          combinatie als chip te bewaren.
+        </Text>
+      </View>
+
+      <ScrollView
+        style={styles.sheetScroll}
+        contentContainerStyle={styles.sheetScrollContent}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
+        <Text style={[styles.sheetSectionHead, { color: roles.fgMuted }]}>
+          Dag of Nacht
+        </Text>
+        <View style={styles.sheetWrap}>
+          {DAYNIGHT_CHIPS.map((c) => (
+            <FilterChip
+              key={c.value}
+              label={c.label}
+              active={activeDn.includes(c.value)}
+              onPress={() => toggleDn(c.value)}
+            />
+          ))}
+        </View>
+
+        <Text
+          style={[
+            styles.sheetSectionHead,
+            { color: roles.fgMuted, marginTop: 22 },
+          ]}
+        >
+          Type
+        </Text>
+        <View style={styles.sheetWrap}>
+          {TYPE_CHIPS.map((c) => (
+            <FilterChip
+              key={c.value}
+              label={c.label}
+              active={activeType.includes(c.value)}
+              onPress={() => toggleType(c.value)}
+            />
+          ))}
+        </View>
+
+        <Text
+          style={[
+            styles.sheetSectionHead,
+            { color: roles.fgMuted, marginTop: 22 },
+          ]}
+        >
+          Scene
+        </Text>
+        <View style={styles.sheetWrap}>
+          {SCENE_CHIPS.map((c) => (
+            <FilterChip
+              key={c.value}
+              label={c.label}
+              active={activeScene.includes(c.value)}
+              onPress={() => toggleScene(c.value)}
+            />
+          ))}
+        </View>
+
+        <Text
+          style={[
+            styles.sheetSectionHead,
+            { color: roles.fgMuted, marginTop: 22 },
+          ]}
+        >
+          Volg-status
+        </Text>
+        <View style={styles.sheetWrap}>
+          <FilterChip
+            label="Alleen wat ik volg"
+            active={onlyVolgend}
+            onPress={() => onVolgend(!onlyVolgend)}
+          />
+        </View>
+      </ScrollView>
+
+      {saveOpen ? (
+        <View
+          style={[
+            styles.sheetFooter,
+            { borderTopColor: roles.bgChip, paddingBottom: 16 },
+          ]}
+        >
+          <Pressable
+            onPress={() => {
+              setSaveOpen(false);
+              setSaveName('');
+            }}
+            style={[styles.sheetClearBtn, { borderColor: roles.bgChip }]}
+          >
+            <Text style={[styles.sheetClearText, { color: roles.fgMuted }]}>
+              Annuleer
+            </Text>
+          </Pressable>
+          <View
+            style={[
+              styles.saveInputWrap,
+              {
+                backgroundColor: isNacht ? palette.noir2 : palette.paper2,
+                borderColor: roles.bgChip,
+              },
+            ]}
+          >
+            <TextInput
+              value={saveName}
+              onChangeText={setSaveName}
+              placeholder="Naam (bv. Galeries Oost)"
+              placeholderTextColor={roles.fgPlaceholder}
+              autoFocus
+              returnKeyType="done"
+              onSubmitEditing={onSave}
+              style={[styles.saveInput, { color: roles.fg }]}
+              maxLength={28}
+            />
+          </View>
+          <Pressable
+            onPress={onSave}
+            disabled={saveName.trim().length === 0}
+            style={[
+              styles.sheetDoneBtn,
+              {
+                backgroundColor: isNacht ? palette.acid : palette.red,
+                opacity: saveName.trim().length === 0 ? 0.4 : 1,
+                flex: 0.9,
+              },
+            ]}
+          >
+            <Text
+              style={[
+                styles.sheetDoneText,
+                { color: isNacht ? palette.noir : palette.paper3 },
+              ]}
+            >
+              Opslaan
+            </Text>
+          </Pressable>
+        </View>
+      ) : (
+        <View
+          style={[
+            styles.sheetFooter,
+            { borderTopColor: roles.bgChip, paddingBottom: 16 },
+          ]}
+        >
+          <Pressable
+            onPress={onClose}
+            style={[
+              styles.sheetDoneBtn,
+              { backgroundColor: isNacht ? palette.acid : palette.red },
+            ]}
+          >
+            <Text
+              style={[
+                styles.sheetDoneText,
+                { color: isNacht ? palette.noir : palette.paper3 },
+              ]}
+            >
+              Sluit
+            </Text>
+          </Pressable>
+          <Pressable
+            onPress={() => setSaveOpen(true)}
+            disabled={filterCount === 0}
+            style={[
+              styles.sheetClearBtn,
+              {
+                borderColor: roles.bgChip,
+                opacity: filterCount === 0 ? 0.4 : 1,
+                flexDirection: 'row',
+                gap: 6,
+              },
+            ]}
+          >
+            <Ionicons name="bookmark-outline" size={14} color={roles.fgMuted} />
+            <Text style={[styles.sheetClearText, { color: roles.fgMuted }]}>
+              Bewaar
+            </Text>
+          </Pressable>
+          <Pressable
+            onPress={onClearAll}
+            disabled={filterCount === 0}
+            style={[
+              styles.sheetClearBtn,
+              {
+                borderColor: roles.bgChip,
+                opacity: filterCount === 0 ? 0.4 : 1,
+              },
+            ]}
+          >
+            <Text style={[styles.sheetClearText, { color: roles.fgMuted }]}>
+              Wis filters
+            </Text>
+          </Pressable>
+        </View>
+      )}
+    </KeyboardAvoidingView>
+  );
+}
+
+function FilterChip({
   label,
   active,
   onPress,
@@ -491,13 +998,9 @@ function CatChip({
     <Pressable
       onPress={onPress}
       style={[
-        styles.catChip,
+        styles.filterChip,
         {
-          borderColor: active
-            ? roles.fg
-            : isNacht
-              ? '#2a2a2d'
-              : palette.paper,
+          borderColor: active ? roles.fg : roles.bgChip,
           backgroundColor: active
             ? roles.fg
             : isNacht
@@ -508,8 +1011,8 @@ function CatChip({
     >
       <Text
         style={[
-          styles.catChipText,
-          { color: active ? roles.bg : roles.fgMuted },
+          styles.filterChipText,
+          { color: active ? roles.bg : roles.fg },
         ]}
       >
         {label}
@@ -660,6 +1163,19 @@ const styles = StyleSheet.create({
     letterSpacing: 0.9,
     textTransform: 'uppercase',
   },
+  subtypeTag: {
+    height: 24,
+    paddingHorizontal: 10,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  subtypeTagText: {
+    fontFamily: fontFamily.mono,
+    fontSize: 9,
+    letterSpacing: 0.9,
+    textTransform: 'uppercase',
+  },
 
   // Series-sectie — horizontale rij kaarten boven de chip-row.
   seriesSection: {
@@ -725,5 +1241,124 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 4,
+  },
+
+  // Filter-sheet — zelfde design als de Agenda-sheet.
+  sheetRoot: { flex: 1 },
+  sheetDragHandleWrap: {
+    alignItems: 'center',
+    paddingTop: 8,
+    paddingBottom: 8,
+  },
+  sheetDragHandle: {
+    width: 44,
+    height: 5,
+    borderRadius: 2.5,
+    opacity: 0.6,
+  },
+  sheetCloseBtn: {
+    position: 'absolute',
+    top: 16,
+    right: 16,
+    width: 36,
+    height: 36,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sheetHead: {
+    paddingHorizontal: 22,
+    paddingTop: 16,
+    paddingBottom: 14,
+  },
+  sheetTitle: {
+    fontFamily: fontFamily.display,
+    fontSize: 24,
+    lineHeight: 24 * 1.05,
+    letterSpacing: -0.6,
+  },
+  sheetLead: {
+    fontFamily: fontFamily.body,
+    fontSize: 14,
+    lineHeight: 20,
+    marginTop: 6,
+  },
+  sheetScroll: { flex: 1 },
+  sheetScrollContent: {
+    paddingHorizontal: 22,
+    paddingBottom: 24,
+  },
+  sheetSectionHead: {
+    fontFamily: fontFamily.mono,
+    fontSize: 11,
+    letterSpacing: 1.6,
+    textTransform: 'uppercase',
+    marginBottom: 10,
+  },
+  sheetWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  filterChip: {
+    minHeight: 38,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 999,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  filterChipText: {
+    fontFamily: fontFamily.medium,
+    fontSize: 13,
+    letterSpacing: -0.13,
+  },
+  sheetFooter: {
+    flexDirection: 'row',
+    gap: 10,
+    paddingHorizontal: 22,
+    paddingTop: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  sheetClearBtn: {
+    flex: 1,
+    height: 48,
+    borderRadius: 999,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sheetClearText: {
+    fontFamily: fontFamily.medium,
+    fontSize: 14,
+    letterSpacing: -0.14,
+  },
+  sheetDoneBtn: {
+    flex: 1.4,
+    height: 48,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sheetDoneText: {
+    fontFamily: fontFamily.medium,
+    fontSize: 14,
+    letterSpacing: -0.14,
+  },
+  saveInputWrap: {
+    flex: 1.4,
+    height: 48,
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    justifyContent: 'center',
+  },
+  saveInput: {
+    fontFamily: fontFamily.medium,
+    fontSize: 14,
+    letterSpacing: -0.14,
+    padding: 0,
+    margin: 0,
   },
 });

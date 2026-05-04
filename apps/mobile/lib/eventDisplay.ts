@@ -1,4 +1,4 @@
-import type { ApiEvent } from '@/lib/api';
+import type { ApiEvent, VenueType } from '@/lib/api';
 import type { BadgeTone } from '@/mocks/feed';
 
 /**
@@ -8,9 +8,16 @@ import type { BadgeTone } from '@/mocks/feed';
 
 export const DOW_NL_UPPER = ['ZO', 'MA', 'DI', 'WO', 'DO', 'VR', 'ZA'] as const;
 export const DOW_NL_MIXED = ['Zo', 'Ma', 'Di', 'Wo', 'Do', 'Vr', 'Za'] as const;
+export const DOW_NL_FULL = [
+  'Zondag', 'Maandag', 'Dinsdag', 'Woensdag', 'Donderdag', 'Vrijdag', 'Zaterdag',
+] as const;
 export const MONTHS_NL = [
   'JAN', 'FEB', 'MRT', 'APR', 'MEI', 'JUN',
   'JUL', 'AUG', 'SEP', 'OKT', 'NOV', 'DEC',
+] as const;
+export const MONTHS_NL_FULL = [
+  'januari', 'februari', 'maart', 'april', 'mei', 'juni',
+  'juli', 'augustus', 'september', 'oktober', 'november', 'december',
 ] as const;
 
 export const CATEGORY_TICK: Record<ApiEvent['category'], BadgeTone> = {
@@ -18,6 +25,19 @@ export const CATEGORY_TICK: Record<ApiEvent['category'], BadgeTone> = {
   Theater: 'flare',
   Literatuur: 'plum',
   Film: 'azure',
+};
+
+/** Tone per venue-type — zelfde 4 brand-tones als event-categorieën,
+ *  gemapt zodat verwante types een logische kleur delen (bv. boekhandel
+ *  & Literatuur = plum; club & Muziek = acid). */
+export const VENUE_TYPE_TICK: Record<VenueType, BadgeTone> = {
+  podium: 'acid',
+  club: 'flare',
+  galerie: 'plum',
+  museum: 'azure',
+  film: 'azure',
+  ruimte: 'flare',
+  'boekhandel-cafe': 'plum',
 };
 
 export const CATEGORY_DOT: Record<ApiEvent['category'], string> = {
@@ -146,6 +166,30 @@ export function socialWindow(mode: 'nacht' | 'dag'): SocialWindow {
     refDate,
     shifted,
   };
+}
+
+// ─── Tijdsblokken voor de Agenda-filter ──────────────────────────────
+// Vier vaste blokken die los staan van de app-modus (nacht/dag).
+// Multi-select: de gebruiker kan bv. "Avond + Nacht" tegelijk kiezen.
+
+export type TimeBlock = 'ochtend' | 'middag' | 'avond' | 'nacht';
+
+export const TIME_BLOCKS: {
+  id: TimeBlock;
+  label: string;
+  range: string;
+}[] = [
+  { id: 'ochtend', label: 'Ochtend', range: '06–12' },
+  { id: 'middag', label: 'Middag', range: '12–18' },
+  { id: 'avond', label: 'Avond', range: '18–23' },
+  { id: 'nacht', label: 'Nacht', range: '23–06' },
+];
+
+export function getTimeBlock(hour: number): TimeBlock {
+  if (hour >= 6 && hour < 12) return 'ochtend';
+  if (hour >= 12 && hour < 18) return 'middag';
+  if (hour >= 18 && hour < 23) return 'avond';
+  return 'nacht';
 }
 
 export function formatTime(iso: string): string {

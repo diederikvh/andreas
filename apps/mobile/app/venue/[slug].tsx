@@ -33,6 +33,7 @@ import {
   CATEGORY_TICK,
   DOW_NL_MIXED,
   MONTHS_NL,
+  VENUE_TYPE_TICK,
   formatTime,
 } from '@/lib/eventDisplay';
 import { useSession } from '@/lib/authClient';
@@ -85,6 +86,7 @@ export default function VenueDetail() {
   }
 
   const { venue, events } = data;
+  const hasAddress = venue.address.trim().length > 0;
   const [addrLine1, ...rest] = venue.address.split(',');
   const addrLine2 = rest.join(',').trim();
 
@@ -142,45 +144,184 @@ export default function VenueDetail() {
         </View>
 
         <View style={[styles.body, { backgroundColor: roles.bg }]}>
-          <View
-            style={[
-              styles.addr,
-              { borderColor: isNacht ? '#1f1f23' : palette.paper },
-            ]}
-          >
-            <Text style={[styles.addrLine, { color: roles.fgRead }]}>
-              {addrLine1}
-            </Text>
-            {addrLine2.length > 0 && (
-              <Text style={[styles.addrLine, { color: roles.fgRead }]}>
-                {addrLine2}
-              </Text>
-            )}
-          </View>
-
-          <Pressable
-            onPress={() => openMaps(venue.name, venue.lat, venue.lng)}
-            style={[
-              styles.actionPrimary,
-              {
-                backgroundColor: isNacht ? palette.acid : palette.red,
-              },
-            ]}
-          >
-            <Ionicons
-              name="navigate-outline"
-              size={16}
-              color={isNacht ? palette.noir : palette.paper3}
-            />
-            <Text
+          {(venue.type ||
+            venue.dayNight ||
+            venue.wijk ||
+            venue.scene ||
+            venue.capacity ||
+            (venue.subtype ?? []).length > 0) && (
+            <View style={styles.metaPills}>
+              {venue.type && (() => {
+                const toneKey = VENUE_TYPE_TICK[venue.type];
+                const tone =
+                  isNacht
+                    ? toneKey === 'acid'
+                      ? palette.acid
+                      : toneKey === 'flare'
+                        ? palette.flare
+                        : toneKey === 'plum'
+                          ? palette.plum
+                          : palette.azure
+                    : toneKey === 'acid'
+                      ? palette.red
+                      : toneKey === 'flare'
+                        ? palette.forest
+                        : toneKey === 'plum'
+                          ? palette.cobalt
+                          : '#8a5b00';
+                return (
+                  <View
+                    style={[
+                      styles.metaPill,
+                      { backgroundColor: `${tone}30` },
+                    ]}
+                  >
+                    <Text style={[styles.metaPillText, { color: tone }]}>
+                      {venue.type}
+                    </Text>
+                  </View>
+                );
+              })()}
+              {venue.dayNight && (
+                <View
+                  style={[
+                    styles.metaPill,
+                    { backgroundColor: roles.bgTag },
+                  ]}
+                >
+                  <Ionicons
+                    name={
+                      venue.dayNight === 'day'
+                        ? 'sunny-outline'
+                        : venue.dayNight === 'night'
+                          ? 'moon-outline'
+                          : 'contrast-outline'
+                    }
+                    size={12}
+                    color={roles.fgMuted}
+                    style={{ marginRight: 4 }}
+                  />
+                  <Text style={[styles.metaPillText, { color: roles.fg }]}>
+                    {venue.dayNight === 'day'
+                      ? 'Dag'
+                      : venue.dayNight === 'night'
+                        ? 'Avond'
+                        : 'Beide'}
+                  </Text>
+                </View>
+              )}
+              {venue.wijk && (
+                <View
+                  style={[
+                    styles.metaPill,
+                    { backgroundColor: roles.bgTag },
+                  ]}
+                >
+                  <Text style={[styles.metaPillText, { color: roles.fg }]}>
+                    {venue.wijk}
+                  </Text>
+                </View>
+              )}
+              {venue.scene && (
+                <View
+                  style={[
+                    styles.metaPill,
+                    { backgroundColor: roles.bgTag },
+                  ]}
+                >
+                  <Text style={[styles.metaPillText, { color: roles.fg }]}>
+                    {venue.scene}
+                  </Text>
+                </View>
+              )}
+              {venue.capacity && (
+                <View
+                  style={[
+                    styles.metaPill,
+                    { backgroundColor: roles.bgTag },
+                  ]}
+                >
+                  <Text style={[styles.metaPillText, { color: roles.fg }]}>
+                    {venue.capacity}
+                  </Text>
+                </View>
+              )}
+              {(venue.subtype ?? []).map((s) => (
+                <View
+                  key={s}
+                  style={[
+                    styles.metaPill,
+                    { backgroundColor: roles.bgTag },
+                  ]}
+                >
+                  <Text style={[styles.metaPillText, { color: roles.fg }]}>
+                    {s}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          )}
+          {hasAddress && (
+            <View
               style={[
-                styles.actionPrimaryText,
-                { color: isNacht ? palette.noir : palette.paper3 },
+                styles.addr,
+                { borderColor: isNacht ? '#1f1f23' : palette.paper },
               ]}
             >
-              Route openen
-            </Text>
-          </Pressable>
+              <View style={styles.addrText}>
+                <Text style={[styles.addrLine, { color: roles.fgRead }]}>
+                  {addrLine1}
+                </Text>
+                {addrLine2.length > 0 && (
+                  <Text style={[styles.addrLine, { color: roles.fgRead }]}>
+                    {addrLine2}
+                  </Text>
+                )}
+              </View>
+              <View style={styles.addrActions}>
+                <Pressable
+                  onPress={() => openMaps(venue.name, venue.lat, venue.lng)}
+                  hitSlop={10}
+                  accessibilityLabel="Route openen"
+                  style={styles.addrMapBtn}
+                >
+                  <Ionicons
+                    name="map-outline"
+                    size={20}
+                    color={roles.fgMuted}
+                  />
+                </Pressable>
+                {venue.website && (
+                  <Pressable
+                    onPress={() => openWebsite(venue.website!)}
+                    hitSlop={10}
+                    accessibilityLabel="Website openen"
+                    style={styles.addrMapBtn}
+                  >
+                    <Ionicons
+                      name="globe-outline"
+                      size={20}
+                      color={roles.fgMuted}
+                    />
+                  </Pressable>
+                )}
+                {venue.instagram && (
+                  <Pressable
+                    onPress={() => openInstagram(venue.instagram!)}
+                    hitSlop={10}
+                    accessibilityLabel="Instagram openen"
+                    style={styles.addrMapBtn}
+                  >
+                    <Ionicons
+                      name="logo-instagram"
+                      size={20}
+                      color={roles.fgMuted}
+                    />
+                  </Pressable>
+                )}
+              </View>
+            </View>
+          )}
 
           {venue.description && (
             <Text style={[styles.desc, { color: roles.fgRead }]}>
@@ -189,45 +330,45 @@ export default function VenueDetail() {
           )}
         </View>
 
-        {data.series && data.series.length > 0 && (
-          <View style={styles.seriesBar}>
-            <Text style={[styles.seriesBarLabel, { color: roles.fgMuted }]}>
-              Hier speelt
-            </Text>
-            <View style={styles.seriesBarChips}>
-              {data.series.map((s) => (
-                <Pressable
-                  key={s.id}
-                  onPress={() => router.push(`/series/${s.slug}` as never)}
-                  style={[
-                    styles.seriesChip,
-                    { borderColor: roles.accent },
-                  ]}
-                >
-                  <Text style={[styles.seriesChipText, { color: roles.fg }]}>
-                    {s.name}
-                  </Text>
-                </Pressable>
-              ))}
+        {(events.length > 0 || (data.series && data.series.length > 0)) && (
+          <>
+            <View style={styles.progHead}>
+              <Text style={[styles.progLabel, { color: roles.fg }]}>Programma</Text>
             </View>
-          </View>
-        )}
 
-        <View style={styles.progHead}>
-          <Text style={[styles.progLabel, { color: roles.fg }]}>Programma</Text>
-          <Text style={[styles.progCount, { color: roles.fgMuted }]}>
-            {events.length} komend
-          </Text>
-        </View>
+            {data.series && data.series.length > 0 && (
+              <View style={styles.seriesPillStack}>
+                {data.series.map((s) => (
+                  <Pressable
+                    key={s.id}
+                    onPress={() => router.push(`/series/${s.slug}` as never)}
+                    style={[
+                      styles.seriesPill,
+                      { borderColor: isNacht ? '#2a2a2e' : palette.paper },
+                    ]}
+                  >
+                    <Ionicons name="layers-outline" size={20} color={roles.fg} />
+                    <Text
+                      style={[styles.seriesPillName, { color: roles.fg }]}
+                      numberOfLines={1}
+                    >
+                      {s.name}
+                    </Text>
+                    <Text
+                      style={[styles.seriesChev, { color: roles.fgPlaceholder }]}
+                    >
+                      ›
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+            )}
 
-        {events.length === 0 && (
-          <Text style={[styles.progEmpty, { color: roles.fgMuted }]}>
-            Niets aangekondigd voor de komende periode.
-          </Text>
+            {events.map((e) => (
+              <ProgramRow key={e.id} event={e} />
+            ))}
+          </>
         )}
-        {events.map((e) => (
-          <ProgramRow key={e.id} event={e} />
-        ))}
       </Animated.ScrollView>
 
       {/* Top bar */}
@@ -588,6 +729,27 @@ function VenueFallback({
   );
 }
 
+function openWebsite(url: string) {
+  const finalUrl = url.startsWith('http') ? url : `https://${url}`;
+  Haptics.selectionAsync();
+  Linking.openURL(finalUrl).catch(() => {
+    /* niet-openbare URL of geen browser */
+  });
+}
+
+function openInstagram(handle: string) {
+  const clean = handle.replace(/^@+/, '');
+  Haptics.selectionAsync();
+  // Probeer eerst de Instagram-app via deeplink; fall back op web.
+  const app = `instagram://user?username=${encodeURIComponent(clean)}`;
+  const web = `https://www.instagram.com/${encodeURIComponent(clean)}`;
+  Linking.openURL(app).catch(() => {
+    Linking.openURL(web).catch(() => {
+      /* geen Instagram + geen browser */
+    });
+  });
+}
+
 function openMaps(name: string, lat: number, lng: number) {
   // Apple Maps op iOS, Google Maps elders. Beide formaten worden door de
   // andere ook geaccepteerd, maar dit is wat het OS native opent.
@@ -742,31 +904,31 @@ const styles = StyleSheet.create({
 
   // Address
   addr: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
     paddingTop: 12,
     paddingBottom: 14,
     borderTopWidth: 1,
     borderBottomWidth: 1,
   },
+  addrText: { flex: 1, minWidth: 0 },
   addrLine: {
     fontFamily: fontFamily.medium,
     fontSize: 14,
     letterSpacing: -0.21,
     lineHeight: 20,
   },
-
-  // Action button
-  actionPrimary: {
+  addrActions: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingVertical: 13,
-    borderRadius: 999,
+    gap: 4,
   },
-  actionPrimaryText: {
-    fontFamily: fontFamily.medium,
-    fontSize: 14.5,
-    letterSpacing: -0.07,
+  addrMapBtn: {
+    width: 36,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 
   desc: {
@@ -776,62 +938,90 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
 
-  // Series-bar — chips voor series die in deze venue spelen, tussen de
-  // body en het programma.
-  seriesBar: {
-    paddingHorizontal: 22,
-    paddingTop: 6,
-    paddingBottom: 4,
-    gap: 8,
-  },
-  seriesBarLabel: {
-    fontFamily: fontFamily.mono,
-    fontSize: 10,
-    letterSpacing: 1,
-    textTransform: 'uppercase',
-  },
-  seriesBarChips: {
+  // Meta-pills (type / dayNight / wijk) boven het adres. Hoofd-tag
+  // (type) krijgt tone-tinted bg, dayNight + wijk gebruiken bgChip
+  // — zelfde lettertype overal voor visuele consistentie met de
+  // sub-labels eronder.
+  metaPills: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 6,
+    marginBottom: 6,
   },
-  seriesChip: {
-    paddingHorizontal: 11,
-    paddingVertical: 6,
-    borderRadius: 999,
-    borderWidth: 1,
-  },
-  seriesChipText: {
-    fontFamily: fontFamily.medium,
-    fontSize: 12,
-    letterSpacing: -0.1,
-  },
-
-  // Programma header — outside the body padding, matches Agenda inset.
-  progHead: {
+  metaPill: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'baseline',
-    paddingHorizontal: 22,
-    paddingTop: 14,
-    paddingBottom: 6,
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
   },
-  progLabel: {
-    fontFamily: fontFamily.bold,
-    fontSize: 12,
-    letterSpacing: 0.5,
-    textTransform: 'uppercase',
-  },
-  progCount: {
+  metaPillText: {
     fontFamily: fontFamily.mono,
     fontSize: 10,
-    letterSpacing: 1,
+    letterSpacing: 0.9,
     textTransform: 'uppercase',
   },
-  progEmpty: {
+
+  // Subtype-tags onder beschrijving — neutraal, zelfde shape als
+  // metaPill maar met `bgChip` background.
+  subtypeRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginTop: 4,
+  },
+  subtypeTag: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
+  },
+  subtypeTagText: {
     fontFamily: fontFamily.mono,
-    fontSize: 11,
-    letterSpacing: 0.6,
+    fontSize: 10,
+    letterSpacing: 0.9,
+    textTransform: 'uppercase',
+  },
+
+  // Series-pills — full-width tappable rij naar de serie-pagina,
+  // zelfde stijl als de seriesPill op event-detail.
+  seriesPillStack: {
+    gap: 8,
+    paddingHorizontal: 22,
+    paddingBottom: 10,
+  },
+  seriesPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 13,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  seriesPillName: {
+    flex: 1,
+    fontFamily: fontFamily.medium,
+    fontSize: 14.5,
+    letterSpacing: -0.07,
+  },
+  seriesChev: { fontFamily: fontFamily.mono, fontSize: 14 },
+
+  // Programma header — display-stijl, zelfde als sub-koppen op event-detail.
+  progHead: {
+    paddingHorizontal: 22,
+    paddingTop: 18,
+    paddingBottom: 10,
+  },
+  progLabel: {
+    fontFamily: fontFamily.display,
+    fontSize: 18,
+    lineHeight: 18,
+    letterSpacing: -0.36,
+  },
+  progEmpty: {
+    fontFamily: fontFamily.body,
+    fontSize: 14.5,
+    lineHeight: 20.8,
     paddingHorizontal: 22,
     paddingVertical: 12,
   },

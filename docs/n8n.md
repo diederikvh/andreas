@@ -74,6 +74,7 @@ DELETE /venues/:id
   "description": "Pop-tempel in een oud kerkgebouw.",
   "imageUrl": "https://andreas-x.b-cdn.net/media/venues/...jpg",
   "categories": ["Muziek", "Film"],
+  "priceNote": "lidmaatschap vereist",  // optioneel — default voor alle events op deze venue
   "published": true
 }
 ```
@@ -111,6 +112,8 @@ DELETE /events/:id
   "imageUrl": "https://andreas-x.b-cdn.net/media/events/...jpg",
   "ticketUrl": "https://paradiso.nl/...",
   "priceCents": 3250,                                // 0 = "Gratis", null = "—"
+  "priceNote": "lidmaatschap vereist",               // optioneel — overschrijft venues.priceNote
+  "genres": ["techno", "house"],                     // 0–3 vrije strings, lowercase
   "featured": false,                                 // editorial-pick voor Avond
   "published": true
 }
@@ -122,6 +125,31 @@ DELETE /events/:id
 - **`priceCents`** is een int: `1250` = €12,50. `null` (of weglaten) toont "—" in de app.
 - **`featured`** alleen aanzetten als de curator deze wil pinnen op de Avond-tab. Beperk tot ~3-5 actieve featured events tegelijk.
 - **Onbekende venue?** `400` met `venue X bestaat niet` — zorg dat je flow eerst venues seedt.
+
+### Prijs-noot
+
+Onder de prijs op event-detail kan een korte vrije tekst staan (bv. "lidmaatschap vereist", "pay-what-you-can aan de deur"). Geen tekst → niets onder de prijs.
+
+Resolutie:
+1. `events.priceNote` (per-event) — wint als gevuld.
+2. anders `venues.priceNote` (default voor de venue).
+3. anders niets.
+
+Best practice: zet de noot op de venue als hij voor álle events daar geldt (Paradiso → "lidmaatschap vereist"). Gebruik `events.priceNote` alleen voor uitzonderingen (bv. een gratis showcase in een betaalde venue → `priceNote: "gratis — alleen vanavond"`). Houd het kort, max ~40 tekens, zonder hoofdletter, geen punt aan het eind. Het verschijnt in mono-stijl onder de prijs.
+
+### Genres — best practice
+
+`genres` is een array van vrije strings. Geen enum, geen vaste lijst — maar kies bewust, want de filter in de app groepeert ze per categorie.
+
+- **Lowercase, geen spaties**: `hip-hop` ipv `Hip Hop`, `drum-en-bass` ipv `Drum & Bass`. Hyphens als scheidingsteken.
+- **1–3 genres per event** — meer wordt geruis. Eerste genre staat als label op de event-rij (naast de categorie-tag), de rest is alleen zichtbaar op event-detail en in de filter.
+- **Categorie-bewust** — kies genres die passen bij `category`. De filter scheidt ze visueel per categorie, dus `techno` op een Theater-event is verwarrend.
+  - **Muziek**: `techno`, `house`, `hip-hop`, `r-en-b`, `jazz`, `klassiek`, `ambient`, `drum-en-bass`, `pop`, `rock`, `indie`, `experimenteel`, `wereld`, `disco`, `gabber`.
+  - **Theater**: `drama`, `dans`, `cabaret`, `performance`, `kindertheater`, `improvisatie`, `mime`.
+  - **Film**: `arthouse`, `documentaire`, `horror`, `sci-fi`, `klassiek`, `kortfilm`, `animatie`.
+  - **Literatuur**: `poëzie`, `roman`, `essay`, `lezing`, `slam`, `non-fictie`.
+  - **Kunst/galerie/museum** (gebruikt category `Theater` of via venues): `schilderkunst`, `fotografie`, `conceptueel`, `sculptuur`, `video-art`, `installatie`.
+- **Distinct endpoint**: `GET /events/genres` retourneert alle gebruikte genres met counts per categorie. Handig om te zien welke spelling je per ongeluk twee keer hebt (`hiphop` + `hip-hop` etc.).
 
 ---
 
@@ -253,6 +281,7 @@ curl -X POST $BASE/events -H "$H" -H "Content-Type: application/json" -d "{
   \"venueId\": \"paradiso\",
   \"startsAt\": \"2026-10-14T20:30:00+02:00\",
   \"category\": \"Muziek\",
+  \"genres\": [\"hip-hop\"],
   \"imageUrl\": \"$POSTER\",
   \"priceCents\": 3250,
   \"ticketUrl\": \"https://paradiso.nl/event/vince\"

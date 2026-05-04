@@ -45,6 +45,12 @@ const VALID_WIJKEN = new Set([
   'zuidoost',
   'nieuw-west',
 ]);
+const VALID_SCENES = new Set([
+  'mainstream',
+  'alternatief',
+  'underground',
+  'fringe',
+]);
 
 venuesRoute.get('/', async (c) => {
   const q = (c.req.query('q') ?? '').trim();
@@ -52,6 +58,7 @@ venuesRoute.get('/', async (c) => {
   const type = c.req.query('type');
   const dn = c.req.query('dayNight');
   const wijk = c.req.query('wijk');
+  const scene = c.req.query('scene');
 
   const conditions: SQL[] = [eq(schema.venues.published, true)];
   if (q.length > 0) {
@@ -93,6 +100,10 @@ venuesRoute.get('/', async (c) => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     conditions.push(eq(schema.venues.wijk, wijk as any));
   }
+  if (scene && VALID_SCENES.has(scene)) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    conditions.push(eq(schema.venues.scene, scene as any));
+  }
   const where = conditions.length > 0 ? and(...conditions) : undefined;
 
   const rows = await db
@@ -109,7 +120,12 @@ venuesRoute.get('/', async (c) => {
       type: schema.venues.type,
       dayNight: schema.venues.dayNight,
       wijk: schema.venues.wijk,
+      scene: schema.venues.scene,
+      capacity: schema.venues.capacity,
       subtype: schema.venues.subtype,
+      website: schema.venues.website,
+      instagram: schema.venues.instagram,
+      priceNote: schema.venues.priceNote,
     })
     .from(schema.venues)
     .where(where)
@@ -164,6 +180,7 @@ venuesRoute.get('/:slug', async (c) => {
       startsAt: schema.events.startsAt,
       endsAt: schema.events.endsAt,
       priceCents: schema.events.priceCents,
+      priceNote: schema.events.priceNote,
       ticketUrl: schema.events.ticketUrl,
       imageUrl: schema.events.imageUrl,
       category: schema.events.category,

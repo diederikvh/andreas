@@ -2,7 +2,7 @@
 
 Live status van het project. Cross-checken met `HANDOFF.md` voor de oorspronkelijke briefing en met de huidige codebase voor de waarheid. Per open punt staat genoeg context om een agent zelfstandig te laten werken.
 
-Laatste sync: 2026-05-03 · branch `main`.
+Laatste sync: 2026-05-04 · branch `main`.
 
 ## Stand
 
@@ -55,8 +55,9 @@ Laatste sync: 2026-05-03 · branch `main`.
 
 **App-features**:
 2. **Push notificaties** — `expo-notifications` + Apple Push Key (al via EAS gegenereerd) + server endpoint dat tokens registreert + verstuurt bij invite-accept, friend-request, etc.
-3. **Niet-leden uitnodigen — token-flow** (zie `## Toekomstige slice` hieronder voor design).
-4. **Dynamic app-icon (iOS)** — `expo-alternate-app-icons` plugin + JS-call vanuit `useMode()` om het home-screen-icoon mee te laten kleuren met nacht/dag. Vereist native rebuild + brengt iOS-systeem-popup bij elke wissel. Optioneel.
+3. **Pull-to-refresh + cache-verloop** — drag-to-refresh op Avond, Agenda en (potentieel) Venue-detail via `RefreshControl` op de scrollviews → `queryClient.invalidateQueries` op de bijbehorende keys. Plus auto-invalidate van Avond + Agenda wanneer de gebruiker terugkeert naar de tab en de cache stale is volgens onze tijdregels: ouder dan 1 uur, of er is een dag-grens (00:00) of avond-grens (17:00) gepasseerd sinds de laatste fetch. Implementatie-richting: TanStack `staleTime` standaard infinite houden + custom `useFocusEffect`-hook die `dataUpdatedAt` vergelijkt met `Date.now()` + de drempels en zo nodig refetcht. Avond gebruikt al `socialWindow(mode)`, dus de query-key kantelt automatisch bij modus-switch — de tijd-trigger moet dat doen op pure tijd-passering zonder modus-switch.
+4. **Niet-leden uitnodigen — token-flow** (zie `## Toekomstige slice` hieronder voor design).
+5. **Dynamic app-icon (iOS)** — `expo-alternate-app-icons` plugin + JS-call vanuit `useMode()` om het home-screen-icoon mee te laten kleuren met nacht/dag. Vereist native rebuild + brengt iOS-systeem-popup bij elke wissel. Optioneel.
 
 ---
 

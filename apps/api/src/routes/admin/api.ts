@@ -43,12 +43,28 @@ const WIJKEN = [
 ] as const;
 type Wijk = (typeof WIJKEN)[number];
 
+const SCENES = ['mainstream', 'alternatief', 'underground', 'fringe'] as const;
+type Scene = (typeof SCENES)[number];
+
+const CAPACITIES = ['klein', 'middel', 'groot', 'xl'] as const;
+type Capacity = (typeof CAPACITIES)[number];
+
 function parseEnum<T extends string>(
   list: readonly T[],
   value: unknown
 ): T | null {
   if (typeof value !== 'string') return null;
   return (list as readonly string[]).includes(value) ? (value as T) : null;
+}
+
+/** Strip @ en whitespace, returnt alleen de bare handle. */
+function normalizeInstagram(value: string): string {
+  return value
+    .trim()
+    .replace(/^@+/, '')
+    .replace(/^https?:\/\/(www\.)?instagram\.com\//i, '')
+    .replace(/\/.*$/, '')
+    .trim();
 }
 
 function parseStringArray(value: unknown): string[] {
@@ -225,8 +241,10 @@ adminApi.post('/events', async (c) => {
         imageUrl: body.imageUrl ? String(body.imageUrl) : null,
         ticketUrl: body.ticketUrl ? String(body.ticketUrl) : null,
         priceCents: body.priceCents != null ? Number(body.priceCents) : null,
+        priceNote: body.priceNote ? String(body.priceNote).trim() || null : null,
         category: parseCategoryOne(body.category),
         featured: Boolean(body.featured),
+        genres: parseStringArray(body.genres),
         published: body.published == null ? true : Boolean(body.published),
       })
       .returning();
@@ -264,8 +282,10 @@ adminApi.patch('/events/:id', async (c) => {
   if ('imageUrl' in body) updates.imageUrl = body.imageUrl ? String(body.imageUrl) : null;
   if ('ticketUrl' in body) updates.ticketUrl = body.ticketUrl ? String(body.ticketUrl) : null;
   if ('priceCents' in body) updates.priceCents = body.priceCents != null ? Number(body.priceCents) : null;
+  if ('priceNote' in body) updates.priceNote = body.priceNote ? String(body.priceNote).trim() || null : null;
   if ('category' in body) updates.category = parseCategoryOne(body.category);
   if ('featured' in body) updates.featured = Boolean(body.featured);
+  if ('genres' in body) updates.genres = parseStringArray(body.genres);
   if ('published' in body) updates.published = Boolean(body.published);
 
   if (Object.keys(updates).length === 0) {
@@ -319,7 +339,12 @@ adminApi.post('/venues', async (c) => {
         type: parseEnum(VENUE_TYPES, body.type) ?? undefined,
         dayNight: parseEnum(DAY_NIGHT, body.dayNight) ?? undefined,
         wijk: parseEnum(WIJKEN, body.wijk) ?? undefined,
+        scene: parseEnum(SCENES, body.scene) ?? undefined,
+        capacity: parseEnum(CAPACITIES, body.capacity) ?? undefined,
         subtype: parseStringArray(body.subtype),
+        website: body.website ? String(body.website) : null,
+        instagram: body.instagram ? normalizeInstagram(String(body.instagram)) : null,
+        priceNote: body.priceNote ? String(body.priceNote).trim() || null : null,
         published: body.published == null ? true : Boolean(body.published),
       })
       .returning();
@@ -356,7 +381,14 @@ adminApi.patch('/venues/:id', async (c) => {
   if ('type' in body) updates.type = parseEnum(VENUE_TYPES, body.type);
   if ('dayNight' in body) updates.dayNight = parseEnum(DAY_NIGHT, body.dayNight);
   if ('wijk' in body) updates.wijk = parseEnum(WIJKEN, body.wijk);
+  if ('scene' in body) updates.scene = parseEnum(SCENES, body.scene);
+  if ('capacity' in body) updates.capacity = parseEnum(CAPACITIES, body.capacity);
   if ('subtype' in body) updates.subtype = parseStringArray(body.subtype);
+  if ('website' in body) updates.website = body.website ? String(body.website) : null;
+  if ('instagram' in body)
+    updates.instagram = body.instagram ? normalizeInstagram(String(body.instagram)) : null;
+  if ('priceNote' in body)
+    updates.priceNote = body.priceNote ? String(body.priceNote).trim() || null : null;
   if ('published' in body) updates.published = Boolean(body.published);
   if (Object.keys(updates).length === 0) {
     return c.json({ error: 'geen velden om te updaten' }, 400);

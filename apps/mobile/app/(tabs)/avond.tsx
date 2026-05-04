@@ -348,6 +348,7 @@ function ApiEventRow({ event }: { event: ApiEvent }) {
       venue={formatMeta(event)}
       tags={[{ label: event.category, tone: CATEGORY_TICK[event.category] }]}
       seriesLabel={event.series?.[0]?.name}
+      genreLabel={event.genres?.[0]}
       friends={friends && friends.length > 0 ? friends : undefined}
       tick={CATEGORY_TICK[event.category]}
       onPress={() => router.push(`/event/${event.id}`)}

@@ -24,6 +24,8 @@ export type ApiEvent = {
   startsAt: string;
   endsAt: string | null;
   priceCents: number | null;
+  /** Vrije korte noot bij de prijs. Overschrijft venue.priceNote. */
+  priceNote?: string | null;
   ticketUrl: string | null;
   imageUrl: string | null;
   category: 'Muziek' | 'Theater' | 'Literatuur' | 'Film';
@@ -37,6 +39,8 @@ export type ApiEvent = {
     lng: number;
     description?: string | null;
     imageUrl?: string | null;
+    /** Default priceNote vanuit venue (bv. "lidmaatschap vereist"). */
+    priceNote?: string | null;
   };
   /** Tot 3 vrienden die dit event ook hebben opgeslagen. */
   friendsSaved?: ApiFriendBadge[];
@@ -48,6 +52,15 @@ export type ApiEvent = {
   venueFollowed?: boolean;
   /** Series waar dit event onderdeel van is (bv. ADE, Lenteballet). */
   series?: ApiSeriesBadge[];
+  /** Specifieke genres binnen `category` (techno/hip-hop/jazz/etc).
+      Vrije array. Filter scheidt clientside per categorie. */
+  genres?: string[];
+};
+
+export type ApiGenreBucket = {
+  genre: string;
+  category: ApiEvent['category'];
+  count: number;
 };
 
 export type ApiSeriesBadge = {
@@ -72,6 +85,8 @@ export type EventsFilter = {
   to?: string;
   category?: ApiEvent['category'];
   q?: string;
+  /** Multi-select OR-filter — events met minstens één van deze genres. */
+  genres?: string[];
   limit?: number;
 };
 
@@ -90,6 +105,9 @@ export async function getEvents(filter: EventsFilter = {}): Promise<ApiEvent[]> 
   if (filter.to) params.set('to', filter.to);
   if (filter.category) params.set('category', filter.category);
   if (filter.q && filter.q.trim().length > 0) params.set('q', filter.q.trim());
+  if (filter.genres && filter.genres.length > 0) {
+    for (const g of filter.genres) params.append('genre', g);
+  }
   if (filter.limit) params.set('limit', String(filter.limit));
   const qs = params.toString();
   // authedRequest stuurt de bearer mee als die er is, anders niet —
@@ -104,6 +122,13 @@ export async function getEvents(filter: EventsFilter = {}): Promise<ApiEvent[]> 
 export async function getEvent(id: string): Promise<ApiEvent> {
   const { event } = await authedRequest<{ event: ApiEvent }>(`/events/${id}`);
   return event;
+}
+
+export async function getEventGenres(): Promise<ApiGenreBucket[]> {
+  const { genres } = await authedRequest<{ genres: ApiGenreBucket[] }>(
+    '/events/genres'
+  );
+  return genres;
 }
 
 export type VenueCategory = 'Muziek' | 'Theater' | 'Literatuur' | 'Film';
@@ -128,6 +153,14 @@ export type VenueWijk =
   | 'zuidoost'
   | 'nieuw-west';
 
+export type VenueScene =
+  | 'mainstream'
+  | 'alternatief'
+  | 'underground'
+  | 'fringe';
+
+export type VenueCapacity = 'klein' | 'middel' | 'groot' | 'xl';
+
 export type ApiVenue = {
   id: string;
   slug: string;
@@ -141,7 +174,11 @@ export type ApiVenue = {
   type: VenueType | null;
   dayNight: VenueDayNight | null;
   wijk: VenueWijk | null;
+  scene: VenueScene | null;
+  capacity: VenueCapacity | null;
   subtype: string[];
+  website: string | null;
+  instagram: string | null;
 };
 
 export type ApiVenueProgramItem = Omit<ApiEvent, 'venue'>;
@@ -170,6 +207,7 @@ export async function getVenues(input: {
   type?: VenueType;
   dayNight?: VenueDayNight;
   wijk?: VenueWijk;
+  scene?: VenueScene;
 } = {}): Promise<ApiVenueListItem[]> {
   const params = new URLSearchParams();
   if (input.q && input.q.trim().length > 0) params.set('q', input.q.trim());
@@ -177,6 +215,7 @@ export async function getVenues(input: {
   if (input.type) params.set('type', input.type);
   if (input.dayNight) params.set('dayNight', input.dayNight);
   if (input.wijk) params.set('wijk', input.wijk);
+  if (input.scene) params.set('scene', input.scene);
   const qs = params.toString();
   const { venues } = await authedRequest<{ venues: ApiVenueListItem[] }>(
     `/venues${qs ? `?${qs}` : ''}`

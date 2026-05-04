@@ -48,6 +48,11 @@ export const roles = {
     bg: palette.noir,
     bgLift: palette.noir2,
     bgChip: palette.noir3,
+    /** Softere chip-bg, gebruikt voor neutrale labels (subtype, series,
+        wijk-pills) zodat ze niet zwaarder ogen dan tone-tinted hoofd-
+        labels. In nacht: net lichter dan canvas, niet zo prominent als
+        bgChip. */
+    bgTag: palette.noir2,
     fg: palette.ink,
     fgRead: '#c8c8c2',
     fgMuted: palette.inkMuted,
@@ -67,6 +72,10 @@ export const roles = {
     bg: palette.paper3,
     bgLift: palette.paper2,
     bgChip: palette.paper,
+    /** Softere chip-bg voor neutrale labels — paper2 is lichter dan
+        bgChip (paper), past zachter op de cream canvas zonder te
+        verdwijnen. */
+    bgTag: palette.paper2,
     fg: palette.soil,
     fgRead: '#3d342a',
     fgMuted: palette.soilMuted,

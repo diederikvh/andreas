@@ -26,6 +26,7 @@ import {
   DOW_NL_MIXED,
   formatPrice,
   formatTime,
+  MONTHS_NL,
 } from '@/lib/eventDisplay';
 import { useEvent, useMySaves, useToggleSave } from '@/lib/queries';
 import { useMode, useRoles } from '@/store/mode';
@@ -138,6 +139,24 @@ export default function EventDetail() {
         </View>
 
         <View style={[styles.body, { backgroundColor: roles.bg }]}>
+          {event.genres && event.genres.length > 0 && (
+            <>
+              <View style={styles.genreRow}>
+                {event.genres.map((g) => (
+                  <View
+                    key={g}
+                    style={[styles.genrePill, { backgroundColor: roles.bgTag }]}
+                  >
+                    <Text style={[styles.genrePillText, { color: roles.fg }]}>
+                      {g}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+              <View style={[styles.divider, { backgroundColor: roles.bgChip }]} />
+            </>
+          )}
+
           <View style={styles.metaRow}>
             <MetaCell label="Datum" value={view.date} />
             <MetaCell label="Aanvang" value={view.time} />
@@ -148,37 +167,45 @@ export default function EventDetail() {
             />
           </View>
 
-          {event.series && event.series.length > 0 && (
-            <View style={styles.seriesRow}>
-              {event.series.map((s) => (
-                <Pressable
-                  key={s.id}
-                  onPress={() => router.push(`/series/${s.slug}` as never)}
-                  style={[
-                    styles.seriesPill,
-                    { borderColor: roles.accent },
-                  ]}
-                >
-                  <Text style={[styles.seriesPillLabel, { color: roles.fgMuted }]}>
-                    Onderdeel van
-                  </Text>
-                  <Text style={[styles.seriesPillName, { color: roles.fg }]}>
-                    {s.name}
-                  </Text>
-                  <Ionicons
-                    name="chevron-forward"
-                    size={14}
-                    color={roles.fgPlaceholder}
-                  />
-                </Pressable>
-              ))}
-            </View>
-          )}
-
           {view.description && (
             <Text style={[styles.bodyText, { color: roles.fgRead }]}>
               {view.description}
             </Text>
+          )}
+
+          {event.series && event.series.length > 0 && (
+            <>
+              <Text style={[styles.crewHeading, { color: roles.fg }]}>
+                Onderdeel van
+              </Text>
+              <View style={styles.seriesRow}>
+                {event.series.map((s) => (
+                  <Pressable
+                    key={s.id}
+                    onPress={() => router.push(`/series/${s.slug}` as never)}
+                    style={[
+                      styles.seriesPill,
+                      { borderColor: isNacht ? '#2a2a2e' : palette.paper },
+                    ]}
+                  >
+                    <Ionicons
+                      name="layers-outline"
+                      size={20}
+                      color={roles.fg}
+                    />
+                    <Text
+                      style={[styles.seriesPillName, { color: roles.fg }]}
+                      numberOfLines={1}
+                    >
+                      {s.name}
+                    </Text>
+                    <Text style={[styles.inviteChev, { color: roles.fgPlaceholder }]}>
+                      ›
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+            </>
           )}
 
           <Text style={[styles.crewHeading, { color: roles.fg }]}>
@@ -459,18 +486,26 @@ type ViewModel = {
 function toViewModel(event: ApiEvent): ViewModel {
   const d = new Date(event.startsAt);
   const dow = DOW_NL_MIXED[d.getDay()];
-  const day = String(d.getDate()).padStart(2, '0');
-  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = d.getDate();
+  const month = MONTHS_NL[d.getMonth()].toLowerCase();
+  // Resolutie: per-event-noot wint, anders venue-default, anders niets.
+  const priceNote =
+    (event.priceNote && event.priceNote.trim().length > 0
+      ? event.priceNote.trim()
+      : null) ??
+    (event.venue.priceNote && event.venue.priceNote.trim().length > 0
+      ? event.venue.priceNote.trim()
+      : null);
   return {
     tag: event.category,
     title: event.title,
-    date: `${dow} ${day}.${month}`,
+    date: `${dow} ${day} ${month}`,
     time: formatTime(event.startsAt),
     venue: event.venue.name,
     description: event.description,
     photo: event.imageUrl,
     price: formatPrice(event.priceCents),
-    priceNote: event.priceCents && event.priceCents > 0 ? 'incl. servicekosten' : null,
+    priceNote,
   };
 }
 
@@ -737,40 +772,59 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
 
+  genreRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginBottom: 14,
+  },
+  divider: {
+    height: StyleSheet.hairlineWidth,
+    marginBottom: 18,
+  },
+  genrePill: {
+    height: 26,
+    paddingHorizontal: 11,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  genrePillText: {
+    fontFamily: fontFamily.mono,
+    fontSize: 10,
+    letterSpacing: 0.9,
+    textTransform: 'uppercase',
+  },
+
   // Series-pill — "Onderdeel van [ADE]" tappable strook onder de meta
   // row. Stack als event in meerdere series zit.
   seriesRow: { gap: 8, marginBottom: 16 },
   seriesPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    gap: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 13,
     borderRadius: 8,
     borderWidth: 1,
-  },
-  seriesPillLabel: {
-    fontFamily: fontFamily.mono,
-    fontSize: 9,
-    letterSpacing: 0.9,
-    textTransform: 'uppercase',
   },
   seriesPillName: {
     flex: 1,
     fontFamily: fontFamily.medium,
-    fontSize: 14,
-    letterSpacing: -0.14,
+    fontSize: 14.5,
+    letterSpacing: -0.07,
   },
 
   // Crew heading — boven crew-block + invite-CTA, geeft duiding aan
-  // de namen-lijst die er anders uit het niets zou opduiken.
+  // de namen-lijst die er anders uit het niets zou opduiken. Zelfde
+  // stijl als de Programma-heading op venue-detail.
   crewHeading: {
     fontFamily: fontFamily.display,
-    fontSize: 22,
-    lineHeight: 22 * 1.0,
-    letterSpacing: -0.5,
+    fontSize: 18,
+    lineHeight: 18,
+    letterSpacing: -0.36,
     marginTop: 14,
-    marginBottom: 8,
+    marginBottom: 6,
   },
 
   // Crew-block — combineert vrienden die dit event hebben opgeslagen
@@ -857,7 +911,6 @@ const styles = StyleSheet.create({
     gap: 12,
     paddingHorizontal: 14,
     paddingVertical: 13,
-    marginTop: 10,
     borderRadius: 8,
     borderWidth: 1,
   },

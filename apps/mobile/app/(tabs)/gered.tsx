@@ -255,6 +255,7 @@ function SavedRow({
         venue={event.venue.name}
         tags={[{ label: event.category, tone }]}
         seriesLabel={event.series?.[0]?.name}
+        genreLabel={event.genres?.[0]}
         friends={friends && friends.length > 0 ? friends : undefined}
         tick={tone}
         onPress={() => router.push(`/event/${event.id}`)}

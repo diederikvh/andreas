@@ -1,4 +1,4 @@
-import { and, asc, eq, gte, ilike, inArray, lte, not, or, type SQL } from 'drizzle-orm';
+import { and, asc, count, desc, eq, gt, gte, ilike, inArray, lte, not, or, sql, type SQL } from 'drizzle-orm';
 import { Hono } from 'hono';
 
 import { db, schema } from '../db/index.js';
@@ -24,6 +24,8 @@ eventsRoute.get('/', async (c) => {
   const to = c.req.query('to');
   const category = c.req.query('category');
   const q = c.req.query('q');
+  // ?genre= kan herhaald worden voor multi-select OR-filter.
+  const genres = c.req.queries('genre') ?? [];
 
   const conditions: SQL[] = [
     eq(schema.events.published, true),
@@ -57,6 +59,15 @@ eventsRoute.get('/', async (c) => {
     const combined = or(matchTitle, matchVenue, matchDesc);
     if (combined) conditions.push(combined);
   }
+  if (genres.length > 0) {
+    // Postgres array-overlap: OR-logica over de geselecteerde genres.
+    conditions.push(
+      sql`${schema.events.genres} && ARRAY[${sql.join(
+        genres.map((g) => sql`${g}`),
+        sql`, `
+      )}]::text[]`
+    );
+  }
 
   // Blokken-filter: events bij venues die ik geblokkeerd heb komen
   // niet in de feed terecht. Anonieme requests zien alles.
@@ -78,10 +89,12 @@ eventsRoute.get('/', async (c) => {
       startsAt: schema.events.startsAt,
       endsAt: schema.events.endsAt,
       priceCents: schema.events.priceCents,
+      priceNote: schema.events.priceNote,
       ticketUrl: schema.events.ticketUrl,
       imageUrl: schema.events.imageUrl,
       category: schema.events.category,
       featured: schema.events.featured,
+      genres: schema.events.genres,
       venue: {
         id: schema.venues.id,
         slug: schema.venues.slug,
@@ -89,6 +102,7 @@ eventsRoute.get('/', async (c) => {
         address: schema.venues.address,
         lat: schema.venues.lat,
         lng: schema.venues.lng,
+        priceNote: schema.venues.priceNote,
       },
     })
     .from(schema.events)
@@ -122,6 +136,38 @@ eventsRoute.get('/', async (c) => {
   return c.json({ events });
 });
 
+/**
+ * Distinct genre-lijst voor de filter-sheet in de Agenda. Groepeert
+ * per category zodat de mobile UI muziek-genres scheidt van theater
+ * en kunst. Alleen toekomstige, gepubliceerde events meegerekend.
+ */
+eventsRoute.get('/genres', async (c) => {
+  const rows = await db
+    .select({
+      genre: sql<string>`unnest(${schema.events.genres})`.as('genre'),
+      category: schema.events.category,
+      n: count(),
+    })
+    .from(schema.events)
+    .innerJoin(schema.venues, eq(schema.events.venueId, schema.venues.id))
+    .where(
+      and(
+        eq(schema.events.published, true),
+        eq(schema.venues.published, true),
+        gt(schema.events.startsAt, new Date())
+      )
+    )
+    .groupBy(sql`unnest(${schema.events.genres})`, schema.events.category)
+    .orderBy(schema.events.category, desc(count()));
+
+  const genres = rows.map((r) => ({
+    genre: r.genre,
+    category: r.category,
+    count: Number(r.n),
+  }));
+  return c.json({ genres });
+});
+
 eventsRoute.get('/:id', async (c) => {
   const id = c.req.param('id');
 
@@ -133,10 +179,12 @@ eventsRoute.get('/:id', async (c) => {
       startsAt: schema.events.startsAt,
       endsAt: schema.events.endsAt,
       priceCents: schema.events.priceCents,
+      priceNote: schema.events.priceNote,
       ticketUrl: schema.events.ticketUrl,
       imageUrl: schema.events.imageUrl,
       category: schema.events.category,
       featured: schema.events.featured,
+      genres: schema.events.genres,
       venue: {
         id: schema.venues.id,
         slug: schema.venues.slug,
@@ -146,6 +194,7 @@ eventsRoute.get('/:id', async (c) => {
         lng: schema.venues.lng,
         description: schema.venues.description,
         imageUrl: schema.venues.imageUrl,
+        priceNote: schema.venues.priceNote,
       },
     })
     .from(schema.events)

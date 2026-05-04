@@ -50,6 +50,12 @@ const WIJKEN = [
 ] as const;
 type Wijk = (typeof WIJKEN)[number];
 
+const SCENES = ['mainstream', 'alternatief', 'underground', 'fringe'] as const;
+type Scene = (typeof SCENES)[number];
+
+const CAPACITIES = ['klein', 'middel', 'groot', 'xl'] as const;
+type Capacity = (typeof CAPACITIES)[number];
+
 function parseEnumField<T extends string>(
   list: readonly T[],
   value: string | undefined
@@ -64,6 +70,102 @@ function parseTagsField(value: string | undefined): string[] {
     .split(',')
     .map((s) => s.trim())
     .filter((s) => s.length > 0);
+}
+
+function normalizeInstagram(value: string): string {
+  return value
+    .trim()
+    .replace(/^@+/, '')
+    .replace(/^https?:\/\/(www\.)?instagram\.com\//i, '')
+    .replace(/\/.*$/, '')
+    .trim();
+}
+
+/**
+ * Image-URL veld met file-picker + auto-upload. File-select stuurt het
+ * bestand naar /admin/api/uploads (cookie-auth) en zet de CDN-URL in
+ * het verborgen url-veld + preview. Vergeet niet daarna op `Opslaan`
+ * te klikken om het record te updaten.
+ */
+function ImageUrlField({
+  name,
+  kind,
+  currentUrl,
+}: {
+  name: string;
+  kind: 'venues' | 'events' | 'series';
+  currentUrl: string;
+}) {
+  const id = `img-${name}-${Math.random().toString(36).slice(2, 8)}`;
+  const script = `
+(function () {
+  const file = document.getElementById('${id}-file');
+  const url = document.getElementById('${id}-url');
+  const preview = document.getElementById('${id}-preview');
+  const status = document.getElementById('${id}-status');
+  file.addEventListener('change', async (e) => {
+    const f = e.target.files[0];
+    if (!f) return;
+    status.textContent = 'Uploaden…';
+    status.style.color = '';
+    const fd = new FormData();
+    fd.append('file', f);
+    fd.append('kind', '${kind}');
+    try {
+      const r = await fetch('/admin/api/uploads', { method: 'POST', body: fd, credentials: 'same-origin' });
+      if (!r.ok) {
+        const err = await r.json().catch(() => ({}));
+        throw new Error(err.error || ('HTTP ' + r.status));
+      }
+      const data = await r.json();
+      url.value = data.url;
+      if (preview) {
+        preview.src = data.url;
+        preview.style.display = 'block';
+      }
+      status.textContent = '✓ Geüpload — klik op Opslaan om vast te zetten';
+      status.style.color = '#9fe88a';
+    } catch (err) {
+      status.textContent = '✗ Upload mislukt: ' + err.message;
+      status.style.color = '#f3b6b6';
+    }
+  });
+})();
+`;
+  return (
+    <div style="margin-bottom:1rem;">
+      <label style="margin-bottom:0.25rem;display:block;">Afbeelding</label>
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px;">
+        <img
+          id={`${id}-preview`}
+          src={currentUrl || ''}
+          alt=""
+          style={`width:96px;height:64px;object-fit:cover;border-radius:6px;background:var(--pico-card-background-color);${currentUrl ? '' : 'display:none;'}`}
+        />
+        <div style="flex:1;">
+          <input
+            type="file"
+            id={`${id}-file`}
+            accept="image/*"
+            style="display:block;font-size:13px;"
+          />
+          <div
+            id={`${id}-status`}
+            style="font-size:11px;opacity:0.75;margin-top:4px;min-height:14px;"
+          ></div>
+        </div>
+      </div>
+      <input
+        type="url"
+        id={`${id}-url`}
+        name={name}
+        value={currentUrl}
+        placeholder="https://… (of upload hierboven)"
+        style="font-size:12px;"
+      />
+      <script dangerouslySetInnerHTML={{ __html: script }} />
+    </div>
+  );
 }
 
 function slugify(input: string): string {
@@ -328,10 +430,12 @@ adminUi.post('/events/new', async (c) => {
     imageUrl: (form.imageUrl as string) || null,
     ticketUrl: (form.ticketUrl as string) || null,
     priceCents: form.priceCents ? Number(form.priceCents) : null,
+    priceNote: form.priceNote ? String(form.priceNote).trim() || null : null,
     category: (CATEGORIES as readonly string[]).includes(String(form.category))
       ? (String(form.category) as Category)
       : 'Muziek',
     featured: form.featured === 'on',
+    genres: parseTagsField(String(form.genres ?? '')),
     published: form.published !== 'off',
   });
   return c.redirect('/admin/events');
@@ -412,10 +516,12 @@ adminUi.post('/events/:id', async (c) => {
       imageUrl: (form.imageUrl as string) || null,
       ticketUrl: (form.ticketUrl as string) || null,
       priceCents: form.priceCents ? Number(form.priceCents) : null,
+      priceNote: form.priceNote ? String(form.priceNote).trim() || null : null,
       category: (CATEGORIES as readonly string[]).includes(String(form.category))
         ? (String(form.category) as Category)
         : 'Muziek',
       featured: form.featured === 'on',
+      genres: parseTagsField(String(form.genres ?? '')),
       published: form.published !== 'off',
     })
     .where(eq(schema.events.id, id));
@@ -498,19 +604,30 @@ function EventForm({
         Beschrijving
         <textarea name="description" rows={4}>{event?.description ?? ''}</textarea>
       </label>
-      <div class="grid-2">
-        <label>
-          Image URL
-          <input type="url" name="imageUrl" value={event?.imageUrl ?? ''} />
-        </label>
-        <label>
-          Ticket URL
-          <input type="url" name="ticketUrl" value={event?.ticketUrl ?? ''} />
-        </label>
-      </div>
+      <ImageUrlField
+        name="imageUrl"
+        kind="events"
+        currentUrl={event?.imageUrl ?? ''}
+      />
+      <label>
+        Ticket URL
+        <input type="url" name="ticketUrl" value={event?.ticketUrl ?? ''} />
+      </label>
       <label>
         Prijs (cents) — laat leeg voor "—" of zet 0 voor "Gratis"
         <input type="number" name="priceCents" min="0" step="50" value={event?.priceCents ?? ''} />
+      </label>
+      <label>
+        Prijs-noot (vrij — overschrijft venue-default; bv. "lidmaatschap vereist")
+        <input type="text" name="priceNote" value={event?.priceNote ?? ''} placeholder="leeg = erf van venue" />
+      </label>
+      <label>
+        Genres (comma-separated, vrij — bv. techno, hip-hop, ambient)
+        <input
+          type="text"
+          name="genres"
+          value={(event?.genres ?? []).join(', ')}
+        />
       </label>
       {!event && (
         <label>
@@ -540,37 +657,190 @@ adminUi.get('/venues', async (c) => {
     .select()
     .from(schema.venues)
     .orderBy(asc(schema.venues.name));
+
+  // Inline JS voor:
+  //   • zoek-filter (naam) en image-filter (alle / zonder)
+  //   • drag-and-drop image-upload per rij — drop een file op een
+  //     rij-thumbnail en de file gaat direct naar /admin/api/uploads,
+  //     daarna PATCH naar /admin/api/venues/:id met de nieuwe URL.
+  const script = `
+(function () {
+  const search = document.getElementById('venue-search');
+  const filter = document.getElementById('venue-imgfilter');
+  const rows = Array.from(document.querySelectorAll('[data-venue-row]'));
+
+  function applyFilter() {
+    const q = (search.value || '').trim().toLowerCase();
+    const f = filter.value;
+    let visible = 0;
+    for (const r of rows) {
+      const name = r.dataset.name || '';
+      const hasImg = r.dataset.hasimage === '1';
+      let show = true;
+      if (q && !name.toLowerCase().includes(q)) show = false;
+      if (f === 'noimg' && hasImg) show = false;
+      if (f === 'hasimg' && !hasImg) show = false;
+      r.style.display = show ? '' : 'none';
+      if (show) visible++;
+    }
+    document.getElementById('venue-count').textContent = visible + ' / ' + rows.length;
+  }
+  search.addEventListener('input', applyFilter);
+  filter.addEventListener('change', applyFilter);
+
+  // Drag-drop per rij. We luisteren op de hele <tr> zodat het hele
+  // gebied als drop-target werkt — niet alleen de thumb-cell.
+  for (const row of rows) {
+    const id = row.dataset.venueId;
+    const thumb = row.querySelector('[data-thumb]');
+    const status = row.querySelector('[data-status]');
+
+    row.addEventListener('dragover', (e) => {
+      if (![...e.dataTransfer.types].includes('Files')) return;
+      e.preventDefault();
+      row.classList.add('row-drag');
+    });
+    row.addEventListener('dragleave', () => row.classList.remove('row-drag'));
+    row.addEventListener('drop', async (e) => {
+      e.preventDefault();
+      row.classList.remove('row-drag');
+      const file = e.dataTransfer.files[0];
+      if (!file || !file.type.startsWith('image/')) return;
+      status.textContent = 'Uploaden…';
+      try {
+        const fd = new FormData();
+        fd.append('file', file);
+        fd.append('kind', 'venues');
+        const upRes = await fetch('/admin/api/uploads', {
+          method: 'POST',
+          body: fd,
+          credentials: 'same-origin',
+        });
+        if (!upRes.ok) throw new Error('upload failed (' + upRes.status + ')');
+        const { url } = await upRes.json();
+        const patchRes = await fetch('/admin/api/venues/' + encodeURIComponent(id), {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'same-origin',
+          body: JSON.stringify({ imageUrl: url }),
+        });
+        if (!patchRes.ok) throw new Error('patch failed (' + patchRes.status + ')');
+        if (thumb) {
+          thumb.src = url;
+          thumb.classList.remove('empty');
+        }
+        row.dataset.hasimage = '1';
+        status.textContent = '✓';
+        status.style.color = '#9fe88a';
+        setTimeout(() => { status.textContent = ''; }, 2000);
+      } catch (err) {
+        status.textContent = '✗ ' + (err.message || err);
+        status.style.color = '#f3b6b6';
+      }
+    });
+  }
+})();
+`;
+
+  const withImage = rows.filter((v) => v.imageUrl).length;
+
   return c.html(
     <Layout title="Venues" active="venues">
+      <style>{`
+        .venue-list-toolbar {
+          display: flex; gap: 8px; align-items: center;
+          margin: 0 0 1rem; flex-wrap: wrap;
+        }
+        .venue-list-toolbar input[type=search],
+        .venue-list-toolbar select {
+          margin: 0; padding: 0.4rem 0.7rem; font-size: 13px; height: 36px;
+        }
+        .venue-list-toolbar input[type=search] { flex: 1; min-width: 180px; }
+        .venue-list-toolbar select { width: auto; }
+        .venue-thumb {
+          width: 56px; height: 38px; border-radius: 4px;
+          object-fit: cover; background: var(--pico-card-background-color);
+          display: block;
+        }
+        .venue-thumb.empty {
+          border: 1px dashed var(--pico-muted-border-color);
+          background: transparent;
+        }
+        tr.row-drag td { background: rgba(212, 255, 58, 0.08); }
+        tr.row-drag .venue-thumb {
+          outline: 2px dashed #d4ff3a;
+          outline-offset: 2px;
+        }
+        td.thumb-cell { width: 64px; padding-right: 4px; }
+        td.status-cell { width: 24px; font-size: 14px; padding-left: 4px; }
+      `}</style>
       <div class="toolbar">
         <h2>Venues</h2>
         <a href="/admin/venues/new" role="button">+ Nieuwe venue</a>
       </div>
+      <p style="font-size:13px;opacity:0.7;margin:0 0 0.5rem;">
+        Sleep een afbeelding op een rij om de venue-foto direct te
+        vervangen. <span id="venue-count">{`${rows.length} / ${rows.length}`}</span> ·
+        {` ${withImage} met foto, ${rows.length - withImage} zonder`}
+      </p>
+      <div class="venue-list-toolbar">
+        <input
+          type="search"
+          id="venue-search"
+          placeholder="Zoek op naam…"
+          autocomplete="off"
+        />
+        <select id="venue-imgfilter">
+          <option value="all">Alle</option>
+          <option value="noimg">Zonder foto</option>
+          <option value="hasimg">Met foto</option>
+        </select>
+      </div>
       <table>
         <thead>
           <tr>
+            <th class="thumb-cell"></th>
             <th>Naam</th>
             <th>Type</th>
+            <th>Scene</th>
             <th>Dag/nacht</th>
             <th>Wijk</th>
-            <th>Categorieën</th>
             <th>Status</th>
+            <th class="status-cell"></th>
             <th></th>
           </tr>
         </thead>
         <tbody>
           {rows.map((v) => (
-            <tr class={v.published ? '' : 'row-unpub'}>
+            <tr
+              class={v.published ? '' : 'row-unpub'}
+              data-venue-row
+              data-venue-id={v.id}
+              data-name={v.name}
+              data-hasimage={v.imageUrl ? '1' : '0'}
+            >
+              <td class="thumb-cell">
+                <img
+                  data-thumb
+                  src={
+                    v.imageUrl ??
+                    'data:image/svg+xml;utf8,<svg xmlns=\'http://www.w3.org/2000/svg\'/>'
+                  }
+                  alt=""
+                  class={`venue-thumb${v.imageUrl ? '' : ' empty'}`}
+                />
+              </td>
               <td><a href={`/admin/venues/${encodeURIComponent(v.id)}`}>{v.name}</a></td>
               <td style="font-size:12px;">{v.type ?? '—'}</td>
+              <td style="font-size:12px;">{v.scene ?? '—'}</td>
               <td style="font-size:12px;">{v.dayNight ?? '—'}</td>
               <td style="font-size:12px;">{v.wijk ?? '—'}</td>
-              <td style="font-size:12px;">{v.categories.join(', ')}</td>
               <td><PublishedPill published={v.published} /></td>
+              <td class="status-cell"><span data-status></span></td>
               <td class="actions">
                 <form method="post" action={`/admin/venues/${encodeURIComponent(v.id)}/toggle`}>
                   <button type="submit" class="secondary outline">
-                    {v.published ? 'Uitzetten' : 'Aanzetten'}
+                    {v.published ? 'Uit' : 'Aan'}
                   </button>
                 </form>
               </td>
@@ -578,6 +848,7 @@ adminUi.get('/venues', async (c) => {
           ))}
         </tbody>
       </table>
+      <script dangerouslySetInnerHTML={{ __html: script }} />
     </Layout>
   );
 });
@@ -612,7 +883,12 @@ adminUi.post('/venues/new', async (c) => {
     type: parseEnumField(VENUE_TYPES, String(form.type ?? '')) ?? undefined,
     dayNight: parseEnumField(DAY_NIGHT, String(form.dayNight ?? '')) ?? undefined,
     wijk: parseEnumField(WIJKEN, String(form.wijk ?? '')) ?? undefined,
+    scene: parseEnumField(SCENES, String(form.scene ?? '')) ?? undefined,
+    capacity: parseEnumField(CAPACITIES, String(form.capacity ?? '')) ?? undefined,
     subtype: parseTagsField(String(form.subtype ?? '')),
+    website: (form.website as string) || null,
+    instagram: form.instagram ? normalizeInstagram(String(form.instagram)) : null,
+    priceNote: form.priceNote ? String(form.priceNote).trim() || null : null,
     published: form.published !== 'off',
   });
   return c.redirect('/admin/venues');
@@ -667,7 +943,12 @@ adminUi.post('/venues/:id', async (c) => {
       type: parseEnumField(VENUE_TYPES, String(form.type ?? '')),
       dayNight: parseEnumField(DAY_NIGHT, String(form.dayNight ?? '')),
       wijk: parseEnumField(WIJKEN, String(form.wijk ?? '')),
+      scene: parseEnumField(SCENES, String(form.scene ?? '')),
+      capacity: parseEnumField(CAPACITIES, String(form.capacity ?? '')),
       subtype: parseTagsField(String(form.subtype ?? '')),
+      website: (form.website as string) || null,
+      instagram: form.instagram ? normalizeInstagram(String(form.instagram)) : null,
+      priceNote: form.priceNote ? String(form.priceNote).trim() || null : null,
       published: form.published !== 'off',
     })
     .where(eq(schema.venues.id, id));
@@ -756,6 +1037,26 @@ function VenueForm({
           </select>
         </label>
       </div>
+      <div class="grid-2">
+        <label>
+          Scene
+          <select name="scene">
+            <option value="" selected={!venue?.scene}>—</option>
+            {SCENES.map((s) => (
+              <option value={s} selected={venue?.scene === s}>{s}</option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Capacity
+          <select name="capacity">
+            <option value="" selected={!venue?.capacity}>—</option>
+            {CAPACITIES.map((c) => (
+              <option value={c} selected={venue?.capacity === c}>{c}</option>
+            ))}
+          </select>
+        </label>
+      </div>
       <label>
         Categorieën (comma-separated, uit: Muziek, Theater, Literatuur, Film)
         <input
@@ -776,10 +1077,40 @@ function VenueForm({
         Beschrijving
         <textarea name="description" rows={3}>{venue?.description ?? ''}</textarea>
       </label>
+      <div class="grid-2">
+        <label>
+          Website
+          <input
+            type="url"
+            name="website"
+            placeholder="https://venue.nl"
+            value={venue?.website ?? ''}
+          />
+        </label>
+        <label>
+          Instagram (handle, zonder @)
+          <input
+            type="text"
+            name="instagram"
+            placeholder="paradiso"
+            value={venue?.instagram ?? ''}
+          />
+        </label>
+      </div>
       <label>
-        Image URL
-        <input type="url" name="imageUrl" value={venue?.imageUrl ?? ''} />
+        Prijs-noot (default voor alle events — bv. "lidmaatschap vereist")
+        <input
+          type="text"
+          name="priceNote"
+          placeholder="leeg = niets onder de prijs"
+          value={venue?.priceNote ?? ''}
+        />
       </label>
+      <ImageUrlField
+        name="imageUrl"
+        kind="venues"
+        currentUrl={venue?.imageUrl ?? ''}
+      />
       {!venue && (
         <label>
           ID (optioneel — leeg laten voor auto uit slug)
@@ -1100,10 +1431,11 @@ function SeriesForm({
         Beschrijving
         <textarea name="description" rows={3}>{series?.description ?? ''}</textarea>
       </label>
-      <label>
-        Image URL
-        <input type="url" name="imageUrl" value={series?.imageUrl ?? ''} />
-      </label>
+      <ImageUrlField
+        name="imageUrl"
+        kind="series"
+        currentUrl={series?.imageUrl ?? ''}
+      />
       {!series && (
         <label>
           ID (optioneel — leeg laten voor auto)

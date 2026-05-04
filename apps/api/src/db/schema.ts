@@ -57,6 +57,18 @@ export const wijk = pgEnum('wijk', [
   'zuidoost',
   'nieuw-west',
 ]);
+export const venueScene = pgEnum('venue_scene', [
+  'mainstream',
+  'alternatief',
+  'underground',
+  'fringe',
+]);
+export const venueCapacity = pgEnum('venue_capacity', [
+  'klein',
+  'middel',
+  'groot',
+  'xl',
+]);
 
 // ─── Domain ───────────────────────────────────────────────────────────────
 
@@ -123,12 +135,33 @@ export const venues = pgTable('venues', {
   dayNight: dayNight(),
   /** Stadsdeel — voor "in de buurt"-filter. Optioneel. */
   wijk: wijk(),
+  /** Scene-as: mainstream / alternatief / underground / fringe.
+      Onderscheidt Paradiso (mainstream) van OCCII (underground) van
+      Het Groene Veld (fringe) — types waar `type` alleen overheen
+      walst. Filter + zichtbare label in de Venues-tab. */
+  scene: venueScene(),
+  /** Globale grootte-as: klein (<200) / middel (200–1000) / groot
+      (1000–5000) / xl (>5000). Indicatief — alleen ter info op de
+      venue-detailpagina, geen filter. Onderscheidt Volta van Paradiso
+      binnen dezelfde scene. */
+  capacity: venueCapacity(),
   /** Vrije tags: techno / queer / arthouse / artist-run /
       experimenteel / klassiek / etc. Niet enum want lijst groeit. */
   subtype: text()
     .array()
     .notNull()
     .default(sql`ARRAY[]::text[]`),
+  /** Officiële website van de venue (bv. https://paradiso.nl). Wordt
+      getoond als action-knop op venue-detail en gebruikt door de seed/
+      n8n-scrapers als bron. */
+  website: text(),
+  /** Instagram-handle zonder @ (bv. "paradiso"). UI-link bouwt
+      `instagram://user?username=…` met fallback naar https. */
+  instagram: text(),
+  /** Default prijs-noot voor alle events op deze venue (bv. "lidmaat-
+      schap vereist" voor Paradiso). Wordt op event-detail gerenderd
+      onder de prijs, tenzij events.priceNote 'm overschrijft. */
+  priceNote: text(),
   /** Admin-toggle: false = verbergen uit publieke endpoints zonder
       data te verliezen (saves blijven, events blijven). Default true. */
   published: boolean().notNull().default(true),
@@ -149,11 +182,23 @@ export const events = pgTable(
     startsAt: timestamp({ withTimezone: true }).notNull(),
     endsAt: timestamp({ withTimezone: true }),
     priceCents: integer(),
+    /** Vrije korte noot bij de prijs (bv. "lidmaatschap vereist",
+        "pay-what-you-can aan de deur"). Overschrijft venues.priceNote
+        als beide gezet zijn. */
+    priceNote: text(),
     ticketUrl: text(),
     imageUrl: text(),
     category: eventCategory().notNull(),
     /** Editorial-pick voor de Avond-tab. Curator zet deze aan. */
     featured: boolean().notNull().default(false),
+    /** Specifieke genres binnen `category` — vrije array (zoals
+        `venues.subtype`). Voor muziek: techno/hip-hop/jazz; voor
+        theater: drama/dans/cabaret; etc. Filter-sheet groepeert
+        clientside per category. */
+    genres: text()
+      .array()
+      .notNull()
+      .default(sql`ARRAY[]::text[]`),
     /** Admin-toggle: false = verbergen uit publieke endpoints
         (Avond/Agenda/Kaart/Gered/detail) zonder saves of invites
         kwijt te raken. Default true. */
