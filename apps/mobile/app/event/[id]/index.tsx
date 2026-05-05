@@ -556,7 +556,16 @@ function Lineup({
   return (
     <>
       <View style={styles.lineupHeading}>
-        <Text style={[styles.crewHeading, { color: roles.fg }]}>Lineup</Text>
+        <Text
+          style={[
+            styles.crewHeading,
+            // marginTop staat op de wrapper-View, neutraliseren we hier
+            // zodat we niet dubbele spacing krijgen.
+            { color: roles.fg, marginTop: 0, marginBottom: 0 },
+          ]}
+        >
+          Lineup
+        </Text>
         {kicker && (
           <Text style={[styles.lineupKicker, { color: roles.fgMuted }]}>
             {kicker}
@@ -1109,7 +1118,7 @@ const styles = StyleSheet.create({
 
   // Series-pill — "Onderdeel van [ADE]" tappable strook onder de meta
   // row. Stack als event in meerdere series zit.
-  seriesRow: { gap: 8, marginBottom: 16 },
+  seriesRow: { gap: 8 },
   seriesPill: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1126,15 +1135,17 @@ const styles = StyleSheet.create({
     letterSpacing: -0.07,
   },
 
-  // Crew heading — boven crew-block + invite-CTA, geeft duiding aan
-  // de namen-lijst die er anders uit het niets zou opduiken. Zelfde
-  // stijl als de Programma-heading op venue-detail.
+  // Section-heading — gebruikt boven elk content-blok (Lineup, Tickets,
+  // Nodig iemand uit, Alle voorstellingen, Onderdeel van). Royale
+  // marginTop zodat het blok ervóór niet tegen de tekst aanloopt.
+  // Inhoud-blokken hebben zelf geen marginBottom — alle ruimte komt
+  // van deze marginTop, dat houdt het ritme consistent.
   crewHeading: {
     fontFamily: fontFamily.display,
     fontSize: 18,
     lineHeight: 18,
     letterSpacing: -0.36,
-    marginTop: 14,
+    marginTop: 26,
     marginBottom: 6,
   },
 
@@ -1142,8 +1153,7 @@ const styles = StyleSheet.create({
   // events (films, residencies, wekelijkse feesten). Zelfde border-stijl
   // als crew-block voor visuele rust.
   occList: {
-    marginTop: 8,
-    marginBottom: 10,
+    marginTop: 6,
     borderRadius: 8,
     borderWidth: 1,
     overflow: 'hidden',
@@ -1190,7 +1200,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'baseline',
     gap: 8,
-    marginTop: 14,
+    marginTop: 26,
     marginBottom: 6,
   },
   lineupKicker: {
@@ -1200,8 +1210,7 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
   },
   lineupBlock: {
-    marginTop: 2,
-    marginBottom: 10,
+    marginTop: 6,
     borderRadius: 8,
     borderWidth: 1,
     overflow: 'hidden',
@@ -1224,13 +1233,12 @@ const styles = StyleSheet.create({
   },
 
   // Notice wanneer ?o= naar een afgelopen occurrence verwees, of het
-  // hele event al voorbij is. Ruime marginBottom zodat 'ie ademruimte
-  // krijgt boven de genres/meta-rij eronder.
+  // hele event al voorbij is. Body heeft al padding:20 boven dus geen
+  // extra marginTop nodig; wel ruime marginBottom voor ademruimte.
   expiredNotice: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    marginTop: 12,
     marginBottom: 18,
     paddingHorizontal: 12,
     paddingVertical: 10,
