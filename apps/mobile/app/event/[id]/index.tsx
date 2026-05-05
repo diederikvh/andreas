@@ -167,20 +167,23 @@ export default function EventDetail() {
 
         <View style={[styles.body, { backgroundColor: roles.bg }]}>
           {(eventOver || targetMissed) && (
-            <View style={[styles.expiredNotice, { borderColor: roles.bgChip }]}>
-              <Ionicons
-                name="time-outline"
-                size={14}
-                color={roles.fgMuted}
-              />
-              <Text
-                style={[styles.expiredNoticeText, { color: roles.fgMuted }]}
-              >
-                {eventOver
-                  ? 'Dit event is afgelopen.'
-                  : 'De voorstelling die je tapte is voorbij — dit is de eerstvolgende.'}
-              </Text>
-            </View>
+            <>
+              <View style={styles.expiredNotice}>
+                <Ionicons
+                  name="time-outline"
+                  size={14}
+                  color={roles.accent}
+                />
+                <Text
+                  style={[styles.expiredNoticeText, { color: roles.accent }]}
+                >
+                  {eventOver
+                    ? 'Dit event is afgelopen.'
+                    : 'De voorstelling die je tapte is voorbij — dit is de eerstvolgende.'}
+                </Text>
+              </View>
+              <View style={[styles.divider, { backgroundColor: roles.bgChip }]} />
+            </>
           )}
 
           {event.genres && event.genres.length > 0 && (
@@ -406,9 +409,7 @@ function CrewAndInvite({
 
   return (
     <>
-      <Text style={[styles.crewHeading, { color: roles.fg }]}>
-        {hasCrew ? 'Wie gaat erheen?' : 'Nodig iemand uit'}
-      </Text>
+      <Text style={[styles.crewHeading, { color: roles.fg }]}>Vrienden</Text>
       <View
         style={[
           styles.crewInviteContainer,
@@ -1159,10 +1160,10 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   occRow: {
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 16,
     borderTopWidth: StyleSheet.hairlineWidth,
-    gap: 4,
+    gap: 6,
   },
   occHeader: {
     flexDirection: 'row',
@@ -1233,23 +1234,21 @@ const styles = StyleSheet.create({
   },
 
   // Notice wanneer ?o= naar een afgelopen occurrence verwees, of het
-  // hele event al voorbij is. Body heeft al padding:20 boven dus geen
-  // extra marginTop nodig; wel ruime marginBottom voor ademruimte.
+  // hele event al voorbij is. In accent-kleur voor meer aandacht;
+  // platte regel met hairline-divider eronder, zelfde patroon als
+  // de genre-pills bovenaan.
   expiredNotice: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    marginBottom: 18,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 8,
-    borderWidth: 1,
+    paddingBottom: 12,
   },
   expiredNoticeText: {
     flex: 1,
-    fontFamily: fontFamily.body,
-    fontSize: 12.5,
-    lineHeight: 16,
+    fontFamily: fontFamily.medium,
+    fontSize: 13,
+    lineHeight: 17,
+    letterSpacing: -0.13,
   },
 
   // Crew + invite — visueel één container met afgeronde hoeken op de
@@ -1375,7 +1374,9 @@ const styles = StyleSheet.create({
   ticketsCta: {
     paddingHorizontal: 22,
     paddingVertical: 12,
-    borderRadius: 999,
+    // Lichte rounding zodat de button visueel binnen de container-radius
+    // van 8 past — een pill-shape zou eruit "vallen".
+    borderRadius: 4,
   },
   ticketsCtaText: {
     fontFamily: fontFamily.medium,
