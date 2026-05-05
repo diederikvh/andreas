@@ -86,9 +86,15 @@ export default function EventDetail() {
   //  1. ?o= query als die matcht — Agenda/Avond duwen die mee
   //  2. anders eerstvolgende toekomstige (occurrences[0])
   //  3. anders fallback op event.startsAt-velden zoals voorheen
-  const targetExpired =
+  const hasActuele = (event.occurrences?.length ?? 0) > 0;
+  // Volledig afgelopen: geen toekomstige/lopende occurrence (niet voor
+  // exhibitions die tot endsAt actief zijn).
+  const eventOver = !hasActuele;
+  // Tap kwam vanuit Agenda met een ?o=, maar die occurrence is inmiddels
+  // voorbij. Toon dan een notice + fallback naar de eerstvolgende.
+  const targetMissed =
     targetOccurrenceId !== null &&
-    Boolean(event.occurrences) &&
+    hasActuele &&
     !event.occurrences!.some((o) => o.id === targetOccurrenceId);
   const selectedOccurrence = (() => {
     if (!event.occurrences) return null;
@@ -160,7 +166,7 @@ export default function EventDetail() {
         </View>
 
         <View style={[styles.body, { backgroundColor: roles.bg }]}>
-          {targetExpired && (
+          {(eventOver || targetMissed) && (
             <View style={[styles.expiredNotice, { borderColor: roles.bgChip }]}>
               <Ionicons
                 name="time-outline"
@@ -170,8 +176,9 @@ export default function EventDetail() {
               <Text
                 style={[styles.expiredNoticeText, { color: roles.fgMuted }]}
               >
-                De voorstelling die je tapte is voorbij — dit is de
-                eerstvolgende.
+                {eventOver
+                  ? 'Dit event is afgelopen.'
+                  : 'De voorstelling die je tapte is voorbij — dit is de eerstvolgende.'}
               </Text>
             </View>
           )}
@@ -243,13 +250,15 @@ export default function EventDetail() {
             }}
           />
 
-          <TicketsBlock
-            price={view.price}
-            priceNote={view.priceNote}
-            ticketUrl={selectedOccurrence?.ticketUrl ?? event.ticketUrl}
-            isNacht={isNacht}
-            soldOut={selectedOccurrence?.status === 'sold_out'}
-          />
+          {selectedOccurrence && (
+            <TicketsBlock
+              price={view.price}
+              priceNote={view.priceNote}
+              ticketUrl={selectedOccurrence.ticketUrl ?? event.ticketUrl}
+              isNacht={isNacht}
+              soldOut={selectedOccurrence.status === 'sold_out'}
+            />
+          )}
 
           {event.occurrences && event.occurrences.length > 1 && (
             <OccurrenceList
@@ -1214,13 +1223,15 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
   },
 
-  // Notice wanneer ?o= naar een afgelopen occurrence verwees — voorkomt
-  // verwarring ("ik tapte 14:00 maar zie 19:30").
+  // Notice wanneer ?o= naar een afgelopen occurrence verwees, of het
+  // hele event al voorbij is. Ruime marginBottom zodat 'ie ademruimte
+  // krijgt boven de genres/meta-rij eronder.
   expiredNotice: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
     marginTop: 12,
+    marginBottom: 18,
     paddingHorizontal: 12,
     paddingVertical: 10,
     borderRadius: 8,

@@ -220,18 +220,12 @@ export async function buildOccurrencesByEvent(
 
   const conditions = [
     inArray(schema.occurrences.eventId, eventIds),
-    // Voor `kind=show` (concerten/films/voorstellingen): strict op
-    // starts_at — een 14:00 voorstelling verdwijnt om 14:01, want
-    // je kan 'm niet meer plannen.
-    // Voor `kind=exhibition`: COALESCE(ends_at, starts_at) — een
-    // tentoonstelling van 1–30 mei blijft tot en met 30 mei zichtbaar.
-    sql`(
-      (${schema.events.kind} = 'exhibition'
-        AND COALESCE(${schema.occurrences.endsAt}, ${schema.occurrences.startsAt}) >= ${from})
-      OR (${schema.events.kind} <> 'exhibition'
-        AND ${schema.occurrences.startsAt} >= ${from})
-    )`,
-    // Verberg gecancelde momenten.
+    // Soepele filter voor detail-context: zolang endsAt nog in de
+    // toekomst ligt blijft 'ie zichtbaar. Een 22:00→04:00 feest is
+    // om 23:30 nog te kopen, een 14:00→16:30 film tot 16:30. List-
+    // endpoints (Avond/Agenda) hanteren een strikter startsAt-filter
+    // via findEventsWithOccurrencesInRange.
+    sql`COALESCE(${schema.occurrences.endsAt}, ${schema.occurrences.startsAt}) >= ${from}`,
     sql`${schema.occurrences.status} <> 'cancelled'`,
   ];
   if (to) {
@@ -239,21 +233,8 @@ export async function buildOccurrencesByEvent(
   }
 
   const rows = await db
-    .select({
-      id: schema.occurrences.id,
-      eventId: schema.occurrences.eventId,
-      startsAt: schema.occurrences.startsAt,
-      endsAt: schema.occurrences.endsAt,
-      priceCents: schema.occurrences.priceCents,
-      priceNote: schema.occurrences.priceNote,
-      ticketUrl: schema.occurrences.ticketUrl,
-      room: schema.occurrences.room,
-      lineup: schema.occurrences.lineup,
-      status: schema.occurrences.status,
-      createdAt: schema.occurrences.createdAt,
-    })
+    .select()
     .from(schema.occurrences)
-    .innerJoin(schema.events, eq(schema.events.id, schema.occurrences.eventId))
     .where(and(...conditions))
     .orderBy(asc(schema.occurrences.startsAt));
 
