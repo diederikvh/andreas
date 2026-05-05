@@ -173,7 +173,13 @@ eventsRoute.get('/genres', async (c) => {
       and(
         eq(schema.events.published, true),
         eq(schema.venues.published, true),
-        sql`COALESCE(${schema.occurrences.endsAt}, ${schema.occurrences.startsAt}) >= NOW()`,
+        // Show: strict starts_at; exhibition: ends_at-fallback.
+        sql`(
+          (${schema.events.kind} = 'exhibition'
+            AND COALESCE(${schema.occurrences.endsAt}, ${schema.occurrences.startsAt}) >= NOW())
+          OR (${schema.events.kind} <> 'exhibition'
+            AND ${schema.occurrences.startsAt} >= NOW())
+        )`,
         sql`${schema.occurrences.status} <> 'cancelled'`
       )
     )

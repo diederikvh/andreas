@@ -86,6 +86,10 @@ export default function EventDetail() {
   //  1. ?o= query als die matcht — Agenda/Avond duwen die mee
   //  2. anders eerstvolgende toekomstige (occurrences[0])
   //  3. anders fallback op event.startsAt-velden zoals voorheen
+  const targetExpired =
+    targetOccurrenceId !== null &&
+    Boolean(event.occurrences) &&
+    !event.occurrences!.some((o) => o.id === targetOccurrenceId);
   const selectedOccurrence = (() => {
     if (!event.occurrences) return null;
     if (targetOccurrenceId) {
@@ -156,6 +160,22 @@ export default function EventDetail() {
         </View>
 
         <View style={[styles.body, { backgroundColor: roles.bg }]}>
+          {targetExpired && (
+            <View style={[styles.expiredNotice, { borderColor: roles.bgChip }]}>
+              <Ionicons
+                name="time-outline"
+                size={14}
+                color={roles.fgMuted}
+              />
+              <Text
+                style={[styles.expiredNoticeText, { color: roles.fgMuted }]}
+              >
+                De voorstelling die je tapte is voorbij — dit is de
+                eerstvolgende.
+              </Text>
+            </View>
+          )}
+
           {event.genres && event.genres.length > 0 && (
             <>
               <View style={styles.genreRow}>
@@ -1155,6 +1175,25 @@ const styles = StyleSheet.create({
     fontSize: 9.5,
     letterSpacing: 1.1,
     textTransform: 'uppercase',
+  },
+
+  // Notice wanneer ?o= naar een afgelopen occurrence verwees — voorkomt
+  // verwarring ("ik tapte 14:00 maar zie 19:30").
+  expiredNotice: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  expiredNoticeText: {
+    flex: 1,
+    fontFamily: fontFamily.body,
+    fontSize: 12.5,
+    lineHeight: 16,
   },
 
   // Crew + invite — visueel één container met afgeronde hoeken op de

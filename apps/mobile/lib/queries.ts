@@ -57,6 +57,13 @@ export function useEvents(filter: EventsFilter = {}) {
   return useQuery({
     queryKey: queryKeys.events(filter),
     queryFn: () => getEvents(filter),
+    // Lijsten bevatten tijd-gefilterde occurrences (server filtert
+    // afgelopen voorstellingen weg). Stale na 60s zodat een 14:00
+    // voorstelling die om 14:00 voorbij is niet uren rondhangt in
+    // de cache. Refetch bij window-focus pakt 'm vers op zodra de
+    // gebruiker de app terugbrengt.
+    staleTime: 60_000,
+    refetchOnWindowFocus: true,
   });
 }
 
@@ -65,6 +72,8 @@ export function useEvent(id: string) {
     queryKey: queryKeys.event(id),
     queryFn: () => getEvent(id),
     enabled: Boolean(id),
+    staleTime: 60_000,
+    refetchOnWindowFocus: true,
   });
 }
 
