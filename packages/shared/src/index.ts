@@ -4,7 +4,7 @@
 
 export type Mode = 'nacht' | 'dag';
 
-export type EventCategory = 'Muziek' | 'Theater' | 'Literatuur' | 'Film';
+export type EventCategory = 'Muziek' | 'Theater' | 'Literatuur' | 'Film' | 'Kunst';
 
 export type FriendshipStatus = 'pending' | 'accepted';
 

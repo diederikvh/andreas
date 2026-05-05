@@ -21,6 +21,7 @@ export const eventCategory = pgEnum('event_category', [
   'Theater',
   'Literatuur',
   'Film',
+  'Kunst',
 ]);
 export const friendshipStatus = pgEnum('friendship_status', [
   'pending',

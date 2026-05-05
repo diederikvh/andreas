@@ -15,7 +15,7 @@ import { requireAdminAny } from './auth.js';
  * onbekende ids → 404, validatie-fouten → 400.
  */
 
-const CATEGORIES = ['Muziek', 'Theater', 'Literatuur', 'Film'] as const;
+const CATEGORIES = ['Muziek', 'Theater', 'Literatuur', 'Film', 'Kunst'] as const;
 type Category = (typeof CATEGORIES)[number];
 
 const VENUE_TYPES = [

@@ -295,6 +295,7 @@ function CategoryTabs() {
     { label: homeLabel, cat: null },
     { label: 'Muziek', cat: 'Muziek' },
     { label: 'Theater', cat: 'Theater' },
+    { label: 'Kunst', cat: 'Kunst' },
     { label: 'Literatuur', cat: 'Literatuur' },
     { label: 'Film', cat: 'Film' },
   ];

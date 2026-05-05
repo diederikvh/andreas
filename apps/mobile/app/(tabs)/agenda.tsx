@@ -53,6 +53,7 @@ const CHIPROW_HEIGHT = 48;
 const CATEGORIES: ApiEvent['category'][] = [
   'Muziek',
   'Theater',
+  'Kunst',
   'Literatuur',
   'Film',
 ];

@@ -45,7 +45,7 @@ type EventDraft = {
   title: string;
   description: string;
   kind: 'show' | 'exhibition';
-  category: 'Muziek' | 'Theater' | 'Literatuur' | 'Film';
+  category: 'Muziek' | 'Theater' | 'Literatuur' | 'Film' | 'Kunst';
   imageUrl: string;
   genres: string[];
   featured?: boolean;
@@ -120,9 +120,9 @@ const E3: EventDraft = {
   description:
     'De laatste 70 dagen van Van Gogh. 50 schilderijen en tekeningen die hij maakte in Auvers, plus correspondentie en archiefmateriaal.',
   kind: 'exhibition',
-  category: 'Theater',
+  category: 'Kunst',
   imageUrl: IMG.museum,
-  genres: ['kunst', 'klassiek'],
+  genres: ['klassiek', 'schilderkunst'],
   featured: true,
   occurrences: [
     // Eén lange occurrence: loopt van vandaag t/m ~3 maanden vooruit.
@@ -142,11 +142,11 @@ const E4: EventDraft = {
   venueId: 'w139',
   title: 'Opening: Sara Sallam — A Cathedral of Salt',
   description:
-    'Solo-tentoonstelling van Sara Sallam — over wat blijft als landschappen verdwijnen. Met DJ-set van Esma Tanis na de toespraak.',
+    'Solo-tentoonstelling van Sara Sallam over wat blijft als landschappen verdwijnen. Met DJ-set van Esma Tanis na de toespraak.',
   kind: 'show',
-  category: 'Theater',
+  category: 'Kunst',
   imageUrl: IMG.galerie,
-  genres: ['kunst', 'opening'],
+  genres: ['fotografie', 'opening'],
   featured: true,
   occurrences: [
     {
@@ -173,9 +173,9 @@ const E4b: EventDraft = {
   description:
     'Sara Sallam, Egyptisch-Nederlands, werkt met archiefmateriaal en zout om verlies tastbaar te maken. Drie zalen, twee video-installaties.',
   kind: 'exhibition',
-  category: 'Theater',
+  category: 'Kunst',
   imageUrl: IMG.galerie,
-  genres: ['kunst'],
+  genres: ['fotografie', 'modern'],
   occurrences: [
     {
       startsAt: dayAt(2, 19, 0),

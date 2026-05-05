@@ -95,7 +95,7 @@ export function useVenue(slug: string) {
 
 export function useVenues(input: {
   q?: string;
-  category?: 'Muziek' | 'Theater' | 'Literatuur' | 'Film';
+  category?: 'Muziek' | 'Theater' | 'Literatuur' | 'Film' | 'Kunst';
   type?:
     | 'galerie'
     | 'museum'

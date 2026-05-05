@@ -14,7 +14,7 @@ import {
   getFollowedVenueIds,
 } from './venue-follows.js';
 
-const VALID_CATEGORIES = new Set(['Muziek', 'Theater', 'Literatuur', 'Film']);
+const VALID_CATEGORIES = new Set(['Muziek', 'Theater', 'Literatuur', 'Film', 'Kunst']);
 
 export const eventsRoute = new Hono();
 
@@ -44,7 +44,7 @@ eventsRoute.get('/', async (c) => {
     eventConditions.push(
       eq(
         schema.events.category,
-        category as 'Muziek' | 'Theater' | 'Literatuur' | 'Film'
+        category as 'Muziek' | 'Theater' | 'Literatuur' | 'Film' | 'Kunst'
       )
     );
   }

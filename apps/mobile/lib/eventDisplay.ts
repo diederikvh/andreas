@@ -25,6 +25,8 @@ export const CATEGORY_TICK: Record<ApiEvent['category'], BadgeTone> = {
   Theater: 'flare',
   Literatuur: 'plum',
   Film: 'azure',
+  // Kunst deelt `plum` met galleries/musea — zelfde curatorial-vibe.
+  Kunst: 'plum',
 };
 
 /** Tone per venue-type — zelfde 4 brand-tones als event-categorieën,
@@ -45,6 +47,7 @@ export const CATEGORY_DOT: Record<ApiEvent['category'], string> = {
   Theater: 'T',
   Literatuur: 'L',
   Film: 'F',
+  Kunst: 'K',
 };
 
 /**

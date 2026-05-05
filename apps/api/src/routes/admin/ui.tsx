@@ -22,7 +22,7 @@ function shortId(): string {
   return randomBytes(5).toString('hex');
 }
 
-const CATEGORIES = ['Muziek', 'Theater', 'Literatuur', 'Film'] as const;
+const CATEGORIES = ['Muziek', 'Theater', 'Literatuur', 'Film', 'Kunst'] as const;
 type Category = (typeof CATEGORIES)[number];
 
 const VENUE_TYPES = [

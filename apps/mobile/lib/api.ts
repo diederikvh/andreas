@@ -67,7 +67,7 @@ export type ApiEvent = {
       festival komt zo op alle 3 dagen in de Agenda terug. */
   occurrencesInRange?: ApiOccurrence[];
   imageUrl: string | null;
-  category: 'Muziek' | 'Theater' | 'Literatuur' | 'Film';
+  category: 'Muziek' | 'Theater' | 'Literatuur' | 'Film' | 'Kunst';
   featured: boolean;
   venue: {
     id: string;
@@ -178,7 +178,7 @@ export async function getEventGenres(): Promise<ApiGenreBucket[]> {
   return genres;
 }
 
-export type VenueCategory = 'Muziek' | 'Theater' | 'Literatuur' | 'Film';
+export type VenueCategory = 'Muziek' | 'Theater' | 'Literatuur' | 'Film' | 'Kunst';
 
 export type VenueType =
   | 'galerie'

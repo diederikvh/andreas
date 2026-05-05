@@ -26,7 +26,7 @@ export const venuesRoute = new Hono();
  * venue-lijst. Geblokkeerde venues blijven zichtbaar zodat je ze kan
  * deblokkeren — er staat een hint op de UI dat ze geblokkeerd zijn.
  */
-const VALID_CATEGORIES = new Set(['Muziek', 'Theater', 'Literatuur', 'Film']);
+const VALID_CATEGORIES = new Set(['Muziek', 'Theater', 'Literatuur', 'Film', 'Kunst']);
 const VALID_VENUE_TYPES = new Set([
   'galerie',
   'museum',
@@ -72,7 +72,7 @@ venuesRoute.get('/', async (c) => {
   if (category && VALID_CATEGORIES.has(category)) {
     conditions.push(
       arrayContains(schema.venues.categories, [
-        category as 'Muziek' | 'Theater' | 'Literatuur' | 'Film',
+        category as 'Muziek' | 'Theater' | 'Literatuur' | 'Film' | 'Kunst',
       ])
     );
   }
