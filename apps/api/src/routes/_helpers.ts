@@ -220,12 +220,13 @@ export async function buildOccurrencesByEvent(
 
   const conditions = [
     inArray(schema.occurrences.eventId, eventIds),
-    // Soepele filter voor detail-context: zolang endsAt nog in de
-    // toekomst ligt blijft 'ie zichtbaar. Een 22:00→04:00 feest is
-    // om 23:30 nog te kopen, een 14:00→16:30 film tot 16:30. List-
-    // endpoints (Avond/Agenda) hanteren een strikter startsAt-filter
-    // via findEventsWithOccurrencesInRange.
-    sql`COALESCE(${schema.occurrences.endsAt}, ${schema.occurrences.startsAt}) >= ${from}`,
+    // Filter: zolang de eindtijd in de toekomst ligt blijft het zichtbaar.
+    // Voor occurrences zonder endsAt nemen we startsAt + 4u als default
+    // duur — past redelijk voor films (~2u), voorstellingen (~2u),
+    // concerten (~2-3u) en club-nachten (~6u, dus iets te kort maar
+    // dichter bij waarheid dan 0). Voor exact-tijd events zoals een
+    // ochtend-event 09:00-10:00 met endsAt=10:00: weg om 10:01.
+    sql`COALESCE(${schema.occurrences.endsAt}, ${schema.occurrences.startsAt} + INTERVAL '4 hours') >= ${from}`,
     sql`${schema.occurrences.status} <> 'cancelled'`,
   ];
   if (to) {
@@ -297,14 +298,11 @@ export async function findEventsWithOccurrencesInRange(
   const to = options.to;
 
   const conditions = [
-    // Show: starts_at strict ≥ from, dus afgelopen voorstellingen
-    // verdwijnen meteen. Exhibition: blijft zichtbaar tot endsAt.
-    sql`(
-      (${schema.events.kind} = 'exhibition'
-        AND COALESCE(${schema.occurrences.endsAt}, ${schema.occurrences.startsAt}) >= ${from})
-      OR (${schema.events.kind} <> 'exhibition'
-        AND ${schema.occurrences.startsAt} >= ${from})
-    )`,
+    // Filter op effectieve eindtijd: endsAt als gezet, anders startsAt
+    // + 4u als default duur (films/concerten/clubs vallen daarbinnen).
+    // Exhibitions hebben endsAt altijd gezet (de loopduur), dus die
+    // worden hier vanzelf goed afgehandeld.
+    sql`COALESCE(${schema.occurrences.endsAt}, ${schema.occurrences.startsAt} + INTERVAL '4 hours') >= ${from}`,
     sql`${schema.occurrences.status} <> 'cancelled'`,
   ];
   if (to) conditions.push(lte(schema.occurrences.startsAt, to));

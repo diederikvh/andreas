@@ -27,6 +27,7 @@ import { SpinningCross } from '@/components/SpinningCross';
 import type { ApiEvent } from '@/lib/api';
 import {
   CATEGORY_TICK,
+  effectiveEndsAtMs,
   expandToOccurrenceRows,
   formatTime,
   getTimeBlock,
@@ -35,6 +36,7 @@ import {
   type OccurrenceRow,
   TIME_BLOCKS,
   type TimeBlock,
+  useNowMinute,
 } from '@/lib/eventDisplay';
 import { useEventGenres, useEvents } from '@/lib/queries';
 import { useMode, useRoles } from '@/store/mode';
@@ -137,17 +139,24 @@ export default function Agenda() {
     });
   }, [events, activeCats, activeGenres, query]);
 
+  // Tikt elke 60s zodat occurrences waarvan de eindtijd voorbij is
+  // automatisch wegvallen tussen server-refetches door.
+  const now = useNowMinute();
+
   // Expand naar één rij per occurrence en groepeer per dag. Een
   // 3-daagse festival komt zo op alle 3 dagen voor; een wekelijks feest
   // op elke maandag binnen de gevraagde range.
   const days = useMemo(() => {
     const rows = expandToOccurrenceRows(filteredEvents).filter((row) => {
+      // Client-side cutoff op effectieve eindtijd — voorkomt dat een
+      // ochtend-event tot 10:00 om 11:00 nog in de Agenda staat.
+      if (effectiveEndsAtMs(row.occurrence) < now) return false;
       if (activeBlocks.length === 0) return true;
       const block = getTimeBlock(new Date(row.occurrence.startsAt).getHours());
       return activeBlocks.includes(block);
     });
     return groupOccurrenceRowsByDay(rows);
-  }, [filteredEvents, activeBlocks]);
+  }, [filteredEvents, activeBlocks, now]);
 
   const [positions, setPositions] = useState<Record<string, number>>({});
   const [selected, setSelected] = useState<string | null>(null);

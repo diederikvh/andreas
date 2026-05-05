@@ -252,7 +252,37 @@ export function groupEventsByDay(events: ApiEvent[]): EventGroup[] {
   return Array.from(map.values());
 }
 
+import { useEffect, useState } from 'react';
+
 import type { ApiOccurrence } from './api';
+
+/**
+ * Tikt elke 60s een nieuwe `now`-timestamp uit zodat list-views
+ * automatisch events laten vallen die hun eindtijd net gepasseerd zijn,
+ * zonder dat we een server-roundtrip nodig hebben. Cache-stale (60s)
+ * + window-focus refetch dekken de server-side; deze hook dekt het
+ * gat tussen refetches.
+ */
+export function useNowMinute(): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 60_000);
+    return () => clearInterval(id);
+  }, []);
+  return now;
+}
+
+/**
+ * Effectieve eindtijd van een occurrence in ms-since-epoch. Voor
+ * occurrences zonder endsAt nemen we startsAt + 4u als default — dezelfde
+ * fallback die de server gebruikt in z'n filter, dus de UI valt
+ * consistent met de lijst.
+ */
+const FOUR_HOURS_MS = 4 * 60 * 60 * 1000;
+export function effectiveEndsAtMs(occ: ApiOccurrence): number {
+  if (occ.endsAt) return new Date(occ.endsAt).getTime();
+  return new Date(occ.startsAt).getTime() + FOUR_HOURS_MS;
+}
 
 /**
  * Eén tijd-rij in een list-view. Een event met N occurrences geeft N

@@ -14,11 +14,13 @@ import type { ApiEvent } from '@/lib/api';
 import {
   CATEGORY_TICK,
   DOW_NL_UPPER,
+  effectiveEndsAtMs,
   expandToOccurrenceRows,
   formatTime,
   isNachtHour,
   type OccurrenceRow,
   socialWindow,
+  useNowMinute,
 } from '@/lib/eventDisplay';
 import { useEvents } from '@/lib/queries';
 import { FEED } from '@/mocks/feed';
@@ -132,6 +134,10 @@ export default function Avond() {
     from: window.from,
     to: window.to,
   });
+  // Tikt elke 60s zodat events waarvan de eindtijd voorbij is automatisch
+  // wegvallen — geen "Lewsberg 23:30" om 02:00 in de Avond.
+  const now = useNowMinute();
+
   // Spread events naar één rij per moment in het venster, dan filter op
   // dag/nacht-uur. Een 3-daags festival verschijnt zo per avond op het
   // juiste tijdslot; een wekelijks feest dat morgen óók is komt op
@@ -139,10 +145,11 @@ export default function Avond() {
   const filtered = useMemo<OccurrenceRow[]>(() => {
     if (!events) return [];
     return expandToOccurrenceRows(events).filter((row) => {
+      if (effectiveEndsAtMs(row.occurrence) < now) return false;
       const hour = new Date(row.occurrence.startsAt).getHours();
       return mode === 'nacht' ? isNachtHour(hour) : !isNachtHour(hour);
     });
-  }, [events, mode]);
+  }, [events, mode, now]);
 
   // Hoofd-artikel: featured event uit de split. Geen featured? Eerste rij.
   const lead = useMemo(() => {
