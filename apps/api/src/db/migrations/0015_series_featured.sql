@@ -1,0 +1,1 @@
+ALTER TABLE "series" ADD COLUMN "featured" boolean DEFAULT false NOT NULL;

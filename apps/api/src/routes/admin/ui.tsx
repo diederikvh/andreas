@@ -1543,7 +1543,8 @@ adminUi.post('/series/new', async (c) => {
     startsAt: fromDateTimeLocal(String(form.startsAt ?? '')),
     endsAt: fromDateTimeLocal(String(form.endsAt ?? '')),
     categories: parseCategoriesField(String(form.categories ?? '')),
-    published: form.published !== 'off',
+    published: form.published === 'on',
+    featured: form.featured === 'on',
   });
   return c.redirect(`/admin/series/${encodeURIComponent(id)}`);
 });
@@ -1694,7 +1695,8 @@ adminUi.post('/series/:id', async (c) => {
       startsAt: fromDateTimeLocal(String(form.startsAt ?? '')),
       endsAt: fromDateTimeLocal(String(form.endsAt ?? '')),
       categories: parseCategoriesField(String(form.categories ?? '')),
-      published: form.published !== 'off',
+      published: form.published === 'on',
+      featured: form.featured === 'on',
     })
     .where(eq(schema.series.id, id));
   return c.redirect(`/admin/series/${encodeURIComponent(id)}`);
@@ -1807,10 +1809,16 @@ function SeriesForm({
           <input type="text" name="id" placeholder="series-…" />
         </label>
       )}
-      <label>
-        <input type="checkbox" name="published" checked={series?.published ?? true} />
-        Live
-      </label>
+      <fieldset>
+        <label>
+          <input type="checkbox" name="published" checked={series?.published ?? true} />
+          Live (verschijnt in de app)
+        </label>
+        <label>
+          <input type="checkbox" name="featured" checked={series?.featured ?? false} />
+          Featured — top-strook in Venues-tab (alleen voor periode-festivals zoals ADE/IDFA/Holland Festival; mini-series rond een opening uitlaten)
+        </label>
+      </fieldset>
       <button type="submit">{series ? 'Opslaan' : 'Serie aanmaken'}</button>
     </form>
   );

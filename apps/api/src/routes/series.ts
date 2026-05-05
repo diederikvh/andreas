@@ -39,6 +39,11 @@ export const seriesRoute = new Hono();
 seriesRoute.get('/', async (c) => {
   const q = (c.req.query('q') ?? '').trim();
   const category = c.req.query('category');
+  // Default: alleen `featured` series — de Venues-tab top-strook is
+  // bedoeld voor periode-festivals (Holland Festival, ADE, IDFA),
+  // niet voor mini-series rond één tentoonstelling. Voor admin- of
+  // search-context kan ?all=1 alle published series tonen.
+  const showAll = c.req.query('all') === '1';
 
   // Verberg afgelopen series uit de lijst — series met `endsAt` in het
   // verleden zijn voorbij. Doorlopende cycli zonder vaste einddatum
@@ -49,6 +54,9 @@ seriesRoute.get('/', async (c) => {
     gt(schema.series.endsAt, now)
   )!;
   const conditions: SQL[] = [stillActive, eq(schema.series.published, true)];
+  if (!showAll) {
+    conditions.push(eq(schema.series.featured, true));
+  }
   if (q.length > 0) {
     const needle = `%${q}%`;
     const matchName = ilike(schema.series.name, needle);

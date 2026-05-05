@@ -682,6 +682,7 @@ adminApi.post('/series', async (c) => {
         endsAt: parseDate(body.endsAt),
         categories: parseCategoryArr(body.categories),
         published: body.published == null ? true : Boolean(body.published),
+        featured: Boolean(body.featured),
       })
       .returning();
     return c.json({ series: row }, 201);
@@ -729,6 +730,7 @@ adminApi.patch('/series/:id', async (c) => {
   if ('endsAt' in body) updates.endsAt = parseDate(body.endsAt);
   if ('categories' in body) updates.categories = parseCategoryArr(body.categories);
   if ('published' in body) updates.published = Boolean(body.published);
+  if ('featured' in body) updates.featured = Boolean(body.featured);
   if (Object.keys(updates).length === 0) {
     return c.json({ error: 'geen velden om te updaten' }, 400);
   }

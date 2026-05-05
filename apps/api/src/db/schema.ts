@@ -352,6 +352,12 @@ export const series = pgTable('series', {
   /** Admin-toggle: false = verbergen uit publieke endpoints
       (pills + Venues-tab) zonder de koppelingen kwijt te raken. */
   published: boolean().notNull().default(true),
+  /** Curatorische pin: true = toont in de Series-strook bovenaan de
+      Venues-tab. Bedoeld voor periode-festivals zoals Holland
+      Festival, ADE, IDFA, Grachten Festival. Mini-series die alleen
+      een opening en een tentoonstelling koppelen blijven default off
+      — de pills bij events tonen ze nog wel via `event.series`. */
+  featured: boolean().notNull().default(false),
   createdAt: timestamp({ withTimezone: true })
     .notNull()
     .default(sql`now()`),
