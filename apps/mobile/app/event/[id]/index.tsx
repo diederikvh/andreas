@@ -20,7 +20,7 @@ import Animated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { SpinningCross } from '@/components/SpinningCross';
-import type { ApiEvent, ApiOccurrence } from '@/lib/api';
+import type { ApiEvent, ApiLineupEntry, ApiOccurrence } from '@/lib/api';
 import { useSession } from '@/lib/authClient';
 import {
   DOW_NL_MIXED,
@@ -178,6 +178,20 @@ export default function EventDetail() {
             <Text style={[styles.bodyText, { color: roles.fgRead }]}>
               {view.description}
             </Text>
+          )}
+
+          {event.occurrences && event.occurrences[0]?.lineup && event.occurrences[0].lineup.length > 0 && (
+            <Lineup
+              lineup={event.occurrences[0].lineup}
+              // Voor multi-occurrence events kan elke avond een andere
+              // lineup hebben (bv. wekelijks feest). Dan tonen we erbij
+              // welke avond deze lineup hoort.
+              kicker={
+                event.occurrences.length > 1
+                  ? `Eerstvolgende — ${formatLineupKicker(event.occurrences[0].startsAt)}`
+                  : null
+              }
+            />
           )}
 
           {event.occurrences && event.occurrences.length > 1 && (
@@ -473,10 +487,85 @@ function formatExhibitionEnd(endsAt: string): string {
   return `${d.getDate()} ${MONTHS_NL[d.getMonth()].toLowerCase()}`;
 }
 
+function formatLineupKicker(startsAt: string): string {
+  const d = new Date(startsAt);
+  return `${DOW_NL_MIXED[d.getDay()]} ${d.getDate()} ${MONTHS_NL[d.getMonth()].toLowerCase()}`;
+}
+
+const ROLE_LABEL: Record<NonNullable<ApiLineupEntry['role']>, string> = {
+  headliner: 'Headliner',
+  support: 'Support',
+  act: 'Act',
+  dj: 'DJ',
+};
+
+/**
+ * Lineup-block voor concerten, voorstellingen, openingen — toont wie er
+ * speelt/optreedt voor de eerstvolgende occurrence. Volgorde komt uit
+ * de DB (curator beslist). Voor wekelijkse feesten met wisselende
+ * lineups: kicker geeft aan welke avond deze lineup hoort.
+ */
+function Lineup({
+  lineup,
+  kicker,
+}: {
+  lineup: ApiLineupEntry[];
+  kicker: string | null;
+}) {
+  const roles = useRoles();
+  return (
+    <>
+      <View style={styles.lineupHeading}>
+        <Text style={[styles.crewHeading, { color: roles.fg }]}>Lineup</Text>
+        {kicker && (
+          <Text style={[styles.lineupKicker, { color: roles.fgMuted }]}>
+            {kicker}
+          </Text>
+        )}
+      </View>
+      <View style={[styles.lineupBlock, { borderColor: roles.bgChip }]}>
+        {lineup.map((entry, i) => (
+          <View
+            key={`${entry.name}-${i}`}
+            style={[
+              styles.lineupRow,
+              i > 0 && { borderTopColor: roles.bgChip, borderTopWidth: StyleSheet.hairlineWidth },
+            ]}
+          >
+            <Text
+              numberOfLines={1}
+              style={[
+                styles.lineupName,
+                {
+                  color: roles.fg,
+                  fontFamily:
+                    entry.role === 'headliner'
+                      ? fontFamily.display
+                      : fontFamily.medium,
+                  fontSize: entry.role === 'headliner' ? 17 : 14.5,
+                  letterSpacing: entry.role === 'headliner' ? -0.34 : -0.14,
+                },
+              ]}
+            >
+              {entry.name}
+            </Text>
+            {entry.role && (
+              <Text style={[styles.lineupRole, { color: roles.fgMuted }]}>
+                {ROLE_LABEL[entry.role]}
+              </Text>
+            )}
+          </View>
+        ))}
+      </View>
+    </>
+  );
+}
+
 /**
  * Lijst van alle aankomende voorstellingen/momenten — getoond als een
  * event meer dan 1 occurrence heeft (films, wekelijkse feesten,
- * theater-residencies). Eén-malige events tonen 'm niet.
+ * theater-residencies). Per occurrence ook de top-lineup-naam zodat
+ * je in één oogopslag ziet welke avond bij welke act hoort.
  */
 function OccurrenceList({ occurrences }: { occurrences: ApiOccurrence[] }) {
   const roles = useRoles();
@@ -492,25 +581,44 @@ function OccurrenceList({ occurrences }: { occurrences: ApiOccurrence[] }) {
           const day = d.getDate();
           const month = MONTHS_NL[d.getMonth()].toLowerCase();
           const time = formatTime(o.startsAt);
+          // Toon de eerste naam uit de lineup als compacte hint per rij.
+          // Voor wekelijkse feesten geeft dit per maandag een ander
+          // beeld — Mama Snake vs Carista vs Helena Hauff.
+          const lineupHint =
+            o.lineup && o.lineup.length > 0
+              ? o.lineup.length === 1
+                ? o.lineup[0].name
+                : `${o.lineup[0].name} +${o.lineup.length - 1}`
+              : null;
           return (
             <View
               key={o.id}
               style={[styles.occRow, { borderTopColor: roles.bgChip }]}
             >
-              <Text style={[styles.occDate, { color: roles.fg }]}>
-                {dow} {day} {month}
-              </Text>
-              <Text style={[styles.occTime, { color: roles.fgMuted }]}>
-                {time}
-                {o.room ? ` · ${o.room}` : ''}
-              </Text>
-              <Text style={[styles.occPrice, { color: roles.fgMuted }]}>
-                {o.status === 'sold_out'
-                  ? 'Uitverkocht'
-                  : o.status === 'cancelled'
-                    ? 'Geannuleerd'
-                    : formatPrice(o.priceCents)}
-              </Text>
+              <View style={styles.occHeader}>
+                <Text style={[styles.occDate, { color: roles.fg }]}>
+                  {dow} {day} {month}
+                </Text>
+                <Text style={[styles.occTime, { color: roles.fgMuted }]}>
+                  {time}
+                  {o.room ? ` · ${o.room}` : ''}
+                </Text>
+                <Text style={[styles.occPrice, { color: roles.fgMuted }]}>
+                  {o.status === 'sold_out'
+                    ? 'Uitverkocht'
+                    : o.status === 'cancelled'
+                      ? 'Geannuleerd'
+                      : formatPrice(o.priceCents)}
+                </Text>
+              </View>
+              {lineupHint && (
+                <Text
+                  numberOfLines={1}
+                  style={[styles.occLineup, { color: roles.fgRead }]}
+                >
+                  {lineupHint}
+                </Text>
+              )}
             </View>
           );
         })}
@@ -900,12 +1008,15 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   occRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
     paddingHorizontal: 12,
     paddingVertical: 10,
     borderTopWidth: StyleSheet.hairlineWidth,
+    gap: 4,
+  },
+  occHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
   },
   occDate: {
     flex: 1,
@@ -924,6 +1035,51 @@ const styles = StyleSheet.create({
     letterSpacing: 0.4,
     minWidth: 56,
     textAlign: 'right',
+  },
+  occLineup: {
+    fontFamily: fontFamily.body,
+    fontSize: 12.5,
+    letterSpacing: -0.06,
+  },
+
+  // Lineup — wie er optreedt op de eerstvolgende occurrence.
+  // Container-stijl matcht occList + crewBlock voor visuele rust.
+  // Headliner krijgt grotere display-font, support/dj kleiner.
+  lineupHeading: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: 8,
+    marginTop: 14,
+    marginBottom: 6,
+  },
+  lineupKicker: {
+    fontFamily: fontFamily.mono,
+    fontSize: 10,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+  },
+  lineupBlock: {
+    marginTop: 2,
+    marginBottom: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    overflow: 'hidden',
+  },
+  lineupRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 11,
+  },
+  lineupName: {
+    flex: 1,
+  },
+  lineupRole: {
+    fontFamily: fontFamily.mono,
+    fontSize: 9.5,
+    letterSpacing: 1.1,
+    textTransform: 'uppercase',
   },
 
   // Crew-block — combineert vrienden die dit event hebben opgeslagen
