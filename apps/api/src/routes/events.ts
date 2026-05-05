@@ -135,6 +135,10 @@ eventsRoute.get('/', async (c) => {
       priceNote: occ.next?.priceNote ?? null,
       ticketUrl: occ.next?.ticketUrl ?? null,
       occurrenceCount: occ.count,
+      // Volledige lijst occurrences in de gevraagde range — Agenda en
+      // Avond gebruiken dit om per moment één rij te tonen ipv één per
+      // event. Een 3-daags festival verschijnt zo op alle 3 dagen.
+      occurrencesInRange: occ.all,
       friendsSaved: friends?.friends ?? [],
       friendsSavedCount: friends?.count ?? 0,
       venueFollowed: followedVenueIds.has(event.venue.id),

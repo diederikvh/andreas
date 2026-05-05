@@ -27,10 +27,12 @@ import { SpinningCross } from '@/components/SpinningCross';
 import type { ApiEvent } from '@/lib/api';
 import {
   CATEGORY_TICK,
-  type EventGroup,
+  expandToOccurrenceRows,
   formatTime,
   getTimeBlock,
-  groupEventsByDay,
+  groupOccurrenceRowsByDay,
+  type OccurrenceGroup,
+  type OccurrenceRow,
   TIME_BLOCKS,
   type TimeBlock,
 } from '@/lib/eventDisplay';
@@ -102,16 +104,15 @@ export default function Agenda() {
 
   const { data: events, isLoading, error } = useEvents({ from: todayStartIso });
 
-  // Cliëntside filter — events-lijst is klein, geen API-call nodig.
+  // Cliëntside filter op event-eigenschappen (category/genre/search) —
+  // tijd-blok wordt apart per occurrence toegepast zodat een film met
+  // matinee (14:00) én avondvoorstelling (22:00) bij beide blokken
+  // verschijnt op de juiste tijden.
   const filteredEvents = useMemo(() => {
     if (!events) return [];
     const needle = query.trim().toLowerCase();
     return events.filter((e) => {
       if (activeCat && e.category !== activeCat) return false;
-      if (activeBlocks.length > 0) {
-        const block = getTimeBlock(new Date(e.startsAt).getHours());
-        if (!activeBlocks.includes(block)) return false;
-      }
       if (activeGenres.length > 0) {
         const evGenres = e.genres ?? [];
         if (!evGenres.some((g) => activeGenres.includes(g))) return false;
@@ -124,12 +125,19 @@ export default function Agenda() {
       }
       return true;
     });
-  }, [events, activeCat, activeBlocks, activeGenres, query]);
+  }, [events, activeCat, activeGenres, query]);
 
-  const days = useMemo(
-    () => groupEventsByDay(filteredEvents),
-    [filteredEvents]
-  );
+  // Expand naar één rij per occurrence en groepeer per dag. Een
+  // 3-daagse festival komt zo op alle 3 dagen voor; een wekelijks feest
+  // op elke maandag binnen de gevraagde range.
+  const days = useMemo(() => {
+    const rows = expandToOccurrenceRows(filteredEvents).filter((row) => {
+      if (activeBlocks.length === 0) return true;
+      const block = getTimeBlock(new Date(row.occurrence.startsAt).getHours());
+      return activeBlocks.includes(block);
+    });
+    return groupOccurrenceRowsByDay(rows);
+  }, [filteredEvents, activeBlocks]);
 
   const [positions, setPositions] = useState<Record<string, number>>({});
   const [selected, setSelected] = useState<string | null>(null);
@@ -216,8 +224,8 @@ export default function Agenda() {
             {days.map((day) => (
               <View key={day.id} onLayout={captureSectionY(day.id)}>
                 <DateAnchor day={day} />
-                {day.events.map((event) => (
-                  <AgendaRow key={event.id} event={event} />
+                {day.rows.map((row) => (
+                  <AgendaRow key={row.id} row={row} />
                 ))}
               </View>
             ))}
@@ -906,7 +914,7 @@ function DayStrip({
   selectedId,
   onSelect,
 }: {
-  days: EventGroup[];
+  days: OccurrenceGroup[];
   selectedId: string;
   onSelect: (id: string) => void;
 }) {
@@ -955,7 +963,7 @@ function DayChip({
   onPress,
   onLayout,
 }: {
-  day: EventGroup;
+  day: OccurrenceGroup;
   active: boolean;
   onPress: () => void;
   onLayout: (x: number, width: number) => void;
@@ -989,7 +997,7 @@ function DayChip({
   );
 }
 
-function DateAnchor({ day }: { day: EventGroup }) {
+function DateAnchor({ day }: { day: OccurrenceGroup }) {
   const roles = useRoles();
   return (
     <View style={styles.dateAnchor}>
@@ -1008,14 +1016,22 @@ function DateAnchor({ day }: { day: EventGroup }) {
   );
 }
 
-function AgendaRow({ event }: { event: ApiEvent }) {
+function AgendaRow({ row }: { row: OccurrenceRow }) {
+  const { event, occurrence } = row;
   const friends = event.friendsSaved?.map((f) => ({
     name: f.name,
     avatar: f.avatarUrl,
   }));
+  // Synthetische occurrence-id (`evt::next`) komt vanuit fallback-pad
+  // wanneer er geen occurrencesInRange zijn — dan geen ?o= in de URL
+  // omdat die geen echte server-side ID is.
+  const isSynthetic = occurrence.id.endsWith('::next');
+  const path = isSynthetic
+    ? `/event/${event.id}`
+    : `/event/${event.id}?o=${occurrence.id}`;
   return (
     <EventListRow
-      time={formatTime(event.startsAt)}
+      time={formatTime(occurrence.startsAt)}
       duration={event.category.toLowerCase()}
       thumb={event.imageUrl ?? ''}
       title={event.title}
@@ -1025,7 +1041,7 @@ function AgendaRow({ event }: { event: ApiEvent }) {
       genreLabel={event.genres?.[0]}
       friends={friends && friends.length > 0 ? friends : undefined}
       tick={CATEGORY_TICK[event.category]}
-      onPress={() => router.push(`/event/${event.id}`)}
+      onPress={() => router.push(path as never)}
     />
   );
 }

@@ -18,7 +18,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Cross } from '@/components/Cross';
 import { EventListRow } from '@/components/EventListRow';
 import type { ApiEventInviteRecord, ApiPublicUser } from '@/lib/api';
-import { CATEGORY_TICK, formatTime } from '@/lib/eventDisplay';
+import { CATEGORY_TICK, DOW_NL_MIXED, formatTime, MONTHS_NL } from '@/lib/eventDisplay';
 import {
   useEvent,
   useFriends,
@@ -29,8 +29,12 @@ import { useMode, useRoles } from '@/store/mode';
 import { fontFamily, palette } from '@/theme/tokens';
 
 export default function InviteModal() {
-  const { id: rawId } = useLocalSearchParams<{ id: string }>();
+  const { id: rawId, o: rawOcc } = useLocalSearchParams<{
+    id: string;
+    o?: string;
+  }>();
   const eventId = rawId ?? '';
+  const targetOccurrenceId = typeof rawOcc === 'string' ? rawOcc : null;
   const mode = useMode();
   const roles = useRoles();
   const insets = useSafeAreaInsets();
@@ -44,6 +48,19 @@ export default function InviteModal() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [message, setMessage] = useState('');
   const [sent, setSent] = useState(false);
+
+  // Resolve het invite-target: als er een ?o= query is gebruiken we die
+  // (Agenda/Avond duwen 'm mee bij tap op een specifieke avond).
+  // Anders pakken we de eerstvolgende occurrence van het event.
+  const resolvedOccurrence = (() => {
+    if (!event?.occurrences) return null;
+    if (targetOccurrenceId) {
+      const match = event.occurrences.find((o) => o.id === targetOccurrenceId);
+      if (match) return match;
+    }
+    return event.occurrences[0] ?? null;
+  })();
+  const resolvedOccurrenceId = resolvedOccurrence?.id ?? null;
 
   // Lijst combineert geaccepteerde vrienden + uitstaande verzoeken.
   // Pending-rijen zijn zichtbaar (zodat je ze kan terugvinden) maar
@@ -70,16 +87,21 @@ export default function InviteModal() {
     });
   }, [friends, outgoing]);
 
-  // Map van vriend-id → bestaande invite-status. Pending/accepted/declined
-  // betekent: deze persoon is al bekend met dit event, niet nogmaals
-  // versturen.
+  // Map van vriend-id → bestaande invite voor déze specifieke occurrence.
+  // De DB-uniqueness is (from, to, occurrenceId), dus dezelfde vriend
+  // kan voor verschillende avonden van een wekelijks feest of theater-
+  // residency wél opnieuw uitgenodigd worden — de huidige filter zorgt
+  // ervoor dat we alleen "al verstuurd voor deze avond" markeren.
   const inviteByUser = useMemo(() => {
     const map = new Map<string, ApiEventInviteRecord>();
+    if (!resolvedOccurrenceId) return map;
     for (const inv of event?.myInvites ?? []) {
-      map.set(inv.to.id, inv);
+      if (inv.occurrenceId === resolvedOccurrenceId) {
+        map.set(inv.to.id, inv);
+      }
     }
     return map;
-  }, [event?.myInvites]);
+  }, [event?.myInvites, resolvedOccurrenceId]);
 
   const pendingFriendIds = useMemo(
     () => new Set((outgoing ?? []).map((o) => o.id)),
@@ -108,17 +130,11 @@ export default function InviteModal() {
     Haptics.selectionAsync();
   };
 
-  // Voor V1: pak de eerstvolgende occurrence als invite-target. Een
-  // multi-occurrence event (film met 14 voorstellingen, wekelijks feest)
-  // krijgt later een picker — nu nodig je vrienden uit voor de
-  // eerstvolgende keer.
-  const targetOccurrenceId = event?.occurrences?.[0]?.id ?? null;
-
   const onSend = async () => {
-    if (selected.size === 0 || !eventId || !targetOccurrenceId) return;
+    if (selected.size === 0 || !eventId || !resolvedOccurrenceId) return;
     try {
       await sendInvites.mutateAsync({
-        occurrenceId: targetOccurrenceId,
+        occurrenceId: resolvedOccurrenceId,
         eventId,
         toUserIds: Array.from(selected),
         message: message.trim() || undefined,
@@ -174,9 +190,9 @@ export default function InviteModal() {
             : insets.bottom + 24,
         }}
       >
-        {event && (
+        {event && resolvedOccurrence && (
           <EventListRow
-            time={formatTime(event.startsAt)}
+            time={formatTime(resolvedOccurrence.startsAt)}
             duration={event.category.toLowerCase()}
             thumb={event.imageUrl ?? ''}
             title={event.title}
@@ -187,6 +203,24 @@ export default function InviteModal() {
             tick={CATEGORY_TICK[event.category]}
           />
         )}
+
+        {/* Voor multi-occurrence events expliciet markeren welke avond
+            we aan het uitnodigen zijn — anders snapt de gebruiker niet
+            of hij voor maandag of vrijdag aan het uitnodigen is. */}
+        {event &&
+          resolvedOccurrence &&
+          event.occurrences &&
+          event.occurrences.length > 1 && (
+            <View style={[styles.targetBanner, { backgroundColor: roles.bgTag }]}>
+              <Text style={[styles.targetLabel, { color: roles.fgMuted }]}>
+                JE NODIGT UIT VOOR
+              </Text>
+              <Text style={[styles.targetValue, { color: roles.fg }]}>
+                {formatTargetDate(resolvedOccurrence.startsAt)}
+                {resolvedOccurrence.room ? ` · ${resolvedOccurrence.room}` : ''}
+              </Text>
+            </View>
+          )}
 
         <Text style={[styles.sectionTitle, { color: roles.fg }]}>
           Nodig iemand uit
@@ -316,6 +350,15 @@ export default function InviteModal() {
       )}
     </KeyboardAvoidingView>
   );
+}
+
+function formatTargetDate(iso: string): string {
+  const d = new Date(iso);
+  const dow = DOW_NL_MIXED[d.getDay()];
+  const day = d.getDate();
+  const month = MONTHS_NL[d.getMonth()].toLowerCase();
+  const time = formatTime(iso);
+  return `${dow} ${day} ${month} · ${time}`;
 }
 
 function FriendCheckRow({
@@ -454,6 +497,25 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   topBarSpacer: { width: 36, height: 36 },
+
+  targetBanner: {
+    marginHorizontal: 22,
+    marginTop: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderRadius: 10,
+    gap: 4,
+  },
+  targetLabel: {
+    fontFamily: fontFamily.mono,
+    fontSize: 9.5,
+    letterSpacing: 1.1,
+  },
+  targetValue: {
+    fontFamily: fontFamily.medium,
+    fontSize: 14,
+    letterSpacing: -0.14,
+  },
 
   sectionTitle: {
     fontFamily: fontFamily.display,

@@ -61,6 +61,11 @@ export type ApiEvent = {
   /** Aantal komende occurrences (incl. de huidige `startsAt`). UI gebruikt
       dit om "+ 4 meer" te tonen achter de eerste tijd. */
   occurrenceCount: number;
+  /** Voor list-endpoints (Avond/Agenda/Kaart): alle occurrences in de
+      gevraagde datum-range. UI kan per occurrence flatmappen zodat een
+      multi-occurrence event op meerdere dagen verschijnt — een 3-daags
+      festival komt zo op alle 3 dagen in de Agenda terug. */
+  occurrencesInRange?: ApiOccurrence[];
   imageUrl: string | null;
   category: 'Muziek' | 'Theater' | 'Literatuur' | 'Film';
   featured: boolean;

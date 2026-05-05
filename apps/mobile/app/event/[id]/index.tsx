@@ -39,8 +39,12 @@ const HERO_HEIGHT = 420;
  * photo strip and friends bestaan in de DB blijven die secties leeg.
  */
 export default function EventDetail() {
-  const { id: rawId } = useLocalSearchParams<{ id: string }>();
+  const { id: rawId, o: rawOcc } = useLocalSearchParams<{ id: string; o?: string }>();
   const id = rawId ?? '';
+  // ?o=<occurrenceId> — Agenda/Avond geven aan welk specifiek moment de
+  // gebruiker getapt heeft, zodat we de meta-rij + invite-CTA op die
+  // avond focussen ipv automatisch op de eerstvolgende.
+  const targetOccurrenceId = typeof rawOcc === 'string' ? rawOcc : null;
   const mode = useMode();
   const roles = useRoles();
   const insets = useSafeAreaInsets();
@@ -78,7 +82,20 @@ export default function EventDetail() {
     );
   }
 
-  const view = toViewModel(event);
+  // Resolve welke occurrence de "primaire" is voor dit detail-bezoek:
+  //  1. ?o= query als die matcht — Agenda/Avond duwen die mee
+  //  2. anders eerstvolgende toekomstige (occurrences[0])
+  //  3. anders fallback op event.startsAt-velden zoals voorheen
+  const selectedOccurrence = (() => {
+    if (!event.occurrences) return null;
+    if (targetOccurrenceId) {
+      const match = event.occurrences.find((o) => o.id === targetOccurrenceId);
+      if (match) return match;
+    }
+    return event.occurrences[0] ?? null;
+  })();
+
+  const view = toViewModel(event, selectedOccurrence);
   const stickyTitle = view.title;
 
   return (
@@ -180,22 +197,24 @@ export default function EventDetail() {
             </Text>
           )}
 
-          {event.occurrences && event.occurrences[0]?.lineup && event.occurrences[0].lineup.length > 0 && (
+          {selectedOccurrence?.lineup && selectedOccurrence.lineup.length > 0 && (
             <Lineup
-              lineup={event.occurrences[0].lineup}
-              // Voor multi-occurrence events kan elke avond een andere
-              // lineup hebben (bv. wekelijks feest). Dan tonen we erbij
-              // welke avond deze lineup hoort.
+              lineup={selectedOccurrence.lineup}
+              // Voor multi-occurrence events markeren we welke avond's
+              // lineup we tonen. Voor single-occurrence: geen kicker.
               kicker={
-                event.occurrences.length > 1
-                  ? `Eerstvolgende — ${formatLineupKicker(event.occurrences[0].startsAt)}`
+                event.occurrences && event.occurrences.length > 1
+                  ? formatLineupKicker(selectedOccurrence.startsAt)
                   : null
               }
             />
           )}
 
           {event.occurrences && event.occurrences.length > 1 && (
-            <OccurrenceList occurrences={event.occurrences} />
+            <OccurrenceList
+              occurrences={event.occurrences}
+              selectedId={selectedOccurrence?.id ?? null}
+            />
           )}
 
           {event.series && event.series.length > 0 && (
@@ -240,7 +259,15 @@ export default function EventDetail() {
           <CrewBlock event={event} />
 
           <Pressable
-            onPress={() => router.push(`/event/${id}/invite` as never)}
+            onPress={() => {
+              // Geef de geselecteerde occurrence door zodat de invite-
+              // modal weet voor welke avond we vrienden uitnodigen.
+              const path =
+                selectedOccurrence && !selectedOccurrence.id.endsWith('::next')
+                  ? `/event/${id}/invite?o=${selectedOccurrence.id}`
+                  : `/event/${id}/invite`;
+              router.push(path as never);
+            }}
             style={[
               styles.invite,
               { borderColor: isNacht ? '#2a2a2e' : palette.paper },
@@ -567,7 +594,13 @@ function Lineup({
  * theater-residencies). Per occurrence ook de top-lineup-naam zodat
  * je in één oogopslag ziet welke avond bij welke act hoort.
  */
-function OccurrenceList({ occurrences }: { occurrences: ApiOccurrence[] }) {
+function OccurrenceList({
+  occurrences,
+  selectedId,
+}: {
+  occurrences: ApiOccurrence[];
+  selectedId: string | null;
+}) {
   const roles = useRoles();
   return (
     <>
@@ -581,22 +614,33 @@ function OccurrenceList({ occurrences }: { occurrences: ApiOccurrence[] }) {
           const day = d.getDate();
           const month = MONTHS_NL[d.getMonth()].toLowerCase();
           const time = formatTime(o.startsAt);
-          // Toon de eerste naam uit de lineup als compacte hint per rij.
-          // Voor wekelijkse feesten geeft dit per maandag een ander
-          // beeld — Mama Snake vs Carista vs Helena Hauff.
           const lineupHint =
             o.lineup && o.lineup.length > 0
               ? o.lineup.length === 1
                 ? o.lineup[0].name
                 : `${o.lineup[0].name} +${o.lineup.length - 1}`
               : null;
+          const isSelected = o.id === selectedId;
           return (
             <View
               key={o.id}
-              style={[styles.occRow, { borderTopColor: roles.bgChip }]}
+              style={[
+                styles.occRow,
+                { borderTopColor: roles.bgChip },
+                isSelected && {
+                  backgroundColor: roles.bgTag,
+                  borderLeftColor: roles.accent,
+                  borderLeftWidth: 3,
+                },
+              ]}
             >
               <View style={styles.occHeader}>
-                <Text style={[styles.occDate, { color: roles.fg }]}>
+                <Text
+                  style={[
+                    styles.occDate,
+                    { color: isSelected ? roles.accent : roles.fg },
+                  ]}
+                >
                   {dow} {day} {month}
                 </Text>
                 <Text style={[styles.occTime, { color: roles.fgMuted }]}>
@@ -653,28 +697,35 @@ type ViewModel = {
   priceNote: string | null;
 };
 
-function toViewModel(event: ApiEvent): ViewModel {
-  const d = new Date(event.startsAt);
+function toViewModel(event: ApiEvent, occ: ApiOccurrence | null): ViewModel {
+  // Voor exhibitions zonder selected occurrence valt 'ie terug op
+  // event.startsAt (gedenormaliseerd vanuit nextOccurrence). Voor shows
+  // verwachten we altijd een occurrence — past door een query mismatch.
+  const sourceStart = occ?.startsAt ?? event.startsAt;
+  const sourceEnd = occ?.endsAt ?? event.endsAt;
+  const sourcePriceCents = occ?.priceCents ?? event.priceCents;
+  const sourcePriceNote = occ?.priceNote ?? event.priceNote;
+  const d = new Date(sourceStart);
   const dow = DOW_NL_MIXED[d.getDay()];
   const day = d.getDate();
   const month = MONTHS_NL[d.getMonth()].toLowerCase();
-  // Resolutie: per-event-noot wint, anders venue-default, anders niets.
   const priceNote =
-    (event.priceNote && event.priceNote.trim().length > 0
-      ? event.priceNote.trim()
+    (sourcePriceNote && sourcePriceNote.trim().length > 0
+      ? sourcePriceNote.trim()
       : null) ??
     (event.venue.priceNote && event.venue.priceNote.trim().length > 0
       ? event.venue.priceNote.trim()
       : null);
+  void sourceEnd; // endsAt wordt apart in <MetaCell> gebruikt voor exhibitions
   return {
     tag: event.category,
     title: event.title,
     date: `${dow} ${day} ${month}`,
-    time: formatTime(event.startsAt),
+    time: formatTime(sourceStart),
     venue: event.venue.name,
     description: event.description,
     photo: event.imageUrl,
-    price: formatPrice(event.priceCents),
+    price: formatPrice(sourcePriceCents),
     priceNote,
   };
 }

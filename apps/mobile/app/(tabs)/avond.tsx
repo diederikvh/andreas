@@ -14,8 +14,10 @@ import type { ApiEvent } from '@/lib/api';
 import {
   CATEGORY_TICK,
   DOW_NL_UPPER,
+  expandToOccurrenceRows,
   formatTime,
   isNachtHour,
+  type OccurrenceRow,
   socialWindow,
 } from '@/lib/eventDisplay';
 import { useEvents } from '@/lib/queries';
@@ -23,16 +25,13 @@ import { FEED } from '@/mocks/feed';
 import { useMode, useRoles } from '@/store/mode';
 import { fontFamily, palette } from '@/theme/tokens';
 
-function formatMeta(event: ApiEvent): string {
-  const d = new Date(event.startsAt);
+function formatMetaForRow(row: OccurrenceRow): string {
+  const d = new Date(row.occurrence.startsAt);
   const dow = DOW_NL_UPPER[d.getDay()];
+  const cents = row.occurrence.priceCents;
   const price =
-    event.priceCents == null
-      ? null
-      : event.priceCents === 0
-        ? 'gratis'
-        : `€${(event.priceCents / 100).toFixed(0)}`;
-  return [dow, formatTime(event.startsAt), event.venue.name.toUpperCase(), price]
+    cents == null ? null : cents === 0 ? 'gratis' : `€${(cents / 100).toFixed(0)}`;
+  return [dow, formatTime(row.occurrence.startsAt), row.event.venue.name.toUpperCase(), price]
     .filter(Boolean)
     .join(' · ');
 }
@@ -133,35 +132,48 @@ export default function Avond() {
     from: window.from,
     to: window.to,
   });
-  const filtered = useMemo(() => {
+  // Spread events naar één rij per moment in het venster, dan filter op
+  // dag/nacht-uur. Een 3-daags festival verschijnt zo per avond op het
+  // juiste tijdslot; een wekelijks feest dat morgen óók is komt op
+  // beide avonden.
+  const filtered = useMemo<OccurrenceRow[]>(() => {
     if (!events) return [];
-    return events.filter((e) => {
-      const hour = new Date(e.startsAt).getHours();
+    return expandToOccurrenceRows(events).filter((row) => {
+      const hour = new Date(row.occurrence.startsAt).getHours();
       return mode === 'nacht' ? isNachtHour(hour) : !isNachtHour(hour);
     });
   }, [events, mode]);
-  // Hoofd-artikel: random featured event uit de huidige split. Geen
-  // featured? Dan eerste event uit de split. useMemo zorgt dat dezelfde
-  // pick blijft staan zolang de input-lijst niet verandert.
+
+  // Hoofd-artikel: featured event uit de split. Geen featured? Eerste rij.
   const lead = useMemo(() => {
     if (filtered.length === 0) return undefined;
-    const featuredCandidates = filtered.filter((e) => e.featured);
-    if (featuredCandidates.length === 0) return filtered[0];
-    return featuredCandidates[
-      Math.floor(Math.random() * featuredCandidates.length)
-    ];
+    const featuredRows = filtered.filter((r) => r.event.featured);
+    if (featuredRows.length === 0) return filtered[0];
+    return featuredRows[Math.floor(Math.random() * featuredRows.length)];
   }, [filtered]);
-  const rest = lead ? filtered.filter((e) => e.id !== lead.id) : filtered;
 
-  // Splits in 'venues die je volgt' versus 'ook interessant'. Lead-event
-  // (de featured-card bovenaan) telt niet mee in de secties — die heeft
-  // z'n eigen plek bovenaan ongeacht volgde-status.
+  // Rest: alle andere occurrence-rows. Skippen we de lead's row, plus
+  // dedupliceer per event-id zodat het lead-event niet ook nog
+  // los onder verschijnt (het kan andere occurrences in het venster
+  // hebben — maar de lead toont dezelfde "show" al).
+  const rest = useMemo(() => {
+    if (!lead) return filtered;
+    const seenEvents = new Set<string>([lead.event.id]);
+    const out: OccurrenceRow[] = [];
+    for (const row of filtered) {
+      if (seenEvents.has(row.event.id)) continue;
+      seenEvents.add(row.event.id);
+      out.push(row);
+    }
+    return out;
+  }, [filtered, lead]);
+
   const followedRest = useMemo(
-    () => rest.filter((e) => e.venueFollowed),
+    () => rest.filter((r) => r.event.venueFollowed),
     [rest]
   );
   const otherRest = useMemo(
-    () => rest.filter((e) => !e.venueFollowed),
+    () => rest.filter((r) => !r.event.venueFollowed),
     [rest]
   );
 
@@ -198,12 +210,16 @@ export default function Avond() {
             Tot we een dedicated lead-flag hebben pakken we de eerstvolgende
             featured-pick. */}
         {lead && (
-          <Pressable onPress={() => router.push(`/event/${lead.id}`)}>
+          <Pressable
+            onPress={() =>
+              router.push(eventPathFor(lead) as never)
+            }
+          >
             <FeaturedCard
               kicker={data.featured.kicker}
-              title={lead.title}
-              meta={formatMeta(lead)}
-              photo={lead.imageUrl ?? data.featured.photo}
+              title={lead.event.title}
+              meta={formatMetaForRow(lead)}
+              photo={lead.event.imageUrl ?? data.featured.photo}
             />
           </Pressable>
         )}
@@ -234,8 +250,8 @@ export default function Avond() {
                   meta="Alles →"
                   onMetaPress={() => router.push('/agenda')}
                 />
-                {followedRest.map((e) => (
-                  <ApiEventRow key={e.id} event={e} />
+                {followedRest.map((row) => (
+                  <ApiEventRow key={row.id} row={row} />
                 ))}
               </>
             )}
@@ -254,8 +270,8 @@ export default function Avond() {
                   meta="Alles →"
                   onMetaPress={() => router.push('/agenda')}
                 />
-                {otherRest.map((e) => (
-                  <ApiEventRow key={e.id} event={e} />
+                {otherRest.map((row) => (
+                  <ApiEventRow key={row.id} row={row} />
                 ))}
               </>
             )}
@@ -336,7 +352,21 @@ function CategoryTabs() {
   );
 }
 
-function ApiEventRow({ event }: { event: ApiEvent }) {
+/**
+ * Pad naar event-detail. Voor occurrences die uit de API komen (echte
+ * id) hangen we `?o=` aan zodat de detail-page weet welk specifiek
+ * moment was aangetapt; voor synthetische rijen (`evt::next`) blijft
+ * het pad puur op event-id.
+ */
+function eventPathFor(row: OccurrenceRow): string {
+  if (row.occurrence.id.endsWith('::next')) {
+    return `/event/${row.event.id}`;
+  }
+  return `/event/${row.event.id}?o=${row.occurrence.id}`;
+}
+
+function ApiEventRow({ row }: { row: OccurrenceRow }) {
+  const { event, occurrence } = row;
   const friends = event.friendsSaved?.map((f) => ({
     name: f.name,
     avatar: f.avatarUrl,
@@ -345,13 +375,13 @@ function ApiEventRow({ event }: { event: ApiEvent }) {
     <EventListRow
       thumb={event.imageUrl ?? ''}
       title={event.title}
-      venue={formatMeta(event)}
+      venue={formatMetaForRow(row)}
       tags={[{ label: event.category, tone: CATEGORY_TICK[event.category] }]}
       seriesLabel={event.series?.[0]?.name}
       genreLabel={event.genres?.[0]}
       friends={friends && friends.length > 0 ? friends : undefined}
       tick={CATEGORY_TICK[event.category]}
-      onPress={() => router.push(`/event/${event.id}`)}
+      onPress={() => router.push(eventPathFor(row) as never)}
     />
   );
 }

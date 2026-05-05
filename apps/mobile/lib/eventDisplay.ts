@@ -248,3 +248,103 @@ export function groupEventsByDay(events: ApiEvent[]): EventGroup[] {
   }
   return Array.from(map.values());
 }
+
+import type { ApiOccurrence } from './api';
+
+/**
+ * Eén tijd-rij in een list-view. Een event met N occurrences geeft N
+ * rijen — zo verschijnt een 3-daagse festival op alle 3 dagen in de
+ * Agenda en op zijn eigen tijdslot in de Avond.
+ */
+export type OccurrenceRow = {
+  /** Stable key voor React-lists. */
+  id: string;
+  event: ApiEvent;
+  occurrence: ApiOccurrence;
+};
+
+/**
+ * Spread events naar één rij per occurrence. Gebruikt
+ * `event.occurrencesInRange` als die er is (komt van list-endpoints met
+ * occurrence-data). Fallback: maakt één rij van `event.startsAt` voor
+ * mocks of oudere API-responses zonder occurrencesInRange.
+ */
+export function expandToOccurrenceRows(events: ApiEvent[]): OccurrenceRow[] {
+  const rows: OccurrenceRow[] = [];
+  for (const event of events) {
+    const occs = event.occurrencesInRange;
+    if (occs && occs.length > 0) {
+      for (const occurrence of occs) {
+        rows.push({
+          id: `${event.id}::${occurrence.id}`,
+          event,
+          occurrence,
+        });
+      }
+    } else if (event.startsAt) {
+      // Synthetische occurrence vanuit gedenormaliseerde event-velden.
+      rows.push({
+        id: `${event.id}::next`,
+        event,
+        occurrence: {
+          id: `${event.id}::next`,
+          startsAt: event.startsAt,
+          endsAt: event.endsAt,
+          priceCents: event.priceCents,
+          priceNote: event.priceNote ?? null,
+          ticketUrl: event.ticketUrl,
+          room: null,
+          lineup: null,
+          status: 'scheduled',
+        },
+      });
+    }
+  }
+  return rows.sort(
+    (a, b) =>
+      new Date(a.occurrence.startsAt).getTime() -
+      new Date(b.occurrence.startsAt).getTime()
+  );
+}
+
+export type OccurrenceGroup = {
+  id: string;
+  dow: string;
+  num: string;
+  month: string;
+  count: number;
+  rows: OccurrenceRow[];
+};
+
+/**
+ * Groepeer occurrence-rows per kalenderdag (lokaal). Geeft per dag de
+ * rijen sorted op tijd. Eén event met meerdere occurrences op
+ * verschillende dagen verschijnt op elke dag.
+ */
+export function groupOccurrenceRowsByDay(
+  rows: OccurrenceRow[]
+): OccurrenceGroup[] {
+  const map = new Map<string, OccurrenceGroup>();
+  for (const row of rows) {
+    const d = new Date(row.occurrence.startsAt);
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    const id = `${yyyy}-${mm}-${dd}`;
+    const existing = map.get(id);
+    if (existing) {
+      existing.rows.push(row);
+      existing.count = existing.rows.length;
+    } else {
+      map.set(id, {
+        id,
+        dow: DOW_NL_MIXED[d.getDay()],
+        num: dd,
+        month: MONTHS_NL[d.getMonth()],
+        count: 1,
+        rows: [row],
+      });
+    }
+  }
+  return Array.from(map.values());
+}
