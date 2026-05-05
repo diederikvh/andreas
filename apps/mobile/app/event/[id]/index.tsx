@@ -423,7 +423,6 @@ function CrewAndInvite({
           styles.crewInviteContainer,
           {
             borderColor,
-            backgroundColor: surface,
             marginTop: 6,
           },
         ]}
@@ -439,6 +438,7 @@ function CrewAndInvite({
           onPress={onInvite}
           style={[
             styles.crewInviteCta,
+            { backgroundColor: surface },
             hasCrew && {
               borderTopColor: innerBorderColor,
               borderTopWidth: StyleSheet.hairlineWidth,
@@ -651,10 +651,7 @@ function TicketsBlock({
       <View
         style={[
           styles.ticketsBlock,
-          {
-            borderColor: isNacht ? '#232327' : palette.paper,
-            backgroundColor: isNacht ? '#101012' : palette.paper2,
-          },
+          { borderColor: isNacht ? '#232327' : palette.paper },
         ]}
       >
         <View style={styles.ticketsLeft}>
@@ -1130,7 +1127,7 @@ const styles = StyleSheet.create({
 
   // Series-pill — "Onderdeel van [ADE]" tappable strook onder de meta
   // row. Stack als event in meerdere series zit.
-  seriesRow: { gap: 8 },
+  seriesRow: { gap: 8, marginTop: 6 },
   seriesPill: {
     flexDirection: 'row',
     alignItems: 'center',
