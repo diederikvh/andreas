@@ -5,7 +5,7 @@ import * as Haptics from 'expo-haptics';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { Linking, Platform, Pressable, Share, StyleSheet, Text, View } from 'react-native';
 import Animated, {
   Extrapolation,
@@ -108,6 +108,34 @@ export default function EventDetail() {
   const view = toViewModel(event, selectedOccurrence);
   const stickyTitle = view.title;
 
+  // Pulse-animatie op de Datum-MetaCell zodra de gebruiker een andere
+  // occurrence kiest in de "Alle voorstellingen"-lijst — geeft visuele
+  // bevestiging dat de pagina daadwerkelijk geupdatet is.
+  const dateOpacity = useSharedValue(1);
+  const dateScale = useSharedValue(1);
+  const prevOccIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    const currentId = selectedOccurrence?.id ?? null;
+    if (
+      prevOccIdRef.current !== null &&
+      currentId !== prevOccIdRef.current
+    ) {
+      dateOpacity.value = withSequence(
+        withTiming(0.35, { duration: 110 }),
+        withTiming(1, { duration: 280 })
+      );
+      dateScale.value = withSequence(
+        withTiming(0.94, { duration: 110 }),
+        withTiming(1, { duration: 280 })
+      );
+    }
+    prevOccIdRef.current = currentId;
+  }, [selectedOccurrence?.id, dateOpacity, dateScale]);
+  const datePulseStyle = useAnimatedStyle(() => ({
+    opacity: dateOpacity.value,
+    transform: [{ scale: dateScale.value }],
+  }));
+
   return (
     <View style={[styles.root, { backgroundColor: roles.bg }]}>
       {/* Pinned photo + gradient — stays fixed while content scrolls over it,
@@ -205,20 +233,26 @@ export default function EventDetail() {
           )}
 
           <View style={styles.metaRow}>
-            <MetaCell
-              label={event.kind === 'exhibition' ? 'Loopt t/m' : 'Datum'}
-              value={
-                event.kind === 'exhibition' && event.endsAt
-                  ? formatExhibitionEnd(event.endsAt)
-                  : view.date
-              }
-            />
-            <MetaCell label="Aanvang" value={view.time} />
-            <MetaCell
-              label="Venue"
-              value={view.venue}
-              onPress={() => router.push(`/venue/${event.venue.slug}`)}
-            />
+            <Animated.View style={[styles.metaCellWrap, datePulseStyle]}>
+              <MetaCell
+                label={event.kind === 'exhibition' ? 'Loopt t/m' : 'Datum'}
+                value={
+                  event.kind === 'exhibition' && event.endsAt
+                    ? formatExhibitionEnd(event.endsAt)
+                    : view.date
+                }
+              />
+            </Animated.View>
+            <Animated.View style={[styles.metaCellWrap, datePulseStyle]}>
+              <MetaCell label="Aanvang" value={view.time} />
+            </Animated.View>
+            <View style={styles.metaCellWrap}>
+              <MetaCell
+                label="Venue"
+                value={view.venue}
+                onPress={() => router.push(`/venue/${event.venue.slug}`)}
+              />
+            </View>
           </View>
 
           {view.description && (
@@ -269,11 +303,12 @@ export default function EventDetail() {
               selectedId={selectedOccurrence?.id ?? null}
               onSelect={(occId) => {
                 Haptics.selectionAsync();
-                // setParams werkt scrollpositie-behoudend en triggert
-                // een rerender met de nieuwe ?o= zodat meta-rij,
-                // lineup, tickets en invite-target allemaal mee
-                // schakelen. Geen nieuwe page-load.
                 router.setParams({ o: occId });
+                // Scroll naar boven zodat de gebruiker de pulse-
+                // animatie op de Datum-cell ziet en visueel begrijpt
+                // dat de pagina is geupdatet — de tap zat onderaan,
+                // de wijziging zit bovenaan.
+                scrollRef.current?.scrollTo({ y: 0, animated: true });
               }}
             />
           )}
@@ -1075,8 +1110,11 @@ const styles = StyleSheet.create({
 
   // Meta row
   metaRow: { flexDirection: 'row', gap: 8, marginBottom: 20 },
+  // Animated.View wrapper rond MetaCell — flex hier zodat de cells
+  // gelijkmatig 1/3 ruimte krijgen, en de pulse-animatie alleen op
+  // de wrapper komt (transform op MetaCell zou border laten flikkeren).
+  metaCellWrap: { flex: 1 },
   metaCell: {
-    flex: 1,
     padding: 10,
     borderRadius: 8,
     borderWidth: 1,
