@@ -1087,13 +1087,20 @@ const styles = StyleSheet.create({
   // Body
   body: { padding: 20 },
 
-  // Meta row
-  metaRow: { flexDirection: 'row', gap: 8, marginBottom: 20 },
+  // Meta row — alignItems stretch zodat de drie cells altijd dezelfde
+  // hoogte hebben, ook als één venue-naam over twee regels wrapt.
+  metaRow: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    gap: 8,
+    marginBottom: 20,
+  },
   // Animated.View wrapper rond MetaCell — flex hier zodat de cells
   // gelijkmatig 1/3 ruimte krijgen, en de pulse-animatie alleen op
   // de wrapper komt (transform op MetaCell zou border laten flikkeren).
   metaCellWrap: { flex: 1 },
   metaCell: {
+    flex: 1,
     padding: 10,
     borderRadius: 8,
     borderWidth: 1,
