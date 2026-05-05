@@ -71,10 +71,19 @@ export default function Agenda() {
     tb?: string;
     gn?: string;
   }>();
-  const activeCat =
-    params.cat && (CATEGORIES as string[]).includes(params.cat)
-      ? (params.cat as ApiEvent['category'])
-      : null;
+  // Categories is multi-select — comma-separated in `?cat=Muziek,Kunst`.
+  // Voor backwards-compat met deeplinks die nog één enkele categorie
+  // doorgeven werkt `?cat=Muziek` ook (één element in de array).
+  const activeCats = useMemo<ApiEvent['category'][]>(
+    () =>
+      (params.cat ?? '')
+        .split(',')
+        .map((c) => c.trim())
+        .filter((c): c is ApiEvent['category'] =>
+          (CATEGORIES as string[]).includes(c)
+        ),
+    [params.cat]
+  );
   const query = params.q ?? '';
   const TB_IDS = TIME_BLOCKS.map((b) => b.id) as string[];
   const activeBlocks = useMemo<TimeBlock[]>(
@@ -113,7 +122,7 @@ export default function Agenda() {
     if (!events) return [];
     const needle = query.trim().toLowerCase();
     return events.filter((e) => {
-      if (activeCat && e.category !== activeCat) return false;
+      if (activeCats.length > 0 && !activeCats.includes(e.category)) return false;
       if (activeGenres.length > 0) {
         const evGenres = e.genres ?? [];
         if (!evGenres.some((g) => activeGenres.includes(g))) return false;
@@ -126,7 +135,7 @@ export default function Agenda() {
       }
       return true;
     });
-  }, [events, activeCat, activeGenres, query]);
+  }, [events, activeCats, activeGenres, query]);
 
   // Expand naar één rij per occurrence en groepeer per dag. Een
   // 3-daagse festival komt zo op alle 3 dagen voor; een wekelijks feest
@@ -213,7 +222,7 @@ export default function Agenda() {
             {days.length === 0 && (
               <ListState
                 text={
-                  activeCat ||
+                  activeCats.length > 0 ||
                   activeBlocks.length > 0 ||
                   activeGenres.length > 0 ||
                   query
@@ -244,11 +253,15 @@ export default function Agenda() {
           )}
         </View>
         <ChipRow
-          activeCat={activeCat}
+          activeCats={activeCats}
           query={query}
           activeBlocks={activeBlocks}
           activeGenres={activeGenres}
-          onCat={(cat) => router.setParams({ cat: cat ?? undefined })}
+          onCats={(next) =>
+            router.setParams({
+              cat: next.length > 0 ? next.join(',') : undefined,
+            })
+          }
           onQuery={(q) => router.setParams({ q: q.length > 0 ? q : undefined })}
           onBlocks={(next) =>
             router.setParams({
@@ -267,20 +280,20 @@ export default function Agenda() {
 }
 
 function ChipRow({
-  activeCat,
+  activeCats,
   query,
   activeBlocks,
   activeGenres,
-  onCat,
+  onCats,
   onQuery,
   onBlocks,
   onGenres,
 }: {
-  activeCat: ApiEvent['category'] | null;
+  activeCats: ApiEvent['category'][];
   query: string;
   activeBlocks: TimeBlock[];
   activeGenres: string[];
-  onCat: (cat: ApiEvent['category'] | null) => void;
+  onCats: (next: ApiEvent['category'][]) => void;
   onQuery: (q: string) => void;
   onBlocks: (next: TimeBlock[]) => void;
   onGenres: (next: string[]) => void;
@@ -314,24 +327,24 @@ function ChipRow({
   };
 
   const filterCount =
-    (activeCat ? 1 : 0) + activeBlocks.length + activeGenres.length;
+    activeCats.length + activeBlocks.length + activeGenres.length;
   const filterActive = filterCount > 0;
 
   const applySaved = (s: SavedSearch) => {
     const active = isSavedSearchActive(s, {
-      cat: activeCat,
+      cats: activeCats,
       tb: activeBlocks,
       gn: activeGenres,
       q: query,
     });
     if (active) {
-      onCat(null);
+      onCats([]);
       onBlocks([]);
       onGenres([]);
       onQuery('');
       return;
     }
-    onCat(s.cat);
+    onCats(s.cats);
     onBlocks(s.tb);
     onGenres(s.gn);
     onQuery(s.q);
@@ -352,7 +365,7 @@ function ChipRow({
     );
   };
 
-  const current = { cat: activeCat, tb: activeBlocks, gn: activeGenres, q: query };
+  const current = { cats: activeCats, tb: activeBlocks, gn: activeGenres, q: query };
 
   return (
     <>
@@ -479,11 +492,11 @@ function ChipRow({
         onRequestClose={() => setFilterOpen(false)}
       >
         <FilterSheet
-          activeCat={activeCat}
+          activeCats={activeCats}
           activeBlocks={activeBlocks}
           activeGenres={activeGenres}
           query={query}
-          onCat={onCat}
+          onCats={onCats}
           onBlocks={onBlocks}
           onGenres={onGenres}
           onClose={() => setFilterOpen(false)}
@@ -494,20 +507,20 @@ function ChipRow({
 }
 
 function FilterSheet({
-  activeCat,
+  activeCats,
   activeBlocks,
   activeGenres,
   query,
-  onCat,
+  onCats,
   onBlocks,
   onGenres,
   onClose,
 }: {
-  activeCat: ApiEvent['category'] | null;
+  activeCats: ApiEvent['category'][];
   activeBlocks: TimeBlock[];
   activeGenres: string[];
   query: string;
-  onCat: (cat: ApiEvent['category'] | null) => void;
+  onCats: (next: ApiEvent['category'][]) => void;
   onBlocks: (next: TimeBlock[]) => void;
   onGenres: (next: string[]) => void;
   onClose: () => void;
@@ -522,9 +535,12 @@ function FilterSheet({
 
   const groupedGenres = useMemo(() => {
     if (!genreData) return [];
-    const filtered = activeCat
-      ? genreData.filter((b) => b.category === activeCat)
-      : genreData;
+    // Filter genre-buckets op de geselecteerde categorieën — als er
+    // niets gekozen is, alle genres tonen.
+    const filtered =
+      activeCats.length > 0
+        ? genreData.filter((b) => activeCats.includes(b.category))
+        : genreData;
     const map = new Map<ApiEvent['category'], typeof filtered>();
     for (const b of filtered) {
       const arr = map.get(b.category) ?? [];
@@ -535,8 +551,12 @@ function FilterSheet({
       const items = map.get(category);
       return items ? [{ category, items }] : [];
     });
-  }, [genreData, activeCat]);
+  }, [genreData, activeCats]);
 
+  const toggleCat = (c: ApiEvent['category']) => {
+    if (activeCats.includes(c)) onCats(activeCats.filter((x) => x !== c));
+    else onCats([...activeCats, c]);
+  };
   const toggleBlock = (b: TimeBlock) => {
     if (activeBlocks.includes(b)) onBlocks(activeBlocks.filter((x) => x !== b));
     else onBlocks([...activeBlocks, b]);
@@ -546,10 +566,10 @@ function FilterSheet({
     else onGenres([...activeGenres, g]);
   };
   const filterCount =
-    (activeCat ? 1 : 0) + activeBlocks.length + activeGenres.length;
+    activeCats.length + activeBlocks.length + activeGenres.length;
 
   const onClearAll = () => {
-    onCat(null);
+    onCats([]);
     onBlocks([]);
     onGenres([]);
   };
@@ -559,7 +579,7 @@ function FilterSheet({
     if (name.length === 0) return;
     addSaved({
       name,
-      cat: activeCat,
+      cats: activeCats,
       tb: activeBlocks,
       gn: activeGenres,
       q: query,
@@ -617,8 +637,8 @@ function FilterSheet({
             <FilterChip
               key={cat}
               label={cat}
-              active={activeCat === cat}
-              onPress={() => onCat(activeCat === cat ? null : cat)}
+              active={activeCats.includes(cat)}
+              onPress={() => toggleCat(cat)}
             />
           ))}
         </View>
@@ -663,15 +683,20 @@ function FilterSheet({
         )}
         {!isLoading && !error && groupedGenres.length === 0 && (
           <Text style={[styles.sheetEmpty, { color: roles.fgMuted }]}>
-            {activeCat
-              ? `Geen genres gevonden voor ${activeCat}.`
-              : 'Nog geen genres ingevuld.'}
+            {activeCats.length === 1
+              ? `Geen genres gevonden voor ${activeCats[0]}.`
+              : activeCats.length > 1
+                ? 'Geen genres gevonden voor deze categorieën.'
+                : 'Nog geen genres ingevuld.'}
           </Text>
         )}
         <View style={styles.sheetSubSectionGroup}>
         {groupedGenres.map((section) => (
           <View key={section.category}>
-            {!activeCat && (
+            {/* Sub-heading per categorie verschijnt alleen als er meer
+                dan één categorie zichtbaar is — anders zijn alle genres
+                impliciet van die ene gekozen categorie. */}
+            {(activeCats.length === 0 || activeCats.length > 1) && (
               <Text
                 style={[styles.sheetSubSectionHead, { color: roles.fgPlaceholder }]}
               >

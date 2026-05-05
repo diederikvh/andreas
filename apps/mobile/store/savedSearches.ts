@@ -13,7 +13,10 @@ import type { TimeBlock } from '@/lib/eventDisplay';
 export type SavedSearch = {
   id: string;
   name: string;
-  cat: ApiEvent['category'] | null;
+  /** Multi-select categorieën. Backwards-compat: oude saved-searches
+      hadden `cat: ApiEvent['category'] | null` — die worden bij het
+      lezen geconverteerd naar één-element array of leeg. */
+  cats: ApiEvent['category'][];
   tb: TimeBlock[];
   gn: string[];
   q: string;
@@ -65,15 +68,15 @@ export const useRemoveSavedSearch = () =>
 export function isSavedSearchActive(
   s: SavedSearch,
   current: {
-    cat: ApiEvent['category'] | null;
+    cats: ApiEvent['category'][];
     tb: TimeBlock[];
     gn: string[];
     q: string;
   }
 ): boolean {
   return (
-    s.cat === current.cat &&
     s.q === current.q &&
+    sameSet(s.cats, current.cats) &&
     sameSet(s.tb, current.tb) &&
     sameSet(s.gn, current.gn)
   );
