@@ -1372,12 +1372,11 @@ const styles = StyleSheet.create({
     letterSpacing: -0.44,
   },
   ticketsNote: {
-    fontFamily: fontFamily.mono,
-    fontSize: 10,
-    letterSpacing: 0.8,
-    textTransform: 'uppercase',
-    marginTop: 2,
-    opacity: 0.7,
+    fontFamily: fontFamily.body,
+    fontSize: 12.5,
+    letterSpacing: -0.06,
+    lineHeight: 16,
+    marginTop: 4,
   },
   ticketsCta: {
     paddingHorizontal: 22,
