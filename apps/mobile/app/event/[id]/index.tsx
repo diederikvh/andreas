@@ -252,14 +252,9 @@ export default function EventDetail() {
             </>
           )}
 
-          <Text style={[styles.crewHeading, { color: roles.fg }]}>
-            Wie gaat erheen?
-          </Text>
-
-          <CrewBlock event={event} />
-
-          <Pressable
-            onPress={() => {
+          <CrewAndInvite
+            event={event}
+            onInvite={() => {
               // Geef de geselecteerde occurrence door zodat de invite-
               // modal weet voor welke avond we vrienden uitnodigen.
               const path =
@@ -268,19 +263,7 @@ export default function EventDetail() {
                   : `/event/${id}/invite`;
               router.push(path as never);
             }}
-            style={[
-              styles.invite,
-              { borderColor: isNacht ? '#2a2a2e' : palette.paper },
-            ]}
-          >
-            <Ionicons name="person-add-outline" size={18} color={roles.fg} />
-            <Text style={[styles.inviteText, { color: roles.fg }]}>
-              Nodig iemand uit
-            </Text>
-            <Text style={[styles.inviteChev, { color: roles.fgPlaceholder }]}>
-              ›
-            </Text>
-          </Pressable>
+          />
         </View>
       </Animated.ScrollView>
 
@@ -390,7 +373,20 @@ type CrewRow = {
   inviteStatus?: 'pending' | 'accepted' | 'declined';
 };
 
-function CrewBlock({ event }: { event: ApiEvent }) {
+/**
+ * Eén visueel blok dat de "wie gaat erheen"-lijst en de invite-CTA
+ * combineert. Bij geen crew: alleen invite-CTA met volle borderRadius.
+ * Bij wel crew: gedeelde container, crew bovenin met rounded top,
+ * invite-CTA onderin met rounded bottom, hairline-scheiding ertussen,
+ * dezelfde border-kleur over de hele rand.
+ */
+function CrewAndInvite({
+  event,
+  onInvite,
+}: {
+  event: ApiEvent;
+  onInvite: () => void;
+}) {
   const mode = useMode();
   const roles = useRoles();
   const isNacht = mode === 'nacht';
@@ -405,7 +401,6 @@ function CrewBlock({ event }: { event: ApiEvent }) {
       if (existing) existing.inviteStatus = inv.status;
       else map.set(inv.to.id, { user: inv.to, saved: false, inviteStatus: inv.status });
     }
-    // Volgorde: gaat-mee bovenaan, dan pending, declined onderaan.
     const order = (r: CrewRow) =>
       r.saved ? 0 : r.inviteStatus === 'pending' ? 1 : 2;
     return Array.from(map.values()).sort(
@@ -413,26 +408,55 @@ function CrewBlock({ event }: { event: ApiEvent }) {
     );
   }, [event.friendsSaved, event.myInvites]);
 
-  if (rows.length === 0) return null;
+  const hasCrew = rows.length > 0;
+  const borderColor = isNacht ? '#232327' : palette.paper;
+  const innerBorderColor = isNacht ? '#1d1d20' : palette.paper;
+  const surface = isNacht ? '#101012' : palette.paper2;
 
   return (
-    <View
-      style={[
-        styles.crewBlock,
-        {
-          borderColor: isNacht ? '#232327' : palette.paper,
-          backgroundColor: isNacht ? '#101012' : palette.paper2,
-        },
-      ]}
-    >
-      {rows.map((row, i) => (
-        <CrewRowItem
-          key={row.user.id}
-          row={row}
-          first={i === 0}
-        />
-      ))}
-    </View>
+    <>
+      {hasCrew && (
+        <Text style={[styles.crewHeading, { color: roles.fg }]}>
+          Wie gaat erheen?
+        </Text>
+      )}
+      <View
+        style={[
+          styles.crewInviteContainer,
+          {
+            borderColor,
+            backgroundColor: surface,
+            marginTop: hasCrew ? 6 : 14,
+          },
+        ]}
+      >
+        {hasCrew && (
+          <View>
+            {rows.map((row, i) => (
+              <CrewRowItem key={row.user.id} row={row} first={i === 0} />
+            ))}
+          </View>
+        )}
+        <Pressable
+          onPress={onInvite}
+          style={[
+            styles.crewInviteCta,
+            hasCrew && {
+              borderTopColor: innerBorderColor,
+              borderTopWidth: StyleSheet.hairlineWidth,
+            },
+          ]}
+        >
+          <Ionicons name="person-add-outline" size={18} color={roles.fg} />
+          <Text style={[styles.inviteText, { color: roles.fg }]}>
+            {hasCrew ? 'Nog iemand uitnodigen' : 'Nodig iemand uit'}
+          </Text>
+          <Text style={[styles.inviteChev, { color: roles.fgPlaceholder }]}>
+            ›
+          </Text>
+        </Pressable>
+      </View>
+    </>
   );
 }
 
@@ -1133,14 +1157,22 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
   },
 
-  // Crew-block — combineert vrienden die dit event hebben opgeslagen
-  // én openstaande/declined invites die ik heb verstuurd. Eén bordered
-  // container, per persoon één rij.
-  crewBlock: {
-    marginTop: 6,
+  // Crew + invite — visueel één container met afgeronde hoeken op de
+  // buitenrand. Crew-rijen bovenin (hairline-scheidingen), invite-CTA
+  // onderin met een border-top die dezelfde tone heeft als de rij-
+  // separators. Bij geen crew krijgt het hele blok automatisch z'n
+  // ronde hoeken aan top én bottom — invite staat dan alleen.
+  crewInviteContainer: {
     borderRadius: 8,
     borderWidth: 1,
     overflow: 'hidden',
+  },
+  crewInviteCta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 13,
   },
   crewRow: {
     flexDirection: 'row',
@@ -1210,16 +1242,7 @@ const styles = StyleSheet.create({
     letterSpacing: -0.07,
   },
 
-  // Invite
-  invite: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 13,
-    borderRadius: 8,
-    borderWidth: 1,
-  },
+  // Invite tekst + chevron — gedeeld met series-pill voor visuele consistency.
   inviteText: {
     flex: 1,
     fontFamily: fontFamily.medium,
