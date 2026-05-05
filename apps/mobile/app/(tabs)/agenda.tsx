@@ -809,7 +809,7 @@ function FilterSheet({
                 { color: isNacht ? palette.noir : palette.paper3 },
               ]}
             >
-              Sluit
+              Bekijk
             </Text>
           </Pressable>
           <Pressable
