@@ -134,7 +134,7 @@ export default function EventDetail() {
       <Animated.ScrollView
         ref={scrollRef}
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: insets.bottom + 120 }}
+        contentContainerStyle={{ paddingBottom: insets.bottom + 32 }}
       >
         {/* Transparent hero spacer with the tag + title at the bottom.
             Scrolls with content; the body covers it on scroll-up. */}
@@ -217,11 +217,13 @@ export default function EventDetail() {
             </Text>
           )}
 
+          {/* === Content-blokken in vaste volgorde:
+                lineup → nodig iemand uit → tickets → alle voorstellingen
+              === */}
+
           {selectedOccurrence?.lineup && selectedOccurrence.lineup.length > 0 && (
             <Lineup
               lineup={selectedOccurrence.lineup}
-              // Voor multi-occurrence events markeren we welke avond's
-              // lineup we tonen. Voor single-occurrence: geen kicker.
               kicker={
                 event.occurrences && event.occurrences.length > 1
                   ? formatLineupKicker(selectedOccurrence.startsAt)
@@ -229,6 +231,25 @@ export default function EventDetail() {
               }
             />
           )}
+
+          <CrewAndInvite
+            event={event}
+            onInvite={() => {
+              const path =
+                selectedOccurrence && !selectedOccurrence.id.endsWith('::next')
+                  ? `/event/${id}/invite?o=${selectedOccurrence.id}`
+                  : `/event/${id}/invite`;
+              router.push(path as never);
+            }}
+          />
+
+          <TicketsBlock
+            price={view.price}
+            priceNote={view.priceNote}
+            ticketUrl={selectedOccurrence?.ticketUrl ?? event.ticketUrl}
+            isNacht={isNacht}
+            soldOut={selectedOccurrence?.status === 'sold_out'}
+          />
 
           {event.occurrences && event.occurrences.length > 1 && (
             <OccurrenceList
@@ -271,19 +292,6 @@ export default function EventDetail() {
               </View>
             </>
           )}
-
-          <CrewAndInvite
-            event={event}
-            onInvite={() => {
-              // Geef de geselecteerde occurrence door zodat de invite-
-              // modal weet voor welke avond we vrienden uitnodigen.
-              const path =
-                selectedOccurrence && !selectedOccurrence.id.endsWith('::next')
-                  ? `/event/${id}/invite?o=${selectedOccurrence.id}`
-                  : `/event/${id}/invite`;
-              router.push(path as never);
-            }}
-          />
         </View>
       </Animated.ScrollView>
 
@@ -335,52 +343,6 @@ export default function EventDetail() {
         </View>
       </View>
 
-      <View
-        style={[
-          styles.ctaDock,
-          { paddingBottom: Math.max(insets.bottom, 8), paddingTop: 32 },
-        ]}
-      >
-        <LinearGradient
-          colors={[
-            isNacht ? 'rgba(10,10,11,0)' : 'rgba(245,241,232,0)',
-            isNacht ? palette.noir : palette.paper3,
-          ]}
-          locations={[0, 0.45]}
-          style={StyleSheet.absoluteFill}
-        />
-        <View style={styles.priceWrap}>
-          <Text style={[styles.price, { color: roles.fg }]}>{view.price}</Text>
-          {view.priceNote && (
-            <Text style={[styles.priceNote, { color: roles.fgMuted }]}>
-              {view.priceNote}
-            </Text>
-          )}
-        </View>
-        {event.ticketUrl && (
-          <Pressable
-            onPress={() => {
-              Haptics.selectionAsync();
-              Linking.openURL(event.ticketUrl!).catch(() => {
-                // Geen schade — meestal betekent dit dat de URL ongeldig is.
-              });
-            }}
-            style={[
-              styles.cta,
-              { backgroundColor: isNacht ? palette.acid : palette.soil },
-            ]}
-          >
-            <Text
-              style={[
-                styles.ctaText,
-                { color: isNacht ? palette.noir : palette.paper3 },
-              ]}
-            >
-              Tickets
-            </Text>
-          </Pressable>
-        )}
-      </View>
     </View>
   );
 }
@@ -435,18 +397,16 @@ function CrewAndInvite({
 
   return (
     <>
-      {hasCrew && (
-        <Text style={[styles.crewHeading, { color: roles.fg }]}>
-          Wie gaat erheen?
-        </Text>
-      )}
+      <Text style={[styles.crewHeading, { color: roles.fg }]}>
+        {hasCrew ? 'Wie gaat erheen?' : 'Nodig iemand uit'}
+      </Text>
       <View
         style={[
           styles.crewInviteContainer,
           {
             borderColor,
             backgroundColor: surface,
-            marginTop: hasCrew ? 6 : 14,
+            marginTop: 6,
           },
         ]}
       >
@@ -638,6 +598,83 @@ function Lineup({
  * theater-residencies). Per occurrence ook de top-lineup-naam zodat
  * je in één oogopslag ziet welke avond bij welke act hoort.
  */
+/**
+ * Tickets-blok inline in de content. Prijs links (groot, display-font),
+ * Tickets-button rechts. Geen sticky dock meer — de gebruiker scrollt
+ * gewoon naar dit blok om te kopen, naast lineup en crew.
+ */
+function TicketsBlock({
+  price,
+  priceNote,
+  ticketUrl,
+  isNacht,
+  soldOut,
+}: {
+  price: string;
+  priceNote: string | null;
+  ticketUrl: string | null;
+  isNacht: boolean;
+  soldOut: boolean;
+}) {
+  const roles = useRoles();
+  const ctaLabel = soldOut ? 'Uitverkocht' : 'Tickets';
+  return (
+    <>
+      <Text style={[styles.crewHeading, { color: roles.fg }]}>Tickets</Text>
+      <View
+        style={[
+          styles.ticketsBlock,
+          {
+            borderColor: isNacht ? '#232327' : palette.paper,
+            backgroundColor: isNacht ? '#101012' : palette.paper2,
+          },
+        ]}
+      >
+        <View style={styles.ticketsLeft}>
+          <Text style={[styles.ticketsPrice, { color: roles.fg }]}>
+            {price}
+          </Text>
+          {priceNote && (
+            <Text style={[styles.ticketsNote, { color: roles.fgMuted }]}>
+              {priceNote}
+            </Text>
+          )}
+        </View>
+        {ticketUrl && !soldOut && (
+          <Pressable
+            onPress={() => {
+              Haptics.selectionAsync();
+              Linking.openURL(ticketUrl).catch(() => {
+                // URL ongeldig of geen handler — stilletjes negeren.
+              });
+            }}
+            style={[
+              styles.ticketsCta,
+              { backgroundColor: isNacht ? palette.acid : palette.soil },
+            ]}
+          >
+            <Text
+              style={[
+                styles.ticketsCtaText,
+                { color: isNacht ? palette.noir : palette.paper3 },
+              ]}
+            >
+              {ctaLabel}
+            </Text>
+          </Pressable>
+        )}
+        {soldOut && (
+          <View style={[styles.ticketsCtaDisabled, { borderColor: roles.bgChip }]}>
+            <Text style={[styles.ticketsCtaDisabledText, { color: roles.fgMuted }]}>
+              {ctaLabel}
+            </Text>
+          </View>
+        )}
+      </View>
+    </>
+  );
+}
+
 function OccurrenceList({
   occurrences,
   selectedId,
@@ -1290,25 +1327,25 @@ const styles = StyleSheet.create({
   },
   inviteChev: { fontFamily: fontFamily.mono, fontSize: 14 },
 
-  // CTA dock
-  ctaDock: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    paddingHorizontal: 20,
-    paddingTop: 14,
+  // Tickets-blok inline — zelfde container-stijl als crew+invite voor
+  // visuele consistency. Prijs links groot, button rechts.
+  ticketsBlock: {
+    marginTop: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderRadius: 8,
+    borderWidth: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: 12,
   },
-  priceWrap: { flex: 1 },
-  price: {
+  ticketsLeft: { flex: 1 },
+  ticketsPrice: {
     fontFamily: fontFamily.display,
     fontSize: 22,
     letterSpacing: -0.44,
   },
-  priceNote: {
+  ticketsNote: {
     fontFamily: fontFamily.mono,
     fontSize: 10,
     letterSpacing: 0.8,
@@ -1316,14 +1353,26 @@ const styles = StyleSheet.create({
     marginTop: 2,
     opacity: 0.7,
   },
-  cta: {
+  ticketsCta: {
     paddingHorizontal: 22,
-    paddingVertical: 14,
+    paddingVertical: 12,
     borderRadius: 999,
   },
-  ctaText: {
+  ticketsCtaText: {
     fontFamily: fontFamily.medium,
     fontSize: 14.5,
     letterSpacing: -0.07,
+  },
+  ticketsCtaDisabled: {
+    paddingHorizontal: 18,
+    paddingVertical: 11,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
+  ticketsCtaDisabledText: {
+    fontFamily: fontFamily.mono,
+    fontSize: 11,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
   },
 });
