@@ -15,6 +15,7 @@ import { Hono } from 'hono';
 
 import { auth } from '../auth.js';
 import { db, schema } from '../db/index.js';
+import { findEventsWithOccurrencesInRange } from './_helpers.js';
 import { getVenueFollowState } from './venue-follows.js';
 
 export const venuesRoute = new Hono();
@@ -172,16 +173,12 @@ venuesRoute.get('/:slug', async (c) => {
 
   if (!venue) return c.json({ error: 'venue not found' }, 404);
 
-  const events = await db
+  const eventRows = await db
     .select({
       id: schema.events.id,
       title: schema.events.title,
       description: schema.events.description,
-      startsAt: schema.events.startsAt,
-      endsAt: schema.events.endsAt,
-      priceCents: schema.events.priceCents,
-      priceNote: schema.events.priceNote,
-      ticketUrl: schema.events.ticketUrl,
+      kind: schema.events.kind,
       imageUrl: schema.events.imageUrl,
       category: schema.events.category,
     })
@@ -189,11 +186,30 @@ venuesRoute.get('/:slug', async (c) => {
     .where(
       and(
         eq(schema.events.venueId, venue.id),
-        eq(schema.events.published, true),
-        gte(schema.events.startsAt, new Date())
+        eq(schema.events.published, true)
       )
-    )
-    .orderBy(asc(schema.events.startsAt));
+    );
+
+  const occRange = await findEventsWithOccurrencesInRange({
+    eventIds: eventRows.map((e) => e.id),
+  });
+  const eventById = new Map(eventRows.map((e) => [e.id, e]));
+  const events = occRange.eventIds
+    .map((id) => {
+      const event = eventById.get(id);
+      const occ = occRange.byEvent.get(id);
+      if (!event || !occ) return null;
+      return {
+        ...event,
+        startsAt: occ.next?.startsAt ?? null,
+        endsAt: occ.next?.endsAt ?? null,
+        priceCents: occ.next?.priceCents ?? null,
+        priceNote: occ.next?.priceNote ?? null,
+        ticketUrl: occ.next?.ticketUrl ?? null,
+        occurrenceCount: occ.count,
+      };
+    })
+    .filter((x) => x !== null);
 
   // myFollowState: alleen als ingelogd. Default voor anonieme requests
   // is `normaal` zodat de UI zonder auth-context ook werkt.
@@ -206,7 +222,8 @@ venuesRoute.get('/:slug', async (c) => {
   // als er minstens één toekomstig event in deze venue speelt dat in
   // die serie zit. Series waarvan `endsAt` in het verleden ligt komen
   // niet meer terug — anders blijft "Hier speelt: ADE" hangen lang
-  // nadat ADE voorbij is.
+  // nadat ADE voorbij is. We koppelen via occurrences zodat we toekomst
+  // bepalen op basis van occurrence.startsAt.
   const now = new Date();
   const seriesRows = await db
     .selectDistinct({
@@ -224,12 +241,16 @@ venuesRoute.get('/:slug', async (c) => {
       schema.events,
       eq(schema.events.id, schema.eventsInSeries.eventId)
     )
+    .innerJoin(
+      schema.occurrences,
+      eq(schema.occurrences.eventId, schema.events.id)
+    )
     .where(
       and(
         eq(schema.events.venueId, venue.id),
         eq(schema.events.published, true),
         eq(schema.series.published, true),
-        gte(schema.events.startsAt, now),
+        gte(schema.occurrences.startsAt, now),
         or(isNull(schema.series.endsAt), gt(schema.series.endsAt, now))
       )
     )

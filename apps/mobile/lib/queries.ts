@@ -259,10 +259,18 @@ export function useSendInvites() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (input: {
+      occurrenceId: string;
+      /** Het master-event waar deze occurrence bij hoort — alleen
+          gebruikt om de event-detail-cache te invalidaten. */
       eventId: string;
       toUserIds: string[];
       message?: string;
-    }) => sendInvites(input),
+    }) =>
+      sendInvites({
+        occurrenceId: input.occurrenceId,
+        toUserIds: input.toUserIds,
+        message: input.message,
+      }),
     onSettled: (_data, _err, vars) => {
       qc.invalidateQueries({ queryKey: queryKeys.invites() });
       // Inviter ziet `myInvites` op event-detail — refreshen zodat de

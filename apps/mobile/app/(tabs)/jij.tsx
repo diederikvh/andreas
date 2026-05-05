@@ -905,8 +905,10 @@ function InviteRow({
   busy: boolean;
 }) {
   const roles = useRoles();
-  const d = new Date(invite.event.startsAt);
-  const dateLabel = `${DOW_NL_MIXED[d.getDay()]} · ${formatTime(invite.event.startsAt)}`;
+  // De uitnodiging gaat over een specifieke occurrence (= moment), niet
+  // over het master-event. Toon dus die datum/tijd.
+  const d = new Date(invite.occurrence.startsAt);
+  const dateLabel = `${DOW_NL_MIXED[d.getDay()]} · ${formatTime(invite.occurrence.startsAt)}`;
   return (
     <Pressable
       onPress={() => router.push(`/event/${invite.event.id}` as never)}

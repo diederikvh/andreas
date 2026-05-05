@@ -32,15 +32,34 @@ export type Venue = {
   description: string | null;
 };
 
+export type EventKind = 'show' | 'exhibition';
+
+export type OccurrenceStatus = 'scheduled' | 'cancelled' | 'sold_out';
+
+export type LineupEntry = {
+  name: string;
+  role?: 'dj' | 'support' | 'headliner' | 'act';
+};
+
+export type Occurrence = {
+  id: string;
+  eventId: string;
+  startsAt: string;
+  endsAt: string | null;
+  priceCents: number | null;
+  priceNote: string | null;
+  ticketUrl: string | null;
+  room: string | null;
+  lineup: LineupEntry[] | null;
+  status: OccurrenceStatus;
+};
+
 export type Event = {
   id: string;
   venueId: string;
   title: string;
   description: string | null;
-  startsAt: string;
-  endsAt: string | null;
-  priceCents: number | null;
-  ticketUrl: string | null;
+  kind: EventKind;
   imageUrl: string | null;
   category: EventCategory;
 };

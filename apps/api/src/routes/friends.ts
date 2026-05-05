@@ -3,6 +3,7 @@ import { Hono, type Context } from 'hono';
 
 import { auth } from '../auth.js';
 import { db, schema } from '../db/index.js';
+import { buildOccurrencesByEvent } from './_helpers.js';
 
 async function requireUserId(c: Context): Promise<string | Response> {
   const session = await auth.api.getSession({ headers: c.req.raw.headers });
@@ -307,41 +308,61 @@ friendsRoute.get('/:id', async (c) => {
   // we een leeg events-lijstje. We tonen wel het profiel zelf — zo weet
   // ik nog dat we vrienden zijn, alleen geen activiteiten.
   const isPrivate = user.savesVisibility === 'private';
-  const events = isPrivate
-    ? []
-    : await db
-        .select({
-          id: schema.events.id,
-          title: schema.events.title,
-          description: schema.events.description,
-          startsAt: schema.events.startsAt,
-          endsAt: schema.events.endsAt,
-          priceCents: schema.events.priceCents,
-          ticketUrl: schema.events.ticketUrl,
-          imageUrl: schema.events.imageUrl,
-          category: schema.events.category,
-          featured: schema.events.featured,
-          savedAt: schema.saves.createdAt,
-          venue: {
-            id: schema.venues.id,
-            slug: schema.venues.slug,
-            name: schema.venues.name,
-            address: schema.venues.address,
-            lat: schema.venues.lat,
-            lng: schema.venues.lng,
-          },
-        })
-        .from(schema.saves)
-        .innerJoin(schema.events, eq(schema.events.id, schema.saves.eventId))
-        .innerJoin(schema.venues, eq(schema.venues.id, schema.events.venueId))
-        .where(
-          and(
-            eq(schema.saves.userId, friendId),
-            eq(schema.events.published, true),
-            eq(schema.venues.published, true)
-          )
+  let events: Array<Record<string, unknown>> = [];
+  if (!isPrivate) {
+    const rows = await db
+      .select({
+        id: schema.events.id,
+        title: schema.events.title,
+        description: schema.events.description,
+        kind: schema.events.kind,
+        imageUrl: schema.events.imageUrl,
+        category: schema.events.category,
+        featured: schema.events.featured,
+        savedAt: schema.saves.createdAt,
+        venue: {
+          id: schema.venues.id,
+          slug: schema.venues.slug,
+          name: schema.venues.name,
+          address: schema.venues.address,
+          lat: schema.venues.lat,
+          lng: schema.venues.lng,
+          priceNote: schema.venues.priceNote,
+        },
+      })
+      .from(schema.saves)
+      .innerJoin(schema.events, eq(schema.events.id, schema.saves.eventId))
+      .innerJoin(schema.venues, eq(schema.venues.id, schema.events.venueId))
+      .where(
+        and(
+          eq(schema.saves.userId, friendId),
+          eq(schema.events.published, true),
+          eq(schema.venues.published, true)
         )
-        .orderBy(asc(schema.events.startsAt));
+      );
+
+    const occMap = await buildOccurrencesByEvent(rows.map((r) => r.id), {
+      includePast: true,
+    });
+    events = rows
+      .map((r) => {
+        const occ = occMap.get(r.id);
+        return {
+          ...r,
+          startsAt: occ?.next?.startsAt ?? null,
+          endsAt: occ?.next?.endsAt ?? null,
+          priceCents: occ?.next?.priceCents ?? null,
+          priceNote: occ?.next?.priceNote ?? null,
+          ticketUrl: occ?.next?.ticketUrl ?? null,
+          occurrenceCount: occ?.count ?? 0,
+        };
+      })
+      .sort((a, b) => {
+        const aT = (a.startsAt as Date | null)?.getTime() ?? Infinity;
+        const bT = (b.startsAt as Date | null)?.getTime() ?? Infinity;
+        return aT - bT;
+      });
+  }
 
   // savesVisibility hoeft niet naar de client — gebruikt om events leeg
   // te laten en niets meer.

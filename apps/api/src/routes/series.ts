@@ -19,6 +19,7 @@ import { db, schema } from '../db/index.js';
 import {
   buildFriendsByEvent,
   buildSeriesByEvent,
+  findEventsWithOccurrencesInRange,
   maybeUserId,
 } from './_helpers.js';
 import {
@@ -93,13 +94,17 @@ seriesRoute.get('/', async (c) => {
         schema.events,
         eq(schema.events.id, schema.eventsInSeries.eventId)
       )
+      .innerJoin(
+        schema.occurrences,
+        eq(schema.occurrences.eventId, schema.events.id)
+      )
       .where(
         and(
           inArray(
             schema.eventsInSeries.seriesId,
             rows.map((r) => r.id)
           ),
-          gte(schema.events.startsAt, new Date())
+          gte(schema.occurrences.startsAt, new Date())
         )
       )
       .groupBy(schema.eventsInSeries.seriesId);
@@ -134,7 +139,6 @@ seriesRoute.get('/:slug', async (c) => {
     eq(schema.eventsInSeries.seriesId, series.id),
     eq(schema.events.published, true),
     eq(schema.venues.published, true),
-    gte(schema.events.startsAt, new Date()),
   ];
   if (blocked.length > 0) {
     eventConditions.push(not(inArray(schema.events.venueId, blocked)));
@@ -145,10 +149,7 @@ seriesRoute.get('/:slug', async (c) => {
       id: schema.events.id,
       title: schema.events.title,
       description: schema.events.description,
-      startsAt: schema.events.startsAt,
-      endsAt: schema.events.endsAt,
-      priceCents: schema.events.priceCents,
-      ticketUrl: schema.events.ticketUrl,
+      kind: schema.events.kind,
       imageUrl: schema.events.imageUrl,
       category: schema.events.category,
       featured: schema.events.featured,
@@ -167,10 +168,18 @@ seriesRoute.get('/:slug', async (c) => {
       eq(schema.eventsInSeries.eventId, schema.events.id)
     )
     .innerJoin(schema.venues, eq(schema.events.venueId, schema.venues.id))
-    .where(and(...eventConditions))
-    .orderBy(asc(schema.events.startsAt));
+    .where(and(...eventConditions));
 
-  const eventIds = rows.map((r) => r.id);
+  // Filter op events met toekomstige (of nog lopende) occurrence + sort.
+  const occRange = await findEventsWithOccurrencesInRange({
+    eventIds: rows.map((r) => r.id),
+  });
+  const rowById = new Map(rows.map((r) => [r.id, r]));
+  const ordered = occRange.eventIds
+    .map((id) => ({ row: rowById.get(id)!, occ: occRange.byEvent.get(id)! }))
+    .filter((x) => x.row);
+
+  const eventIds = ordered.map((x) => x.row.id);
   const friendsMap = me
     ? await buildFriendsByEvent(me, eventIds)
     : new Map();
@@ -179,14 +188,20 @@ seriesRoute.get('/:slug', async (c) => {
     ? new Set(await getFollowedVenueIds(me))
     : new Set<string>();
 
-  const events = rows.map((r) => {
-    const entry = friendsMap.get(r.id);
+  const events = ordered.map(({ row, occ }) => {
+    const entry = friendsMap.get(row.id);
     return {
-      ...r,
+      ...row,
+      startsAt: occ.next?.startsAt ?? null,
+      endsAt: occ.next?.endsAt ?? null,
+      priceCents: occ.next?.priceCents ?? null,
+      priceNote: occ.next?.priceNote ?? null,
+      ticketUrl: occ.next?.ticketUrl ?? null,
+      occurrenceCount: occ.count,
       friendsSaved: entry?.friends ?? [],
       friendsSavedCount: entry?.count ?? 0,
-      venueFollowed: followedVenueIds.has(r.venue.id),
-      series: seriesMap.get(r.id) ?? [],
+      venueFollowed: followedVenueIds.has(row.venue.id),
+      series: seriesMap.get(row.id) ?? [],
     };
   });
 

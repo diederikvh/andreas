@@ -108,10 +108,17 @@ export default function InviteModal() {
     Haptics.selectionAsync();
   };
 
+  // Voor V1: pak de eerstvolgende occurrence als invite-target. Een
+  // multi-occurrence event (film met 14 voorstellingen, wekelijks feest)
+  // krijgt later een picker — nu nodig je vrienden uit voor de
+  // eerstvolgende keer.
+  const targetOccurrenceId = event?.occurrences?.[0]?.id ?? null;
+
   const onSend = async () => {
-    if (selected.size === 0 || !eventId) return;
+    if (selected.size === 0 || !eventId || !targetOccurrenceId) return;
     try {
       await sendInvites.mutateAsync({
+        occurrenceId: targetOccurrenceId,
         eventId,
         toUserIds: Array.from(selected),
         message: message.trim() || undefined,

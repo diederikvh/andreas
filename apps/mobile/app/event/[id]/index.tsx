@@ -20,7 +20,7 @@ import Animated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { SpinningCross } from '@/components/SpinningCross';
-import type { ApiEvent } from '@/lib/api';
+import type { ApiEvent, ApiOccurrence } from '@/lib/api';
 import { useSession } from '@/lib/authClient';
 import {
   DOW_NL_MIXED,
@@ -158,7 +158,14 @@ export default function EventDetail() {
           )}
 
           <View style={styles.metaRow}>
-            <MetaCell label="Datum" value={view.date} />
+            <MetaCell
+              label={event.kind === 'exhibition' ? 'Loopt t/m' : 'Datum'}
+              value={
+                event.kind === 'exhibition' && event.endsAt
+                  ? formatExhibitionEnd(event.endsAt)
+                  : view.date
+              }
+            />
             <MetaCell label="Aanvang" value={view.time} />
             <MetaCell
               label="Venue"
@@ -171,6 +178,10 @@ export default function EventDetail() {
             <Text style={[styles.bodyText, { color: roles.fgRead }]}>
               {view.description}
             </Text>
+          )}
+
+          {event.occurrences && event.occurrences.length > 1 && (
+            <OccurrenceList occurrences={event.occurrences} />
           )}
 
           {event.series && event.series.length > 0 && (
@@ -454,6 +465,57 @@ function CrewStatusBadge({ row }: { row: CrewRow }) {
     <View style={[styles.crewPill, { borderColor: `${textTone}80` }]}>
       <Text style={[styles.crewPillText, { color: textTone }]}>{label}</Text>
     </View>
+  );
+}
+
+function formatExhibitionEnd(endsAt: string): string {
+  const d = new Date(endsAt);
+  return `${d.getDate()} ${MONTHS_NL[d.getMonth()].toLowerCase()}`;
+}
+
+/**
+ * Lijst van alle aankomende voorstellingen/momenten — getoond als een
+ * event meer dan 1 occurrence heeft (films, wekelijkse feesten,
+ * theater-residencies). Eén-malige events tonen 'm niet.
+ */
+function OccurrenceList({ occurrences }: { occurrences: ApiOccurrence[] }) {
+  const roles = useRoles();
+  return (
+    <>
+      <Text style={[styles.crewHeading, { color: roles.fg }]}>
+        Alle voorstellingen ({occurrences.length})
+      </Text>
+      <View style={[styles.occList, { borderColor: roles.bgChip }]}>
+        {occurrences.map((o) => {
+          const d = new Date(o.startsAt);
+          const dow = DOW_NL_MIXED[d.getDay()];
+          const day = d.getDate();
+          const month = MONTHS_NL[d.getMonth()].toLowerCase();
+          const time = formatTime(o.startsAt);
+          return (
+            <View
+              key={o.id}
+              style={[styles.occRow, { borderTopColor: roles.bgChip }]}
+            >
+              <Text style={[styles.occDate, { color: roles.fg }]}>
+                {dow} {day} {month}
+              </Text>
+              <Text style={[styles.occTime, { color: roles.fgMuted }]}>
+                {time}
+                {o.room ? ` · ${o.room}` : ''}
+              </Text>
+              <Text style={[styles.occPrice, { color: roles.fgMuted }]}>
+                {o.status === 'sold_out'
+                  ? 'Uitverkocht'
+                  : o.status === 'cancelled'
+                    ? 'Geannuleerd'
+                    : formatPrice(o.priceCents)}
+              </Text>
+            </View>
+          );
+        })}
+      </View>
+    </>
   );
 }
 
@@ -825,6 +887,43 @@ const styles = StyleSheet.create({
     letterSpacing: -0.36,
     marginTop: 14,
     marginBottom: 6,
+  },
+
+  // Occurrence-list — toont alle voorstellingen voor multi-occurrence
+  // events (films, residencies, wekelijkse feesten). Zelfde border-stijl
+  // als crew-block voor visuele rust.
+  occList: {
+    marginTop: 8,
+    marginBottom: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    overflow: 'hidden',
+  },
+  occRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  occDate: {
+    flex: 1,
+    fontFamily: fontFamily.medium,
+    fontSize: 13.5,
+    letterSpacing: -0.13,
+  },
+  occTime: {
+    fontFamily: fontFamily.mono,
+    fontSize: 11.5,
+    letterSpacing: 0.4,
+  },
+  occPrice: {
+    fontFamily: fontFamily.mono,
+    fontSize: 11.5,
+    letterSpacing: 0.4,
+    minWidth: 56,
+    textAlign: 'right',
   },
 
   // Crew-block — combineert vrienden die dit event hebben opgeslagen

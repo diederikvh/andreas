@@ -17,16 +17,50 @@ export type ApiFriendBadge = {
   avatarUrl: string | null;
 };
 
+export type EventKind = 'show' | 'exhibition';
+
+export type OccurrenceStatus = 'scheduled' | 'cancelled' | 'sold_out';
+
+export type ApiLineupEntry = {
+  name: string;
+  role?: 'dj' | 'support' | 'headliner' | 'act';
+};
+
+export type ApiOccurrence = {
+  id: string;
+  startsAt: string;
+  endsAt: string | null;
+  priceCents: number | null;
+  priceNote: string | null;
+  ticketUrl: string | null;
+  /** Optionele zaal binnen venue (bv. "Kleine Zaal", "Zaal 1"). */
+  room: string | null;
+  /** Lineup voor dit specifieke moment. Wisselt voor wekelijkse feesten,
+      vaak leeg voor films. */
+  lineup: ApiLineupEntry[] | null;
+  status: OccurrenceStatus;
+};
+
 export type ApiEvent = {
   id: string;
   title: string;
   description: string | null;
+  /** `show` (concert/film/club/voorstelling/opening) of `exhibition`
+      (doorlopende tentoonstelling). UI toont voor `exhibition` een
+      "loopt t/m …" label i.p.v. een tijdslot. */
+  kind: EventKind;
+  /** Eerstvolgende occurrence — gedenormaliseerd zodat list-views
+      (Avond/Agenda/Kaart/Gered) niet hoeven te joinen. Voor afgelopen
+      events of exhibitions die net afgelopen zijn kan dit `null` zijn. */
   startsAt: string;
   endsAt: string | null;
   priceCents: number | null;
   /** Vrije korte noot bij de prijs. Overschrijft venue.priceNote. */
   priceNote?: string | null;
   ticketUrl: string | null;
+  /** Aantal komende occurrences (incl. de huidige `startsAt`). UI gebruikt
+      dit om "+ 4 meer" te tonen achter de eerste tijd. */
+  occurrenceCount: number;
   imageUrl: string | null;
   category: 'Muziek' | 'Theater' | 'Literatuur' | 'Film';
   featured: boolean;
@@ -57,6 +91,11 @@ export type ApiEvent = {
   genres?: string[];
 };
 
+/** Detail-respons: event met de volledige lijst occurrences. */
+export type ApiEventDetail = ApiEvent & {
+  occurrences: ApiOccurrence[];
+};
+
 export type ApiGenreBucket = {
   genre: string;
   category: ApiEvent['category'];
@@ -75,6 +114,9 @@ export type ApiEventInviteRecord = {
   status: 'pending' | 'accepted' | 'declined';
   message: string | null;
   to: ApiPublicUser;
+  /** Welke specifieke occurrence heb ik deze invitee voor uitgenodigd. */
+  occurrenceId: string;
+  occurrenceStartsAt: string;
 };
 
 export type EventsFilter = {
@@ -119,8 +161,8 @@ export async function getEvents(filter: EventsFilter = {}): Promise<ApiEvent[]> 
   return events;
 }
 
-export async function getEvent(id: string): Promise<ApiEvent> {
-  const { event } = await authedRequest<{ event: ApiEvent }>(`/events/${id}`);
+export async function getEvent(id: string): Promise<ApiEventDetail> {
+  const { event } = await authedRequest<{ event: ApiEventDetail }>(`/events/${id}`);
   return event;
 }
 
@@ -471,10 +513,19 @@ export type ApiInvite = {
   message: string | null;
   createdAt: string;
   from: ApiPublicUser;
+  /** De specifieke occurrence waar je voor wordt uitgenodigd. */
+  occurrence: {
+    id: string;
+    startsAt: string;
+    endsAt: string | null;
+    room: string | null;
+  };
+  /** Het master-event (Hamlet, De Maandag, etc.) — voor titel en
+      thumbnail in de invite-lijst. */
   event: {
     id: string;
     title: string;
-    startsAt: string;
+    kind: EventKind;
     category: ApiEvent['category'];
     imageUrl: string | null;
     venueId: string;
@@ -489,7 +540,10 @@ export async function getInvites(): Promise<ApiInvite[]> {
 }
 
 export async function sendInvites(input: {
-  eventId: string;
+  /** ID van de specifieke occurrence (= moment) waarvoor je vrienden
+      uitnodigt. Niet de event-ID — een vriend wil weten "ga je mee
+      dinsdag 19:30?" niet "ga je mee naar Hamlet?" */
+  occurrenceId: string;
   toUserIds: string[];
   message?: string;
 }): Promise<{ created: number; sent: string[] }> {
@@ -501,11 +555,12 @@ export async function sendInvites(input: {
 
 export async function acceptInvite(
   id: string
-): Promise<{ status: 'accepted'; eventId: string }> {
-  return await authedRequest<{ status: 'accepted'; eventId: string }>(
-    `/invites/${id}/accept`,
-    { method: 'POST' }
-  );
+): Promise<{ status: 'accepted'; eventId: string; occurrenceId: string }> {
+  return await authedRequest<{
+    status: 'accepted';
+    eventId: string;
+    occurrenceId: string;
+  }>(`/invites/${id}/accept`, { method: 'POST' });
 }
 
 export async function declineInvite(id: string): Promise<{ ok: true }> {

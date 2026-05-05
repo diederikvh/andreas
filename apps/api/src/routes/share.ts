@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { and, asc, eq, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 
 import { db, schema } from '../db/index.js';
@@ -59,7 +59,7 @@ shareRoute.get('/e/:id', async (c) => {
       id: schema.events.id,
       title: schema.events.title,
       description: schema.events.description,
-      startsAt: schema.events.startsAt,
+      kind: schema.events.kind,
       imageUrl: schema.events.imageUrl,
       venue: { name: schema.venues.name },
     })
@@ -68,18 +68,46 @@ shareRoute.get('/e/:id', async (c) => {
     .where(eq(schema.events.id, id))
     .limit(1);
 
+  // Eerstvolgende occurrence ophalen voor de date-label op de share-page.
+  const [nextOcc] = row
+    ? await db
+        .select({
+          startsAt: schema.occurrences.startsAt,
+          endsAt: schema.occurrences.endsAt,
+        })
+        .from(schema.occurrences)
+        .where(
+          and(
+            eq(schema.occurrences.eventId, row.id),
+            sql`COALESCE(${schema.occurrences.endsAt}, ${schema.occurrences.startsAt}) >= NOW()`,
+            sql`${schema.occurrences.status} <> 'cancelled'`
+          )
+        )
+        .orderBy(asc(schema.occurrences.startsAt))
+        .limit(1)
+    : [];
+
   const eventTitle = row?.title ?? 'Andreas';
   const eventDesc = row?.description ?? row?.venue?.name ?? '';
   const eventImage = row?.imageUrl ?? '';
-  const dateLabel = row?.startsAt
-    ? new Date(row.startsAt).toLocaleString('nl-NL', {
+  // Voor exhibitions: "loopt t/m 6 mei". Voor shows: datum + tijd.
+  let dateLabel = '';
+  if (nextOcc?.startsAt) {
+    if (row?.kind === 'exhibition' && nextOcc.endsAt) {
+      dateLabel = `loopt t/m ${nextOcc.endsAt.toLocaleDateString('nl-NL', {
+        day: '2-digit',
+        month: 'short',
+      })}`;
+    } else {
+      dateLabel = nextOcc.startsAt.toLocaleString('nl-NL', {
         weekday: 'short',
         day: '2-digit',
         month: 'short',
         hour: '2-digit',
         minute: '2-digit',
-      })
-    : '';
+      });
+    }
+  }
 
   const refQs = ref ? `?ref=${encodeURIComponent(ref)}` : '';
   const appLink = `andreas://event/${encodeURIComponent(id)}${refQs}`;

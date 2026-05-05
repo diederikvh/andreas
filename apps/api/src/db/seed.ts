@@ -293,6 +293,30 @@ await db.delete(schema.events);
 await db.delete(schema.venues);
 
 await db.insert(schema.venues).values(VENUES);
-await db.insert(schema.events).values(EVENTS);
+// Seed events + één occurrence per event (de seed-data is single-show
+// per event). Echte multi-occurrence content komt via admin of ingest.
+await db.insert(schema.events).values(
+  EVENTS.map((e) => ({
+    id: e.id,
+    venueId: e.venueId,
+    title: e.title,
+    description: e.description,
+    kind: 'show' as const,
+    imageUrl: e.imageUrl,
+    category: e.category,
+    featured: e.featured ?? false,
+  }))
+);
+await db.insert(schema.occurrences).values(
+  EVENTS.map((e) => ({
+    id: `occ-${e.id}`,
+    eventId: e.id,
+    startsAt: e.startsAt,
+    endsAt: e.endsAt,
+    priceCents: e.priceCents,
+    ticketUrl: e.ticketUrl,
+    status: 'scheduled' as const,
+  }))
+);
 
 console.log(`Seeded ${VENUES.length} venues and ${EVENTS.length} events.`);

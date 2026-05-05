@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { and, asc, count, eq, gte } from 'drizzle-orm';
+import { and, asc, count, eq, gte, inArray, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 
 import { db, schema } from '../../db/index.js';
@@ -247,12 +247,24 @@ adminUi.get('/', async (c) => {
     .select({ n: count() })
     .from(schema.events)
     .where(eq(schema.events.published, true));
-  const [eventsUpcoming] = await db
-    .select({ n: count() })
+  // "Komend" telt distinct events met minstens één toekomstige (of nog
+  // lopende, voor exhibitions) occurrence. Eén event met 100 voorstellingen
+  // telt als 1.
+  const upcomingDistinct = await db
+    .selectDistinct({ id: schema.events.id })
     .from(schema.events)
+    .innerJoin(
+      schema.occurrences,
+      eq(schema.occurrences.eventId, schema.events.id)
+    )
     .where(
-      and(eq(schema.events.published, true), gte(schema.events.startsAt, now))
+      and(
+        eq(schema.events.published, true),
+        sql`COALESCE(${schema.occurrences.endsAt}, ${schema.occurrences.startsAt}) >= ${now}`,
+        sql`${schema.occurrences.status} <> 'cancelled'`
+      )
     );
+  const eventsUpcoming = { n: upcomingDistinct.length };
   const [venuesTotal] = await db
     .select({ n: count() })
     .from(schema.venues);
@@ -302,22 +314,21 @@ adminUi.get('/', async (c) => {
 
 adminUi.get('/events', async (c) => {
   const filter = c.req.query('filter') ?? 'upcoming'; // upcoming | all | unpublished
-  const now = new Date();
 
+  // We laden alle events die aan het filter voldoen, plus per event de
+  // eerstvolgende occurrence. Voor 'upcoming' filteren we events die
+  // geen toekomstige occurrence hebben weg.
   const conditions = [];
-  if (filter === 'upcoming') {
-    conditions.push(gte(schema.events.startsAt, now));
-  }
   if (filter === 'unpublished') {
     conditions.push(eq(schema.events.published, false));
   }
   const where = conditions.length > 0 ? and(...conditions) : undefined;
 
-  const rows = await db
+  const eventRows = await db
     .select({
       id: schema.events.id,
       title: schema.events.title,
-      startsAt: schema.events.startsAt,
+      kind: schema.events.kind,
       category: schema.events.category,
       featured: schema.events.featured,
       published: schema.events.published,
@@ -326,8 +337,48 @@ adminUi.get('/events', async (c) => {
     })
     .from(schema.events)
     .innerJoin(schema.venues, eq(schema.events.venueId, schema.venues.id))
-    .where(where)
-    .orderBy(asc(schema.events.startsAt));
+    .where(where);
+
+  const allOcc = eventRows.length === 0
+    ? []
+    : await db
+        .select()
+        .from(schema.occurrences)
+        .where(inArray(schema.occurrences.eventId, eventRows.map((r) => r.id)))
+        .orderBy(asc(schema.occurrences.startsAt));
+
+  const occByEvent = new Map<
+    string,
+    { next: (typeof allOcc)[number] | null; count: number }
+  >();
+  for (const o of allOcc) {
+    let entry = occByEvent.get(o.eventId);
+    if (!entry) {
+      entry = { next: null, count: 0 };
+      occByEvent.set(o.eventId, entry);
+    }
+    entry.count += 1;
+    const stillFuture =
+      (o.endsAt ?? o.startsAt).getTime() >= Date.now() &&
+      o.status !== 'cancelled';
+    if (entry.next === null && stillFuture) entry.next = o;
+  }
+
+  const rows = eventRows
+    .map((r) => {
+      const entry = occByEvent.get(r.id);
+      return {
+        ...r,
+        startsAt: entry?.next?.startsAt ?? null,
+        occurrenceCount: entry?.count ?? 0,
+      };
+    })
+    .filter((r) => filter !== 'upcoming' || r.startsAt !== null)
+    .sort((a, b) => {
+      const aT = a.startsAt?.getTime() ?? Infinity;
+      const bT = b.startsAt?.getTime() ?? Infinity;
+      return aT - bT;
+    });
 
   return c.html(
     <Layout title="Events" active="events">
@@ -368,9 +419,15 @@ adminUi.get('/events', async (c) => {
         <tbody>
           {rows.map((r) => (
             <tr class={r.published ? '' : 'row-unpub'}>
-              <td style="white-space:nowrap;">{fmtDate(r.startsAt)}</td>
+              <td style="white-space:nowrap;">
+                {r.startsAt ? fmtDate(r.startsAt) : '—'}
+                {r.occurrenceCount > 1 && (
+                  <small style="opacity:0.6;"> +{r.occurrenceCount - 1}</small>
+                )}
+              </td>
               <td>
                 <a href={`/admin/events/${encodeURIComponent(r.id)}`}>{r.title}</a>
+                {r.kind === 'exhibition' && ' (tentoonstelling)'}
                 {r.featured && ' ★'}
               </td>
               <td>{r.venueName}</td>
@@ -416,30 +473,99 @@ adminUi.post('/events/new', async (c) => {
   const id = String(form.id ?? '').trim() || `evt-${shortId()}`;
   const title = String(form.title ?? '').trim();
   const venueId = String(form.venueId ?? '');
-  const startsAt = fromDateTimeLocal(String(form.startsAt ?? ''));
-  if (!title || !venueId || !startsAt) {
-    return c.html(<Layout title="Fout"><p>Titel, venue en starttijd verplicht.</p></Layout>, 400);
+  const occurrences = parseOccurrenceForms(form);
+  if (!title || !venueId) {
+    return c.html(<Layout title="Fout"><p>Titel en venue verplicht.</p></Layout>, 400);
   }
-  await db.insert(schema.events).values({
-    id,
-    title,
-    venueId,
-    startsAt,
-    endsAt: fromDateTimeLocal(String(form.endsAt ?? '')),
-    description: (form.description as string) || null,
-    imageUrl: (form.imageUrl as string) || null,
-    ticketUrl: (form.ticketUrl as string) || null,
-    priceCents: form.priceCents ? Number(form.priceCents) : null,
-    priceNote: form.priceNote ? String(form.priceNote).trim() || null : null,
-    category: (CATEGORIES as readonly string[]).includes(String(form.category))
-      ? (String(form.category) as Category)
-      : 'Muziek',
-    featured: form.featured === 'on',
-    genres: parseTagsField(String(form.genres ?? '')),
-    published: form.published !== 'off',
+  if (occurrences.length === 0) {
+    return c.html(
+      <Layout title="Fout"><p>Minstens één moment (occurrence) verplicht.</p></Layout>,
+      400
+    );
+  }
+  const kind = String(form.kind ?? '') === 'exhibition' ? 'exhibition' : 'show';
+  await db.transaction(async (tx) => {
+    await tx.insert(schema.events).values({
+      id,
+      title,
+      venueId,
+      kind,
+      description: (form.description as string) || null,
+      imageUrl: (form.imageUrl as string) || null,
+      category: (CATEGORIES as readonly string[]).includes(String(form.category))
+        ? (String(form.category) as Category)
+        : 'Muziek',
+      featured: form.featured === 'on',
+      genres: parseTagsField(String(form.genres ?? '')),
+      published: form.published !== 'off',
+    });
+    await tx.insert(schema.occurrences).values(
+      occurrences.map((o) => ({
+        id: o.id || `occ-${shortId()}`,
+        eventId: id,
+        startsAt: o.startsAt,
+        endsAt: o.endsAt,
+        priceCents: o.priceCents,
+        priceNote: o.priceNote,
+        ticketUrl: o.ticketUrl,
+        room: o.room,
+        status: o.status,
+      }))
+    );
   });
-  return c.redirect('/admin/events');
+  return c.redirect(`/admin/events/${encodeURIComponent(id)}`);
 });
+
+/**
+ * Parse de dynamische occurrence-rijen uit het admin-form. Elke rij heeft
+ * inputs als `occurrences[i].startsAt` etc. — we lopen door tot we geen
+ * geldige startsAt meer vinden.
+ */
+type ParsedOccurrence = {
+  id: string;
+  startsAt: Date;
+  endsAt: Date | null;
+  priceCents: number | null;
+  priceNote: string | null;
+  ticketUrl: string | null;
+  room: string | null;
+  status: 'scheduled' | 'cancelled' | 'sold_out';
+};
+function parseOccurrenceForms(
+  form: Record<string, string | File>
+): ParsedOccurrence[] {
+  const out: ParsedOccurrence[] = [];
+  for (let i = 0; i < 200; i++) {
+    const startsAtRaw = form[`occurrences[${i}].startsAt`];
+    if (typeof startsAtRaw !== 'string' || !startsAtRaw) continue;
+    const startsAt = fromDateTimeLocal(startsAtRaw);
+    if (!startsAt) continue;
+    const endsAt = fromDateTimeLocal(
+      String(form[`occurrences[${i}].endsAt`] ?? '')
+    );
+    const idVal = String(form[`occurrences[${i}].id`] ?? '').trim();
+    const priceCentsRaw = form[`occurrences[${i}].priceCents`];
+    const statusRaw = String(form[`occurrences[${i}].status`] ?? 'scheduled');
+    const status =
+      statusRaw === 'cancelled' || statusRaw === 'sold_out' || statusRaw === 'scheduled'
+        ? statusRaw
+        : 'scheduled';
+    out.push({
+      id: idVal,
+      startsAt,
+      endsAt,
+      priceCents:
+        priceCentsRaw && String(priceCentsRaw).trim() !== ''
+          ? Number(priceCentsRaw)
+          : null,
+      priceNote: String(form[`occurrences[${i}].priceNote`] ?? '').trim() || null,
+      ticketUrl: String(form[`occurrences[${i}].ticketUrl`] ?? '').trim() || null,
+      room: String(form[`occurrences[${i}].room`] ?? '').trim() || null,
+      status,
+    });
+  }
+  return out;
+}
 
 adminUi.get('/events/:id', async (c) => {
   const id = c.req.param('id');
@@ -453,6 +579,11 @@ adminUi.get('/events/:id', async (c) => {
     .select({ id: schema.venues.id, name: schema.venues.name })
     .from(schema.venues)
     .orderBy(asc(schema.venues.name));
+  const occurrences = await db
+    .select()
+    .from(schema.occurrences)
+    .where(eq(schema.occurrences.eventId, id))
+    .orderBy(asc(schema.occurrences.startsAt));
   const linkedSeries = await db
     .select({
       id: schema.series.id,
@@ -470,7 +601,7 @@ adminUi.get('/events/:id', async (c) => {
         <h2>{event.title}</h2>
         <PublishedPill published={event.published} />
       </div>
-      <EventForm event={event} venues={venues} />
+      <EventForm event={event} occurrences={occurrences} venues={venues} />
       {linkedSeries.length > 0 && (
         <article style="margin-top:1.5rem;">
           <header>Onderdeel van</header>
@@ -501,30 +632,79 @@ adminUi.get('/events/:id', async (c) => {
 adminUi.post('/events/:id', async (c) => {
   const id = c.req.param('id');
   const form = await c.req.parseBody();
-  const startsAt = fromDateTimeLocal(String(form.startsAt ?? ''));
-  if (!startsAt) {
-    return c.html(<Layout title="Fout"><p>Starttijd verplicht.</p></Layout>, 400);
+  const occurrences = parseOccurrenceForms(form);
+  if (occurrences.length === 0) {
+    return c.html(
+      <Layout title="Fout"><p>Minstens één moment (occurrence) verplicht.</p></Layout>,
+      400
+    );
   }
-  await db
-    .update(schema.events)
-    .set({
-      title: String(form.title ?? '').trim(),
-      venueId: String(form.venueId ?? ''),
-      startsAt,
-      endsAt: fromDateTimeLocal(String(form.endsAt ?? '')),
-      description: (form.description as string) || null,
-      imageUrl: (form.imageUrl as string) || null,
-      ticketUrl: (form.ticketUrl as string) || null,
-      priceCents: form.priceCents ? Number(form.priceCents) : null,
-      priceNote: form.priceNote ? String(form.priceNote).trim() || null : null,
-      category: (CATEGORIES as readonly string[]).includes(String(form.category))
-        ? (String(form.category) as Category)
-        : 'Muziek',
-      featured: form.featured === 'on',
-      genres: parseTagsField(String(form.genres ?? '')),
-      published: form.published !== 'off',
-    })
-    .where(eq(schema.events.id, id));
+  const kind = String(form.kind ?? '') === 'exhibition' ? 'exhibition' : 'show';
+
+  await db.transaction(async (tx) => {
+    await tx
+      .update(schema.events)
+      .set({
+        title: String(form.title ?? '').trim(),
+        venueId: String(form.venueId ?? ''),
+        kind,
+        description: (form.description as string) || null,
+        imageUrl: (form.imageUrl as string) || null,
+        category: (CATEGORIES as readonly string[]).includes(String(form.category))
+          ? (String(form.category) as Category)
+          : 'Muziek',
+        featured: form.featured === 'on',
+        genres: parseTagsField(String(form.genres ?? '')),
+        published: form.published !== 'off',
+      })
+      .where(eq(schema.events.id, id));
+
+    // Sync occurrences. Strategie: alle bestaande occurrences voor dit
+    // event verwijderen die niet meer in de form zitten, dan upsert per
+    // form-rij. We bewaren bestaande IDs zodat invites die ernaar
+    // verwijzen blijven werken (FK is cascade — verwijderen zou invites
+    // ook stilletjes droppen).
+    const formIds = new Set(occurrences.map((o) => o.id).filter(Boolean));
+    if (formIds.size > 0) {
+      await tx
+        .delete(schema.occurrences)
+        .where(
+          and(
+            eq(schema.occurrences.eventId, id),
+            sql`${schema.occurrences.id} NOT IN (${sql.join(
+              [...formIds].map((x) => sql`${x}`),
+              sql`, `
+            )})`
+          )
+        );
+    } else {
+      await tx
+        .delete(schema.occurrences)
+        .where(eq(schema.occurrences.eventId, id));
+    }
+
+    for (const occ of occurrences) {
+      const occId = occ.id || `occ-${shortId()}`;
+      const values = {
+        eventId: id,
+        startsAt: occ.startsAt,
+        endsAt: occ.endsAt,
+        priceCents: occ.priceCents,
+        priceNote: occ.priceNote,
+        ticketUrl: occ.ticketUrl,
+        room: occ.room,
+        status: occ.status,
+      };
+      if (occ.id) {
+        await tx
+          .update(schema.occurrences)
+          .set(values)
+          .where(eq(schema.occurrences.id, occ.id));
+      } else {
+        await tx.insert(schema.occurrences).values({ id: occId, ...values });
+      }
+    }
+  });
   return c.redirect(`/admin/events/${encodeURIComponent(id)}`);
 });
 
@@ -551,12 +731,18 @@ adminUi.post('/events/:id/delete', async (c) => {
 
 function EventForm({
   event,
+  occurrences,
   venues,
 }: {
   event?: typeof schema.events.$inferSelect;
+  occurrences?: (typeof schema.occurrences.$inferSelect)[];
   venues: { id: string; name: string }[];
 }) {
   const action = event ? `/admin/events/${encodeURIComponent(event.id)}` : '/admin/events/new';
+  // Bij nieuw event: één lege occurrence-rij. Bij bestaand event: alle
+  // bestaande occurrences renderen.
+  const initialOcc = occurrences && occurrences.length > 0 ? occurrences : [null];
+
   return (
     <form method="post" action={action}>
       <label>
@@ -581,25 +767,27 @@ function EventForm({
           </select>
         </label>
       </div>
-      <div class="grid-2">
+      <fieldset>
+        <legend>Type</legend>
         <label>
-          Start
           <input
-            type="datetime-local"
-            name="startsAt"
-            required
-            value={toDateTimeLocal(event?.startsAt ?? null)}
+            type="radio"
+            name="kind"
+            value="show"
+            checked={(event?.kind ?? 'show') === 'show'}
           />
+          Show — concert, club, voorstelling, film, opening (één of meer momenten)
         </label>
         <label>
-          Eind (optioneel)
           <input
-            type="datetime-local"
-            name="endsAt"
-            value={toDateTimeLocal(event?.endsAt ?? null)}
+            type="radio"
+            name="kind"
+            value="exhibition"
+            checked={event?.kind === 'exhibition'}
           />
+          Tentoonstelling — doorlopend (één lange occurrence van begin tot eind)
         </label>
-      </div>
+      </fieldset>
       <label>
         Beschrijving
         <textarea name="description" rows={4}>{event?.description ?? ''}</textarea>
@@ -609,18 +797,6 @@ function EventForm({
         kind="events"
         currentUrl={event?.imageUrl ?? ''}
       />
-      <label>
-        Ticket URL
-        <input type="url" name="ticketUrl" value={event?.ticketUrl ?? ''} />
-      </label>
-      <label>
-        Prijs (cents) — laat leeg voor "—" of zet 0 voor "Gratis"
-        <input type="number" name="priceCents" min="0" step="50" value={event?.priceCents ?? ''} />
-      </label>
-      <label>
-        Prijs-noot (vrij — overschrijft venue-default; bv. "lidmaatschap vereist")
-        <input type="text" name="priceNote" value={event?.priceNote ?? ''} placeholder="leeg = erf van venue" />
-      </label>
       <label>
         Genres (comma-separated, vrij — bv. techno, hip-hop, ambient)
         <input
@@ -645,9 +821,177 @@ function EventForm({
           Live (verschijnt in de app)
         </label>
       </fieldset>
+
+      <article>
+        <header style="display:flex;justify-content:space-between;align-items:center;">
+          <strong>Momenten ({initialOcc.length})</strong>
+          <small style="opacity:0.7;">Voor films/wekelijkse feesten: meerdere rijen. Voor tentoonstellingen: één rij met start- en einddatum.</small>
+        </header>
+        <div id="occurrences">
+          {initialOcc.map((occ, i) => (
+            <OccurrenceRow occ={occ} index={i} />
+          ))}
+        </div>
+        <button
+          type="button"
+          class="secondary outline"
+          onclick="addOccurrenceRow()"
+        >
+          + Moment toevoegen
+        </button>
+      </article>
+
       <button type="submit">{event ? 'Opslaan' : 'Event aanmaken'}</button>
+
+      <script
+        dangerouslySetInnerHTML={{
+          __html: `
+            window.__occCount = ${initialOcc.length};
+            function addOccurrenceRow() {
+              const i = window.__occCount++;
+              const tpl = document.getElementById('occ-template').innerHTML;
+              const html = tpl.replace(/__INDEX__/g, String(i));
+              document.getElementById('occurrences').insertAdjacentHTML('beforeend', html);
+            }
+            function removeOccurrenceRow(btn) {
+              const row = btn.closest('[data-occ-row]');
+              if (row) row.remove();
+            }
+          `,
+        }}
+      />
+      <template id="occ-template" dangerouslySetInnerHTML={{ __html: occurrenceRowTemplate() }} />
     </form>
   );
+}
+
+function OccurrenceRow({
+  occ,
+  index,
+}: {
+  occ: typeof schema.occurrences.$inferSelect | null;
+  index: number;
+}) {
+  const prefix = `occurrences[${index}].`;
+  return (
+    <div
+      data-occ-row
+      style="border:1px solid var(--pico-muted-border-color, #ddd);padding:1rem;margin-top:0.75rem;border-radius:4px;"
+    >
+      <input type="hidden" name={`${prefix}id`} value={occ?.id ?? ''} />
+      <div class="grid-2">
+        <label>
+          Start
+          <input
+            type="datetime-local"
+            name={`${prefix}startsAt`}
+            required
+            value={toDateTimeLocal(occ?.startsAt ?? null)}
+          />
+        </label>
+        <label>
+          Eind (optioneel — verplicht voor tentoonstelling)
+          <input
+            type="datetime-local"
+            name={`${prefix}endsAt`}
+            value={toDateTimeLocal(occ?.endsAt ?? null)}
+          />
+        </label>
+      </div>
+      <div class="grid-2">
+        <label>
+          Prijs (cents) — leeg = "—", 0 = "Gratis"
+          <input
+            type="number"
+            name={`${prefix}priceCents`}
+            min="0"
+            step="50"
+            value={occ?.priceCents ?? ''}
+          />
+        </label>
+        <label>
+          Zaal (optioneel)
+          <input
+            type="text"
+            name={`${prefix}room`}
+            value={occ?.room ?? ''}
+            placeholder="bv. Kleine Zaal"
+          />
+        </label>
+      </div>
+      <label>
+        Prijs-noot
+        <input
+          type="text"
+          name={`${prefix}priceNote`}
+          value={occ?.priceNote ?? ''}
+          placeholder="leeg = erf van event/venue"
+        />
+      </label>
+      <label>
+        Ticket URL
+        <input type="url" name={`${prefix}ticketUrl`} value={occ?.ticketUrl ?? ''} />
+      </label>
+      <label>
+        Status
+        <select name={`${prefix}status`}>
+          <option value="scheduled" selected={(occ?.status ?? 'scheduled') === 'scheduled'}>Scheduled</option>
+          <option value="sold_out" selected={occ?.status === 'sold_out'}>Sold out</option>
+          <option value="cancelled" selected={occ?.status === 'cancelled'}>Cancelled</option>
+        </select>
+      </label>
+      <button
+        type="button"
+        class="contrast outline"
+        onclick="removeOccurrenceRow(this)"
+        style="margin-top:0.25rem;"
+      >
+        Verwijder dit moment
+      </button>
+    </div>
+  );
+}
+
+/**
+ * Template-string voor dynamisch toegevoegde occurrence-rijen via JS.
+ * `__INDEX__` wordt bij toevoegen vervangen door een uniek nummer.
+ */
+function occurrenceRowTemplate(): string {
+  return `
+    <div data-occ-row style="border:1px solid #ddd;padding:1rem;margin-top:0.75rem;border-radius:4px;">
+      <input type="hidden" name="occurrences[__INDEX__].id" value="" />
+      <div class="grid-2">
+        <label>Start
+          <input type="datetime-local" name="occurrences[__INDEX__].startsAt" required />
+        </label>
+        <label>Eind (optioneel)
+          <input type="datetime-local" name="occurrences[__INDEX__].endsAt" />
+        </label>
+      </div>
+      <div class="grid-2">
+        <label>Prijs (cents)
+          <input type="number" name="occurrences[__INDEX__].priceCents" min="0" step="50" />
+        </label>
+        <label>Zaal
+          <input type="text" name="occurrences[__INDEX__].room" placeholder="bv. Kleine Zaal" />
+        </label>
+      </div>
+      <label>Prijs-noot
+        <input type="text" name="occurrences[__INDEX__].priceNote" />
+      </label>
+      <label>Ticket URL
+        <input type="url" name="occurrences[__INDEX__].ticketUrl" />
+      </label>
+      <label>Status
+        <select name="occurrences[__INDEX__].status">
+          <option value="scheduled" selected>Scheduled</option>
+          <option value="sold_out">Sold out</option>
+          <option value="cancelled">Cancelled</option>
+        </select>
+      </label>
+      <button type="button" class="contrast outline" onclick="removeOccurrenceRow(this)" style="margin-top:0.25rem;">Verwijder dit moment</button>
+    </div>
+  `;
 }
 
 // ─── Venues ─────────────────────────────────────────────────────────────
@@ -1213,37 +1557,58 @@ adminUi.get('/series/:id', async (c) => {
     .limit(1);
   if (!series) return c.notFound();
 
-  // Gekoppelde events (alle, ook verleden, om te zien wat er hangt).
-  const linked = await db
+  // Gekoppelde events (alle, ook verleden). startsAt komt uit de
+  // eerstvolgende occurrence (of de oudste als alle voorbij zijn).
+  const linkedRaw = await db
     .select({
       id: schema.events.id,
       title: schema.events.title,
-      startsAt: schema.events.startsAt,
+      startsAt: schema.occurrences.startsAt,
       published: schema.events.published,
       venueName: schema.venues.name,
     })
     .from(schema.eventsInSeries)
     .innerJoin(schema.events, eq(schema.events.id, schema.eventsInSeries.eventId))
     .innerJoin(schema.venues, eq(schema.venues.id, schema.events.venueId))
+    .leftJoin(
+      schema.occurrences,
+      eq(schema.occurrences.eventId, schema.events.id)
+    )
     .where(eq(schema.eventsInSeries.seriesId, id))
-    .orderBy(asc(schema.events.startsAt));
+    .orderBy(asc(schema.occurrences.startsAt));
+  // Eén rij per event (eerste occurrence). leftJoin geeft mogelijk
+  // meerdere rijen per event als er meerdere occurrences zijn.
+  const seenLinked = new Set<string>();
+  const linked = linkedRaw.filter((r) => {
+    if (seenLinked.has(r.id)) return false;
+    seenLinked.add(r.id);
+    return true;
+  });
 
-  // Beschikbare events om te koppelen — toekomst-only zodat de dropdown
-  // niet vol staat met oude events.
+  // Beschikbare events om te koppelen — toekomst-only.
   const linkedIds = new Set(linked.map((l) => l.id));
-  const available = (
-    await db
-      .select({
-        id: schema.events.id,
-        title: schema.events.title,
-        startsAt: schema.events.startsAt,
-        venueName: schema.venues.name,
-      })
-      .from(schema.events)
-      .innerJoin(schema.venues, eq(schema.venues.id, schema.events.venueId))
-      .where(gte(schema.events.startsAt, new Date()))
-      .orderBy(asc(schema.events.startsAt))
-  ).filter((e) => !linkedIds.has(e.id));
+  const availableRaw = await db
+    .select({
+      id: schema.events.id,
+      title: schema.events.title,
+      startsAt: schema.occurrences.startsAt,
+      venueName: schema.venues.name,
+    })
+    .from(schema.events)
+    .innerJoin(schema.venues, eq(schema.venues.id, schema.events.venueId))
+    .innerJoin(
+      schema.occurrences,
+      eq(schema.occurrences.eventId, schema.events.id)
+    )
+    .where(gte(schema.occurrences.startsAt, new Date()))
+    .orderBy(asc(schema.occurrences.startsAt));
+  const seenAvail = new Set<string>();
+  const available = availableRaw.filter((e) => {
+    if (linkedIds.has(e.id)) return false;
+    if (seenAvail.has(e.id)) return false;
+    seenAvail.add(e.id);
+    return true;
+  });
 
   return c.html(
     <Layout title={series.name} active="series">

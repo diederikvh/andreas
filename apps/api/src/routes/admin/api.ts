@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { and, asc, eq } from 'drizzle-orm';
+import { and, asc, eq, inArray } from 'drizzle-orm';
 import { Hono } from 'hono';
 
 import { db, schema } from '../../db/index.js';
@@ -108,6 +108,65 @@ function parseCategoryOne(value: unknown, fallback: Category = 'Muziek'): Catego
     : fallback;
 }
 
+const EVENT_KINDS = ['show', 'exhibition'] as const;
+type EventKind = (typeof EVENT_KINDS)[number];
+
+const OCCURRENCE_STATUSES = ['scheduled', 'cancelled', 'sold_out'] as const;
+type OccurrenceStatus = (typeof OCCURRENCE_STATUSES)[number];
+
+const LINEUP_ROLES = ['dj', 'support', 'headliner', 'act'] as const;
+type LineupRole = (typeof LINEUP_ROLES)[number];
+
+type LineupEntry = { name: string; role?: LineupRole };
+
+function parseLineup(value: unknown): LineupEntry[] | null {
+  if (!Array.isArray(value)) return null;
+  const out: LineupEntry[] = [];
+  for (const entry of value) {
+    if (!entry || typeof entry !== 'object') continue;
+    const name = String((entry as { name?: unknown }).name ?? '').trim();
+    if (!name) continue;
+    const role = parseEnum(LINEUP_ROLES, (entry as { role?: unknown }).role);
+    out.push(role ? { name, role } : { name });
+  }
+  return out.length > 0 ? out : null;
+}
+
+type OccurrenceInput = {
+  id?: string;
+  startsAt: Date;
+  endsAt: Date | null;
+  priceCents: number | null;
+  priceNote: string | null;
+  ticketUrl: string | null;
+  room: string | null;
+  lineup: LineupEntry[] | null;
+  status: OccurrenceStatus;
+};
+
+/**
+ * Parseer een occurrence-payload uit het admin-form of n8n-call. Returnt
+ * `null` als startsAt ontbreekt of ongeldig is — caller beslist wat met
+ * de fout te doen.
+ */
+function parseOccurrence(input: unknown): OccurrenceInput | null {
+  if (!input || typeof input !== 'object') return null;
+  const o = input as Record<string, unknown>;
+  const startsAt = parseDate(o.startsAt);
+  if (!startsAt) return null;
+  return {
+    id: o.id ? String(o.id) : undefined,
+    startsAt,
+    endsAt: parseDate(o.endsAt),
+    priceCents: o.priceCents != null && o.priceCents !== '' ? Number(o.priceCents) : null,
+    priceNote: o.priceNote ? String(o.priceNote).trim() || null : null,
+    ticketUrl: o.ticketUrl ? String(o.ticketUrl) : null,
+    room: o.room ? String(o.room).trim() || null : null,
+    lineup: parseLineup(o.lineup),
+    status: parseEnum(OCCURRENCE_STATUSES, o.status) ?? 'scheduled',
+  };
+}
+
 export const adminApi = new Hono();
 
 adminApi.use('*', requireAdminAny);
@@ -204,21 +263,117 @@ adminApi.post('/uploads', async (c) => {
 });
 
 // ─── Events ─────────────────────────────────────────────────────────────
+//
+// Een event is een master-record (de "show", "film", "tentoonstelling")
+// en bevat 1+ occurrences (= momenten). Voor films zijn dat alle
+// voorstellingen, voor een wekelijks feest elke maandagavond, voor een
+// eenmalig event één enkele rij. Voor `kind=exhibition` typisch één
+// occurrence die de hele lopende periode dekt.
+
+async function loadEventWithOccurrences(eventId: string) {
+  const [event] = await db
+    .select()
+    .from(schema.events)
+    .where(eq(schema.events.id, eventId))
+    .limit(1);
+  if (!event) return null;
+  const occurrences = await db
+    .select()
+    .from(schema.occurrences)
+    .where(eq(schema.occurrences.eventId, eventId))
+    .orderBy(asc(schema.occurrences.startsAt));
+  return { ...event, occurrences };
+}
 
 adminApi.get('/events', async (c) => {
-  const rows = await db.select().from(schema.events).orderBy(asc(schema.events.startsAt));
-  return c.json({ events: rows });
+  // Voor admin: alle events met de eerstvolgende (of meest recente)
+  // occurrence inline, plus tellertje. Sorteerd op next-occurrence asc.
+  const rows = await db.select().from(schema.events);
+  if (rows.length === 0) return c.json({ events: [] });
+
+  const allOcc = await db
+    .select()
+    .from(schema.occurrences)
+    .where(inArray(schema.occurrences.eventId, rows.map((r) => r.id)))
+    .orderBy(asc(schema.occurrences.startsAt));
+
+  const occByEvent = new Map<
+    string,
+    { all: typeof allOcc; next: (typeof allOcc)[number] | null }
+  >();
+  for (const o of allOcc) {
+    let entry = occByEvent.get(o.eventId);
+    if (!entry) {
+      entry = { all: [], next: null };
+      occByEvent.set(o.eventId, entry);
+    }
+    entry.all.push(o);
+    if (entry.next === null) entry.next = o;
+  }
+
+  const events = rows
+    .map((r) => {
+      const entry = occByEvent.get(r.id);
+      return {
+        ...r,
+        occurrences: entry?.all ?? [],
+        nextOccurrence: entry?.next ?? null,
+        occurrenceCount: entry?.all.length ?? 0,
+      };
+    })
+    .sort((a, b) => {
+      const aT = a.nextOccurrence?.startsAt?.getTime() ?? Infinity;
+      const bT = b.nextOccurrence?.startsAt?.getTime() ?? Infinity;
+      return aT - bT;
+    });
+  return c.json({ events });
 });
 
 adminApi.post('/events', async (c) => {
   const body = await c.req.json<Record<string, unknown>>();
   const title = String(body.title ?? '').trim();
   const venueId = String(body.venueId ?? '').trim();
-  const startsAt = parseDate(body.startsAt);
-  if (!title || !venueId || !startsAt) {
-    return c.json({ error: 'title, venueId, startsAt verplicht' }, 400);
+  if (!title || !venueId) {
+    return c.json({ error: 'title en venueId verplicht' }, 400);
   }
+
+  // Occurrences kunnen op twee manieren binnenkomen:
+  //  1. `body.occurrences: [{...}]` — expliciete array.
+  //  2. Single-occurrence shorthand: top-level `startsAt` + optionele
+  //     `endsAt/priceCents/priceNote/ticketUrl` (back-compat voor n8n
+  //     flows die nog het oude schema sturen).
+  let occurrenceInputs: OccurrenceInput[] = [];
+  if (Array.isArray(body.occurrences)) {
+    for (const raw of body.occurrences) {
+      const occ = parseOccurrence(raw);
+      if (!occ) {
+        return c.json({ error: 'occurrence zonder geldige startsAt' }, 400);
+      }
+      occurrenceInputs.push(occ);
+    }
+  } else if (body.startsAt) {
+    const occ = parseOccurrence({
+      startsAt: body.startsAt,
+      endsAt: body.endsAt,
+      priceCents: body.priceCents,
+      priceNote: body.priceNote,
+      ticketUrl: body.ticketUrl,
+      room: body.room,
+      lineup: body.lineup,
+      status: body.status,
+    });
+    if (!occ) return c.json({ error: 'startsAt invalid' }, 400);
+    occurrenceInputs = [occ];
+  }
+  if (occurrenceInputs.length === 0) {
+    return c.json(
+      { error: 'minstens één occurrence (of top-level startsAt) verplicht' },
+      400
+    );
+  }
+
   const id = (body.id ? String(body.id) : '') || `evt-${shortId()}`;
+  const kind = parseEnum(EVENT_KINDS, body.kind) ?? 'show';
 
   // Bestaat de venue? Anders FK-error van Postgres met een nare melding.
   const [venue] = await db
@@ -229,41 +384,48 @@ adminApi.post('/events', async (c) => {
   if (!venue) return c.json({ error: `venue ${venueId} bestaat niet` }, 400);
 
   try {
-    const [row] = await db
-      .insert(schema.events)
-      .values({
+    await db.transaction(async (tx) => {
+      await tx.insert(schema.events).values({
         id,
         title,
         venueId,
-        startsAt,
-        endsAt: parseDate(body.endsAt),
+        kind,
         description: body.description ? String(body.description) : null,
         imageUrl: body.imageUrl ? String(body.imageUrl) : null,
-        ticketUrl: body.ticketUrl ? String(body.ticketUrl) : null,
-        priceCents: body.priceCents != null ? Number(body.priceCents) : null,
-        priceNote: body.priceNote ? String(body.priceNote).trim() || null : null,
         category: parseCategoryOne(body.category),
         featured: Boolean(body.featured),
         genres: parseStringArray(body.genres),
         published: body.published == null ? true : Boolean(body.published),
-      })
-      .returning();
-    return c.json({ event: row }, 201);
+      });
+      await tx.insert(schema.occurrences).values(
+        occurrenceInputs.map((occ) => ({
+          id: occ.id ?? `occ-${shortId()}`,
+          eventId: id,
+          startsAt: occ.startsAt,
+          endsAt: occ.endsAt,
+          priceCents: occ.priceCents,
+          priceNote: occ.priceNote,
+          ticketUrl: occ.ticketUrl,
+          room: occ.room,
+          lineup: occ.lineup,
+          status: occ.status,
+        }))
+      );
+    });
   } catch (e) {
     const code = (e as { code?: string }).code ?? '';
     if (code === '23505') return c.json({ error: 'id bestaat al' }, 409);
     throw e;
   }
+
+  const created = await loadEventWithOccurrences(id);
+  return c.json({ event: created }, 201);
 });
 
 adminApi.get('/events/:id', async (c) => {
-  const [row] = await db
-    .select()
-    .from(schema.events)
-    .where(eq(schema.events.id, c.req.param('id')))
-    .limit(1);
-  if (!row) return c.json({ error: 'not found' }, 404);
-  return c.json({ event: row });
+  const event = await loadEventWithOccurrences(c.req.param('id'));
+  if (!event) return c.json({ error: 'not found' }, 404);
+  return c.json({ event });
 });
 
 adminApi.patch('/events/:id', async (c) => {
@@ -272,17 +434,13 @@ adminApi.patch('/events/:id', async (c) => {
   const updates: Record<string, unknown> = {};
   if ('title' in body) updates.title = String(body.title ?? '').trim();
   if ('venueId' in body) updates.venueId = String(body.venueId);
-  if ('startsAt' in body) {
-    const d = parseDate(body.startsAt);
-    if (!d) return c.json({ error: 'startsAt invalid' }, 400);
-    updates.startsAt = d;
+  if ('kind' in body) {
+    const k = parseEnum(EVENT_KINDS, body.kind);
+    if (!k) return c.json({ error: 'kind moet show of exhibition zijn' }, 400);
+    updates.kind = k;
   }
-  if ('endsAt' in body) updates.endsAt = parseDate(body.endsAt);
   if ('description' in body) updates.description = body.description ? String(body.description) : null;
   if ('imageUrl' in body) updates.imageUrl = body.imageUrl ? String(body.imageUrl) : null;
-  if ('ticketUrl' in body) updates.ticketUrl = body.ticketUrl ? String(body.ticketUrl) : null;
-  if ('priceCents' in body) updates.priceCents = body.priceCents != null ? Number(body.priceCents) : null;
-  if ('priceNote' in body) updates.priceNote = body.priceNote ? String(body.priceNote).trim() || null : null;
   if ('category' in body) updates.category = parseCategoryOne(body.category);
   if ('featured' in body) updates.featured = Boolean(body.featured);
   if ('genres' in body) updates.genres = parseStringArray(body.genres);
@@ -298,7 +456,8 @@ adminApi.patch('/events/:id', async (c) => {
     .where(eq(schema.events.id, id))
     .returning();
   if (!row) return c.json({ error: 'not found' }, 404);
-  return c.json({ event: row });
+  const event = await loadEventWithOccurrences(id);
+  return c.json({ event });
 });
 
 adminApi.delete('/events/:id', async (c) => {
@@ -306,6 +465,92 @@ adminApi.delete('/events/:id', async (c) => {
     .delete(schema.events)
     .where(eq(schema.events.id, c.req.param('id')))
     .returning({ id: schema.events.id });
+  if (result.length === 0) return c.json({ error: 'not found' }, 404);
+  return c.json({ ok: true });
+});
+
+// ─── Occurrences ────────────────────────────────────────────────────────
+
+adminApi.post('/events/:id/occurrences', async (c) => {
+  const eventId = c.req.param('id');
+  const [event] = await db
+    .select({ id: schema.events.id })
+    .from(schema.events)
+    .where(eq(schema.events.id, eventId))
+    .limit(1);
+  if (!event) return c.json({ error: 'event niet gevonden' }, 404);
+
+  const body = await c.req.json<Record<string, unknown>>();
+  const occ = parseOccurrence(body);
+  if (!occ) return c.json({ error: 'startsAt invalid' }, 400);
+
+  const id = occ.id ?? `occ-${shortId()}`;
+  try {
+    const [row] = await db
+      .insert(schema.occurrences)
+      .values({
+        id,
+        eventId,
+        startsAt: occ.startsAt,
+        endsAt: occ.endsAt,
+        priceCents: occ.priceCents,
+        priceNote: occ.priceNote,
+        ticketUrl: occ.ticketUrl,
+        room: occ.room,
+        lineup: occ.lineup,
+        status: occ.status,
+      })
+      .returning();
+    return c.json({ occurrence: row }, 201);
+  } catch (e) {
+    const code = (e as { code?: string }).code ?? '';
+    if (code === '23505') return c.json({ error: 'id bestaat al' }, 409);
+    throw e;
+  }
+});
+
+adminApi.patch('/occurrences/:id', async (c) => {
+  const id = c.req.param('id');
+  const body = await c.req.json<Record<string, unknown>>();
+  const updates: Record<string, unknown> = {};
+  if ('startsAt' in body) {
+    const d = parseDate(body.startsAt);
+    if (!d) return c.json({ error: 'startsAt invalid' }, 400);
+    updates.startsAt = d;
+  }
+  if ('endsAt' in body) updates.endsAt = parseDate(body.endsAt);
+  if ('priceCents' in body) {
+    updates.priceCents =
+      body.priceCents != null && body.priceCents !== ''
+        ? Number(body.priceCents)
+        : null;
+  }
+  if ('priceNote' in body) updates.priceNote = body.priceNote ? String(body.priceNote).trim() || null : null;
+  if ('ticketUrl' in body) updates.ticketUrl = body.ticketUrl ? String(body.ticketUrl) : null;
+  if ('room' in body) updates.room = body.room ? String(body.room).trim() || null : null;
+  if ('lineup' in body) updates.lineup = parseLineup(body.lineup);
+  if ('status' in body) {
+    const s = parseEnum(OCCURRENCE_STATUSES, body.status);
+    if (!s) return c.json({ error: 'status invalid' }, 400);
+    updates.status = s;
+  }
+  if (Object.keys(updates).length === 0) {
+    return c.json({ error: 'geen velden om te updaten' }, 400);
+  }
+  const [row] = await db
+    .update(schema.occurrences)
+    .set(updates)
+    .where(eq(schema.occurrences.id, id))
+    .returning();
+  if (!row) return c.json({ error: 'not found' }, 404);
+  return c.json({ occurrence: row });
+});
+
+adminApi.delete('/occurrences/:id', async (c) => {
+  const result = await db
+    .delete(schema.occurrences)
+    .where(eq(schema.occurrences.id, c.req.param('id')))
+    .returning({ id: schema.occurrences.id });
   if (result.length === 0) return c.json({ error: 'not found' }, 404);
   return c.json({ ok: true });
 });
@@ -459,12 +704,16 @@ adminApi.get('/series/:id', async (c) => {
     .select({
       id: schema.events.id,
       title: schema.events.title,
-      startsAt: schema.events.startsAt,
+      startsAt: schema.occurrences.startsAt,
     })
     .from(schema.eventsInSeries)
     .innerJoin(schema.events, eq(schema.events.id, schema.eventsInSeries.eventId))
+    .leftJoin(
+      schema.occurrences,
+      eq(schema.occurrences.eventId, schema.events.id)
+    )
     .where(eq(schema.eventsInSeries.seriesId, id))
-    .orderBy(asc(schema.events.startsAt));
+    .orderBy(asc(schema.occurrences.startsAt));
   return c.json({ series: row, events });
 });
 

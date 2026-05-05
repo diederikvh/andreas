@@ -4,6 +4,7 @@ import {
   doublePrecision,
   index,
   integer,
+  jsonb,
   pgEnum,
   pgTable,
   primaryKey,
@@ -68,6 +69,19 @@ export const venueCapacity = pgEnum('venue_capacity', [
   'middel',
   'groot',
   'xl',
+]);
+/** Type event:
+ *  - `show` = point-in-time (concert, club, voorstelling, film, opening).
+ *    Heeft een of meer occurrences die elk een specifiek moment zijn.
+ *  - `exhibition` = doorlopend (tentoonstelling). Heeft typisch één
+ *    occurrence die de hele lopende periode dekt. UI toont "loopt t/m …"
+ *    in plaats van een tijdslot. */
+export const eventKind = pgEnum('event_kind', ['show', 'exhibition']);
+/** Status van een specifiek moment. Default `scheduled`. */
+export const occurrenceStatus = pgEnum('occurrence_status', [
+  'scheduled',
+  'cancelled',
+  'sold_out',
 ]);
 
 // ─── Domain ───────────────────────────────────────────────────────────────
@@ -179,14 +193,10 @@ export const events = pgTable(
       .references(() => venues.id, { onDelete: 'cascade' }),
     title: text().notNull(),
     description: text(),
-    startsAt: timestamp({ withTimezone: true }).notNull(),
-    endsAt: timestamp({ withTimezone: true }),
-    priceCents: integer(),
-    /** Vrije korte noot bij de prijs (bv. "lidmaatschap vereist",
-        "pay-what-you-can aan de deur"). Overschrijft venues.priceNote
-        als beide gezet zijn. */
-    priceNote: text(),
-    ticketUrl: text(),
+    /** `show` voor point-in-time events (concert, film, club, opening) of
+        `exhibition` voor doorlopende programmering. Stuurt UI-weergave
+        van datum/tijd. Default `show`. */
+    kind: eventKind().notNull().default('show'),
     imageUrl: text(),
     category: eventCategory().notNull(),
     /** Editorial-pick voor de Avond-tab. Curator zet deze aan. */
@@ -208,9 +218,52 @@ export const events = pgTable(
       .default(sql`now()`),
   },
   (t) => [
-    index('events_starts_at_idx').on(t.startsAt),
     index('events_venue_idx').on(t.venueId),
     index('events_featured_idx').on(t.featured),
+  ]
+);
+
+/**
+ * Een specifiek moment van een event: één voorstelling, screening, club-
+ * avond, opening, of doorlopende periode (voor `kind=exhibition`). Eén
+ * event heeft 1+ occurrences. De Avond/Agenda/Kaart-feeds tonen events
+ * met hun `nextOccurrence`, de detail-pagina toont alle occurrences.
+ */
+export const occurrences = pgTable(
+  'occurrences',
+  {
+    id: text().primaryKey(),
+    eventId: text()
+      .notNull()
+      .references(() => events.id, { onDelete: 'cascade' }),
+    startsAt: timestamp({ withTimezone: true }).notNull(),
+    endsAt: timestamp({ withTimezone: true }),
+    /** Prijs in centen. Per occurrence omdat film-matinee anders kost
+        dan avond, wekelijks feest soms voorverkoop, etc. */
+    priceCents: integer(),
+    /** Vrije korte noot bij de prijs (bv. "lidmaatschap vereist",
+        "pay-what-you-can aan de deur"). */
+    priceNote: text(),
+    /** Ticket-URL. Per occurrence zodat elk moment z'n eigen link kan
+        hebben (films/concerten met aparte tickets per voorstelling). */
+    ticketUrl: text(),
+    /** Optionele zaal binnen venue (bv. "Kleine Zaal", "Zaal 1"). */
+    room: text(),
+    /** Optionele lineup voor deze occurrence: DJs, supporting acts,
+        cast. Zit op occurrence omdat een wekelijks feest elke week een
+        andere lineup kan hebben. JSON-array i.p.v. relationele
+        artists-tabel — start simpel, refactor als artist-profielen
+        nodig zijn. */
+    lineup: jsonb().$type<Array<{ name: string; role?: 'dj' | 'support' | 'headliner' | 'act' }>>(),
+    status: occurrenceStatus().notNull().default('scheduled'),
+    createdAt: timestamp({ withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+  },
+  (t) => [
+    index('occurrences_event_idx').on(t.eventId),
+    index('occurrences_starts_at_idx').on(t.startsAt),
+    index('occurrences_event_starts_at_idx').on(t.eventId, t.startsAt),
   ]
 );
 
@@ -263,9 +316,12 @@ export const invites = pgTable(
     toUserId: text()
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
-    eventId: text()
+    /** Verwijst naar een specifieke occurrence (= moment), niet naar
+        het master-event. "Ga je mee dinsdag 19:30?" niet "ga je mee
+        naar Hamlet?" */
+    occurrenceId: text()
       .notNull()
-      .references(() => events.id, { onDelete: 'cascade' }),
+      .references(() => occurrences.id, { onDelete: 'cascade' }),
     message: text(),
     status: inviteStatus().notNull().default('pending'),
     createdAt: timestamp({ withTimezone: true })
@@ -273,10 +329,9 @@ export const invites = pgTable(
       .default(sql`now()`),
   },
   (t) => [
-    // Voorkom duplicate invites tussen dezelfde from/to/event paar.
-    uniqueIndex('invites_unique_idx').on(t.fromUserId, t.toUserId, t.eventId),
+    uniqueIndex('invites_unique_idx').on(t.fromUserId, t.toUserId, t.occurrenceId),
     index('invites_to_status_idx').on(t.toUserId, t.status),
-    index('invites_event_idx').on(t.eventId),
+    index('invites_occurrence_idx').on(t.occurrenceId),
   ]
 );
 

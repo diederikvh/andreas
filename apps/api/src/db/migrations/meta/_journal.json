@@ -92,6 +92,20 @@
       "when": 1777929580011,
       "tag": "0012_light_yellowjacket",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1778000028837,
+      "tag": "0013_occurrences_add",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1778000323452,
+      "tag": "0014_occurrences_finalize",
+      "breakpoints": true
     }
   ]
 }
