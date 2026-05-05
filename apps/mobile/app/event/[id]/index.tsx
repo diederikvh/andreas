@@ -5,7 +5,7 @@ import * as Haptics from 'expo-haptics';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useEffect, useMemo, useRef } from 'react';
+import { useMemo } from 'react';
 import { Linking, Platform, Pressable, Share, StyleSheet, Text, View } from 'react-native';
 import Animated, {
   Extrapolation,
@@ -73,36 +73,16 @@ export default function EventDetail() {
 
   const { data: event, isLoading, error } = useEvent(id);
 
-  // Pulse-animatie state. Moet vóór alle early returns zitten anders
-  // verandert het aantal hooks tussen renders (Rules of Hooks).
-  const dateOpacity = useSharedValue(1);
-  const dateScale = useSharedValue(1);
-  const prevOccIdRef = useRef<string | null>(null);
   const selectedOccurrenceId =
     targetOccurrenceId &&
     event?.occurrences?.find((o) => o.id === targetOccurrenceId)
       ? targetOccurrenceId
       : event?.occurrences?.[0]?.id ?? null;
-  useEffect(() => {
-    if (
-      prevOccIdRef.current !== null &&
-      selectedOccurrenceId !== prevOccIdRef.current
-    ) {
-      dateOpacity.value = withSequence(
-        withTiming(0.35, { duration: 110 }),
-        withTiming(1, { duration: 280 })
-      );
-      dateScale.value = withSequence(
-        withTiming(0.94, { duration: 110 }),
-        withTiming(1, { duration: 280 })
-      );
-    }
-    prevOccIdRef.current = selectedOccurrenceId;
-  }, [selectedOccurrenceId, dateOpacity, dateScale]);
-  const datePulseStyle = useAnimatedStyle(() => ({
-    opacity: dateOpacity.value,
-    transform: [{ scale: dateScale.value }],
-  }));
+  // Pulse-animatie op de Datum-cell is uitgeschakeld — Reanimated
+  // worklets met transform: scale waren de waarschijnlijke trigger
+  // van een setViewToSnapshot-crash in react-native-screens 4.x bij
+  // tab-unmount op iOS 26. De scroll-to-top + selectie-haptic geven
+  // genoeg feedback dat de pagina is geupdatet.
 
   if (isLoading || (!event && !error)) {
     return <DetailFallback>{undefined}</DetailFallback>;
@@ -246,7 +226,7 @@ export default function EventDetail() {
           )}
 
           <View style={styles.metaRow}>
-            <Animated.View style={[styles.metaCellWrap, datePulseStyle]}>
+            <View style={styles.metaCellWrap}>
               <MetaCell
                 label={event.kind === 'exhibition' ? 'Loopt t/m' : 'Datum'}
                 value={
@@ -255,10 +235,10 @@ export default function EventDetail() {
                     : view.date
                 }
               />
-            </Animated.View>
-            <Animated.View style={[styles.metaCellWrap, datePulseStyle]}>
+            </View>
+            <View style={styles.metaCellWrap}>
               <MetaCell label="Aanvang" value={view.time} />
-            </Animated.View>
+            </View>
             <View style={styles.metaCellWrap}>
               <MetaCell
                 label="Venue"
