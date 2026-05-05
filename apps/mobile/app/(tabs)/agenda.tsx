@@ -353,10 +353,12 @@ function ChipRow({
       onQuery('');
       return;
     }
-    onCats(s.cats);
-    onBlocks(s.tb);
-    onGenres(s.gn);
-    onQuery(s.q);
+    // Defensieve fallbacks voor oude persisted shape (pre-migrate
+    // schemaversie 1) waar `cats` nog niet bestond.
+    onCats(s.cats ?? []);
+    onBlocks(s.tb ?? []);
+    onGenres(s.gn ?? []);
+    onQuery(s.q ?? '');
   };
 
   const onLongPressSaved = (s: SavedSearch) => {

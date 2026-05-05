@@ -30,6 +30,11 @@ type SavedSearchesState = {
   remove: (id: string) => void;
 };
 
+type LegacySavedSearch = SavedSearch & {
+  cat?: ApiEvent['category'] | null;
+  cats?: ApiEvent['category'][];
+};
+
 export const useSavedSearchesStore = create<SavedSearchesState>()(
   persist(
     (set) => ({
@@ -51,6 +56,29 @@ export const useSavedSearchesStore = create<SavedSearchesState>()(
     {
       name: 'andreas:saved-searches.v1',
       storage: createJSONStorage(() => AsyncStorage),
+      version: 2,
+      migrate: (persistedState: unknown, version: number) => {
+        // Schema v1 had `cat: ApiEvent['category'] | null`; v2 heeft
+        // `cats: ApiEvent['category'][]`. Convert oude rijen ipv ze
+        // te droppen — anders zou een gebruiker bij app-update z'n
+        // saved searches verliezen, en (kritischer) crashed de Agenda
+        // op `s.cats.length` als de oude shape live blijft.
+        const state = persistedState as { searches?: LegacySavedSearch[] };
+        if (!state || !Array.isArray(state.searches)) {
+          return { searches: [] };
+        }
+        if (version < 2) {
+          state.searches = state.searches.map((s) => ({
+            ...s,
+            cats: Array.isArray(s.cats)
+              ? s.cats
+              : s.cat
+                ? [s.cat]
+                : [],
+          }));
+        }
+        return state as SavedSearchesState;
+      },
     }
   )
 );
@@ -82,9 +110,14 @@ export function isSavedSearchActive(
   );
 }
 
-function sameSet(a: string[], b: string[]): boolean {
-  if (a.length !== b.length) return false;
-  const sa = new Set(a);
-  for (const v of b) if (!sa.has(v)) return false;
+// Defensive: oude persisted searches kunnen ontbrekende velden hebben
+// (cats nieuw v2, oude shape had cat). Behandel undefined als leeg-
+// array zodat de Agenda nooit crashed bij een mismatch in storage.
+function sameSet(a: string[] | undefined, b: string[] | undefined): boolean {
+  const aa = a ?? [];
+  const bb = b ?? [];
+  if (aa.length !== bb.length) return false;
+  const sa = new Set(aa);
+  for (const v of bb) if (!sa.has(v)) return false;
   return true;
 }
