@@ -166,26 +166,6 @@ export default function EventDetail() {
         </View>
 
         <View style={[styles.body, { backgroundColor: roles.bg }]}>
-          {(eventOver || targetMissed) && (
-            <>
-              <View style={styles.expiredNotice}>
-                <Ionicons
-                  name="time-outline"
-                  size={14}
-                  color={roles.accent}
-                />
-                <Text
-                  style={[styles.expiredNoticeText, { color: roles.accent }]}
-                >
-                  {eventOver
-                    ? 'Dit event is afgelopen.'
-                    : 'De voorstelling die je tapte is voorbij — dit is de eerstvolgende.'}
-                </Text>
-              </View>
-              <View style={[styles.divider, { backgroundColor: roles.bgChip }]} />
-            </>
-          )}
-
           {event.genres && event.genres.length > 0 && (
             <>
               <View style={styles.genreRow}>
@@ -199,6 +179,26 @@ export default function EventDetail() {
                     </Text>
                   </View>
                 ))}
+              </View>
+              <View style={[styles.divider, { backgroundColor: roles.bgChip }]} />
+            </>
+          )}
+
+          {(eventOver || targetMissed) && (
+            <>
+              <View style={styles.expiredNotice}>
+                <Ionicons
+                  name="time-outline"
+                  size={14}
+                  color={roles.accent}
+                />
+                <Text
+                  style={[styles.expiredNoticeText, { color: roles.accent }]}
+                >
+                  {eventOver
+                    ? 'Dit event is afgelopen.'
+                    : 'De voorstelling die je selecteerde is voorbij. Dit is de eerstvolgende.'}
+                </Text>
               </View>
               <View style={[styles.divider, { backgroundColor: roles.bgChip }]} />
             </>
@@ -267,6 +267,14 @@ export default function EventDetail() {
             <OccurrenceList
               occurrences={event.occurrences}
               selectedId={selectedOccurrence?.id ?? null}
+              onSelect={(occId) => {
+                Haptics.selectionAsync();
+                // setParams werkt scrollpositie-behoudend en triggert
+                // een rerender met de nieuwe ?o= zodat meta-rij,
+                // lineup, tickets en invite-target allemaal mee
+                // schakelen. Geen nieuwe page-load.
+                router.setParams({ o: occId });
+              }}
             />
           )}
 
@@ -697,9 +705,11 @@ function TicketsBlock({
 function OccurrenceList({
   occurrences,
   selectedId,
+  onSelect,
 }: {
   occurrences: ApiOccurrence[];
   selectedId: string | null;
+  onSelect: (occurrenceId: string) => void;
 }) {
   const roles = useRoles();
   return (
@@ -722,8 +732,9 @@ function OccurrenceList({
               : null;
           const isSelected = o.id === selectedId;
           return (
-            <View
+            <Pressable
               key={o.id}
+              onPress={() => onSelect(o.id)}
               style={[
                 styles.occRow,
                 { borderTopColor: roles.bgChip },
@@ -763,7 +774,7 @@ function OccurrenceList({
                   {lineupHint}
                 </Text>
               )}
-            </View>
+            </Pressable>
           );
         })}
       </View>

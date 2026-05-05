@@ -51,7 +51,7 @@ export default function FriendDetail() {
               await removeFriend.mutateAsync(id);
               router.back();
             } catch {
-              Alert.alert('Mislukt', 'Kon niet ontvolgen — probeer opnieuw.');
+              Alert.alert('Mislukt', 'Kon niet ontvolgen. Probeer opnieuw.');
             }
           },
         },
