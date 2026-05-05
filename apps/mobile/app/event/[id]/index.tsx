@@ -73,52 +73,20 @@ export default function EventDetail() {
 
   const { data: event, isLoading, error } = useEvent(id);
 
-  if (isLoading || (!event && !error)) {
-    return <DetailFallback>{undefined}</DetailFallback>;
-  }
-  if (error || !event) {
-    return (
-      <DetailFallback tone="error">Dit event is niet beschikbaar.</DetailFallback>
-    );
-  }
-
-  // Resolve welke occurrence de "primaire" is voor dit detail-bezoek:
-  //  1. ?o= query als die matcht — Agenda/Avond duwen die mee
-  //  2. anders eerstvolgende toekomstige (occurrences[0])
-  //  3. anders fallback op event.startsAt-velden zoals voorheen
-  const hasActuele = (event.occurrences?.length ?? 0) > 0;
-  // Volledig afgelopen: geen toekomstige/lopende occurrence (niet voor
-  // exhibitions die tot endsAt actief zijn).
-  const eventOver = !hasActuele;
-  // Tap kwam vanuit Agenda met een ?o=, maar die occurrence is inmiddels
-  // voorbij. Toon dan een notice + fallback naar de eerstvolgende.
-  const targetMissed =
-    targetOccurrenceId !== null &&
-    hasActuele &&
-    !event.occurrences!.some((o) => o.id === targetOccurrenceId);
-  const selectedOccurrence = (() => {
-    if (!event.occurrences) return null;
-    if (targetOccurrenceId) {
-      const match = event.occurrences.find((o) => o.id === targetOccurrenceId);
-      if (match) return match;
-    }
-    return event.occurrences[0] ?? null;
-  })();
-
-  const view = toViewModel(event, selectedOccurrence);
-  const stickyTitle = view.title;
-
-  // Pulse-animatie op de Datum-MetaCell zodra de gebruiker een andere
-  // occurrence kiest in de "Alle voorstellingen"-lijst — geeft visuele
-  // bevestiging dat de pagina daadwerkelijk geupdatet is.
+  // Pulse-animatie state. Moet vóór alle early returns zitten anders
+  // verandert het aantal hooks tussen renders (Rules of Hooks).
   const dateOpacity = useSharedValue(1);
   const dateScale = useSharedValue(1);
   const prevOccIdRef = useRef<string | null>(null);
+  const selectedOccurrenceId =
+    targetOccurrenceId &&
+    event?.occurrences?.find((o) => o.id === targetOccurrenceId)
+      ? targetOccurrenceId
+      : event?.occurrences?.[0]?.id ?? null;
   useEffect(() => {
-    const currentId = selectedOccurrence?.id ?? null;
     if (
       prevOccIdRef.current !== null &&
-      currentId !== prevOccIdRef.current
+      selectedOccurrenceId !== prevOccIdRef.current
     ) {
       dateOpacity.value = withSequence(
         withTiming(0.35, { duration: 110 }),
@@ -129,12 +97,34 @@ export default function EventDetail() {
         withTiming(1, { duration: 280 })
       );
     }
-    prevOccIdRef.current = currentId;
-  }, [selectedOccurrence?.id, dateOpacity, dateScale]);
+    prevOccIdRef.current = selectedOccurrenceId;
+  }, [selectedOccurrenceId, dateOpacity, dateScale]);
   const datePulseStyle = useAnimatedStyle(() => ({
     opacity: dateOpacity.value,
     transform: [{ scale: dateScale.value }],
   }));
+
+  if (isLoading || (!event && !error)) {
+    return <DetailFallback>{undefined}</DetailFallback>;
+  }
+  if (error || !event) {
+    return (
+      <DetailFallback tone="error">Dit event is niet beschikbaar.</DetailFallback>
+    );
+  }
+
+  const hasActuele = (event.occurrences?.length ?? 0) > 0;
+  const eventOver = !hasActuele;
+  const targetMissed =
+    targetOccurrenceId !== null &&
+    hasActuele &&
+    !event.occurrences!.some((o) => o.id === targetOccurrenceId);
+  const selectedOccurrence = selectedOccurrenceId
+    ? event.occurrences?.find((o) => o.id === selectedOccurrenceId) ?? null
+    : null;
+
+  const view = toViewModel(event, selectedOccurrence);
+  const stickyTitle = view.title;
 
   return (
     <View style={[styles.root, { backgroundColor: roles.bg }]}>
@@ -194,10 +184,33 @@ export default function EventDetail() {
         </View>
 
         <View style={[styles.body, { backgroundColor: roles.bg }]}>
-          {event.genres && event.genres.length > 0 && (
+          {((event.genres && event.genres.length > 0) ||
+            (event.series && event.series.length > 0)) && (
             <>
               <View style={styles.genreRow}>
-                {event.genres.map((g) => (
+                {/* Series-pills eerst — context ("dit hoort bij ADE")
+                    weegt zwaarder dan genre. Border ipv solid bg om
+                    duidelijk te maken dat ze klikbaar zijn. */}
+                {event.series?.map((s) => (
+                  <Pressable
+                    key={s.id}
+                    onPress={() => router.push(`/series/${s.slug}` as never)}
+                    style={[
+                      styles.seriesPillTop,
+                      { borderColor: isNacht ? '#3a3a3e' : palette.paper },
+                    ]}
+                  >
+                    <Ionicons
+                      name="layers-outline"
+                      size={11}
+                      color={roles.fg}
+                    />
+                    <Text style={[styles.genrePillText, { color: roles.fg }]}>
+                      {s.name}
+                    </Text>
+                  </Pressable>
+                ))}
+                {event.genres?.map((g) => (
                   <View
                     key={g}
                     style={[styles.genrePill, { backgroundColor: roles.bgTag }]}
@@ -313,40 +326,6 @@ export default function EventDetail() {
             />
           )}
 
-          {event.series && event.series.length > 0 && (
-            <>
-              <Text style={[styles.crewHeading, { color: roles.fg }]}>
-                Onderdeel van
-              </Text>
-              <View style={styles.seriesRow}>
-                {event.series.map((s) => (
-                  <Pressable
-                    key={s.id}
-                    onPress={() => router.push(`/series/${s.slug}` as never)}
-                    style={[
-                      styles.seriesPill,
-                      { borderColor: isNacht ? '#2a2a2e' : palette.paper },
-                    ]}
-                  >
-                    <Ionicons
-                      name="layers-outline"
-                      size={20}
-                      color={roles.fg}
-                    />
-                    <Text
-                      style={[styles.seriesPillName, { color: roles.fg }]}
-                      numberOfLines={1}
-                    >
-                      {s.name}
-                    </Text>
-                    <Text style={[styles.inviteChev, { color: roles.fgPlaceholder }]}>
-                      ›
-                    </Text>
-                  </Pressable>
-                ))}
-              </View>
-            </>
-          )}
         </View>
       </Animated.ScrollView>
 
@@ -1156,30 +1135,23 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  // Series-pill in de label-strip bovenaan — border ipv solid bg om
+  // visueel te tonen dat 'ie tapbaar is (genre-pills zijn dat niet).
+  // Icoon + naam in dezelfde mono-stijl als genres voor visuele rust.
+  seriesPillTop: {
+    height: 26,
+    paddingHorizontal: 10,
+    borderRadius: 999,
+    borderWidth: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
   genrePillText: {
     fontFamily: fontFamily.mono,
     fontSize: 10,
     letterSpacing: 0.9,
     textTransform: 'uppercase',
-  },
-
-  // Series-pill — "Onderdeel van [ADE]" tappable strook onder de meta
-  // row. Stack als event in meerdere series zit.
-  seriesRow: { gap: 8, marginTop: 6 },
-  seriesPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 13,
-    borderRadius: 8,
-    borderWidth: 1,
-  },
-  seriesPillName: {
-    flex: 1,
-    fontFamily: fontFamily.medium,
-    fontSize: 14.5,
-    letterSpacing: -0.07,
   },
 
   // Section-heading — gebruikt boven elk content-blok (Lineup, Tickets,
