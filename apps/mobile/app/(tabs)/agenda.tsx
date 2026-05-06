@@ -1113,7 +1113,6 @@ function AgendaRow({ row }: { row: OccurrenceRow }) {
   return (
     <EventListRow
       time={formatTime(occurrence.startsAt)}
-      duration={event.category.toLowerCase()}
       thumb={event.imageUrl ?? ''}
       title={event.title}
       venue={event.venue.name}

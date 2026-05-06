@@ -193,7 +193,6 @@ export default function InviteModal() {
         {event && resolvedOccurrence && (
           <EventListRow
             time={formatTime(resolvedOccurrence.startsAt)}
-            duration={event.category.toLowerCase()}
             thumb={event.imageUrl ?? ''}
             title={event.title}
             venue={event.venue.name}

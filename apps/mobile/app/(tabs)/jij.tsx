@@ -307,10 +307,10 @@ export default function Jij() {
 
           {stage === 'phone' && (
             <Text style={[styles.lead, { color: roles.fgRead }]}>
-              Met een account kun je je planning bewaren, vrienden
-              toevoegen en samen naar events gaan, en venues volgen
-              waar je niets van wil missen. Geen wachtwoord. Alleen
-              een SMS-code op je nummer.
+              Met een account heb je je eigen Andreas. Je bewaart je
+              planning, voegt vrienden toe om samen op pad te gaan en
+              volgt de venues die je niet wilt missen.{'\n\n'}
+              Geen wachtwoord. Eén SMS-code op je nummer is genoeg.
             </Text>
           )}
 

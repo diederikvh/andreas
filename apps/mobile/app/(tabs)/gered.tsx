@@ -212,7 +212,6 @@ function SavedRow({
     <View style={dim ? styles.rowDim : undefined}>
       <EventListRow
         time={formatTime(event.startsAt)}
-        duration={event.category.toLowerCase()}
         thumb={event.imageUrl ?? ''}
         title={event.title}
         venue={event.venue.name}

@@ -192,7 +192,6 @@ function FriendSavedRow({ event }: { event: ApiEvent }) {
   return (
     <EventListRow
       time={formatTime(event.startsAt)}
-      duration={event.category.toLowerCase()}
       thumb={event.imageUrl ?? ''}
       title={event.title}
       venue={event.venue.name}
