@@ -57,12 +57,13 @@ export function useEvents(filter: EventsFilter = {}) {
   return useQuery({
     queryKey: queryKeys.events(filter),
     queryFn: () => getEvents(filter),
-    // Lijsten bevatten tijd-gefilterde occurrences (server filtert
-    // afgelopen voorstellingen weg). Stale na 60s zodat een 14:00
-    // voorstelling die om 14:00 voorbij is niet uren rondhangt in
-    // de cache. Refetch bij window-focus pakt 'm vers op zodra de
-    // gebruiker de app terugbrengt.
-    staleTime: 60_000,
+    // Stale na 10 min: tab-focus binnen die tijd gebruikt cache (geen
+    // refetch bij heen-en-weer-tikken Avond/Agenda), maar zodra je
+    // langer wegbent of de app uit background komt en de data is
+    // ouder dan 10 min, ververst-ie automatisch. Plus: client-side
+    // filtert `useNowMinute()` continu op effectieve eindtijd, dus
+    // de bovenste rij wordt nooit een dood event.
+    staleTime: 10 * 60_000,
     refetchOnWindowFocus: true,
   });
 }
@@ -72,7 +73,7 @@ export function useEvent(id: string) {
     queryKey: queryKeys.event(id),
     queryFn: () => getEvent(id),
     enabled: Boolean(id),
-    staleTime: 60_000,
+    staleTime: 10 * 60_000,
     refetchOnWindowFocus: true,
   });
 }

@@ -131,9 +131,17 @@ export type SocialWindow = {
  * Het "wat speelt nu / vandaag" venster — kleinst mogelijke subset.
  * Nacht-mode: de 17:00→05:00 bubbel die je nu beleeft. Dag-mode:
  * vandaag overdag, of (na 17:00) morgen overdag.
+ *
+ * `nowMs` is optioneel. Wordt typisch doorgegeven door `useNowMinute()`
+ * zodat het venster (en dus de query-key voor /events) automatisch
+ * meeschuift wanneer de gebruiker langer in de app blijft of de app
+ * uit de achtergrond komt op een ander moment van de dag.
  */
-export function socialWindow(mode: 'nacht' | 'dag'): SocialWindow {
-  const now = new Date();
+export function socialWindow(
+  mode: 'nacht' | 'dag',
+  nowMs?: number
+): SocialWindow {
+  const now = nowMs !== undefined ? new Date(nowMs) : new Date();
 
   if (mode === 'nacht') {
     const start = new Date(now);

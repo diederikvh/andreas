@@ -125,18 +125,21 @@ export default function Avond() {
   const scrollRef = useRef<ScrollView>(null);
   useScrollToTop(scrollRef);
 
-  const window = useMemo(() => socialWindow(mode), [mode]);
-  // Avond toont *alles* binnen het 3-daagse venster, gesplitst op
-  // tijd-van-dag. De featured-flag dient alleen om één event als
-  // hoofd-artikel boven uit te lichten — niet om de lijst eronder te
-  // filteren.
+  // Tikt elke 60s. Dezelfde `now` drijft drie dingen tegelijk aan:
+  //   1. socialWindow → query-key kantelt automatisch om middernacht en
+  //      bij de 17:00-grens; ververst-vlag laat React Query een fresh
+  //      fetch doen zodra de from/to wijzigt.
+  //   2. Hero-tekst (datum + Vanavond/Morgen) blijft kloppen ook als de
+  //      app uren in de achtergrond stond — bij re-focus krijg je de
+  //      juiste copy zonder dat je iets hoeft te doen.
+  //   3. Client-side filter op effectieve eindtijd haalt voorbij-events
+  //      direct uit de lijst, ook als de server-cache nog stale is.
+  const now = useNowMinute();
+  const window = useMemo(() => socialWindow(mode, now), [mode, now]);
   const { data: events, isLoading, error } = useEvents({
     from: window.from,
     to: window.to,
   });
-  // Tikt elke 60s zodat events waarvan de eindtijd voorbij is automatisch
-  // wegvallen — geen "Lewsberg 23:30" om 02:00 in de Avond.
-  const now = useNowMinute();
 
   // Spread events naar één rij per moment in het venster, dan filter op
   // dag/nacht-uur. Een 3-daags festival verschijnt zo per avond op het
