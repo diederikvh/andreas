@@ -17,6 +17,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppHeader, HEADER_HEIGHT } from '@/components/AppHeader';
 import { EventListRow } from '@/components/EventListRow';
+import { RefreshBanner } from '@/components/RefreshBanner';
 import { SpinningCross } from '@/components/SpinningCross';
 import type { ApiEvent } from '@/lib/api';
 import {
@@ -155,16 +156,20 @@ export default function Avond() {
 
   // Pull-to-refresh: invalideert events-cache zodat de huidige
   // window-query opnieuw fetched. Voor wanneer de gebruiker denkt
-  // "klopt dit nog wel?" en wil forceren.
+  // "klopt dit nog wel?" en wil forceren. Minimum 700ms zichtbaar
+  // zodat de spinner + banner niet weg-flitsen op snelle netwerken.
   const qc = useQueryClient();
   const [refreshing, setRefreshing] = useState(false);
   const onRefresh = useCallback(async () => {
-    // eslint-disable-next-line no-console
-    console.log('[avond] pull-to-refresh triggered');
     setRefreshing(true);
+    const start = Date.now();
     try {
       await qc.invalidateQueries({ queryKey: ['events'] });
     } finally {
+      const elapsed = Date.now() - start;
+      if (elapsed < 700) {
+        await new Promise((r) => setTimeout(r, 700 - elapsed));
+      }
       setRefreshing(false);
     }
   }, [qc]);
@@ -219,6 +224,10 @@ export default function Avond() {
 
   return (
     <View style={[styles.root, { backgroundColor: roles.bg }]}>
+      <RefreshBanner
+        visible={refreshing}
+        topOffset={insets.top + HEADER_HEIGHT + 8}
+      />
       <ScrollView
         ref={scrollRef}
         showsVerticalScrollIndicator={false}

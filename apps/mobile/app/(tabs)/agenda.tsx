@@ -25,6 +25,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppHeader, HEADER_HEIGHT } from '@/components/AppHeader';
 import { Cross } from '@/components/Cross';
 import { EventListRow } from '@/components/EventListRow';
+import { RefreshBanner } from '@/components/RefreshBanner';
 import { SpinningCross } from '@/components/SpinningCross';
 import type { ApiEvent } from '@/lib/api';
 import {
@@ -167,15 +168,22 @@ export default function Agenda() {
   const [selected, setSelected] = useState<string | null>(null);
 
   // Pull-to-refresh: invalideert events-cache zodat de query opnieuw
-  // fetched. Voor manuele override van de 10 min staleTime + focus-
-  // refetch — voor wanneer je denkt "klopt dit nog wel?".
+  // fetched. Minimum 700ms zichtbaar zodat de banner/spinner niet
+  // weg-flitst op snelle netwerken.
   const qc = useQueryClient();
   const [refreshing, setRefreshing] = useState(false);
   const onRefresh = useCallback(async () => {
+    // eslint-disable-next-line no-console
+    console.log('[agenda] pull-to-refresh triggered');
     setRefreshing(true);
+    const start = Date.now();
     try {
       await qc.invalidateQueries({ queryKey: ['events'] });
     } finally {
+      const elapsed = Date.now() - start;
+      if (elapsed < 700) {
+        await new Promise((r) => setTimeout(r, 700 - elapsed));
+      }
       setRefreshing(false);
     }
   }, [qc]);
@@ -227,6 +235,7 @@ export default function Agenda() {
 
   return (
     <View style={[styles.root, { backgroundColor: roles.bg }]}>
+      <RefreshBanner visible={refreshing} topOffset={stickyOffset + 8} />
       <ScrollView
         ref={scrollRef}
         showsVerticalScrollIndicator={false}
