@@ -178,8 +178,9 @@ function SubTabs({
 }) {
   const mode = useMode();
   const roles = useRoles();
-  // Geanimeerde "blob" achter de actieve sub-tab — slidet links→rechts
-  // bij switchen. Zelfde patroon als de bottom-TabBar.
+  // Track-breedte meten zodat we de blob in pixels kunnen positioneren
+  // — % laat 't 4-6px verschuiven door padding/gap-rounding.
+  const [trackW, setTrackW] = useState(0);
   const activeIndex = sub === 'vrienden' ? 0 : 1;
   const progress = useSharedValue(activeIndex);
   useEffect(() => {
@@ -188,14 +189,21 @@ function SubTabs({
       easing: Easing.bezier(0.65, 0, 0.35, 1),
     });
   }, [activeIndex, progress]);
-  const blobStyle = useAnimatedStyle(() => ({
-    width: '50%',
-    transform: [{ translateX: `${progress.value * 100}%` }],
-  }));
+  const blobStyle = useAnimatedStyle(() => {
+    const inner = Math.max(0, trackW - 6); // padding 3 aan beide kanten
+    const w = inner / 2;
+    return {
+      width: w,
+      transform: [{ translateX: progress.value * w }],
+    };
+  });
 
   return (
     <View style={styles.subTabsAlign}>
-      <View style={[styles.switchTrack, { borderColor: roles.bgChip }]}>
+      <View
+        style={[styles.switchTrack, { borderColor: roles.bgChip }]}
+        onLayout={(e) => setTrackW(e.nativeEvent.layout.width)}
+      >
         <BlurView
           intensity={40}
           tint={mode === 'nacht' ? 'dark' : 'light'}
@@ -249,23 +257,15 @@ function SwitchBtn({
 }) {
   const roles = useRoles();
   const tint = active ? roles.onAccent : roles.fgMuted;
+  // Op actieve tab geen badge — je bent er al, dus de count is dubbelop.
+  const showBadge = badge > 0 && !active;
   return (
     <Pressable onPress={onPress} style={styles.switchBtn}>
       <Text style={[styles.switchBtnText, { color: tint }]}>{label}</Text>
-      {badge > 0 && (
-        <View
-          style={[
-            styles.switchBadge,
-            {
-              backgroundColor: active ? roles.onAccent : roles.accent,
-            },
-          ]}
-        >
+      {showBadge && (
+        <View style={[styles.switchBadge, { backgroundColor: roles.accent }]}>
           <Text
-            style={[
-              styles.switchBadgeText,
-              { color: active ? roles.accent : roles.onAccent },
-            ]}
+            style={[styles.switchBadgeText, { color: roles.onAccent }]}
             numberOfLines={1}
           >
             {badge > 9 ? '9+' : badge}
@@ -834,10 +834,9 @@ const styles = StyleSheet.create({
     padding: 3,
     borderRadius: 999,
     borderWidth: 1,
-    gap: 2,
     overflow: 'hidden',
     alignSelf: 'center',
-    minWidth: 240,
+    minWidth: 280,
   },
   switchBlob: {
     position: 'absolute',

@@ -383,6 +383,7 @@ function ViewSwitch({
 }) {
   const mode = useMode();
   const roles = useRoles();
+  const [trackW, setTrackW] = useState(0);
   const activeIndex = view === 'map' ? 0 : 1;
   const progress = useSharedValue(activeIndex);
   useEffect(() => {
@@ -391,12 +392,19 @@ function ViewSwitch({
       easing: Easing.bezier(0.65, 0, 0.35, 1),
     });
   }, [activeIndex, progress]);
-  const blobStyle = useAnimatedStyle(() => ({
-    width: '50%',
-    transform: [{ translateX: `${progress.value * 100}%` }],
-  }));
+  const blobStyle = useAnimatedStyle(() => {
+    const inner = Math.max(0, trackW - 6);
+    const w = inner / 2;
+    return {
+      width: w,
+      transform: [{ translateX: progress.value * w }],
+    };
+  });
   return (
-    <View style={[styles.switchTrack, { borderColor: roles.bgChip }]}>
+    <View
+      style={[styles.switchTrack, { borderColor: roles.bgChip }]}
+      onLayout={(e) => setTrackW(e.nativeEvent.layout.width)}
+    >
       <BlurView
         intensity={40}
         tint={mode === 'nacht' ? 'dark' : 'light'}

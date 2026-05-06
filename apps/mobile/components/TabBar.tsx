@@ -63,27 +63,43 @@ export function TabBar({ state, navigation }: BottomTabBarProps) {
 
   // Filter naar alleen zichtbare tabs (kaart heeft href:null, valt af).
   const visible = state.routes.filter((r) => TAB_ICONS[r.name]);
-  const visibleIndex = Math.max(
-    0,
-    visible.findIndex((r) => r.key === state.routes[state.index]?.key)
-  );
+  const currentRoute = state.routes[state.index];
+  // Op een verborgen tab (zoals /kaart) zit de huidige route niet in
+  // `visible` — dan markeren we geen tab als actief, zodat de
+  // gebruiker visueel ziet dat de huidige pagina buiten het tab-stelsel
+  // valt en geen van de hoofdsecties is.
+  const onHiddenRoute = currentRoute
+    ? !TAB_ICONS[currentRoute.name]
+    : false;
+  const focusedVisibleIndex = onHiddenRoute
+    ? -1
+    : visible.findIndex((r) => r.key === currentRoute?.key);
   const N = visible.length;
 
-  // Geanimeerde "blob" achter de actieve tab. We animeren een gedeelde
-  // value tussen 0..N-1; de transform-x is dan progress * buttonWidth.
-  // Buttons hebben flex:1 binnen de row, dus we positioneren via een
-  // percentage-shift: blob zit op `${(progress / N) * 100}%`.
-  const progress = useSharedValue(visibleIndex);
+  // Geanimeerde "blob" achter de actieve tab. Progress blijft staan op
+  // de laatst-actieve tab als je naar een verborgen route gaat (kaart),
+  // en de opacity faadt de blob uit/in. Zodra je terug op een tab tikt
+  // springt-ie weer aan op de juiste positie.
+  const lastActive = Math.max(0, focusedVisibleIndex);
+  const progress = useSharedValue(lastActive);
   useEffect(() => {
-    progress.value = withTiming(visibleIndex, {
-      duration: 280,
-      easing: Easing.bezier(0.65, 0, 0.35, 1),
-    });
-  }, [visibleIndex, progress]);
+    if (focusedVisibleIndex >= 0) {
+      progress.value = withTiming(focusedVisibleIndex, {
+        duration: 280,
+        easing: Easing.bezier(0.65, 0, 0.35, 1),
+      });
+    }
+  }, [focusedVisibleIndex, progress]);
+
+  const opacity = useSharedValue(onHiddenRoute ? 0 : 1);
+  useEffect(() => {
+    opacity.value = withTiming(onHiddenRoute ? 0 : 1, { duration: 200 });
+  }, [onHiddenRoute, opacity]);
 
   const blobStyle = useAnimatedStyle(() => ({
     width: `${100 / N}%`,
     transform: [{ translateX: `${progress.value * 100}%` }],
+    opacity: opacity.value,
   }));
 
   return (
@@ -101,7 +117,8 @@ export function TabBar({ state, navigation }: BottomTabBarProps) {
       {state.routes.map((route, index) => {
         const Icon = TAB_ICONS[route.name];
         if (!Icon) return null;
-        const focused = state.index === index;
+        // Op verborgen routes (kaart) markeren we niemand als actief.
+        const focused = !onHiddenRoute && state.index === index;
         const onPress = () => {
           const event = navigation.emit({
             type: 'tabPress',
