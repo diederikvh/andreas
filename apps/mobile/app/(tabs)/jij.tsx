@@ -307,8 +307,9 @@ export default function Jij() {
 
           {stage === 'phone' && (
             <Text style={[styles.lead, { color: roles.fgRead }]}>
-              Met een account onthoudt Andreas welke events je hebt
-              opgeslagen en met wie je optrekt. Geen wachtwoord — alleen
+              Met een account kun je je planning bewaren, vrienden
+              toevoegen en samen naar events gaan, en venues volgen
+              waar je niets van wil missen. Geen wachtwoord. Alleen
               een SMS-code op je nummer.
             </Text>
           )}
