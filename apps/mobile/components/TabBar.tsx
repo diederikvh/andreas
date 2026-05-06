@@ -147,10 +147,7 @@ export function TabBar({ state, navigation }: BottomTabBarProps) {
                 <View
                   style={[
                     styles.badge,
-                    {
-                      backgroundColor: roles.accent,
-                      borderColor: mode === 'nacht' ? palette.noir : palette.paper3,
-                    },
+                    { backgroundColor: roles.accent },
                   ]}
                 >
                   <Text
@@ -203,15 +200,13 @@ const styles = StyleSheet.create({
     height: 20,
     paddingHorizontal: 5,
     borderRadius: 999,
-    borderWidth: 2,
     alignItems: 'center',
     justifyContent: 'center',
   },
   badgeText: {
-    fontFamily: fontFamily.mono,
-    fontSize: 10,
-    letterSpacing: 0,
-    fontWeight: '800',
-    lineHeight: 12,
+    fontFamily: fontFamily.bold,
+    fontSize: 11,
+    letterSpacing: -0.1,
+    lineHeight: 13,
   },
 });

@@ -127,11 +127,18 @@ export default function Avond() {
     const from = new Date(d);
     const to = new Date(d);
     to.setDate(to.getDate() + 1);
-    return { from: from.toISOString(), to: to.toISOString(), refDate: from };
+    return {
+      from: from.toISOString(),
+      toMs: to.getTime(),
+      refDate: from,
+    };
   }, [focusedNow]);
+  // Geen `to` op de query: zo komen exhibitions die nog lopen (en
+  // exhibitions die binnenkort openen) ook in de "Doorlopend te zien"
+  // strook, gelijk aan wat de Agenda-tab toont. De vandaag-filter op
+  // de events-lijst doen we cliënt-side via todayWindow.toMs.
   const { data: events, isLoading, error } = useEvents({
     from: todayWindow.from,
-    to: todayWindow.to,
   });
 
   // Filter-keuze (zoek + vrienden + favorieten + tijd-blokken) wordt
@@ -195,6 +202,13 @@ export default function Avond() {
       const e = row.event;
       if (e.kind === 'exhibition') return false;
       if (effectiveEndsAtMs(row.occurrence) < now) return false;
+      // Cliënt-side vandaag-filter: alleen occurrences waarvan
+      // startsAt vandaag valt (= < morgen 00:00).
+      if (
+        new Date(row.occurrence.startsAt).getTime() >= todayWindow.toMs
+      ) {
+        return false;
+      }
       if (activeCats.length > 0 && !activeCats.includes(e.category)) {
         return false;
       }
@@ -221,6 +235,7 @@ export default function Avond() {
   }, [
     events,
     now,
+    todayWindow.toMs,
     activeBlocks,
     activeCats,
     activeGenres,
@@ -236,9 +251,11 @@ export default function Avond() {
     [events]
   );
 
-  // Lopende tentoonstellingen — altijd zichtbaar als losse strook,
-  // ongeacht mode of filter (Diederik: "doorlopend te zien blijft
-  // altijd").
+  // Lopende tentoonstellingen — altijd zichtbaar als losse strook.
+  // Bestaat uit alle exhibitions die nu lopen of binnenkort openen
+  // (de events-query haalt vanaf vandaag op zonder upper bound).
+  // Gelijk aan wat Agenda toont, zodat beide tabs dezelfde set
+  // doorlopende-events laten zien.
   const runningExhibitions = useMemo(() => {
     if (!events) return [];
     return events.filter((e) => e.kind === 'exhibition');
@@ -252,9 +269,12 @@ export default function Avond() {
     return expandToOccurrenceRows(events).filter((row) => {
       if (row.event.kind === 'exhibition') return false;
       if (effectiveEndsAtMs(row.occurrence) < now) return false;
+      if (new Date(row.occurrence.startsAt).getTime() >= todayWindow.toMs) {
+        return false;
+      }
       return true;
     });
-  }, [events, now]);
+  }, [events, now, todayWindow.toMs]);
 
   // Hoofd-artikel: featured event uit alle vandaag-events (NIET
   // filter-afhankelijk). Geen featured? Eerste rij. Lead-event wordt
@@ -1047,12 +1067,12 @@ function AvondFilterSheet({
                 { color: roles.fgMuted, marginTop: 22 },
               ]}
             >
-              Met wie / waar
+              Persoonlijk
             </Text>
             <View style={styles.sheetWrap}>
               {showFriendsChip && (
                 <SheetChip
-                  label="Met vrienden"
+                  label="Vrienden"
                   active={onlyFriends}
                   onPress={() => onSetFriends(!onlyFriends)}
                 />
@@ -1165,8 +1185,11 @@ function AvondFilterSheet({
             <Ionicons name="bookmark-outline" size={18} color={roles.fgMuted} />
           </Pressable>
           <Pressable
-            accessibilityLabel="Wis filters"
-            onPress={onClearAll}
+            accessibilityLabel="Wis filters en sluit"
+            onPress={() => {
+              onClearAll();
+              onClose();
+            }}
             disabled={filterCount === 0}
             style={[
               styles.sheetIconBtn,
@@ -1176,7 +1199,7 @@ function AvondFilterSheet({
               },
             ]}
           >
-            <Ionicons name="trash-outline" size={18} color={roles.fgMuted} />
+            <Ionicons name="close" size={18} color={roles.fgMuted} />
           </Pressable>
         </View>
       )}

@@ -1010,8 +1010,11 @@ function FilterSheet({
             />
           </Pressable>
           <Pressable
-            accessibilityLabel="Wis filters"
-            onPress={onClearAll}
+            accessibilityLabel="Wis filters en sluit"
+            onPress={() => {
+              onClearAll();
+              onClose();
+            }}
             disabled={filterCount === 0}
             style={[
               styles.sheetIconBtn,
@@ -1021,11 +1024,7 @@ function FilterSheet({
               },
             ]}
           >
-            <Ionicons
-              name="trash-outline"
-              size={18}
-              color={roles.fgMuted}
-            />
+            <Ionicons name="close" size={18} color={roles.fgMuted} />
           </Pressable>
         </View>
       )}

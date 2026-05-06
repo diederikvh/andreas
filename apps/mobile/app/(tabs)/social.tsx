@@ -869,11 +869,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   switchBadgeText: {
-    fontFamily: fontFamily.mono,
-    fontSize: 10,
-    letterSpacing: 0,
-    fontWeight: '800',
-    lineHeight: 12,
+    fontFamily: fontFamily.bold,
+    fontSize: 11,
+    letterSpacing: -0.1,
+    lineHeight: 13,
   },
 
   // Empty / loading / error
