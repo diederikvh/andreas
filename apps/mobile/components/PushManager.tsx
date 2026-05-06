@@ -1,3 +1,4 @@
+import { useQueryClient } from '@tanstack/react-query';
 import { router } from 'expo-router';
 import { useEffect, useRef } from 'react';
 
@@ -18,6 +19,7 @@ import {
  * gevraagd worden en handlers globaal actief zijn.
  */
 export function PushManager() {
+  const qc = useQueryClient();
   const { data: session } = useSession();
   const userId = session?.user?.id ?? null;
   const lastTriedUserId = useRef<string | null>(null);
@@ -57,6 +59,18 @@ export function PushManager() {
     });
     return () => sub.remove();
   }, []);
+
+  // Inbox-cache fris houden. Een binnengekomen push betekent dat er
+  // mogelijk een nieuwe friend-request of invite is — invalidate
+  // beide query-keys zodat de bel-badge in AppHeader en de Inbox-
+  // pagina onmiddellijk de nieuwe state pakken.
+  useEffect(() => {
+    const sub = Notifications.addNotificationReceivedListener(() => {
+      qc.invalidateQueries({ queryKey: ['friend-requests'] });
+      qc.invalidateQueries({ queryKey: ['invites'] });
+    });
+    return () => sub.remove();
+  }, [qc]);
 
   return null;
 }

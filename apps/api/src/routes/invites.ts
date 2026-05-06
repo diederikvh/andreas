@@ -180,7 +180,9 @@ invitesRoute.post('/', async (c) => {
     await sendPushToUsers(fresh, {
       title: 'Uitnodiging',
       body: `${display} nodigt je uit voor ${eventTitle}`,
-      data: { url: `/event/${occ.eventId}?o=${occurrenceId}` },
+      // Tap op een uitnodiging-push opent altijd de Inbox; daar kan de
+      // gebruiker accepteren/decline'n vóór ze naar het event gaan.
+      data: { url: '/inbox' },
     });
   } catch (err) {
     console.error('[invites] push failed', err);

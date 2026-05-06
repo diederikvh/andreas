@@ -502,13 +502,13 @@ async function sendPushFromMe(
       await sendPushToUser(toUserId, {
         title: 'Nieuwe vriend-aanvraag',
         body: `${display} wil je toevoegen`,
-        data: { url: '/(tabs)/jij' },
+        data: { url: '/inbox' },
       });
     } else {
       await sendPushToUser(toUserId, {
         title: 'Nieuwe vriend',
         body: `${display} en jij zijn nu vrienden`,
-        data: me?.handle ? { url: `/u/${me.handle}` } : { url: '/(tabs)/jij' },
+        data: me?.handle ? { url: `/u/${me.handle}` } : { url: '/inbox' },
       });
     }
   } catch (err) {
