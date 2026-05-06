@@ -981,37 +981,32 @@ function FilterSheet({
             </Text>
           </Pressable>
           <Pressable
+            accessibilityLabel="Bewaar filter"
             onPress={() => setSaveOpen(true)}
             disabled={filterCount === 0}
             style={[
-              styles.sheetClearBtn,
+              styles.sheetIconBtn,
               {
                 borderColor: roles.bgChip,
                 opacity: filterCount === 0 ? 0.4 : 1,
-                flexDirection: 'row',
-                gap: 6,
               },
             ]}
           >
-            <Ionicons name="bookmark-outline" size={14} color={roles.fgMuted} />
-            <Text style={[styles.sheetClearText, { color: roles.fgMuted }]}>
-              Bewaar
-            </Text>
+            <Ionicons name="bookmark-outline" size={18} color={roles.fgMuted} />
           </Pressable>
           <Pressable
+            accessibilityLabel="Wis filters"
             onPress={onClearAll}
             disabled={filterCount === 0}
             style={[
-              styles.sheetClearBtn,
+              styles.sheetIconBtn,
               {
                 borderColor: roles.bgChip,
                 opacity: filterCount === 0 ? 0.4 : 1,
               },
             ]}
           >
-            <Text style={[styles.sheetClearText, { color: roles.fgMuted }]}>
-              Wis filters
-            </Text>
+            <Ionicons name="trash-outline" size={18} color={roles.fgMuted} />
           </Pressable>
         </View>
       )}
@@ -1360,6 +1355,15 @@ const styles = StyleSheet.create({
   },
   sheetClearBtn: {
     flex: 1,
+    height: 48,
+    borderRadius: 999,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  // Vierkant icoontje-knop voor bewaar/wis (zelfde als Agenda).
+  sheetIconBtn: {
+    width: 48,
     height: 48,
     borderRadius: 999,
     borderWidth: 1,
