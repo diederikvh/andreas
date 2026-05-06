@@ -26,24 +26,17 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppHeader, HEADER_HEIGHT } from '@/components/AppHeader';
 import { Cross } from '@/components/Cross';
+import { ProfileAvatar } from '@/components/ProfileAvatar';
 import { SpinningCross } from '@/components/SpinningCross';
 import type {
   ApiFriend,
   ApiFriendRequest,
-  ApiInvite,
   ApiMe,
 } from '@/lib/api';
 import { getMe, updateMe, uploadAvatar } from '@/lib/api';
 import { authClient, useSession } from '@/lib/authClient';
-import { DOW_NL_MIXED, formatTime } from '@/lib/eventDisplay';
 import {
-  useAcceptFriendRequest,
-  useAcceptInvite,
-  useDeclineFriendRequest,
-  useDeclineInvite,
-  useFriendRequests,
   useFriends,
-  useInvites,
   useOutgoingFriendRequests,
   useRemoveFriend,
 } from '@/lib/queries';
@@ -79,15 +72,9 @@ export default function Jij() {
   const stageUnknown = sessionPending || (Boolean(session?.user?.id) && me === undefined);
   const authedAndOnboarded = Boolean(session?.user?.id && me?.handle);
   const { data: friends } = useFriends({ enabled: authedAndOnboarded });
-  const { data: requests } = useFriendRequests({ enabled: authedAndOnboarded });
   const { data: outgoing } = useOutgoingFriendRequests({
     enabled: authedAndOnboarded,
   });
-  const { data: invites } = useInvites({ enabled: authedAndOnboarded });
-  const acceptRequest = useAcceptFriendRequest();
-  const declineRequest = useDeclineFriendRequest();
-  const acceptInvite = useAcceptInvite();
-  const declineInvite = useDeclineInvite();
 
   // Stage uit sessie + me afgeleid; tijdelijke override voor de
   // "code"-stap die geen server-state heeft.
@@ -684,21 +671,6 @@ export default function Jij() {
           {error && <Text style={styles.error}>{error}</Text>}
         </View>
 
-        {invites && invites.length > 0 && (
-          <>
-            <SectionHead label="Uitnodigingen" count={invites.length} />
-            {invites.map((inv) => (
-              <InviteRow
-                key={inv.id}
-                invite={inv}
-                onAccept={() => acceptInvite.mutate(inv.id)}
-                onDecline={() => declineInvite.mutate(inv.id)}
-                busy={acceptInvite.isPending || declineInvite.isPending}
-              />
-            ))}
-          </>
-        )}
-
         {friends && friends.length > 0 && (
           <>
             <SectionHead label="Vrienden" count={friends.length} />
@@ -711,21 +683,6 @@ export default function Jij() {
             <SectionHead label="Aangevraagd" count={outgoing.length} />
             {outgoing.map((o) => (
               <PendingRow key={o.id} user={o} />
-            ))}
-          </>
-        )}
-
-        {requests && requests.length > 0 && (
-          <>
-            <SectionHead label="Verzoeken" count={requests.length} />
-            {requests.map((r) => (
-              <RequestRow
-                key={r.id}
-                request={r}
-                onAccept={() => acceptRequest.mutate(r.id)}
-                onDecline={() => declineRequest.mutate(r.id)}
-                busy={acceptRequest.isPending || declineRequest.isPending}
-              />
             ))}
           </>
         )}
@@ -838,144 +795,6 @@ function FriendRow({ friend }: { friend: ApiFriend }) {
             @{friend.handle}
           </Text>
         )}
-      </View>
-    </Pressable>
-  );
-}
-
-function RequestRow({
-  request,
-  onAccept,
-  onDecline,
-  busy,
-}: {
-  request: ApiFriendRequest;
-  onAccept: () => void;
-  onDecline: () => void;
-  busy: boolean;
-}) {
-  const roles = useRoles();
-  return (
-    <View style={[styles.friend, { borderColor: roles.bgChip }]}>
-      <ProfileAvatar
-        avatarUrl={request.avatarUrl}
-        name={request.name}
-        size={36}
-      />
-      <View style={styles.friendBody}>
-        <Text
-          numberOfLines={1}
-          style={[styles.friendName, { color: roles.fg }]}
-        >
-          {request.name}
-        </Text>
-        {request.handle && (
-          <Text
-            numberOfLines={1}
-            style={[styles.friendMeta, { color: roles.fgMuted }]}
-          >
-            @{request.handle}
-          </Text>
-        )}
-      </View>
-      <View style={styles.twin}>
-        <Pressable
-          onPress={onDecline}
-          disabled={busy}
-          style={[styles.twinBtn, { borderColor: roles.fgPlaceholder }]}
-        >
-          <Cross size={16} thickness={3.2} color={roles.fgMuted} />
-        </Pressable>
-        <Pressable
-          onPress={onAccept}
-          disabled={busy}
-          style={[
-            styles.twinBtn,
-            { backgroundColor: roles.accent, borderColor: roles.accent },
-          ]}
-        >
-          <Ionicons name="checkmark" size={18} color={roles.onAccent} />
-        </Pressable>
-      </View>
-    </View>
-  );
-}
-
-function InviteRow({
-  invite,
-  onAccept,
-  onDecline,
-  busy,
-}: {
-  invite: ApiInvite;
-  onAccept: () => void;
-  onDecline: () => void;
-  busy: boolean;
-}) {
-  const roles = useRoles();
-  // De uitnodiging gaat over een specifieke occurrence (= moment), niet
-  // over het master-event. Toon dus die datum/tijd.
-  const d = new Date(invite.occurrence.startsAt);
-  const dateLabel = `${DOW_NL_MIXED[d.getDay()]} · ${formatTime(invite.occurrence.startsAt)}`;
-  return (
-    <Pressable
-      onPress={() => router.push(`/event/${invite.event.id}` as never)}
-      style={[styles.invite, { borderColor: roles.bgChip }]}
-    >
-      <ProfileAvatar
-        avatarUrl={invite.from.avatarUrl}
-        name={invite.from.name}
-        size={36}
-      />
-      <View style={styles.inviteBody}>
-        <Text
-          numberOfLines={2}
-          style={[styles.inviteLine, { color: roles.fgRead }]}
-        >
-          <Text style={[styles.inviteName, { color: roles.fg }]}>
-            {invite.from.name}
-          </Text>
-          {' vraagt je mee naar '}
-          <Text style={[styles.inviteEvent, { color: roles.fg }]}>
-            {invite.event.title}
-          </Text>
-          .
-        </Text>
-        <Text
-          numberOfLines={1}
-          style={[styles.inviteMeta, { color: roles.fgMuted }]}
-        >
-          {dateLabel} · {invite.event.venueName}
-        </Text>
-        {invite.message && (
-          <Text
-            numberOfLines={2}
-            style={[styles.inviteMessage, { color: roles.fgMuted }]}
-          >
-            “{invite.message}”
-          </Text>
-        )}
-      </View>
-      <View style={styles.twin}>
-        <Pressable
-          onPress={onDecline}
-          disabled={busy}
-          hitSlop={6}
-          style={[styles.twinBtn, { borderColor: roles.fgPlaceholder }]}
-        >
-          <Cross size={16} thickness={3.2} color={roles.fgMuted} />
-        </Pressable>
-        <Pressable
-          onPress={onAccept}
-          disabled={busy}
-          hitSlop={6}
-          style={[
-            styles.twinBtn,
-            { backgroundColor: roles.accent, borderColor: roles.accent },
-          ]}
-        >
-          <Ionicons name="checkmark" size={18} color={roles.onAccent} />
-        </Pressable>
       </View>
     </Pressable>
   );
@@ -1329,51 +1148,6 @@ function PendingRow({ user }: { user: ApiFriendRequest }) {
       >
         <Cross size={14} thickness={2.6} color={roles.fgMuted} />
       </Pressable>
-    </View>
-  );
-}
-
-function ProfileAvatar({
-  avatarUrl,
-  name,
-  size,
-}: {
-  avatarUrl: string | null;
-  name: string;
-  size: number;
-}) {
-  const mode = useMode();
-  const roles = useRoles();
-  const isNacht = mode === 'nacht';
-  if (avatarUrl) {
-    return (
-      <Image
-        source={{ uri: avatarUrl }}
-        style={{ width: size, height: size, borderRadius: 999 }}
-        contentFit="cover"
-      />
-    );
-  }
-  return (
-    <View
-      style={{
-        width: size,
-        height: size,
-        borderRadius: 999,
-        alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: isNacht ? palette.noir2 : palette.paper2,
-      }}
-    >
-      <Text
-        style={{
-          fontFamily: fontFamily.display,
-          fontSize: size * 0.45,
-          color: roles.fgMuted,
-        }}
-      >
-        {initialFor(name)}
-      </Text>
     </View>
   );
 }

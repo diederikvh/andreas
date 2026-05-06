@@ -210,6 +210,13 @@ export function useFriendRequests(opts: { enabled?: boolean } = {}) {
     queryKey: queryKeys.friendRequests(),
     queryFn: () => getFriendRequests(),
     enabled: opts.enabled ?? true,
+    // Inbox-data moet zo vers mogelijk zijn — geen cache, elke remount
+    // (tab-switch, route-push) refetcht. AppState-listener in
+    // PushManager invalidateert ook op foreground, en push-receive
+    // triggert hetzelfde. Inbox is klein (paar items max) dus de
+    // fetch-spam is verwaarloosbaar.
+    staleTime: 0,
+    refetchOnMount: 'always',
   });
 }
 
@@ -286,6 +293,9 @@ export function useInvites(opts: { enabled?: boolean } = {}) {
     queryKey: queryKeys.invites(),
     queryFn: () => getInvites(),
     enabled: opts.enabled ?? true,
+    // Zelfde reden als useFriendRequests — Inbox altijd vers.
+    staleTime: 0,
+    refetchOnMount: 'always',
   });
 }
 

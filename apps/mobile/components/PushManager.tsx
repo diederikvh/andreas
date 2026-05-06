@@ -1,6 +1,7 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { router } from 'expo-router';
 import { useEffect, useRef } from 'react';
+import { AppState } from 'react-native';
 
 import { useSession } from '@/lib/authClient';
 import {
@@ -60,16 +61,26 @@ export function PushManager() {
     return () => sub.remove();
   }, []);
 
-  // Inbox-cache fris houden. Een binnengekomen push betekent dat er
-  // mogelijk een nieuwe friend-request of invite is — invalidate
-  // beide query-keys zodat de bel-badge in AppHeader en de Inbox-
-  // pagina onmiddellijk de nieuwe state pakken.
+  // Inbox-cache fris houden. Triggers:
+  //  - binnengekomen push (foreground of background)
+  //  - app komt terug uit achtergrond ('active')
+  // De queries zelf hebben staleTime: 0 + refetchOnMount: 'always',
+  // dus elke remount fetcht ook. Hiermee dekken we ook het geval dat
+  // de gebruiker de app open laat staan en iemand anders intussen
+  // een verzoek stuurt.
   useEffect(() => {
-    const sub = Notifications.addNotificationReceivedListener(() => {
+    const invalidate = () => {
       qc.invalidateQueries({ queryKey: ['friend-requests'] });
       qc.invalidateQueries({ queryKey: ['invites'] });
+    };
+    const pushSub = Notifications.addNotificationReceivedListener(invalidate);
+    const appSub = AppState.addEventListener('change', (next) => {
+      if (next === 'active') invalidate();
     });
-    return () => sub.remove();
+    return () => {
+      pushSub.remove();
+      appSub.remove();
+    };
   }, [qc]);
 
   return null;
