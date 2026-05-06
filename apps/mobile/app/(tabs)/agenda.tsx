@@ -240,7 +240,10 @@ export default function Agenda() {
           <RefreshControl
             refreshing={refreshing}
             onRefresh={onRefresh}
-            tintColor={roles.fgMuted}
+            tintColor={roles.accent}
+            colors={[roles.accent]}
+            title={refreshing ? 'Vernieuwen…' : 'Trek om te vernieuwen'}
+            titleColor={roles.fgMuted}
             progressViewOffset={stickyOffset}
           />
         }

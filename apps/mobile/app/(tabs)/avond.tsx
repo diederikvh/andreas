@@ -228,7 +228,12 @@ export default function Avond() {
           <RefreshControl
             refreshing={refreshing}
             onRefresh={onRefresh}
-            tintColor={roles.fgMuted}
+            // Accent-kleur voor duidelijke zichtbaarheid op donker;
+            // op iOS toont de title als label onder de spinner.
+            tintColor={roles.accent}
+            colors={[roles.accent]}
+            title={refreshing ? 'Vernieuwen…' : 'Trek om te vernieuwen'}
+            titleColor={roles.fgMuted}
             progressViewOffset={insets.top + HEADER_HEIGHT}
           />
         }
