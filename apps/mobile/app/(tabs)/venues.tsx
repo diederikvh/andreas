@@ -903,17 +903,6 @@ function FilterSheet({
             { borderTopColor: roles.bgChip, paddingBottom: 16 },
           ]}
         >
-          <Pressable
-            onPress={() => {
-              setSaveOpen(false);
-              setSaveName('');
-            }}
-            style={[styles.sheetClearBtn, { borderColor: roles.bgChip }]}
-          >
-            <Text style={[styles.sheetClearText, { color: roles.fgMuted }]}>
-              Annuleer
-            </Text>
-          </Pressable>
           <View
             style={[
               styles.saveInputWrap,
@@ -936,25 +925,33 @@ function FilterSheet({
             />
           </View>
           <Pressable
+            accessibilityLabel="Opslaan"
             onPress={onSave}
             disabled={saveName.trim().length === 0}
             style={[
-              styles.sheetDoneBtn,
+              styles.sheetIconBtn,
               {
                 backgroundColor: isNacht ? palette.acid : palette.red,
+                borderColor: 'transparent',
                 opacity: saveName.trim().length === 0 ? 0.4 : 1,
-                flex: 0.9,
               },
             ]}
           >
-            <Text
-              style={[
-                styles.sheetDoneText,
-                { color: isNacht ? palette.noir : palette.paper3 },
-              ]}
-            >
-              Opslaan
-            </Text>
+            <Ionicons
+              name="checkmark"
+              size={20}
+              color={isNacht ? palette.noir : palette.paper3}
+            />
+          </Pressable>
+          <Pressable
+            accessibilityLabel="Annuleer"
+            onPress={() => {
+              setSaveOpen(false);
+              setSaveName('');
+            }}
+            style={[styles.sheetIconBtn, { borderColor: roles.bgChip }]}
+          >
+            <Ionicons name="close" size={18} color={roles.fgMuted} />
           </Pressable>
         </View>
       ) : (
