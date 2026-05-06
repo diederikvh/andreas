@@ -43,7 +43,8 @@ import {
   useFocusedNow,
   useNowMinute,
 } from '@/lib/eventDisplay';
-import { useEventGenres, useEvents } from '@/lib/queries';
+import { useSession } from '@/lib/authClient';
+import { useEventGenres, useEvents, useFriends } from '@/lib/queries';
 import { useMode, useRoles } from '@/store/mode';
 import {
   isSavedSearchActive,
@@ -77,6 +78,7 @@ export default function Agenda() {
     q?: string;
     tb?: string;
     gn?: string;
+    vr?: string;
   }>();
   // Categories is multi-select — comma-separated in `?cat=Muziek,Kunst`.
   // Voor backwards-compat met deeplinks die nog één enkele categorie
@@ -109,6 +111,12 @@ export default function Agenda() {
         .filter((g) => g.length > 0),
     [params.gn]
   );
+  const onlyFriends = params.vr === '1';
+  const { data: session } = useSession();
+  const { data: friends } = useFriends({
+    enabled: Boolean(session?.user?.id),
+  });
+  const showFriendsChip = (friends?.length ?? 0) > 0;
 
   // Vanaf vandaag 00:00 — geen verleden events op de Agenda. Refreshed
   // bij tab-focus en app-resume (niet continuous), dus tijdens
@@ -136,6 +144,7 @@ export default function Agenda() {
         const evGenres = e.genres ?? [];
         if (!evGenres.some((g) => activeGenres.includes(g))) return false;
       }
+      if (onlyFriends && (e.friendsSaved?.length ?? 0) === 0) return false;
       if (needle.length > 0) {
         const inTitle = e.title.toLowerCase().includes(needle);
         const inVenue = e.venue.name.toLowerCase().includes(needle);
@@ -144,7 +153,7 @@ export default function Agenda() {
       }
       return true;
     });
-  }, [events, activeCats, activeGenres, query]);
+  }, [events, activeCats, activeGenres, query, onlyFriends]);
 
   // Tikt elke 60s zodat occurrences waarvan de eindtijd voorbij is
   // automatisch wegvallen tussen server-refetches door.
@@ -310,6 +319,8 @@ export default function Agenda() {
           query={query}
           activeBlocks={activeBlocks}
           activeGenres={activeGenres}
+          onlyFriends={onlyFriends}
+          showFriendsChip={showFriendsChip}
           onCats={(next) =>
             router.setParams({
               cat: next.length > 0 ? next.join(',') : undefined,
@@ -326,6 +337,9 @@ export default function Agenda() {
               gn: next.length > 0 ? next.join(',') : undefined,
             })
           }
+          onToggleFriends={() =>
+            router.setParams({ vr: onlyFriends ? undefined : '1' })
+          }
         />
       </AppHeader>
     </View>
@@ -337,19 +351,25 @@ function ChipRow({
   query,
   activeBlocks,
   activeGenres,
+  onlyFriends,
+  showFriendsChip,
   onCats,
   onQuery,
   onBlocks,
   onGenres,
+  onToggleFriends,
 }: {
   activeCats: ApiEvent['category'][];
   query: string;
   activeBlocks: TimeBlock[];
   activeGenres: string[];
+  onlyFriends: boolean;
+  showFriendsChip: boolean;
   onCats: (next: ApiEvent['category'][]) => void;
   onQuery: (q: string) => void;
   onBlocks: (next: TimeBlock[]) => void;
   onGenres: (next: string[]) => void;
+  onToggleFriends: () => void;
 }) {
   const mode = useMode();
   const roles = useRoles();
@@ -495,6 +515,37 @@ function ChipRow({
             {filterActive ? `Filter · ${filterCount}` : 'Filter'}
           </Text>
         </Pressable>
+        {showFriendsChip && (
+          <Pressable
+            accessibilityLabel={
+              onlyFriends
+                ? 'Toon alle events'
+                : 'Alleen events met vrienden'
+            }
+            onPress={onToggleFriends}
+            style={[
+              styles.friendsToggle,
+              {
+                borderColor: onlyFriends
+                  ? roles.fg
+                  : isNacht
+                    ? '#2a2a2d'
+                    : palette.paper,
+                backgroundColor: onlyFriends
+                  ? roles.fg
+                  : isNacht
+                    ? palette.noir2
+                    : palette.paper2,
+              },
+            ]}
+          >
+            <Ionicons
+              name="people"
+              size={14}
+              color={onlyFriends ? roles.bg : roles.fgMuted}
+            />
+          </Pressable>
+        )}
         {saved.map((s) => {
           const active = isSavedSearchActive(s, current);
           return (
@@ -1247,6 +1298,14 @@ const styles = StyleSheet.create({
     fontFamily: fontFamily.medium,
     fontSize: 12,
     letterSpacing: -0.06,
+  },
+  friendsToggle: {
+    width: 32,
+    height: 32,
+    borderRadius: 999,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 
   listState: { paddingHorizontal: 22, paddingVertical: 14 },

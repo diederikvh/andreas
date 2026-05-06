@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useScrollToTop } from '@react-navigation/native';
 import { Image } from 'expo-image';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useCallback, useMemo, useRef, useState } from 'react';
 import {
   Pressable,
@@ -33,7 +33,8 @@ import {
   useFocusedNow,
   useNowMinute,
 } from '@/lib/eventDisplay';
-import { useEvents } from '@/lib/queries';
+import { useEvents, useFriends } from '@/lib/queries';
+import { useSession } from '@/lib/authClient';
 import { FEED } from '@/mocks/feed';
 import { useMode, useRoles } from '@/store/mode';
 import { fontFamily, palette } from '@/theme/tokens';
@@ -155,6 +156,17 @@ export default function Avond() {
     to: window.to,
   });
 
+  // Friends-only filter — toggle via header-chip, URL-synced.
+  const params = useLocalSearchParams<{ vr?: string }>();
+  const onlyFriends = params.vr === '1';
+  const { data: session } = useSession();
+  const { data: friends } = useFriends({
+    enabled: Boolean(session?.user?.id),
+  });
+  const showFriendsChip = (friends?.length ?? 0) > 0;
+  const onToggleFriends = () =>
+    router.setParams({ vr: onlyFriends ? undefined : '1' });
+
   // Pull-to-refresh: invalideert events-cache zodat de huidige
   // window-query opnieuw fetched. Voor wanneer de gebruiker denkt
   // "klopt dit nog wel?" en wil forceren. Minimum 700ms zichtbaar
@@ -187,9 +199,15 @@ export default function Avond() {
       if (row.event.kind === 'exhibition') return false;
       if (effectiveEndsAtMs(row.occurrence) < now) return false;
       const hour = new Date(row.occurrence.startsAt).getHours();
-      return mode === 'nacht' ? isNachtHour(hour) : !isNachtHour(hour);
+      const inWindow =
+        mode === 'nacht' ? isNachtHour(hour) : !isNachtHour(hour);
+      if (!inWindow) return false;
+      if (onlyFriends && (row.event.friendsSaved?.length ?? 0) === 0) {
+        return false;
+      }
+      return true;
     });
-  }, [events, mode, now]);
+  }, [events, mode, now, onlyFriends]);
 
   // Lopende tentoonstellingen — alleen in dag-mode. Filter direct uit
   // events zodat de strook ook gevuld is wanneer de exhibition's
@@ -276,8 +294,14 @@ export default function Avond() {
         </View>
 
         {/* Cat-tabs zijn shortcuts naar de Agenda met categorie voorgefilterd.
-            Avond filtert nooit op categorie zelf — die rol heeft Agenda. */}
-        <CategoryTabs />
+            Avond filtert nooit op categorie zelf — die rol heeft Agenda.
+            De vrienden-toggle staat als eerste chip wanneer je vrienden
+            hebt — filtert clientside op events met friendsSaved. */}
+        <CategoryTabs
+          onlyFriends={onlyFriends}
+          onToggleFriends={onToggleFriends}
+          showFriendsChip={showFriendsChip}
+        />
 
         {/* Hoofd-artikel: eerste featured event als grote kaart bovenaan.
             Tot we een dedicated lead-flag hebben pakken we de eerstvolgende
@@ -361,7 +385,15 @@ export default function Avond() {
   );
 }
 
-function CategoryTabs() {
+function CategoryTabs({
+  onlyFriends = false,
+  onToggleFriends,
+  showFriendsChip = false,
+}: {
+  onlyFriends?: boolean;
+  onToggleFriends?: () => void;
+  showFriendsChip?: boolean;
+}) {
   const mode = useMode();
   const roles = useRoles();
   const isNacht = mode === 'nacht';
@@ -380,6 +412,35 @@ function CategoryTabs() {
       showsHorizontalScrollIndicator={false}
       contentContainerStyle={styles.catTabs}
     >
+      {showFriendsChip && (
+        <Pressable
+          accessibilityLabel={
+            onlyFriends ? 'Toon alle events' : 'Alleen events met vrienden'
+          }
+          onPress={onToggleFriends}
+          style={[
+            styles.friendsChip,
+            {
+              borderColor: onlyFriends
+                ? roles.fg
+                : isNacht
+                  ? '#2a2a2d'
+                  : palette.paper,
+              backgroundColor: onlyFriends
+                ? roles.fg
+                : isNacht
+                  ? palette.noir2
+                  : palette.paper2,
+            },
+          ]}
+        >
+          <Ionicons
+            name="people"
+            size={14}
+            color={onlyFriends ? roles.bg : roles.fgMuted}
+          />
+        </Pressable>
+      )}
       {cats.map(({ label, cat }) => {
         // Eerste chip is de "current view"-indicator: Vanavond/Overdag
         // staat altijd actief op Avond. Tappen doet niets — andere chips
@@ -694,6 +755,14 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: 999,
     borderWidth: 1,
+  },
+  friendsChip: {
+    width: 36,
+    height: 36,
+    borderRadius: 999,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   catTabText: {
     fontFamily: fontFamily.medium,
