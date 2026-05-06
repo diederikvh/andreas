@@ -1,12 +1,13 @@
 import { useEffect } from 'react';
-import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
   withTiming,
 } from 'react-native-reanimated';
 
-import { useRoles } from '@/store/mode';
+import { SpinningCross } from '@/components/SpinningCross';
+import { useMode, useRoles } from '@/store/mode';
 import { fontFamily, palette } from '@/theme/tokens';
 
 /**
@@ -25,7 +26,9 @@ export function RefreshBanner({
   visible: boolean;
   topOffset: number;
 }) {
+  const mode = useMode();
   const roles = useRoles();
+  const isNacht = mode === 'nacht';
   const opacity = useSharedValue(0);
   const translateY = useSharedValue(-12);
 
@@ -47,22 +50,21 @@ export function RefreshBanner({
   return (
     <Animated.View
       pointerEvents="none"
-      style={[
-        styles.wrap,
-        { top: topOffset },
-        animStyle,
-      ]}
+      style={[styles.wrap, { top: topOffset }, animStyle]}
     >
       <View
         style={[
           styles.pill,
           {
-            backgroundColor: palette.noir2,
-            borderColor: roles.accent,
+            // Mode-tint: donker (noir2) in nacht-mode, licht (paper2)
+            // in dag-mode. Border neutraal — geen accent — want de
+            // banner is een passieve melding, geen call-to-action.
+            backgroundColor: isNacht ? palette.noir2 : palette.paper2,
+            borderColor: roles.bgChip,
           },
         ]}
       >
-        <ActivityIndicator size="small" color={roles.accent} />
+        <SpinningCross size={14} thickness={3} color={roles.fg} />
         <Text style={[styles.text, { color: roles.fg }]}>Vernieuwen…</Text>
       </View>
     </Animated.View>
