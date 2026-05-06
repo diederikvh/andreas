@@ -862,8 +862,8 @@ const styles = StyleSheet.create({
     letterSpacing: -0.06,
   },
   switchBadge: {
-    minWidth: 18,
-    height: 16,
+    minWidth: 20,
+    height: 20,
     paddingHorizontal: 5,
     borderRadius: 999,
     alignItems: 'center',
@@ -871,10 +871,10 @@ const styles = StyleSheet.create({
   },
   switchBadgeText: {
     fontFamily: fontFamily.mono,
-    fontSize: 9,
-    letterSpacing: 0.2,
-    fontWeight: '700',
-    lineHeight: 11,
+    fontSize: 10,
+    letterSpacing: 0,
+    fontWeight: '800',
+    lineHeight: 12,
   },
 
   // Empty / loading / error
