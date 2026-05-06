@@ -91,6 +91,10 @@ export function useVenue(slug: string) {
     queryKey: queryKeys.venue(slug),
     queryFn: () => getVenue(slug),
     enabled: Boolean(slug),
+    // Programma binnen een venue muteert pas zodra een nieuwe ingest-
+    // run is gedraaid; 10 min stale dekt het zonder onnodige fetches.
+    staleTime: 10 * 60_000,
+    refetchOnWindowFocus: true,
   });
 }
 
@@ -118,6 +122,10 @@ export function useVenues(input: {
       input.scene ?? '',
     ] as const,
     queryFn: () => getVenues(input),
+    // Venue-lijst muteert relatief weinig (admin voegt zelden iets toe);
+    // 10 min stale + refetch on focus is genoeg.
+    staleTime: 10 * 60_000,
+    refetchOnWindowFocus: true,
   });
 }
 
@@ -126,6 +134,8 @@ export function useSeries(slug: string) {
     queryKey: queryKeys.series(slug),
     queryFn: () => getSeries(slug),
     enabled: Boolean(slug),
+    staleTime: 10 * 60_000,
+    refetchOnWindowFocus: true,
   });
 }
 
@@ -135,6 +145,8 @@ export function useSeriesList(
   return useQuery({
     queryKey: queryKeys.seriesList({ q: input.q, category: input.category }),
     queryFn: () => getSeriesList(input),
+    staleTime: 10 * 60_000,
+    refetchOnWindowFocus: true,
   });
 }
 

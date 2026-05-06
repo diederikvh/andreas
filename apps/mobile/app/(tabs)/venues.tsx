@@ -2,13 +2,14 @@ import { Ionicons } from '@expo/vector-icons';
 import { useScrollToTop } from '@react-navigation/native';
 import { Image } from 'expo-image';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   KeyboardAvoidingView,
   Modal,
   Platform,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -17,9 +18,11 @@ import {
 } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useQueryClient } from '@tanstack/react-query';
 
 import { AppHeader, HEADER_HEIGHT } from '@/components/AppHeader';
 import { Cross } from '@/components/Cross';
+import { RefreshBanner } from '@/components/RefreshBanner';
 import { SpinningCross } from '@/components/SpinningCross';
 import type {
   ApiSeriesListItem,
@@ -170,11 +173,36 @@ export default function Venues() {
     });
   }, [venuesAll, onlyVolgend, activeDn, activeType, activeScene]);
 
+  // Pull-to-refresh: invalideert venues + series. 700ms minimum
+  // zichtbaarheid voor de banner.
+  const qc = useQueryClient();
+  const [refreshing, setRefreshing] = useState(false);
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    const start = Date.now();
+    try {
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ['venues'] }),
+        qc.invalidateQueries({ queryKey: ['series'] }),
+      ]);
+    } finally {
+      const elapsed = Date.now() - start;
+      if (elapsed < 700) {
+        await new Promise((r) => setTimeout(r, 700 - elapsed));
+      }
+      setRefreshing(false);
+    }
+  }, [qc]);
+
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       style={[styles.root, { backgroundColor: roles.bg }]}
     >
+      <RefreshBanner
+        visible={refreshing}
+        topOffset={insets.top + HEADER_HEIGHT + 8}
+      />
       <ScrollView
         ref={scrollRef}
         keyboardShouldPersistTaps="handled"
@@ -183,6 +211,15 @@ export default function Venues() {
           paddingTop: insets.top + HEADER_HEIGHT,
           paddingBottom: insets.bottom + 96,
         }}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={roles.accent}
+            colors={[roles.accent]}
+            progressViewOffset={insets.top + HEADER_HEIGHT}
+          />
+        }
       >
         <View style={styles.head}>
           <Text style={[styles.headKicker, { color: roles.accent }]}>

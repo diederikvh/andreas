@@ -5,17 +5,19 @@ import * as Haptics from 'expo-haptics';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import {
   Linking,
   Modal,
   Platform,
   Pressable,
+  RefreshControl,
   Share,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
+import { useQueryClient } from '@tanstack/react-query';
 import Animated, {
   Extrapolation,
   interpolate,
@@ -27,6 +29,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Cross } from '@/components/Cross';
 import { EventListRow } from '@/components/EventListRow';
+import { RefreshBanner } from '@/components/RefreshBanner';
 import { SpinningCross } from '@/components/SpinningCross';
 import type { ApiVenueProgramItem, VenueFollowState } from '@/lib/api';
 import {
@@ -74,6 +77,27 @@ export default function VenueDetail() {
 
   const { data, isLoading, error } = useVenue(slug);
 
+  // Pull-to-refresh: invalideert de venue + events caches. Hooks
+  // staan vóór de early returns om Rules of Hooks te respecteren.
+  const qc = useQueryClient();
+  const [refreshing, setRefreshing] = useState(false);
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    const start = Date.now();
+    try {
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ['venue', slug] }),
+        qc.invalidateQueries({ queryKey: ['events'] }),
+      ]);
+    } finally {
+      const elapsed = Date.now() - start;
+      if (elapsed < 700) {
+        await new Promise((r) => setTimeout(r, 700 - elapsed));
+      }
+      setRefreshing(false);
+    }
+  }, [qc, slug]);
+
   if (isLoading || (!data && !error)) {
     return <VenueFallback>{undefined}</VenueFallback>;
   }
@@ -117,10 +141,22 @@ export default function VenueDetail() {
         />
       </Animated.View>
 
+      <RefreshBanner
+        visible={refreshing}
+        topOffset={insets.top + 60}
+      />
       <Animated.ScrollView
         ref={scrollRef}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: insets.bottom + 40 }}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={roles.accent}
+            colors={[roles.accent]}
+          />
+        }
       >
         <View style={styles.heroSpacer}>
           <View style={styles.heroBottom}>
