@@ -28,18 +28,9 @@ import { AppHeader, HEADER_HEIGHT } from '@/components/AppHeader';
 import { Cross } from '@/components/Cross';
 import { ProfileAvatar } from '@/components/ProfileAvatar';
 import { SpinningCross } from '@/components/SpinningCross';
-import type {
-  ApiFriend,
-  ApiFriendRequest,
-  ApiMe,
-} from '@/lib/api';
+import type { ApiMe } from '@/lib/api';
 import { getMe, updateMe, uploadAvatar } from '@/lib/api';
 import { authClient, useSession } from '@/lib/authClient';
-import {
-  useFriends,
-  useOutgoingFriendRequests,
-  useRemoveFriend,
-} from '@/lib/queries';
 import {
   Notifications,
   registerForPushNotificationsAsync,
@@ -71,10 +62,6 @@ export default function Jij() {
   // een flash van "wat is je naam?". Behandel die periode als loading.
   const stageUnknown = sessionPending || (Boolean(session?.user?.id) && me === undefined);
   const authedAndOnboarded = Boolean(session?.user?.id && me?.handle);
-  const { data: friends } = useFriends({ enabled: authedAndOnboarded });
-  const { data: outgoing } = useOutgoingFriendRequests({
-    enabled: authedAndOnboarded,
-  });
 
   // Stage uit sessie + me afgeleid; tijdelijke override voor de
   // "code"-stap die geen server-state heeft.
@@ -671,22 +658,6 @@ export default function Jij() {
           {error && <Text style={styles.error}>{error}</Text>}
         </View>
 
-        {friends && friends.length > 0 && (
-          <>
-            <SectionHead label="Vrienden" count={friends.length} />
-            {friends.map((f) => <FriendRow key={f.id} friend={f} />)}
-          </>
-        )}
-
-        {outgoing && outgoing.length > 0 && (
-          <>
-            <SectionHead label="Aangevraagd" count={outgoing.length} />
-            {outgoing.map((o) => (
-              <PendingRow key={o.id} user={o} />
-            ))}
-          </>
-        )}
-
         {me && <NotificationsSection />}
         {me && <PrivacySection me={me} onUpdated={refetchMe} />}
 
@@ -765,38 +736,6 @@ function SectionHead({
         </Pressable>
       )}
     </View>
-  );
-}
-
-function FriendRow({ friend }: { friend: ApiFriend }) {
-  const roles = useRoles();
-  return (
-    <Pressable
-      onPress={() => router.push(`/friend/${friend.id}` as never)}
-      style={[styles.friend, { borderColor: roles.bgChip }]}
-    >
-      <ProfileAvatar
-        avatarUrl={friend.avatarUrl}
-        name={friend.name}
-        size={36}
-      />
-      <View style={styles.friendBody}>
-        <Text
-          numberOfLines={1}
-          style={[styles.friendName, { color: roles.fg }]}
-        >
-          {friend.name}
-        </Text>
-        {friend.handle && (
-          <Text
-            numberOfLines={1}
-            style={[styles.friendMeta, { color: roles.fgMuted }]}
-          >
-            @{friend.handle}
-          </Text>
-        )}
-      </View>
-    </Pressable>
   );
 }
 
@@ -1081,74 +1020,6 @@ function PrivacySection({
         </View>
       </View>
     </>
-  );
-}
-
-function PendingRow({ user }: { user: ApiFriendRequest }) {
-  const roles = useRoles();
-  const removeFriend = useRemoveFriend();
-
-  const onCancel = () => {
-    const firstName = user.name.split(' ')[0] || `@${user.handle ?? ''}`;
-    Alert.alert(
-      'Verzoek terugtrekken?',
-      `${firstName} krijgt geen melding hierover.`,
-      [
-        { text: 'Annuleer', style: 'cancel' },
-        {
-          text: 'Terugtrekken',
-          style: 'destructive',
-          onPress: () => removeFriend.mutate(user.id),
-        },
-      ]
-    );
-  };
-
-  return (
-    <View style={[styles.friend, { borderColor: roles.bgChip }]}>
-      <ProfileAvatar
-        avatarUrl={user.avatarUrl}
-        name={user.name}
-        size={36}
-      />
-      <View style={styles.friendBody}>
-        <Text
-          numberOfLines={1}
-          style={[styles.friendName, { color: roles.fg }]}
-        >
-          {user.name}
-        </Text>
-        {user.handle && (
-          <Text
-            numberOfLines={1}
-            style={[styles.friendMeta, { color: roles.fgMuted }]}
-          >
-            @{user.handle}
-          </Text>
-        )}
-      </View>
-      <View
-        style={[styles.pendingPill, { borderColor: `${roles.fgMuted}80` }]}
-      >
-        <Text style={[styles.pendingPillText, { color: roles.fgMuted }]}>
-          Wacht op acceptatie
-        </Text>
-      </View>
-      <Pressable
-        onPress={onCancel}
-        disabled={removeFriend.isPending}
-        hitSlop={6}
-        style={[
-          styles.twinBtn,
-          {
-            borderColor: roles.bgChip,
-            opacity: removeFriend.isPending ? 0.5 : 1,
-          },
-        ]}
-      >
-        <Cross size={14} thickness={2.6} color={roles.fgMuted} />
-      </Pressable>
-    </View>
   );
 }
 

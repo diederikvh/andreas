@@ -52,6 +52,30 @@ export function TabIconGered({ color }: IconProps) {
   );
 }
 
+/**
+ * Social-tab — twee gestapelde rondjes (overlappende cirkels) als
+ * "people"-glyph. Géén Cross — het kruis blijft de wordmark-merk-indicator
+ * voor het hele app-icoon en moet niet verwarrend op tab-niveau opduiken.
+ */
+export function TabIconSocial({ color }: IconProps) {
+  return (
+    <View style={styles.box}>
+      <View
+        style={[
+          styles.socialDot,
+          { backgroundColor: color, left: 3, top: 4 },
+        ]}
+      />
+      <View
+        style={[
+          styles.socialDot,
+          { backgroundColor: color, right: 3, top: 8 },
+        ]}
+      />
+    </View>
+  );
+}
+
 export function TabIconJij({ color }: IconProps) {
   return (
     <View style={styles.box}>
@@ -87,5 +111,11 @@ const styles = StyleSheet.create({
     height: 15,
     borderRadius: 999,
     borderWidth: STROKE,
+  },
+  socialDot: {
+    position: 'absolute',
+    width: 10,
+    height: 10,
+    borderRadius: 999,
   },
 });

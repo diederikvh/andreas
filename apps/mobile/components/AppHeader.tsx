@@ -2,15 +2,12 @@ import { Ionicons } from '@expo/vector-icons';
 import MaskedView from '@react-native-masked-view/masked-view';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
-import { router } from 'expo-router';
 import type { ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Cross } from '@/components/Cross';
 import { useModeSwitch } from '@/components/ModeCurtain';
-import { useSession } from '@/lib/authClient';
-import { useFriendRequests, useInvites } from '@/lib/queries';
 import { useMode, useRoles } from '@/store/mode';
 import { fontFamily, palette } from '@/theme/tokens';
 
@@ -105,63 +102,10 @@ export function AppHeader({ children, solid = false }: AppHeaderProps = {}) {
             <Cross size={16} thickness={4} color={roles.accent} />
           </View>
         </View>
-        <View style={styles.rightCluster}>
-          <InboxBell />
-          <DnSwitch />
-        </View>
+        <DnSwitch />
       </View>
       {children}
     </View>
-  );
-}
-
-function InboxBell() {
-  const roles = useRoles();
-  const { data: session } = useSession();
-  const isAuthed = Boolean(session?.user?.id);
-  // Queries blijven cold-disabled tot er een sessie is — anders krijgen
-  // we 401's bij anonieme schermen (welkom-flow).
-  const { data: requests } = useFriendRequests({ enabled: isAuthed });
-  const { data: invites } = useInvites({ enabled: isAuthed });
-  if (!isAuthed) return null;
-
-  const count = (requests?.length ?? 0) + (invites?.length ?? 0);
-  const showBadge = count > 0;
-  const label = count > 9 ? '9+' : String(count);
-
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={
-        showBadge
-          ? `Inbox, ${count} ${count === 1 ? 'item' : 'items'} openstaand`
-          : 'Inbox'
-      }
-      onPress={() => router.push('/inbox')}
-      hitSlop={6}
-      style={styles.bellWrap}
-    >
-      <Ionicons
-        name="notifications-outline"
-        size={22}
-        color={showBadge ? roles.fg : roles.fgPlaceholder}
-      />
-      {showBadge && (
-        <View
-          style={[
-            styles.bellBadge,
-            { backgroundColor: roles.accent, borderColor: roles.bg },
-          ]}
-        >
-          <Text
-            style={[styles.bellBadgeText, { color: roles.onAccent }]}
-            numberOfLines={1}
-          >
-            {label}
-          </Text>
-        </View>
-      )}
-    </Pressable>
   );
 }
 
@@ -227,32 +171,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
   },
   logoLockup: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  rightCluster: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  bellWrap: {
-    width: 28,
-    height: 28,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  bellBadge: {
-    position: 'absolute',
-    top: -2,
-    right: -4,
-    minWidth: 16,
-    height: 16,
-    paddingHorizontal: 4,
-    borderRadius: 999,
-    borderWidth: 1.5,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  bellBadgeText: {
-    fontFamily: fontFamily.mono,
-    fontSize: 9,
-    letterSpacing: 0.2,
-    fontWeight: '600',
-    lineHeight: 11,
-  },
   // Optical centring against the Archivo Black caps — uppercase has no
   // descenders so the text's visual centre sits above the row centre.
   logoCross: { transform: [{ translateY: -1 }] },

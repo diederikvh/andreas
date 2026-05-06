@@ -2,7 +2,7 @@ import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { BlurView } from 'expo-blur';
 import type { ComponentType } from 'react';
 import { useEffect } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -14,12 +14,14 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   TabIconAgenda,
   TabIconAvond,
-  TabIconGered,
   TabIconJij,
+  TabIconSocial,
   TabIconVenues,
 } from '@/components/icons/TabIcons';
+import { useSession } from '@/lib/authClient';
+import { useFriendRequests, useInvites } from '@/lib/queries';
 import { useMode, useRoles } from '@/store/mode';
-import { palette } from '@/theme/tokens';
+import { fontFamily, palette } from '@/theme/tokens';
 
 type IconCmp = ComponentType<{ color: string }>;
 
@@ -30,7 +32,7 @@ const TAB_ICONS: Record<string, IconCmp> = {
   avond: TabIconAvond,
   agenda: TabIconAgenda,
   venues: TabIconVenues,
-  gered: TabIconGered,
+  social: TabIconSocial,
   jij: TabIconJij,
 };
 
@@ -42,6 +44,17 @@ export function TabBar({ state, navigation }: BottomTabBarProps) {
   const roles = useRoles();
   const mode = useMode();
   const insets = useSafeAreaInsets();
+
+  // Social-tab badge — som van openstaande friend-requests + invites.
+  // Queries blijven cold-disabled tot er een sessie is om 401's tijdens
+  // de welkom-flow te vermijden.
+  const { data: session } = useSession();
+  const isAuthed = Boolean(session?.user?.id);
+  const { data: requests } = useFriendRequests({ enabled: isAuthed });
+  const { data: invites } = useInvites({ enabled: isAuthed });
+  const socialBadge = isAuthed
+    ? (requests?.length ?? 0) + (invites?.length ?? 0)
+    : 0;
 
   const tint = mode === 'nacht' ? 'rgba(23,23,26,0.65)' : 'rgba(235,230,216,0.7)';
   const border = mode === 'nacht' ? '#2a2a2d' : palette.paper;
@@ -99,6 +112,8 @@ export function TabBar({ state, navigation }: BottomTabBarProps) {
             navigation.navigate(route.name as never);
           }
         };
+        const showBadge = route.name === 'social' && socialBadge > 0;
+        const badgeLabel = socialBadge > 9 ? '9+' : String(socialBadge);
         return (
           <Pressable
             key={route.key}
@@ -107,7 +122,27 @@ export function TabBar({ state, navigation }: BottomTabBarProps) {
             onPress={onPress}
             style={styles.button}
           >
-            <Icon color={focused ? roles.onAccent : idle} />
+            <View>
+              <Icon color={focused ? roles.onAccent : idle} />
+              {showBadge && (
+                <View
+                  style={[
+                    styles.badge,
+                    {
+                      backgroundColor: roles.accent,
+                      borderColor: mode === 'nacht' ? palette.noir : palette.paper3,
+                    },
+                  ]}
+                >
+                  <Text
+                    style={[styles.badgeText, { color: roles.onAccent }]}
+                    numberOfLines={1}
+                  >
+                    {badgeLabel}
+                  </Text>
+                </View>
+              )}
+            </View>
           </Pressable>
         );
       })}
@@ -140,5 +175,24 @@ const styles = StyleSheet.create({
     left: 6,
     bottom: 6,
     borderRadius: 999,
+  },
+  badge: {
+    position: 'absolute',
+    top: -5,
+    right: -8,
+    minWidth: 16,
+    height: 16,
+    paddingHorizontal: 4,
+    borderRadius: 999,
+    borderWidth: 1.5,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  badgeText: {
+    fontFamily: fontFamily.mono,
+    fontSize: 9,
+    letterSpacing: 0.2,
+    fontWeight: '600',
+    lineHeight: 11,
   },
 });

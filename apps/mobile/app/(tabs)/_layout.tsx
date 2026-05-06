@@ -14,7 +14,7 @@ export default function TabsLayout() {
           bereikt vanuit Avond via een banner-knop. */}
       <Tabs.Screen name="kaart" options={{ href: null }} />
       <Tabs.Screen name="venues" />
-      <Tabs.Screen name="gered" />
+      <Tabs.Screen name="social" />
       <Tabs.Screen name="jij" />
     </Tabs>
   );

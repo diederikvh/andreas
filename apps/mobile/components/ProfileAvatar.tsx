@@ -6,7 +6,7 @@ import { fontFamily, palette } from '@/theme/tokens';
 
 /**
  * Round avatar — image when available, fallback initial. Gedeeld
- * tussen /jij en /inbox zodat de visuele taal consistent is.
+ * tussen /jij en /social zodat de visuele taal consistent is.
  */
 export function ProfileAvatar({
   avatarUrl,
