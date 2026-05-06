@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
 import { Image } from 'expo-image';
-import { router, useFocusEffect, useNavigation } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
@@ -132,14 +132,6 @@ export default function Kaart() {
       450
     );
   }, [centre.lat, centre.lng]);
-
-  const navigation = useNavigation();
-  useEffect(() => {
-    const unsub = navigation.addListener('tabPress' as never, () => {
-      recentre();
-    });
-    return unsub;
-  }, [navigation, recentre]);
 
   useFocusEffect(
     useCallback(() => {

@@ -10,9 +10,6 @@ export default function TabsLayout() {
     >
       <Tabs.Screen name="avond" />
       <Tabs.Screen name="agenda" />
-      {/* Kaart blijft een route maar staat niet in de tab-bar — wordt
-          bereikt vanuit Avond via een banner-knop. */}
-      <Tabs.Screen name="kaart" options={{ href: null }} />
       <Tabs.Screen name="venues" />
       <Tabs.Screen name="social" />
       <Tabs.Screen name="jij" />
