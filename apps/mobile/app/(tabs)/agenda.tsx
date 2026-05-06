@@ -26,6 +26,7 @@ import { AppHeader, HEADER_HEIGHT } from '@/components/AppHeader';
 import { Cross } from '@/components/Cross';
 import { EventListRow } from '@/components/EventListRow';
 import { RefreshBanner } from '@/components/RefreshBanner';
+import { RunningExhibitions } from '@/components/RunningExhibitions';
 import { SpinningCross } from '@/components/SpinningCross';
 import type { ApiEvent } from '@/lib/api';
 import {
@@ -151,11 +152,14 @@ export default function Agenda() {
 
   // Expand naar één rij per occurrence en groepeer per dag. Een
   // 3-daagse festival komt zo op alle 3 dagen voor; een wekelijks feest
-  // op elke maandag binnen de gevraagde range.
+  // op elke maandag binnen de gevraagde range. `kind: 'exhibition'`
+  // events filteren we eruit — die staan los in de "Doorlopend te
+  // zien"-strook bovenaan; in de dag-buckets zouden ze alleen op de
+  // start-dag verschijnen, wat onintuïtief is voor iets dat 90 dagen
+  // loopt.
   const days = useMemo(() => {
     const rows = expandToOccurrenceRows(filteredEvents).filter((row) => {
-      // Client-side cutoff op effectieve eindtijd — voorkomt dat een
-      // ochtend-event tot 10:00 om 11:00 nog in de Agenda staat.
+      if (row.event.kind === 'exhibition') return false;
       if (effectiveEndsAtMs(row.occurrence) < now) return false;
       if (activeBlocks.length === 0) return true;
       const block = getTimeBlock(new Date(row.occurrence.startsAt).getHours());
@@ -267,6 +271,7 @@ export default function Agenda() {
         )}
         {!isLoading && !error && (
           <Animated.View entering={FadeIn.duration(220)}>
+            <RunningExhibitions events={filteredEvents} />
             {days.length === 0 && (
               <ListState
                 text={

@@ -18,6 +18,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppHeader, HEADER_HEIGHT } from '@/components/AppHeader';
 import { EventListRow } from '@/components/EventListRow';
 import { RefreshBanner } from '@/components/RefreshBanner';
+import { RunningExhibitions } from '@/components/RunningExhibitions';
 import { SpinningCross } from '@/components/SpinningCross';
 import type { ApiEvent } from '@/lib/api';
 import {
@@ -177,15 +178,27 @@ export default function Avond() {
   // Spread events naar één rij per moment in het venster, dan filter op
   // dag/nacht-uur. Een 3-daags festival verschijnt zo per avond op het
   // juiste tijdslot; een wekelijks feest dat morgen óók is komt op
-  // beide avonden.
+  // beide avonden. Exhibitions filteren we eruit — die staan los in
+  // de "Doorlopend te zien"-strook (alleen dag-mode); musea zijn
+  // 's nachts toch dicht.
   const filtered = useMemo<OccurrenceRow[]>(() => {
     if (!events) return [];
     return expandToOccurrenceRows(events).filter((row) => {
+      if (row.event.kind === 'exhibition') return false;
       if (effectiveEndsAtMs(row.occurrence) < now) return false;
       const hour = new Date(row.occurrence.startsAt).getHours();
       return mode === 'nacht' ? isNachtHour(hour) : !isNachtHour(hour);
     });
   }, [events, mode, now]);
+
+  // Lopende tentoonstellingen — alleen in dag-mode. Filter direct uit
+  // events zodat de strook ook gevuld is wanneer de exhibition's
+  // startsAt eigenlijk in 't verleden ligt (wat normaal is voor een
+  // tentoonstelling die al loopt).
+  const runningExhibitions = useMemo(() => {
+    if (mode === 'nacht' || !events) return [];
+    return events.filter((e) => e.kind === 'exhibition');
+  }, [events, mode]);
 
   // Hoofd-artikel: featured event uit de split. Geen featured? Eerste rij.
   const lead = useMemo(() => {
@@ -292,6 +305,7 @@ export default function Avond() {
         {error && <ListState text="Kon events niet laden." tone="error" />}
         {!isLoading && !error && (
           <Animated.View entering={FadeIn.duration(220)}>
+            <RunningExhibitions events={runningExhibitions} />
             {filtered.length === 0 && events && (
               <ListState
                 text={
