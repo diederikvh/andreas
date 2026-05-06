@@ -96,12 +96,7 @@
           "recordAudioAndroid": false
         }
       ],
-      [
-        "expo-notifications",
-        {
-          "iosDisplayInForeground": true
-        }
-      ]
+      "expo-notifications"
     ],
     "experiments": {
       "typedRoutes": true,
