@@ -719,14 +719,16 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
 
-  // Kaart-banner — prominent CTA onder de events-lijst die naar
-  // /kaart pusht (Kaart heeft geen eigen tab meer).
+  // Kaart-banner — prominent CTA tussen FeaturedCard en de events-
+  // lijst. Top-spacing wordt door FeaturedCard's marginBottom geleverd
+  // (20), dus onze eigen marginBottom van 20 zorgt voor gelijkmatige
+  // ruimte rondom de banner.
   kaartBanner: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 14,
     marginHorizontal: 22,
-    marginTop: 22,
+    marginBottom: 20,
     padding: 16,
     borderRadius: 14,
     borderWidth: 1,

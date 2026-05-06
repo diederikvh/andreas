@@ -7,6 +7,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import MapView, { Marker, PROVIDER_DEFAULT } from 'react-native-maps';
 import Animated, {
+  Easing,
   runOnJS,
   useAnimatedStyle,
   useSharedValue,
@@ -390,6 +391,18 @@ function ViewSwitch({
 }) {
   const mode = useMode();
   const roles = useRoles();
+  const activeIndex = view === 'map' ? 0 : 1;
+  const progress = useSharedValue(activeIndex);
+  useEffect(() => {
+    progress.value = withTiming(activeIndex, {
+      duration: 240,
+      easing: Easing.bezier(0.65, 0, 0.35, 1),
+    });
+  }, [activeIndex, progress]);
+  const blobStyle = useAnimatedStyle(() => ({
+    width: '50%',
+    transform: [{ translateX: `${progress.value * 100}%` }],
+  }));
   return (
     <View style={[styles.switchTrack, { borderColor: roles.bgChip }]}>
       <BlurView
@@ -406,6 +419,14 @@ function ViewSwitch({
                 ? 'rgba(23,23,26,0.65)'
                 : 'rgba(235,230,216,0.7)',
           },
+        ]}
+      />
+      <Animated.View
+        pointerEvents="none"
+        style={[
+          styles.switchBlob,
+          blobStyle,
+          { backgroundColor: roles.accent },
         ]}
       />
       <SwitchBtn
@@ -479,13 +500,7 @@ function SwitchBtn({
   const roles = useRoles();
   const tint = active ? roles.onAccent : roles.fgMuted;
   return (
-    <Pressable
-      onPress={onPress}
-      style={[
-        styles.switchBtn,
-        active && { backgroundColor: roles.accent },
-      ]}
-    >
+    <Pressable onPress={onPress} style={styles.switchBtn}>
       <View style={styles.switchIcon}>
         <Icon color={tint} />
       </View>
@@ -752,6 +767,13 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     gap: 2,
     overflow: 'hidden',
+  },
+  switchBlob: {
+    position: 'absolute',
+    top: 3,
+    left: 3,
+    bottom: 3,
+    borderRadius: 999,
   },
   switchBtn: {
     flex: 1,

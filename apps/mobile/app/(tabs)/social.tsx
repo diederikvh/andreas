@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useScrollToTop } from '@react-navigation/native';
 import { BlurView } from 'expo-blur';
 import { router } from 'expo-router';
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Pressable,
@@ -12,7 +12,13 @@ import {
   Text,
   View,
 } from 'react-native';
-import Animated, { FadeIn } from 'react-native-reanimated';
+import Animated, {
+  Easing,
+  FadeIn,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQueryClient } from '@tanstack/react-query';
 
@@ -172,6 +178,21 @@ function SubTabs({
 }) {
   const mode = useMode();
   const roles = useRoles();
+  // Geanimeerde "blob" achter de actieve sub-tab — slidet links→rechts
+  // bij switchen. Zelfde patroon als de bottom-TabBar.
+  const activeIndex = sub === 'vrienden' ? 0 : 1;
+  const progress = useSharedValue(activeIndex);
+  useEffect(() => {
+    progress.value = withTiming(activeIndex, {
+      duration: 240,
+      easing: Easing.bezier(0.65, 0, 0.35, 1),
+    });
+  }, [activeIndex, progress]);
+  const blobStyle = useAnimatedStyle(() => ({
+    width: '50%',
+    transform: [{ translateX: `${progress.value * 100}%` }],
+  }));
+
   return (
     <View style={styles.subTabsAlign}>
       <View style={[styles.switchTrack, { borderColor: roles.bgChip }]}>
@@ -189,6 +210,14 @@ function SubTabs({
                   ? 'rgba(23,23,26,0.65)'
                   : 'rgba(235,230,216,0.7)',
             },
+          ]}
+        />
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            styles.switchBlob,
+            blobStyle,
+            { backgroundColor: roles.accent },
           ]}
         />
         <SwitchBtn
@@ -221,10 +250,7 @@ function SwitchBtn({
   const roles = useRoles();
   const tint = active ? roles.onAccent : roles.fgMuted;
   return (
-    <Pressable
-      onPress={onPress}
-      style={[styles.switchBtn, active && { backgroundColor: roles.accent }]}
-    >
+    <Pressable onPress={onPress} style={styles.switchBtn}>
       <Text style={[styles.switchBtnText, { color: tint }]}>{label}</Text>
       {badge > 0 && (
         <View
@@ -812,6 +838,13 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     alignSelf: 'center',
     minWidth: 240,
+  },
+  switchBlob: {
+    position: 'absolute',
+    top: 3,
+    left: 3,
+    bottom: 3,
+    borderRadius: 999,
   },
   switchBtn: {
     flex: 1,
