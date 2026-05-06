@@ -297,6 +297,10 @@ export default function Avond() {
           </Pressable>
         )}
 
+        {/* Kaart-CTA — direct onder het featured artikel zodat-ie
+            opvalt voordat de lijst begint. */}
+        <KaartBanner />
+
         {isLoading && (
           <View style={styles.loadingWrap}>
             <SpinningCross size={28} thickness={5} color={roles.fgPlaceholder} />
@@ -348,9 +352,6 @@ export default function Avond() {
                   <ApiEventRow key={row.id} row={row} />
                 ))}
               </>
-            )}
-            {(followedRest.length > 0 || otherRest.length > 0) && (
-              <KaartBanner />
             )}
           </Animated.View>
         )}

@@ -1,5 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useScrollToTop } from '@react-navigation/native';
+import { BlurView } from 'expo-blur';
 import { router } from 'expo-router';
 import { useCallback, useMemo, useRef, useState } from 'react';
 import {
@@ -47,7 +48,7 @@ import {
   useOutgoingFriendRequests,
   useRemoveFriend,
 } from '@/lib/queries';
-import { useRoles } from '@/store/mode';
+import { useMode, useRoles } from '@/store/mode';
 import { fontFamily, palette } from '@/theme/tokens';
 
 const SUB_TAB_HEIGHT = 44;
@@ -169,25 +170,44 @@ function SubTabs({
   onChange: (s: Sub) => void;
   inboxCount: number;
 }) {
+  const mode = useMode();
   const roles = useRoles();
   return (
-    <View style={styles.subTabsWrap}>
-      <SubTab
-        label="Vrienden"
-        active={sub === 'vrienden'}
-        badge={inboxCount}
-        onPress={() => onChange('vrienden')}
-      />
-      <SubTab
-        label="Planning"
-        active={sub === 'planning'}
-        onPress={() => onChange('planning')}
-      />
+    <View style={styles.subTabsAlign}>
+      <View style={[styles.switchTrack, { borderColor: roles.bgChip }]}>
+        <BlurView
+          intensity={40}
+          tint={mode === 'nacht' ? 'dark' : 'light'}
+          style={StyleSheet.absoluteFill}
+        />
+        <View
+          style={[
+            StyleSheet.absoluteFill,
+            {
+              backgroundColor:
+                mode === 'nacht'
+                  ? 'rgba(23,23,26,0.65)'
+                  : 'rgba(235,230,216,0.7)',
+            },
+          ]}
+        />
+        <SwitchBtn
+          label="Vrienden"
+          active={sub === 'vrienden'}
+          badge={inboxCount}
+          onPress={() => onChange('vrienden')}
+        />
+        <SwitchBtn
+          label="Planning"
+          active={sub === 'planning'}
+          onPress={() => onChange('planning')}
+        />
+      </View>
     </View>
   );
 }
 
-function SubTab({
+function SwitchBtn({
   label,
   active,
   badge = 0,
@@ -199,29 +219,33 @@ function SubTab({
   onPress: () => void;
 }) {
   const roles = useRoles();
+  const tint = active ? roles.onAccent : roles.fgMuted;
   return (
-    <Pressable onPress={onPress} hitSlop={6} style={styles.subTab}>
-      <Text
-        style={[
-          styles.subTabLabel,
-          { color: active ? roles.fg : roles.fgMuted },
-        ]}
-      >
-        {label}
-      </Text>
+    <Pressable
+      onPress={onPress}
+      style={[styles.switchBtn, active && { backgroundColor: roles.accent }]}
+    >
+      <Text style={[styles.switchBtnText, { color: tint }]}>{label}</Text>
       {badge > 0 && (
-        <View style={[styles.subTabBadge, { backgroundColor: roles.accent }]}>
-          <Text style={[styles.subTabBadgeText, { color: roles.onAccent }]}>
+        <View
+          style={[
+            styles.switchBadge,
+            {
+              backgroundColor: active ? roles.onAccent : roles.accent,
+            },
+          ]}
+        >
+          <Text
+            style={[
+              styles.switchBadgeText,
+              { color: active ? roles.accent : roles.onAccent },
+            ]}
+            numberOfLines={1}
+          >
             {badge > 9 ? '9+' : badge}
           </Text>
         </View>
       )}
-      <View
-        style={[
-          styles.subTabUnderline,
-          { backgroundColor: active ? roles.fg : 'transparent' },
-        ]}
-      />
     </Pressable>
   );
 }
@@ -770,47 +794,54 @@ const styles = StyleSheet.create({
   root: { flex: 1 },
   page: { flex: 1 },
 
-  // Sub-tabs (in AppHeader children-slot)
-  subTabsWrap: {
+  // Sub-tabs — pill-switch met blur, zelfde stijl als de Map/List-
+  // switch op de Kaart-tab. Gecentreerd in de header-children-slot.
+  subTabsAlign: {
     height: SUB_TAB_HEIGHT,
-    flexDirection: 'row',
-    paddingHorizontal: 22,
-    gap: 24,
-  },
-  subTab: {
-    paddingTop: 10,
+    paddingTop: 4,
     paddingBottom: 4,
+    paddingHorizontal: 22,
+    alignItems: 'center',
+  },
+  switchTrack: {
+    flexDirection: 'row',
+    padding: 3,
+    borderRadius: 999,
+    borderWidth: 1,
+    gap: 2,
+    overflow: 'hidden',
+    alignSelf: 'center',
+    minWidth: 240,
+  },
+  switchBtn: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: 6,
+    paddingVertical: 7,
+    paddingHorizontal: 14,
+    borderRadius: 999,
   },
-  subTabLabel: {
+  switchBtnText: {
     fontFamily: fontFamily.medium,
-    fontSize: 14.5,
-    letterSpacing: -0.14,
+    fontSize: 12,
+    letterSpacing: -0.06,
   },
-  subTabBadge: {
-    minWidth: 16,
+  switchBadge: {
+    minWidth: 18,
     height: 16,
-    paddingHorizontal: 4,
+    paddingHorizontal: 5,
     borderRadius: 999,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  subTabBadgeText: {
+  switchBadgeText: {
     fontFamily: fontFamily.mono,
     fontSize: 9,
     letterSpacing: 0.2,
-    fontWeight: '600',
+    fontWeight: '700',
     lineHeight: 11,
-  },
-  subTabUnderline: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    height: 2,
-    borderRadius: 2,
   },
 
   // Empty / loading / error

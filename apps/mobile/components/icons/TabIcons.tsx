@@ -53,25 +53,14 @@ export function TabIconGered({ color }: IconProps) {
 }
 
 /**
- * Social-tab — twee gestapelde rondjes (overlappende cirkels) als
- * "people"-glyph. Géén Cross — het kruis blijft de wordmark-merk-indicator
- * voor het hele app-icoon en moet niet verwarrend op tab-niveau opduiken.
+ * Social-tab — Andreas-kruis als brand-glyph. Erfde z'n plek van de
+ * vorige Gered-tab, voelt nog steeds passend voor de cluster-tab waar
+ * vrienden + planning samenkomen.
  */
 export function TabIconSocial({ color }: IconProps) {
   return (
     <View style={styles.box}>
-      <View
-        style={[
-          styles.socialDot,
-          { backgroundColor: color, left: 3, top: 4 },
-        ]}
-      />
-      <View
-        style={[
-          styles.socialDot,
-          { backgroundColor: color, right: 3, top: 8 },
-        ]}
-      />
+      <Cross size={18} thickness={STROKE} color={color} />
     </View>
   );
 }
