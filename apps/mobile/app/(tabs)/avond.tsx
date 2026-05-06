@@ -159,6 +159,8 @@ export default function Avond() {
   const qc = useQueryClient();
   const [refreshing, setRefreshing] = useState(false);
   const onRefresh = useCallback(async () => {
+    // eslint-disable-next-line no-console
+    console.log('[avond] pull-to-refresh triggered');
     setRefreshing(true);
     try {
       await qc.invalidateQueries({ queryKey: ['events'] });

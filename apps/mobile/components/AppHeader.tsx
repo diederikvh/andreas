@@ -42,12 +42,20 @@ export function AppHeader({ children, solid = false }: AppHeaderProps = {}) {
   const roles = useRoles();
   const insets = useSafeAreaInsets();
   return (
-    <View style={[styles.wrap, { paddingTop: insets.top }]}>
+    // pointerEvents="box-none" laat de header zelf geen touches vangen,
+    // zodat scroll-gestures (en pull-to-refresh!) op de scrollview
+    // eronder blijven werken — zelfs als je vanaf de top van het
+    // scherm trekt door de header heen. Alleen de Pressable kinderen
+    // (logo, DnSwitch, children) blijven tappable.
+    <View
+      style={[styles.wrap, { paddingTop: insets.top }]}
+      pointerEvents="box-none"
+    >
       {solid ? (
         // Solid header: blur + tint, géén fade — harde rand onderaan.
         // Past bij schermen die een sticky-controls strip nodig
         // hebben (Agenda chip-row, Kaart map-view).
-        <View style={StyleSheet.absoluteFill}>
+        <View style={StyleSheet.absoluteFill} pointerEvents="none">
           <BlurView
             intensity={40}
             tint={mode === 'nacht' ? 'dark' : 'light'}
@@ -71,6 +79,7 @@ export function AppHeader({ children, solid = false }: AppHeaderProps = {}) {
         // doorscrollt.
         <MaskedView
           style={StyleSheet.absoluteFill}
+          pointerEvents="none"
           maskElement={
             <LinearGradient
               colors={['#000', '#000', 'transparent']}
@@ -86,8 +95,8 @@ export function AppHeader({ children, solid = false }: AppHeaderProps = {}) {
           />
         </MaskedView>
       )}
-      <View style={styles.header}>
-        <View style={styles.logoLockup}>
+      <View style={styles.header} pointerEvents="box-none">
+        <View style={styles.logoLockup} pointerEvents="none">
           <Text style={[styles.wordmark, { color: roles.fg }]}>Andreas</Text>
           <View style={styles.logoCross}>
             <Cross size={16} thickness={4} color={roles.accent} />
