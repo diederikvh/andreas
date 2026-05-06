@@ -2,13 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useScrollToTop } from '@react-navigation/native';
 import { router } from 'expo-router';
 import { useMemo, useRef } from 'react';
-import {
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -24,14 +18,12 @@ import {
   groupEventsByDay,
 } from '@/lib/eventDisplay';
 import { useMySaves } from '@/lib/queries';
-import { useMode, useRoles } from '@/store/mode';
+import { useRoles } from '@/store/mode';
 import { fontFamily, palette } from '@/theme/tokens';
 
 export default function Gered() {
-  const mode = useMode();
   const roles = useRoles();
   const insets = useSafeAreaInsets();
-  const isNacht = mode === 'nacht';
   const scrollRef = useRef<ScrollView>(null);
   useScrollToTop(scrollRef);
 
@@ -69,49 +61,16 @@ export default function Gered() {
   const topInset = insets.top + HEADER_HEIGHT;
   const bottomInset = insets.bottom + 96;
 
-  if (!authed) {
-    return (
-      <View style={[styles.root, { backgroundColor: roles.bg }]}>
-        <View
-          style={[
-            styles.emptyCenter,
-            { paddingTop: topInset, paddingBottom: bottomInset },
-          ]}
-        >
-          <Ionicons
-            name="log-in-outline"
-            size={48}
-            color={roles.fgMuted}
-          />
-          <Text style={[styles.emptyTitle, { color: roles.fg }]}>
-            Log in om je events te zien.
-          </Text>
-          <Text style={[styles.emptySub, { color: roles.fgMuted }]}>
-            Je persoonlijke agenda van favorieten.
-          </Text>
-          <Pressable
-            onPress={() => router.push('/jij')}
-            style={[
-              styles.emptyCta,
-              { backgroundColor: isNacht ? palette.acid : palette.red },
-            ]}
-          >
-            <Text
-              style={[
-                styles.ctaText,
-                { color: isNacht ? palette.noir : palette.paper3 },
-              ]}
-            >
-              Inloggen
-            </Text>
-          </Pressable>
-        </View>
-        <AppHeader />
-      </View>
-    );
-  }
+  // Eén empty-state voor twee situaties: niet-ingelogd én ingelogd
+  // zonder saves. De inlog-prompt staat niet meer voorop — pas wanneer
+  // je op een hartje tikt kom je vanzelf bij de Jij-tab terecht. Dat
+  // voelt minder confronterend dan een schermvullende inlog-CTA voordat
+  // je überhaupt iets hebt geprobeerd.
+  const hasNoSaves =
+    (!authed && !isLoading) ||
+    (authed && !isLoading && !error && (saves?.length ?? 0) === 0);
 
-  if (!isLoading && !error && saves && saves.length === 0) {
+  if (hasNoSaves) {
     return (
       <View style={[styles.root, { backgroundColor: roles.bg }]}>
         <View
@@ -129,7 +88,9 @@ export default function Gered() {
             Nog niks opgeslagen.
           </Text>
           <Text style={[styles.emptySub, { color: roles.fgMuted }]}>
-            Tik op een hart bij een event om hem hier op te slaan.
+            Hier komt je planning te staan — alle feestjes, voorstellingen
+            en tentoonstellingen waar je naartoe wil. Tik bij een event
+            op het hartje om hem op te slaan.
           </Text>
         </View>
         <AppHeader />
@@ -150,9 +111,11 @@ export default function Gered() {
       >
         <View style={styles.head}>
           <Text style={[styles.headKicker, { color: roles.accent }]}>
-            Zin in
+            Planning
           </Text>
-          <Text style={[styles.headTitle, { color: roles.fg }]}>Op uit.</Text>
+          <Text style={[styles.headTitle, { color: roles.fg }]}>
+            Wat je gaat doen.
+          </Text>
         </View>
 
         {isLoading && (
