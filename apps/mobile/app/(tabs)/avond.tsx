@@ -23,13 +23,16 @@ import { SpinningCross } from '@/components/SpinningCross';
 import type { ApiEvent } from '@/lib/api';
 import {
   CATEGORY_TICK,
+  DOW_NL_FULL,
   DOW_NL_UPPER,
+  MONTHS_NL_FULL,
+  TIME_BLOCKS,
   effectiveEndsAtMs,
   expandToOccurrenceRows,
   formatTime,
-  isNachtHour,
+  getTimeBlock,
   type OccurrenceRow,
-  socialWindow,
+  type TimeBlock,
   useFocusedNow,
   useNowMinute,
 } from '@/lib/eventDisplay';
@@ -51,83 +54,15 @@ function formatMetaForRow(row: OccurrenceRow): string {
 }
 
 
-const DOW_NL_LOWER = ['zo', 'ma', 'di', 'wo', 'do', 'vr', 'za'] as const;
-const MONTHS_NL_LONG = [
-  'jan', 'feb', 'mrt', 'apr', 'mei', 'jun',
-  'jul', 'aug', 'sep', 'okt', 'nov', 'dec',
-] as const;
-
-type Hero = {
-  kicker: string;
-  titleBefore: string;
-  titleEm: string;
-  titleAfter: string;
-};
-
-/**
- * Hero-copy hangt af van de mode (vanavond vs overdag), de grootte
- * van de gecureerde lijst, en of we naar morgen zijn verschoven
- * (alleen in dag-mode na 17:00).
- */
-function buildHero(
-  mode: 'nacht' | 'dag',
-  count: number,
-  refDate: Date,
-  shifted: boolean
-): Hero {
-  const dow = DOW_NL_LOWER[refDate.getDay()];
-  const day = refDate.getDate();
-  const month = MONTHS_NL_LONG[refDate.getMonth()];
-  const datePart = `${dow} ${day} ${month}`;
-
-  if (mode === 'nacht') {
-    const kicker = `Vanavond · ${datePart}`;
-    if (count === 0) {
-      return { kicker, titleBefore: '', titleEm: 'Niets', titleAfter: '\nvoor vanavond.' };
-    }
-    if (count === 1) {
-      return {
-        kicker,
-        titleBefore: 'Eén ding die\n',
-        titleEm: 'vanavond',
-        titleAfter: ' telt.',
-      };
-    }
-    return {
-      kicker,
-      titleBefore: `${count} dingen\ndie `,
-      titleEm: 'vanavond',
-      titleAfter: ' tellen.',
-    };
-  }
-
-  // Dag-mode: bij shifted (na 17:00) lopen we naar morgen.
-  const dayLabel = shifted ? 'Morgen' : 'Vandaag';
-  const planEm = shifted ? 'morgen' : 'overdag';
-  const kicker = `${dayLabel} · ${datePart}`;
-  if (count === 0) {
-    return {
-      kicker,
-      titleBefore: '',
-      titleEm: 'Niets',
-      titleAfter: shifted ? '\nvoor morgen overdag.' : '\nvoor overdag.',
-    };
-  }
-  if (count === 1) {
-    return {
-      kicker,
-      titleBefore: 'Eén ding om\n',
-      titleEm: planEm,
-      titleAfter: ' te plannen.',
-    };
-  }
-  return {
-    kicker,
-    titleBefore: `${count} dingen om\n`,
-    titleEm: planEm,
-    titleAfter: ' te plannen.',
-  };
-}
+// Volgorde van de cat-secties op Vandaag — zelfde als de Agenda-
+// filter chips. Categorieën zonder events vandaag worden geskipt.
+const CATEGORIES_ORDER: ApiEvent['category'][] = [
+  'Muziek',
+  'Theater',
+  'Kunst',
+  'Literatuur',
+  'Film',
+];
 
 export default function Avond() {
   const roles = useRoles();
@@ -150,15 +85,33 @@ export default function Avond() {
   //   net gepasseerd is automatisch weg, zonder een refetch te triggeren.
   const focusedNow = useFocusedNow();
   const now = useNowMinute();
-  const window = useMemo(() => socialWindow(mode, focusedNow), [mode, focusedNow]);
+  // Vandaag = 00:00 vandaag → 00:00 morgen (mode-vrij).
+  const todayWindow = useMemo(() => {
+    const d = new Date(focusedNow);
+    d.setHours(0, 0, 0, 0);
+    const from = new Date(d);
+    const to = new Date(d);
+    to.setDate(to.getDate() + 1);
+    return { from: from.toISOString(), to: to.toISOString(), refDate: from };
+  }, [focusedNow]);
   const { data: events, isLoading, error } = useEvents({
-    from: window.from,
-    to: window.to,
+    from: todayWindow.from,
+    to: todayWindow.to,
   });
 
-  // Friends-only filter — toggle via header-chip, URL-synced.
-  const params = useLocalSearchParams<{ vr?: string }>();
+  // URL-synced filters: vrienden + tijd-blokken (multi).
+  const params = useLocalSearchParams<{ vr?: string; tb?: string }>();
   const onlyFriends = params.vr === '1';
+  const TB_IDS = TIME_BLOCKS.map((b) => b.id) as string[];
+  const activeBlocks = useMemo<TimeBlock[]>(
+    () =>
+      (params.tb ?? '')
+        .split(',')
+        .map((t) => t.trim())
+        .filter((t): t is TimeBlock => TB_IDS.includes(t)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [params.tb]
+  );
   const { data: session } = useSession();
   const { data: friends } = useFriends({
     enabled: Boolean(session?.user?.id),
@@ -166,6 +119,14 @@ export default function Avond() {
   const showFriendsChip = (friends?.length ?? 0) > 0;
   const onToggleFriends = () =>
     router.setParams({ vr: onlyFriends ? undefined : '1' });
+  const onToggleBlock = (b: TimeBlock) => {
+    const next = activeBlocks.includes(b)
+      ? activeBlocks.filter((x) => x !== b)
+      : [...activeBlocks, b];
+    router.setParams({
+      tb: next.length > 0 ? next.join(',') : undefined,
+    });
+  };
 
   // Pull-to-refresh: invalideert events-cache zodat de huidige
   // window-query opnieuw fetched. Voor wanneer de gebruiker denkt
@@ -193,32 +154,50 @@ export default function Avond() {
   // beide avonden. Exhibitions filteren we eruit — die staan los in
   // de "Doorlopend te zien"-strook (alleen dag-mode); musea zijn
   // 's nachts toch dicht.
+  // Hoofd-lijst: vandaag's events (geen exhibitions), gefilterd op
+  // tijd-blokken en vrienden. Mode speelt geen rol meer — die is
+  // puur stilistisch.
   const filtered = useMemo<OccurrenceRow[]>(() => {
     if (!events) return [];
     return expandToOccurrenceRows(events).filter((row) => {
       if (row.event.kind === 'exhibition') return false;
       if (effectiveEndsAtMs(row.occurrence) < now) return false;
-      const hour = new Date(row.occurrence.startsAt).getHours();
-      const inWindow =
-        mode === 'nacht' ? isNachtHour(hour) : !isNachtHour(hour);
-      if (!inWindow) return false;
+      if (activeBlocks.length > 0) {
+        const block = getTimeBlock(
+          new Date(row.occurrence.startsAt).getHours()
+        );
+        if (!activeBlocks.includes(block)) return false;
+      }
       if (onlyFriends && (row.event.friendsSaved?.length ?? 0) === 0) {
         return false;
       }
       return true;
     });
-  }, [events, mode, now, onlyFriends]);
+  }, [events, now, activeBlocks, onlyFriends]);
 
-  // Lopende tentoonstellingen — alleen in dag-mode. Filter direct uit
-  // events zodat de strook ook gevuld is wanneer de exhibition's
-  // startsAt eigenlijk in 't verleden ligt (wat normaal is voor een
-  // tentoonstelling die al loopt).
+  // Totaal aantal events vandaag — voor de hero-tekst, NIET filter-
+  // afhankelijk. Geeft de gebruiker context wat de filter doet
+  // ("12 dingen vandaag" → na filter "nu 3 zichtbaar").
+  const totalToday = useMemo<number>(() => {
+    if (!events) return 0;
+    return expandToOccurrenceRows(events).filter((row) => {
+      if (row.event.kind === 'exhibition') return false;
+      if (effectiveEndsAtMs(row.occurrence) < now) return false;
+      return true;
+    }).length;
+  }, [events, now]);
+
+  // Lopende tentoonstellingen — altijd zichtbaar als losse strook,
+  // ongeacht mode of filter (Diederik: "doorlopend te zien blijft
+  // altijd").
   const runningExhibitions = useMemo(() => {
-    if (mode === 'nacht' || !events) return [];
+    if (!events) return [];
     return events.filter((e) => e.kind === 'exhibition');
-  }, [events, mode]);
+  }, [events]);
 
-  // Hoofd-artikel: featured event uit de split. Geen featured? Eerste rij.
+  // Hoofd-artikel: featured event uit de gefilterde lijst. Geen
+  // featured? Eerste rij. Lead-event wordt geskipt in de cat-secties
+  // zodat-ie niet dubbel verschijnt.
   const lead = useMemo(() => {
     if (filtered.length === 0) return undefined;
     const featuredRows = filtered.filter((r) => r.event.featured);
@@ -226,32 +205,52 @@ export default function Avond() {
     return featuredRows[Math.floor(Math.random() * featuredRows.length)];
   }, [filtered]);
 
-  // Rest: alle andere occurrence-rows. Skippen we de lead's row, plus
-  // dedupliceer per event-id zodat het lead-event niet ook nog
-  // los onder verschijnt (het kan andere occurrences in het venster
-  // hebben — maar de lead toont dezelfde "show" al).
-  const rest = useMemo(() => {
-    if (!lead) return filtered;
-    const seenEvents = new Set<string>([lead.event.id]);
-    const out: OccurrenceRow[] = [];
+  // Cat-secties: groepeer rest per categorie (zelfde volgorde als
+  // CATEGORIES_ORDER). Featured-events bovenaan in elke sublijst, dan
+  // gewone rows op startsAt; eerste rij krijgt een ster.
+  const restByCategory = useMemo(() => {
+    const seenEvents = new Set<string>(lead ? [lead.event.id] : []);
+    const dedupedRest: OccurrenceRow[] = [];
     for (const row of filtered) {
       if (seenEvents.has(row.event.id)) continue;
       seenEvents.add(row.event.id);
-      out.push(row);
+      dedupedRest.push(row);
     }
-    return out;
+    const map = new Map<ApiEvent['category'], OccurrenceRow[]>();
+    for (const row of dedupedRest) {
+      const arr = map.get(row.event.category) ?? [];
+      arr.push(row);
+      map.set(row.event.category, arr);
+    }
+    for (const arr of map.values()) {
+      arr.sort((a, b) => {
+        if (a.event.featured !== b.event.featured) {
+          return a.event.featured ? -1 : 1;
+        }
+        return (
+          new Date(a.occurrence.startsAt).getTime() -
+          new Date(b.occurrence.startsAt).getTime()
+        );
+      });
+    }
+    return CATEGORIES_ORDER.flatMap((category) => {
+      const items = map.get(category);
+      return items && items.length > 0 ? [{ category, items }] : [];
+    });
   }, [filtered, lead]);
 
-  const followedRest = useMemo(
-    () => rest.filter((r) => r.event.venueFollowed),
-    [rest]
-  );
-  const otherRest = useMemo(
-    () => rest.filter((r) => !r.event.venueFollowed),
-    [rest]
-  );
-
-  const hero = buildHero(mode, filtered.length, window.refDate, window.shifted);
+  // Hero-tekst: "woensdag 6 mei" + "X dingen vandaag op de agenda".
+  // Niet filter-afhankelijk — toont totaal voor de dag.
+  const heroDateLine = useMemo(() => {
+    const d = todayWindow.refDate;
+    return `${DOW_NL_FULL[d.getDay()].toLowerCase()} ${d.getDate()} ${MONTHS_NL_FULL[d.getMonth()]}`;
+  }, [todayWindow.refDate]);
+  const heroCountLine =
+    totalToday === 0
+      ? 'Niets vandaag op de agenda.'
+      : totalToday === 1
+        ? '1 ding vandaag op de agenda.'
+        : `${totalToday} dingen vandaag op de agenda.`;
 
   return (
     <View style={[styles.root, { backgroundColor: roles.bg }]}>
@@ -281,26 +280,23 @@ export default function Avond() {
         }
       >
         <View style={styles.hero}>
-          <Text style={[styles.heroKicker, { color: roles.accent }]}>
-            {hero.kicker}
+          <Text style={[styles.heroDate, { color: roles.accent }]}>
+            {heroDateLine}
           </Text>
-          <Text style={[styles.heroTitle, { color: roles.fg }]}>
-            {hero.titleBefore}
-            <Text style={[styles.heroEm, { color: roles.accent }]}>
-              {hero.titleEm}
-            </Text>
-            {hero.titleAfter}
+          <Text style={[styles.heroCount, { color: roles.fg }]}>
+            {heroCountLine}
           </Text>
         </View>
 
-        {/* Cat-tabs zijn shortcuts naar de Agenda met categorie voorgefilterd.
-            Avond filtert nooit op categorie zelf — die rol heeft Agenda.
-            De vrienden-toggle staat als eerste chip wanneer je vrienden
-            hebt — filtert clientside op events met friendsSaved. */}
-        <CategoryTabs
+        {/* Filter-chips: vrienden-toggle (alleen als je vrienden hebt) +
+            vier tijd-blok-chips. Mode-onafhankelijk — dag/nacht is
+            puur stilistisch. */}
+        <FilterChips
           onlyFriends={onlyFriends}
           onToggleFriends={onToggleFriends}
           showFriendsChip={showFriendsChip}
+          activeBlocks={activeBlocks}
+          onToggleBlock={onToggleBlock}
         />
 
         {/* Hoofd-artikel: eerste featured event als grote kaart bovenaan.
@@ -337,46 +333,29 @@ export default function Avond() {
             {filtered.length === 0 && events && (
               <ListState
                 text={
-                  mode === 'nacht'
-                    ? 'Vanavond niets gepland.'
-                    : window.shifted
-                      ? 'Morgen overdag niets gepland.'
-                      : 'Overdag niets gepland.'
+                  activeBlocks.length > 0 || onlyFriends
+                    ? 'Geen events met deze filter.'
+                    : 'Vandaag niets op de agenda.'
                 }
               />
             )}
-            {followedRest.length > 0 && (
-              <>
+            {restByCategory.map(({ category, items }) => (
+              <View key={category}>
                 <SectionTitle
-                  title="Venues die je volgt"
-                  meta="Alles →"
-                  onMetaPress={() => router.push('/agenda')}
-                />
-                {followedRest.map((row) => (
-                  <ApiEventRow key={row.id} row={row} />
-                ))}
-              </>
-            )}
-            {otherRest.length > 0 && (
-              <>
-                <SectionTitle
-                  title={
-                    followedRest.length > 0
-                      ? 'Ook interessant'
-                      : mode === 'nacht'
-                        ? 'Vanavond'
-                        : window.shifted
-                          ? 'Morgen overdag'
-                          : 'Overdag'
+                  title={category}
+                  meta="Meer →"
+                  onMetaPress={() =>
+                    router.push({
+                      pathname: '/agenda',
+                      params: { cat: category as string },
+                    })
                   }
-                  meta="Alles →"
-                  onMetaPress={() => router.push('/agenda')}
                 />
-                {otherRest.map((row) => (
-                  <ApiEventRow key={row.id} row={row} />
+                {items.map((row, i) => (
+                  <ApiEventRow key={row.id} row={row} featured={i === 0} />
                 ))}
-              </>
-            )}
+              </View>
+            ))}
           </Animated.View>
         )}
       </ScrollView>
@@ -385,27 +364,22 @@ export default function Avond() {
   );
 }
 
-function CategoryTabs({
-  onlyFriends = false,
+function FilterChips({
+  onlyFriends,
   onToggleFriends,
-  showFriendsChip = false,
+  showFriendsChip,
+  activeBlocks,
+  onToggleBlock,
 }: {
-  onlyFriends?: boolean;
-  onToggleFriends?: () => void;
-  showFriendsChip?: boolean;
+  onlyFriends: boolean;
+  onToggleFriends: () => void;
+  showFriendsChip: boolean;
+  activeBlocks: TimeBlock[];
+  onToggleBlock: (b: TimeBlock) => void;
 }) {
   const mode = useMode();
   const roles = useRoles();
   const isNacht = mode === 'nacht';
-  const homeLabel = isNacht ? 'Vanavond' : 'Overdag';
-  const cats: { label: string; cat: ApiEvent['category'] | null }[] = [
-    { label: homeLabel, cat: null },
-    { label: 'Muziek', cat: 'Muziek' },
-    { label: 'Theater', cat: 'Theater' },
-    { label: 'Kunst', cat: 'Kunst' },
-    { label: 'Literatuur', cat: 'Literatuur' },
-    { label: 'Film', cat: 'Film' },
-  ];
   return (
     <ScrollView
       horizontal
@@ -441,23 +415,12 @@ function CategoryTabs({
           />
         </Pressable>
       )}
-      {cats.map(({ label, cat }) => {
-        // Eerste chip is de "current view"-indicator: Vanavond/Overdag
-        // staat altijd actief op Avond. Tappen doet niets — andere chips
-        // springen naar Agenda met de filter voorgeselecteerd.
-        const active = cat === null;
+      {TIME_BLOCKS.map(({ id, label }) => {
+        const active = activeBlocks.includes(id);
         return (
           <Pressable
-            key={label}
-            onPress={
-              active
-                ? undefined
-                : () =>
-                    router.push({
-                      pathname: '/agenda',
-                      params: { cat: cat as string },
-                    })
-            }
+            key={id}
+            onPress={() => onToggleBlock(id)}
             style={[
               styles.catTab,
               {
@@ -502,8 +465,14 @@ function eventPathFor(row: OccurrenceRow): string {
   return `/event/${row.event.id}?o=${row.occurrence.id}`;
 }
 
-function ApiEventRow({ row }: { row: OccurrenceRow }) {
-  const { event, occurrence } = row;
+function ApiEventRow({
+  row,
+  featured = false,
+}: {
+  row: OccurrenceRow;
+  featured?: boolean;
+}) {
+  const { event } = row;
   const friends = event.friendsSaved?.map((f) => ({
     name: f.name,
     avatar: f.avatarUrl,
@@ -517,6 +486,7 @@ function ApiEventRow({ row }: { row: OccurrenceRow }) {
       seriesLabel={event.series?.[0]?.name}
       genreLabel={event.genres?.[0]}
       friends={friends && friends.length > 0 ? friends : undefined}
+      featured={featured}
       tick={CATEGORY_TICK[event.category]}
       onPress={() => router.push(eventPathFor(row) as never)}
     />
@@ -674,24 +644,20 @@ function KaartBanner() {
 const styles = StyleSheet.create({
   root: { flex: 1 },
 
-  // Hero
+  // Hero — datum boven, telling daaronder. Geen mode-tekst meer.
   hero: { paddingHorizontal: 18, paddingTop: 14, paddingBottom: 12 },
-  heroKicker: {
+  heroDate: {
     fontFamily: fontFamily.mono,
     fontSize: 10,
     letterSpacing: 1.4,
     textTransform: 'uppercase',
   },
-  heroTitle: {
+  heroCount: {
     fontFamily: fontFamily.display,
-    fontSize: 30,
-    lineHeight: 30 * 0.95,
-    letterSpacing: -1,
+    fontSize: 26,
+    lineHeight: 26 * 1,
+    letterSpacing: -0.8,
     marginTop: 6,
-  },
-  heroEm: {
-    fontFamily: fontFamily.body,
-    fontStyle: 'italic',
   },
 
   // Featured — same horizontal inset as the rest of the feed

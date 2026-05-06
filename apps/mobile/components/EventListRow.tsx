@@ -1,3 +1,4 @@
+import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
@@ -42,6 +43,10 @@ type Props = {
       seriesLabel — neutrale `bgTag` mono uppercase. */
   genreLabel?: string;
   friends?: Friend[];
+  /** Markeert dit event als de "lead" van z'n sublijst — toont een
+      kleine ster vóór de titel. Gebruikt op Vandaag waar elke
+      categorie-sublijst z'n eigen uitlicht-event krijgt. */
+  featured?: boolean;
   /** Side accent stripe colour. */
   tick: BadgeTone;
   onPress?: () => void;
@@ -64,6 +69,7 @@ export function EventListRow({
   seriesLabel,
   genreLabel,
   friends,
+  featured = false,
   tick,
   onPress,
 }: Props) {
@@ -83,12 +89,22 @@ export function EventListRow({
           contentFit="cover"
         />
         <View style={styles.rowBody}>
-          <Text
-            numberOfLines={2}
-            style={[styles.rowTitle, { color: roles.fg }]}
-          >
-            {title}
-          </Text>
+          <View style={styles.titleLine}>
+            {featured && (
+              <Ionicons
+                name="star"
+                size={12}
+                color={tickColor}
+                style={styles.featuredStar}
+              />
+            )}
+            <Text
+              numberOfLines={2}
+              style={[styles.rowTitle, { color: roles.fg, flex: 1 }]}
+            >
+              {title}
+            </Text>
+          </View>
           <Text
             numberOfLines={1}
             style={[styles.rowVenue, { color: roles.fgMuted }]}
@@ -249,6 +265,14 @@ const styles = StyleSheet.create({
     borderRadius: 10,
   },
   rowBody: { flex: 1, minWidth: 0, gap: 4 },
+  titleLine: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 4,
+  },
+  featuredStar: {
+    marginTop: 3,
+  },
   rowTitle: {
     fontFamily: fontFamily.bold,
     fontSize: 15,
