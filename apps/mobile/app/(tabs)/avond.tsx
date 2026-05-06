@@ -4,11 +4,16 @@ import { Image } from 'expo-image';
 import { router } from 'expo-router';
 import { useCallback, useMemo, useRef, useState } from 'react';
 import {
+  Alert,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
   Pressable,
   RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import { useQueryClient } from '@tanstack/react-query';
@@ -16,6 +21,7 @@ import Animated, { FadeIn } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppHeader, HEADER_HEIGHT } from '@/components/AppHeader';
+import { Cross } from '@/components/Cross';
 import { EventListRow } from '@/components/EventListRow';
 import { RefreshBanner } from '@/components/RefreshBanner';
 import { RunningExhibitions } from '@/components/RunningExhibitions';
@@ -36,10 +42,17 @@ import {
   useFocusedNow,
   useNowMinute,
 } from '@/lib/eventDisplay';
-import { useEvents, useFriends } from '@/lib/queries';
+import { useEventGenres, useEvents, useFriends } from '@/lib/queries';
 import { useSession } from '@/lib/authClient';
 import { FEED } from '@/mocks/feed';
 import { useMode, useRoles } from '@/store/mode';
+import {
+  isSavedVandaagSearchActive,
+  type SavedVandaagSearch,
+  useAddSavedVandaagSearch,
+  useRemoveSavedVandaagSearch,
+  useSavedVandaagSearches,
+} from '@/store/savedVandaagSearches';
 import { useVandaagFilters } from '@/store/vandaagFilters';
 import { fontFamily, palette } from '@/theme/tokens';
 
@@ -121,12 +134,21 @@ export default function Avond() {
     to: todayWindow.to,
   });
 
-  // Filter-keuze (vrienden + tijd-blokken) wordt persistent bewaard
-  // tussen sessies via een Zustand-store. URL-state was onnodig — de
-  // Vandaag-tab is geen deeplink-target voor filters.
+  // Filter-keuze (zoek + vrienden + favorieten + tijd-blokken) wordt
+  // persistent bewaard tussen sessies via een Zustand-store. URL-state
+  // was onnodig — de Vandaag-tab is geen deeplink-target voor filters.
+  const query = useVandaagFilters((s) => s.query);
   const onlyFriends = useVandaagFilters((s) => s.onlyFriends);
+  const onlyFavorites = useVandaagFilters((s) => s.onlyFavorites);
   const activeBlocks = useVandaagFilters((s) => s.activeBlocks);
+  const activeCats = useVandaagFilters((s) => s.activeCats);
+  const activeGenres = useVandaagFilters((s) => s.activeGenres);
+  const setQuery = useVandaagFilters((s) => s.setQuery);
   const setOnlyFriends = useVandaagFilters((s) => s.setOnlyFriends);
+  const setOnlyFavorites = useVandaagFilters((s) => s.setOnlyFavorites);
+  const setActiveBlocks = useVandaagFilters((s) => s.setActiveBlocks);
+  const setActiveCats = useVandaagFilters((s) => s.setActiveCats);
+  const setActiveGenres = useVandaagFilters((s) => s.setActiveGenres);
   const toggleBlock = useVandaagFilters((s) => s.toggleBlock);
   const { data: session } = useSession();
   const { data: friends } = useFriends({
@@ -134,6 +156,7 @@ export default function Avond() {
   });
   const showFriendsChip = (friends?.length ?? 0) > 0;
   const onToggleFriends = () => setOnlyFriends(!onlyFriends);
+  const onToggleFavorites = () => setOnlyFavorites(!onlyFavorites);
   const onToggleBlock = (b: TimeBlock) => toggleBlock(b);
 
   // Pull-to-refresh: invalideert events-cache zodat de huidige
@@ -163,25 +186,55 @@ export default function Avond() {
   // de "Doorlopend te zien"-strook (alleen dag-mode); musea zijn
   // 's nachts toch dicht.
   // Hoofd-lijst: vandaag's events (geen exhibitions), gefilterd op
-  // tijd-blokken en vrienden. Mode speelt geen rol meer — die is
-  // puur stilistisch.
+  // tijd-blokken, vrienden en favoriete venues. Mode speelt geen rol
+  // meer — die is puur stilistisch.
   const filtered = useMemo<OccurrenceRow[]>(() => {
     if (!events) return [];
+    const needle = query.trim().toLowerCase();
     return expandToOccurrenceRows(events).filter((row) => {
-      if (row.event.kind === 'exhibition') return false;
+      const e = row.event;
+      if (e.kind === 'exhibition') return false;
       if (effectiveEndsAtMs(row.occurrence) < now) return false;
+      if (activeCats.length > 0 && !activeCats.includes(e.category)) {
+        return false;
+      }
+      if (activeGenres.length > 0) {
+        const evGenres = e.genres ?? [];
+        if (!evGenres.some((g) => activeGenres.includes(g))) return false;
+      }
       if (activeBlocks.length > 0) {
         const block = getTimeBlock(
           new Date(row.occurrence.startsAt).getHours()
         );
         if (!activeBlocks.includes(block)) return false;
       }
-      if (onlyFriends && (row.event.friendsSaved?.length ?? 0) === 0) {
-        return false;
+      if (onlyFriends && (e.friendsSaved?.length ?? 0) === 0) return false;
+      if (onlyFavorites && !e.venueFollowed) return false;
+      if (needle.length > 0) {
+        const inTitle = e.title.toLowerCase().includes(needle);
+        const inVenue = e.venue.name.toLowerCase().includes(needle);
+        const inDesc = (e.description ?? '').toLowerCase().includes(needle);
+        if (!inTitle && !inVenue && !inDesc) return false;
       }
       return true;
     });
-  }, [events, now, activeBlocks, onlyFriends]);
+  }, [
+    events,
+    now,
+    activeBlocks,
+    activeCats,
+    activeGenres,
+    onlyFriends,
+    onlyFavorites,
+    query,
+  ]);
+
+  // Toon de favorieten-chip alleen als de gebruiker minstens één venue
+  // volgt — anders filter je naar 0 events en is 't onbegrijpelijk.
+  const showFavoritesChip = useMemo(
+    () => Boolean(events?.some((e) => e.venueFollowed)),
+    [events]
+  );
 
   // Lopende tentoonstellingen — altijd zichtbaar als losse strook,
   // ongeacht mode of filter (Diederik: "doorlopend te zien blijft
@@ -213,11 +266,15 @@ export default function Avond() {
     return featuredRows[Math.floor(Math.random() * featuredRows.length)];
   }, [allToday]);
 
-  // Cat-secties: groepeer rest per categorie (zelfde volgorde als
+  // Cat-secties: groepeer events per categorie (zelfde volgorde als
   // CATEGORIES_ORDER). Featured-events bovenaan in elke sublijst, dan
-  // gewone rows op startsAt; eerste rij krijgt een ster.
+  // gewone rows op startsAt; eerste rij krijgt een ster. Het lead-
+  // event komt hier ook in voor — Diederik wil dat 'ie ook in de lijst
+  // staat zodat je 'm niet over het hoofd ziet als je voorbij de hero
+  // scrollt. Wel deduplicaten op event-id zodat hetzelfde event met
+  // meerdere occurrences vandaag niet meer dan één rij krijgt.
   const restByCategory = useMemo(() => {
-    const seenEvents = new Set<string>(lead ? [lead.event.id] : []);
+    const seenEvents = new Set<string>();
     const dedupedRest: OccurrenceRow[] = [];
     for (const row of filtered) {
       if (seenEvents.has(row.event.id)) continue;
@@ -242,23 +299,24 @@ export default function Avond() {
       });
     }
     return CATEGORIES_ORDER.flatMap((category) => {
+      // Wanneer er een categorie-filter actief is, alleen die secties
+      // tonen — anders filter-keuze niet zichtbaar.
+      if (activeCats.length > 0 && !activeCats.includes(category)) return [];
       const items = map.get(category);
       return items && items.length > 0 ? [{ category, items }] : [];
     });
-  }, [filtered, lead]);
+  }, [filtered, activeCats]);
 
-  // Hero-tekst: "woensdag 6 mei" + "X dingen vandaag op de agenda".
-  // Niet filter-afhankelijk — toont totaal voor de dag.
-  const heroDateLine = useMemo(() => {
+  // Hero-tekst: "{dag} {datum} op de agenda" met de datum in
+  // accent-kleur. Niet filter-afhankelijk; geen count meer in deze
+  // copy (die zat nu boven de feature en voelde dubbelop).
+  const heroParts = useMemo(() => {
     const d = todayWindow.refDate;
-    return `${DOW_NL_FULL[d.getDay()].toLowerCase()} ${d.getDate()} ${MONTHS_NL_FULL[d.getMonth()]}`;
+    return {
+      day: DOW_NL_FULL[d.getDay()].toLowerCase(),
+      date: `${d.getDate()} ${MONTHS_NL_FULL[d.getMonth()]}`,
+    };
   }, [todayWindow.refDate]);
-  const heroCountLine =
-    allToday.length === 0
-      ? 'Niets vandaag op de agenda.'
-      : allToday.length === 1
-        ? '1 ding vandaag op de agenda.'
-        : `${allToday.length} dingen vandaag op de agenda.`;
 
   return (
     <View style={[styles.root, { backgroundColor: roles.bg }]}>
@@ -299,6 +357,7 @@ export default function Avond() {
               title={lead.event.title}
               meta={formatMetaForRow(lead)}
               photo={lead.event.imageUrl ?? data.featured.photo}
+              category={lead.event.category}
             />
           </Pressable>
         )}
@@ -310,27 +369,40 @@ export default function Avond() {
             losse strook, niet beïnvloed door de tijd-blok filter. */}
         <RunningExhibitions events={runningExhibitions} />
 
-        {/* Hero — datum + totaal-telling, zit als header net boven de
-            filter-labels en de cat-lijsten. NIET filter-afhankelijk;
-            toont totaal voor de hele dag. */}
+        {/* Hero — divider + "{dag} {datum}" met datum in primair
+            (accent). Eén regel, kort. Niet filter-afhankelijk. */}
+        <View style={[styles.heroDivider, { backgroundColor: roles.bgChip }]} />
         <View style={styles.hero}>
-          <Text style={[styles.heroDate, { color: roles.accent }]}>
-            {heroDateLine}
-          </Text>
-          <Text style={[styles.heroCount, { color: roles.fg }]}>
-            {heroCountLine}
+          <Text
+            numberOfLines={1}
+            style={[styles.heroLine, { color: roles.fg }]}
+          >
+            {heroParts.day}{' '}
+            <Text style={{ color: roles.accent }}>{heroParts.date}</Text>
           </Text>
         </View>
 
-        {/* Filter-chips zitten direct boven de cat-secties zodat het
-            visueel duidelijk is dat ze alleen op die lijsten werken.
-            Vrienden-toggle (alleen bij >=1 vriend) + tijd-blokken. */}
-        <FilterChips
+        {/* Filter-rij zit direct boven de cat-secties — zelfde patroon
+            als op Agenda voor consistente leercurve. Search + filter-
+            knop + vrienden + favorieten + saved-search chips. */}
+        <AvondChipRow
+          query={query}
+          onQuery={setQuery}
           onlyFriends={onlyFriends}
           onToggleFriends={onToggleFriends}
           showFriendsChip={showFriendsChip}
+          onlyFavorites={onlyFavorites}
+          onToggleFavorites={onToggleFavorites}
+          showFavoritesChip={showFavoritesChip}
           activeBlocks={activeBlocks}
           onToggleBlock={onToggleBlock}
+          activeCats={activeCats}
+          activeGenres={activeGenres}
+          onSetBlocks={setActiveBlocks}
+          onSetFriends={setOnlyFriends}
+          onSetFavorites={setOnlyFavorites}
+          onSetCats={setActiveCats}
+          onSetGenres={setActiveGenres}
         />
 
         {isLoading && (
@@ -342,12 +414,16 @@ export default function Avond() {
         {!isLoading && !error && (
           <Animated.View entering={FadeIn.duration(220)}>
             {filtered.length === 0 && events && (
-              <ListState
-                text={
-                  activeBlocks.length > 0 || onlyFriends
-                    ? 'Geen events met deze filter.'
-                    : 'Vandaag niets op de agenda.'
+              <EmptyResults
+                hasFilter={
+                  activeBlocks.length > 0 ||
+                  activeCats.length > 0 ||
+                  activeGenres.length > 0 ||
+                  onlyFriends ||
+                  onlyFavorites ||
+                  query.trim().length > 0
                 }
+                minHeight={240}
               />
             )}
             {restByCategory.map(({ category, items }) => (
@@ -376,72 +452,208 @@ export default function Avond() {
   );
 }
 
-function FilterChips({
+function AvondChipRow({
+  query,
+  onQuery,
   onlyFriends,
   onToggleFriends,
   showFriendsChip,
+  onlyFavorites,
+  onToggleFavorites,
+  showFavoritesChip,
   activeBlocks,
   onToggleBlock,
+  activeCats,
+  activeGenres,
+  onSetBlocks,
+  onSetFriends,
+  onSetFavorites,
+  onSetCats,
+  onSetGenres,
 }: {
+  query: string;
+  onQuery: (q: string) => void;
   onlyFriends: boolean;
   onToggleFriends: () => void;
   showFriendsChip: boolean;
+  onlyFavorites: boolean;
+  onToggleFavorites: () => void;
+  showFavoritesChip: boolean;
   activeBlocks: TimeBlock[];
   onToggleBlock: (b: TimeBlock) => void;
+  activeCats: ApiEvent['category'][];
+  activeGenres: string[];
+  onSetBlocks: (next: TimeBlock[]) => void;
+  onSetFriends: (next: boolean) => void;
+  onSetFavorites: (next: boolean) => void;
+  onSetCats: (next: ApiEvent['category'][]) => void;
+  onSetGenres: (next: string[]) => void;
 }) {
   const mode = useMode();
   const roles = useRoles();
   const isNacht = mode === 'nacht';
+  const [focused, setFocused] = useState(false);
+  const [filterOpen, setFilterOpen] = useState(false);
+  const inputRef = useRef<TextInput>(null);
+  const saved = useSavedVandaagSearches();
+  const removeSaved = useRemoveSavedVandaagSearch();
+
+  // Search-pill: collapsable. Open zodra hij focus heeft of er tekst in
+  // staat. Width animeert van klein-icoon naar input-wide.
+  const open = focused || query.length > 0;
+  const COLLAPSED_W = 36;
+  const MIN_OPEN_W = 110;
+  const MAX_OPEN_W = 240;
+  const textWidthEstimate = 36 + query.length * 7 + 16;
+  const width = !open
+    ? COLLAPSED_W
+    : Math.min(MAX_OPEN_W, Math.max(MIN_OPEN_W, textWidthEstimate));
+
+  const onIconPress = () => {
+    if (open) {
+      onQuery('');
+      inputRef.current?.blur();
+    } else {
+      inputRef.current?.focus();
+    }
+  };
+
+  const filterCount =
+    activeBlocks.length + activeCats.length + activeGenres.length;
+  const filterActive = filterCount > 0;
+  const current = {
+    q: query,
+    vr: onlyFriends,
+    fv: onlyFavorites,
+    tb: activeBlocks,
+    cats: activeCats,
+    gn: activeGenres,
+  };
+
+  const applySaved = (s: SavedVandaagSearch) => {
+    const active = isSavedVandaagSearchActive(s, current);
+    if (active) {
+      onQuery('');
+      onSetFriends(false);
+      onSetFavorites(false);
+      onSetBlocks([]);
+      onSetCats([]);
+      onSetGenres([]);
+      return;
+    }
+    onQuery(s.q);
+    onSetFriends(s.vr);
+    onSetFavorites(s.fv);
+    onSetBlocks(s.tb);
+    onSetCats(s.cats ?? []);
+    onSetGenres(s.gn ?? []);
+  };
+
+  const onLongPressSaved = (s: SavedVandaagSearch) => {
+    Alert.alert(
+      'Verwijderen',
+      `"${s.name}" verwijderen uit je opgeslagen filters?`,
+      [
+        { text: 'Annuleren', style: 'cancel' },
+        {
+          text: 'Verwijder',
+          style: 'destructive',
+          onPress: () => removeSaved(s.id),
+        },
+      ]
+    );
+  };
+
   return (
-    <ScrollView
-      horizontal
-      showsHorizontalScrollIndicator={false}
-      contentContainerStyle={styles.catTabs}
-    >
-      {showFriendsChip && (
-        <Pressable
-          accessibilityLabel={
-            onlyFriends ? 'Toon alle events' : 'Alleen events met vrienden'
-          }
-          onPress={onToggleFriends}
+    <>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.chipRow}
+        keyboardShouldPersistTaps="handled"
+      >
+        <View
           style={[
-            styles.friendsChip,
+            styles.searchChip,
             {
-              borderColor: onlyFriends
+              backgroundColor: isNacht ? palette.noir2 : palette.paper2,
+              borderColor: isNacht ? '#2a2a2d' : palette.paper,
+              width,
+            },
+          ]}
+        >
+          <Pressable onPress={onIconPress} hitSlop={6} style={styles.searchIcon}>
+            <Ionicons
+              name={open ? 'close' : 'search'}
+              size={14}
+              color={roles.fgMuted}
+            />
+          </Pressable>
+          <TextInput
+            ref={inputRef}
+            value={query}
+            onChangeText={onQuery}
+            onFocus={() => setFocused(true)}
+            onBlur={() => setFocused(false)}
+            placeholder={open ? 'ZOEK' : ''}
+            placeholderTextColor={roles.fgPlaceholder}
+            autoCapitalize="characters"
+            autoCorrect={false}
+            returnKeyType="search"
+            style={[styles.searchInput, { color: roles.fg }]}
+          />
+        </View>
+        <Pressable
+          onPress={() => setFilterOpen(true)}
+          style={[
+            styles.catChip,
+            {
+              borderColor: filterActive
                 ? roles.fg
                 : isNacht
                   ? '#2a2a2d'
                   : palette.paper,
-              backgroundColor: onlyFriends
+              backgroundColor: filterActive
                 ? roles.fg
                 : isNacht
                   ? palette.noir2
                   : palette.paper2,
+              flexDirection: 'row',
+              gap: 4,
             },
           ]}
         >
           <Ionicons
-            name="people"
-            size={14}
-            color={onlyFriends ? roles.bg : roles.fgMuted}
+            name="options-outline"
+            size={12}
+            color={filterActive ? roles.bg : roles.fgMuted}
           />
-        </Pressable>
-      )}
-      {TIME_BLOCKS.map(({ id, label }) => {
-        const active = activeBlocks.includes(id);
-        return (
-          <Pressable
-            key={id}
-            onPress={() => onToggleBlock(id)}
+          <Text
             style={[
-              styles.catTab,
+              styles.catChipText,
+              { color: filterActive ? roles.bg : roles.fgMuted },
+            ]}
+          >
+            {filterActive ? `Filter · ${filterCount}` : 'Filter'}
+          </Text>
+        </Pressable>
+        {showFriendsChip && (
+          <Pressable
+            accessibilityLabel={
+              onlyFriends
+                ? 'Toon alle events'
+                : 'Alleen events met vrienden'
+            }
+            onPress={onToggleFriends}
+            style={[
+              styles.iconToggle,
               {
-                borderColor: active
+                borderColor: onlyFriends
                   ? roles.fg
                   : isNacht
                     ? '#2a2a2d'
                     : palette.paper,
-                backgroundColor: active
+                backgroundColor: onlyFriends
                   ? roles.fg
                   : isNacht
                     ? palette.noir2
@@ -449,18 +661,577 @@ function FilterChips({
               },
             ]}
           >
-            <Text
+            <Ionicons
+              name="people"
+              size={14}
+              color={onlyFriends ? roles.bg : roles.fgMuted}
+            />
+          </Pressable>
+        )}
+        {showFavoritesChip && (
+          <Pressable
+            accessibilityLabel={
+              onlyFavorites
+                ? 'Toon alle events'
+                : 'Alleen events bij favoriete venues'
+            }
+            onPress={onToggleFavorites}
+            style={[
+              styles.iconToggle,
+              {
+                borderColor: onlyFavorites
+                  ? roles.fg
+                  : isNacht
+                    ? '#2a2a2d'
+                    : palette.paper,
+                backgroundColor: onlyFavorites
+                  ? roles.fg
+                  : isNacht
+                    ? palette.noir2
+                    : palette.paper2,
+              },
+            ]}
+          >
+            <Ionicons
+              name={onlyFavorites ? 'heart' : 'heart-outline'}
+              size={14}
+              color={onlyFavorites ? roles.bg : roles.fgMuted}
+            />
+          </Pressable>
+        )}
+        {saved.map((s) => {
+          const active = isSavedVandaagSearchActive(s, current);
+          return (
+            <Pressable
+              key={s.id}
+              onPress={() => applySaved(s)}
+              onLongPress={() => onLongPressSaved(s)}
+              delayLongPress={400}
               style={[
-                styles.catTabText,
-                { color: active ? roles.bg : roles.fgMuted },
+                styles.catChip,
+                {
+                  borderColor: active
+                    ? roles.accent
+                    : isNacht
+                      ? '#2a2a2d'
+                      : palette.paper,
+                  backgroundColor: active
+                    ? `${isNacht ? palette.acid : palette.red}1f`
+                    : isNacht
+                      ? palette.noir2
+                      : palette.paper2,
+                  flexDirection: 'row',
+                  gap: 4,
+                },
               ]}
             >
-              {label}
+              <Ionicons
+                name="bookmark"
+                size={11}
+                color={active ? roles.accent : roles.fgMuted}
+              />
+              <Text
+                style={[
+                  styles.catChipText,
+                  { color: active ? roles.accent : roles.fgMuted },
+                ]}
+              >
+                {s.name}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </ScrollView>
+      <Modal
+        visible={filterOpen}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setFilterOpen(false)}
+      >
+        <AvondFilterSheet
+          query={query}
+          onlyFriends={onlyFriends}
+          onlyFavorites={onlyFavorites}
+          activeBlocks={activeBlocks}
+          activeCats={activeCats}
+          activeGenres={activeGenres}
+          showFriendsChip={showFriendsChip}
+          showFavoritesChip={showFavoritesChip}
+          onSetFriends={onSetFriends}
+          onSetFavorites={onSetFavorites}
+          onToggleBlock={onToggleBlock}
+          onSetBlocks={onSetBlocks}
+          onSetCats={onSetCats}
+          onSetGenres={onSetGenres}
+          onClose={() => setFilterOpen(false)}
+        />
+      </Modal>
+    </>
+  );
+}
+
+function AvondFilterSheet({
+  query,
+  onlyFriends,
+  onlyFavorites,
+  activeBlocks,
+  activeCats,
+  activeGenres,
+  showFriendsChip,
+  showFavoritesChip,
+  onSetFriends,
+  onSetFavorites,
+  onToggleBlock,
+  onSetBlocks,
+  onSetCats,
+  onSetGenres,
+  onClose,
+}: {
+  query: string;
+  onlyFriends: boolean;
+  onlyFavorites: boolean;
+  activeBlocks: TimeBlock[];
+  activeCats: ApiEvent['category'][];
+  activeGenres: string[];
+  showFriendsChip: boolean;
+  showFavoritesChip: boolean;
+  onSetFriends: (next: boolean) => void;
+  onSetFavorites: (next: boolean) => void;
+  onToggleBlock: (b: TimeBlock) => void;
+  onSetBlocks: (next: TimeBlock[]) => void;
+  onSetCats: (next: ApiEvent['category'][]) => void;
+  onSetGenres: (next: string[]) => void;
+  onClose: () => void;
+}) {
+  const mode = useMode();
+  const roles = useRoles();
+  const isNacht = mode === 'nacht';
+  const addSaved = useAddSavedVandaagSearch();
+  const [saveOpen, setSaveOpen] = useState(false);
+  const [saveName, setSaveName] = useState('');
+  const { data: genreData, isLoading: genresLoading, error: genresError } =
+    useEventGenres();
+
+  // Filter genre-buckets op de geselecteerde categorieën — als er
+  // niets gekozen is, alle genres tonen. Zelfde patroon als Agenda.
+  const groupedGenres = useMemo(() => {
+    if (!genreData) return [];
+    const filtered =
+      activeCats.length > 0
+        ? genreData.filter((b) => activeCats.includes(b.category))
+        : genreData;
+    const map = new Map<ApiEvent['category'], typeof filtered>();
+    for (const b of filtered) {
+      const arr = map.get(b.category) ?? [];
+      arr.push(b);
+      map.set(b.category, arr);
+    }
+    return CATEGORIES_ORDER.flatMap((category) => {
+      const items = map.get(category);
+      return items ? [{ category, items }] : [];
+    });
+  }, [genreData, activeCats]);
+
+  const toggleCat = (c: ApiEvent['category']) => {
+    if (activeCats.includes(c)) onSetCats(activeCats.filter((x) => x !== c));
+    else onSetCats([...activeCats, c]);
+  };
+  const toggleGenre = (g: string) => {
+    if (activeGenres.includes(g))
+      onSetGenres(activeGenres.filter((x) => x !== g));
+    else onSetGenres([...activeGenres, g]);
+  };
+
+  const filterCount =
+    activeBlocks.length +
+    activeCats.length +
+    activeGenres.length +
+    (onlyFriends ? 1 : 0) +
+    (onlyFavorites ? 1 : 0);
+
+  const onClearAll = () => {
+    onSetFriends(false);
+    onSetFavorites(false);
+    onSetBlocks([]);
+    onSetCats([]);
+    onSetGenres([]);
+  };
+
+  const onSave = () => {
+    const name = saveName.trim();
+    if (name.length === 0) return;
+    addSaved({
+      name,
+      q: query,
+      vr: onlyFriends,
+      fv: onlyFavorites,
+      tb: activeBlocks,
+      cats: activeCats,
+      gn: activeGenres,
+    });
+    setSaveOpen(false);
+    setSaveName('');
+    onClose();
+  };
+
+  return (
+    <KeyboardAvoidingView
+      style={[styles.sheetRoot, { backgroundColor: roles.bg }]}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 60 : 0}
+    >
+      <View style={styles.sheetDragHandleWrap}>
+        <View
+          style={[
+            styles.sheetDragHandle,
+            { backgroundColor: roles.fgPlaceholder },
+          ]}
+        />
+      </View>
+      {Platform.OS !== 'ios' && (
+        <Pressable
+          onPress={onClose}
+          hitSlop={8}
+          style={[
+            styles.sheetCloseBtn,
+            { backgroundColor: isNacht ? palette.noir2 : palette.paper2 },
+          ]}
+        >
+          <Cross size={14} thickness={2.6} color={roles.fg} />
+        </Pressable>
+      )}
+      <View style={styles.sheetHead}>
+        <Text style={[styles.sheetTitle, { color: roles.fg }]}>Filter</Text>
+        <Text style={[styles.sheetLead, { color: roles.fgMuted }]}>
+          Combineer tijd, vrienden en favorieten. Sla 'm op om de
+          combinatie als chip te bewaren.
+        </Text>
+      </View>
+
+      <ScrollView
+        style={styles.sheetScroll}
+        contentContainerStyle={styles.sheetScrollContent}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
+        <Text style={[styles.sheetSectionHead, { color: roles.fgMuted }]}>
+          Categorie
+        </Text>
+        <View style={styles.sheetWrap}>
+          {CATEGORIES_ORDER.map((cat) => (
+            <SheetChip
+              key={cat}
+              label={cat}
+              active={activeCats.includes(cat)}
+              onPress={() => toggleCat(cat)}
+            />
+          ))}
+        </View>
+
+        <Text
+          style={[
+            styles.sheetSectionHead,
+            { color: roles.fgMuted, marginTop: 22 },
+          ]}
+        >
+          Tijd
+        </Text>
+        <View style={styles.sheetWrap}>
+          {TIME_BLOCKS.map((b) => (
+            <SheetChip
+              key={b.id}
+              label={b.label}
+              sub={b.range}
+              active={activeBlocks.includes(b.id)}
+              onPress={() => onToggleBlock(b.id)}
+            />
+          ))}
+        </View>
+
+        <Text
+          style={[
+            styles.sheetSectionHead,
+            { color: roles.fgMuted, marginTop: 22 },
+          ]}
+        >
+          Genre
+        </Text>
+        {genresLoading && (
+          <View style={styles.sheetLoading}>
+            <SpinningCross
+              size={24}
+              thickness={4}
+              color={roles.fgPlaceholder}
+            />
+          </View>
+        )}
+        {genresError && (
+          <Text style={[styles.sheetEmpty, { color: '#c9453a' }]}>
+            Kon genres niet laden.
+          </Text>
+        )}
+        {!genresLoading && !genresError && groupedGenres.length === 0 && (
+          <Text style={[styles.sheetEmpty, { color: roles.fgMuted }]}>
+            {activeCats.length === 1
+              ? `Geen genres gevonden voor ${activeCats[0]}.`
+              : activeCats.length > 1
+                ? 'Geen genres gevonden voor deze categorieën.'
+                : 'Nog geen genres ingevuld.'}
+          </Text>
+        )}
+        <View style={styles.sheetSubGroup}>
+          {groupedGenres.map((section) => (
+            <View key={section.category}>
+              {(activeCats.length === 0 || activeCats.length > 1) && (
+                <Text
+                  style={[
+                    styles.sheetSubHead,
+                    { color: roles.fgPlaceholder },
+                  ]}
+                >
+                  {section.category}
+                </Text>
+              )}
+              <View style={styles.sheetWrap}>
+                {section.items.map((b) => {
+                  const checked = activeGenres.includes(b.genre);
+                  return (
+                    <Pressable
+                      key={`${section.category}-${b.genre}`}
+                      onPress={() => toggleGenre(b.genre)}
+                      style={[
+                        styles.genreChip,
+                        {
+                          borderColor: checked ? roles.fg : roles.bgChip,
+                          backgroundColor: checked
+                            ? roles.fg
+                            : isNacht
+                              ? palette.noir2
+                              : palette.paper2,
+                        },
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.genreChipText,
+                          { color: checked ? roles.bg : roles.fg },
+                        ]}
+                      >
+                        {b.genre}
+                      </Text>
+                      <Text
+                        style={[
+                          styles.genreChipCount,
+                          {
+                            color: checked
+                              ? roles.bg
+                              : roles.fgPlaceholder,
+                          },
+                        ]}
+                      >
+                        {b.count}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </View>
+          ))}
+        </View>
+
+        {(showFriendsChip || showFavoritesChip) && (
+          <>
+            <Text
+              style={[
+                styles.sheetSectionHead,
+                { color: roles.fgMuted, marginTop: 22 },
+              ]}
+            >
+              Met wie / waar
+            </Text>
+            <View style={styles.sheetWrap}>
+              {showFriendsChip && (
+                <SheetChip
+                  label="Met vrienden"
+                  active={onlyFriends}
+                  onPress={() => onSetFriends(!onlyFriends)}
+                />
+              )}
+              {showFavoritesChip && (
+                <SheetChip
+                  label="Favoriete venues"
+                  active={onlyFavorites}
+                  onPress={() => onSetFavorites(!onlyFavorites)}
+                />
+              )}
+            </View>
+          </>
+        )}
+      </ScrollView>
+
+      {saveOpen ? (
+        <View
+          style={[
+            styles.sheetFooter,
+            { borderTopColor: roles.bgChip, paddingBottom: 16 },
+          ]}
+        >
+          <View
+            style={[
+              styles.saveInputWrap,
+              {
+                backgroundColor: isNacht ? palette.noir2 : palette.paper2,
+                borderColor: roles.bgChip,
+              },
+            ]}
+          >
+            <TextInput
+              value={saveName}
+              onChangeText={setSaveName}
+              placeholder="Naam (bv. Avond met vrienden)"
+              placeholderTextColor={roles.fgPlaceholder}
+              autoFocus
+              returnKeyType="done"
+              onSubmitEditing={onSave}
+              style={[styles.saveInput, { color: roles.fg }]}
+              maxLength={28}
+            />
+          </View>
+          <Pressable
+            accessibilityLabel="Opslaan"
+            onPress={onSave}
+            disabled={saveName.trim().length === 0}
+            style={[
+              styles.sheetIconBtn,
+              {
+                backgroundColor: isNacht ? palette.acid : palette.red,
+                borderColor: 'transparent',
+                opacity: saveName.trim().length === 0 ? 0.4 : 1,
+              },
+            ]}
+          >
+            <Ionicons
+              name="checkmark"
+              size={20}
+              color={isNacht ? palette.noir : palette.paper3}
+            />
+          </Pressable>
+          <Pressable
+            accessibilityLabel="Annuleer"
+            onPress={() => {
+              setSaveOpen(false);
+              setSaveName('');
+            }}
+            style={[styles.sheetIconBtn, { borderColor: roles.bgChip }]}
+          >
+            <Ionicons name="close" size={18} color={roles.fgMuted} />
+          </Pressable>
+        </View>
+      ) : (
+        <View
+          style={[
+            styles.sheetFooter,
+            { borderTopColor: roles.bgChip, paddingBottom: 16 },
+          ]}
+        >
+          <Pressable
+            onPress={onClose}
+            style={[
+              styles.sheetDoneBtn,
+              { backgroundColor: isNacht ? palette.acid : palette.red },
+            ]}
+          >
+            <Text
+              style={[
+                styles.sheetDoneText,
+                { color: isNacht ? palette.noir : palette.paper3 },
+              ]}
+            >
+              Bekijk
             </Text>
           </Pressable>
-        );
-      })}
-    </ScrollView>
+          <Pressable
+            accessibilityLabel="Bewaar filter"
+            onPress={() => setSaveOpen(true)}
+            disabled={filterCount === 0}
+            style={[
+              styles.sheetIconBtn,
+              {
+                borderColor: roles.bgChip,
+                opacity: filterCount === 0 ? 0.4 : 1,
+              },
+            ]}
+          >
+            <Ionicons name="bookmark-outline" size={18} color={roles.fgMuted} />
+          </Pressable>
+          <Pressable
+            accessibilityLabel="Wis filters"
+            onPress={onClearAll}
+            disabled={filterCount === 0}
+            style={[
+              styles.sheetIconBtn,
+              {
+                borderColor: roles.bgChip,
+                opacity: filterCount === 0 ? 0.4 : 1,
+              },
+            ]}
+          >
+            <Ionicons name="trash-outline" size={18} color={roles.fgMuted} />
+          </Pressable>
+        </View>
+      )}
+    </KeyboardAvoidingView>
+  );
+}
+
+function SheetChip({
+  label,
+  sub,
+  active,
+  onPress,
+}: {
+  label: string;
+  sub?: string;
+  active: boolean;
+  onPress: () => void;
+}) {
+  const mode = useMode();
+  const roles = useRoles();
+  const isNacht = mode === 'nacht';
+  return (
+    <Pressable
+      onPress={onPress}
+      style={[
+        styles.sheetChip,
+        {
+          borderColor: active ? roles.fg : roles.bgChip,
+          backgroundColor: active
+            ? roles.fg
+            : isNacht
+              ? palette.noir2
+              : palette.paper2,
+        },
+      ]}
+    >
+      <Text
+        style={[
+          styles.sheetChipText,
+          { color: active ? roles.bg : roles.fg },
+        ]}
+      >
+        {label}
+      </Text>
+      {sub && (
+        <Text
+          style={[
+            styles.sheetChipSub,
+            { color: active ? roles.bg : roles.fgPlaceholder },
+          ]}
+        >
+          {sub}
+        </Text>
+      )}
+    </Pressable>
   );
 }
 
@@ -529,20 +1300,60 @@ function ListState({
   );
 }
 
+function EmptyResults({
+  hasFilter,
+  minHeight,
+}: {
+  hasFilter: boolean;
+  minHeight: number;
+}) {
+  const roles = useRoles();
+  const title = hasFilter
+    ? 'Niets gevonden met deze filters.'
+    : 'Vandaag niets op de agenda.';
+  const body = hasFilter
+    ? 'Pas je filter of zoekterm aan om meer events te zien.'
+    : 'Kijk morgen weer, of bekijk de hele week op Agenda.';
+  return (
+    <View style={[styles.emptyResults, { minHeight }]}>
+      <Ionicons
+        name={hasFilter ? 'search-outline' : 'sparkles-outline'}
+        size={44}
+        color={roles.fgMuted}
+      />
+      <Text style={[styles.emptyResultsTitle, { color: roles.fg }]}>
+        {title}
+      </Text>
+      <Text style={[styles.emptyResultsBody, { color: roles.fgMuted }]}>
+        {body}
+      </Text>
+    </View>
+  );
+}
+
 function FeaturedCard({
   kicker,
   title,
   meta,
   photo,
+  category,
 }: {
   kicker: string;
   title: string;
   meta: string;
   photo: string;
+  category?: ApiEvent['category'];
 }) {
   const mode = useMode();
   const roles = useRoles();
   const isNacht = mode === 'nacht';
+  const titleColor = isNacht ? palette.ink : palette.paper3;
+  const metaColor = isNacht
+    ? 'rgba(242,242,239,0.85)'
+    : 'rgba(245,241,232,0.95)';
+  const categoryTone = category
+    ? TONE[mode][CATEGORY_TICK[category]]
+    : undefined;
 
   return (
     <View style={styles.featuredWrap}>
@@ -552,30 +1363,65 @@ function FeaturedCard({
           { backgroundColor: isNacht ? palette.noir2 : roles.accent },
         ]}
       >
-      <Image source={{ uri: photo }} style={StyleSheet.absoluteFill} contentFit="cover" />
-      <View
-        style={[
-          StyleSheet.absoluteFill,
-          {
-            backgroundColor: isNacht
-              ? 'rgba(10,10,11,0.55)'
-              : 'rgba(201,69,58,0.55)',
-          },
-        ]}
-      />
-      <View style={styles.featuredInner}>
-        <Text style={[styles.featuredKicker, { color: isNacht ? palette.acid : palette.paper3 }]}>
-          {kicker}
-        </Text>
-        <View>
-          <Text style={[styles.featuredTitle, { color: isNacht ? palette.ink : palette.paper3 }]}>
-            {title}
-          </Text>
-          <Text style={[styles.featuredMeta, { color: isNacht ? 'rgba(242,242,239,0.85)' : 'rgba(245,241,232,0.95)' }]}>
-            {meta}
-          </Text>
+        <Image
+          source={{ uri: photo }}
+          style={StyleSheet.absoluteFill}
+          contentFit="cover"
+        />
+        <View
+          style={[
+            StyleSheet.absoluteFill,
+            {
+              // Subtiele tint over de foto — donker op nacht voor
+              // contrast, een hint accent op dag (veel zachter dan
+              // voorheen, foto blijft duidelijk de hero).
+              backgroundColor: isNacht
+                ? 'rgba(10,10,11,0.45)'
+                : 'rgba(201,69,58,0.18)',
+            },
+          ]}
+        />
+        <View style={styles.featuredInner}>
+          <View style={styles.featuredBottom}>
+            <View style={styles.featuredLabels}>
+              <View
+                style={[
+                  styles.featuredLabel,
+                  { backgroundColor: roles.accent },
+                ]}
+              >
+                <Text
+                  style={[styles.featuredLabelText, { color: roles.onAccent }]}
+                >
+                  {kicker}
+                </Text>
+              </View>
+              {category && categoryTone && (
+                <View
+                  style={[
+                    styles.featuredLabel,
+                    { backgroundColor: categoryTone },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.featuredLabelText,
+                      { color: roles.onAccent },
+                    ]}
+                  >
+                    {category}
+                  </Text>
+                </View>
+              )}
+            </View>
+            <Text style={[styles.featuredTitle, { color: titleColor }]}>
+              {title}
+            </Text>
+            <Text style={[styles.featuredMeta, { color: metaColor }]}>
+              {meta}
+            </Text>
+          </View>
         </View>
-      </View>
       </View>
     </View>
   );
@@ -623,32 +1469,21 @@ function SectionTitle({
 }
 
 function KaartBanner() {
-  const mode = useMode();
   const roles = useRoles();
-  const isNacht = mode === 'nacht';
   return (
     <Pressable
       onPress={() => router.push('/kaart' as never)}
       style={[
         styles.kaartBanner,
         {
-          borderColor: isNacht ? '#232327' : palette.paper,
-          backgroundColor: isNacht ? '#101012' : palette.paper2,
+          backgroundColor: roles.bgLift,
+          borderColor: roles.bgChip,
         },
       ]}
     >
-      {/* Accent-tinted icon-tile + accent-icoon: brand-pop zonder de
-          rest van de banner te overstemmen. */}
-      <View
-        style={[
-          styles.kaartIconWrap,
-          { backgroundColor: `${roles.accent}26` },
-        ]}
-      >
-        <Ionicons name="map-outline" size={22} color={roles.accent} />
-      </View>
+      <Ionicons name="map-outline" size={22} color={roles.fgMuted} />
       <View style={styles.kaartBody}>
-        <Text style={[styles.kaartKicker, { color: roles.accent }]}>
+        <Text style={[styles.kaartKicker, { color: roles.fgMuted }]}>
           Op de kaart
         </Text>
         <Text style={[styles.kaartTitle, { color: roles.fg }]}>
@@ -667,20 +1502,21 @@ function KaartBanner() {
 const styles = StyleSheet.create({
   root: { flex: 1 },
 
-  // Hero — datum boven, telling daaronder. Geen mode-tekst meer.
-  hero: { paddingHorizontal: 18, paddingTop: 14, paddingBottom: 12 },
-  heroDate: {
-    fontFamily: fontFamily.mono,
-    fontSize: 10,
-    letterSpacing: 1.4,
-    textTransform: 'uppercase',
+  // Hero — divider + "{dag} {datum} op de agenda" in display-font,
+  // datum in accent. Geen mono-kicker meer. Strak op de
+  // exhibitions-strook erboven.
+  heroDivider: {
+    marginHorizontal: 22,
+    marginTop: 8,
+    marginBottom: 14,
+    height: StyleSheet.hairlineWidth,
   },
-  heroCount: {
+  hero: { paddingHorizontal: 22, paddingBottom: 12 },
+  heroLine: {
     fontFamily: fontFamily.display,
     fontSize: 26,
-    lineHeight: 26 * 1,
+    lineHeight: 26 * 1.05,
     letterSpacing: -0.8,
-    marginTop: 6,
   },
 
   // Featured — same horizontal inset as the rest of the feed
@@ -695,8 +1531,22 @@ const styles = StyleSheet.create({
     padding: 16,
     justifyContent: 'space-between',
   },
-  featuredInner: { flex: 1, justifyContent: 'space-between' },
-  featuredKicker: {
+  featuredInner: { flex: 1, justifyContent: 'flex-end' },
+  // Onderste blok — labels boven titel. Zelfde stijl en spacing als
+  // de tag-pill in de event-detail hero (heroBottom gap 12, tag
+  // paddingHorizontal 10 / paddingVertical 5, mono 10/1.4 uppercase).
+  featuredBottom: { gap: 12 },
+  featuredLabels: {
+    flexDirection: 'row',
+    gap: 6,
+    flexWrap: 'wrap',
+  },
+  featuredLabel: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
+  },
+  featuredLabelText: {
     fontFamily: fontFamily.mono,
     fontSize: 10,
     letterSpacing: 1.4,
@@ -740,15 +1590,40 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
   },
 
-  // Category tabs (Avond) — navigate to Agenda met filter
-  catTabs: {
+  // Chip-row — zelfde patroon als Agenda's ChipRow.
+  chipRow: {
     flexDirection: 'row',
+    alignItems: 'center',
     gap: 6,
-    paddingHorizontal: 18,
-    paddingTop: 4,
-    paddingBottom: 14,
+    paddingHorizontal: 22,
+    paddingVertical: 6,
   },
-  catTab: {
+  searchChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    height: 32,
+    paddingHorizontal: 10,
+    borderRadius: 999,
+    borderWidth: 1,
+    overflow: 'hidden',
+  },
+  searchIcon: {
+    width: 16,
+    height: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  searchInput: {
+    flex: 1,
+    fontFamily: fontFamily.mono,
+    fontSize: 11,
+    letterSpacing: 0.8,
+    padding: 0,
+    margin: 0,
+    height: 20,
+  },
+  catChip: {
     height: 32,
     paddingHorizontal: 14,
     borderRadius: 999,
@@ -756,7 +1631,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  friendsChip: {
+  catChipText: {
+    fontFamily: fontFamily.medium,
+    fontSize: 12,
+    letterSpacing: -0.06,
+  },
+  iconToggle: {
     width: 32,
     height: 32,
     borderRadius: 999,
@@ -764,11 +1644,190 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  catTabText: {
+
+  // Filter-sheet — zelfde design als Agenda-sheet.
+  sheetRoot: { flex: 1 },
+  sheetDragHandleWrap: {
+    alignItems: 'center',
+    paddingTop: 8,
+    paddingBottom: 8,
+  },
+  sheetDragHandle: {
+    width: 44,
+    height: 5,
+    borderRadius: 2.5,
+    opacity: 0.6,
+  },
+  sheetCloseBtn: {
+    position: 'absolute',
+    top: 16,
+    right: 16,
+    width: 36,
+    height: 36,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sheetHead: {
+    paddingHorizontal: 22,
+    paddingTop: 16,
+    paddingBottom: 14,
+  },
+  sheetTitle: {
+    fontFamily: fontFamily.display,
+    fontSize: 24,
+    lineHeight: 24 * 1.05,
+    letterSpacing: -0.6,
+  },
+  sheetLead: {
+    fontFamily: fontFamily.body,
+    fontSize: 14,
+    lineHeight: 20,
+    marginTop: 6,
+  },
+  sheetScroll: { flex: 1 },
+  sheetScrollContent: {
+    paddingHorizontal: 22,
+    paddingBottom: 24,
+  },
+  sheetSectionHead: {
+    fontFamily: fontFamily.mono,
+    fontSize: 11,
+    letterSpacing: 1.6,
+    textTransform: 'uppercase',
+    marginBottom: 10,
+  },
+  sheetWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  sheetLoading: {
+    paddingVertical: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sheetEmpty: {
+    fontFamily: fontFamily.mono,
+    fontSize: 11,
+    letterSpacing: 0.8,
+    paddingVertical: 14,
+    textAlign: 'center',
+  },
+  sheetSubGroup: { gap: 12 },
+  sheetSubHead: {
+    fontFamily: fontFamily.mono,
+    fontSize: 9,
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
+    marginBottom: 6,
+  },
+  genreChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    height: 34,
+    paddingHorizontal: 14,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
+  genreChipText: {
     fontFamily: fontFamily.medium,
-    fontSize: 12,
-    letterSpacing: -0.06,
-    lineHeight: 14,
+    fontSize: 13,
+    letterSpacing: -0.13,
+    textTransform: 'lowercase',
+  },
+  genreChipCount: {
+    fontFamily: fontFamily.mono,
+    fontSize: 10,
+    letterSpacing: 0.8,
+  },
+  sheetChip: {
+    minHeight: 38,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 999,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 1,
+  },
+  sheetChipText: {
+    fontFamily: fontFamily.medium,
+    fontSize: 13,
+    letterSpacing: -0.13,
+  },
+  sheetChipSub: {
+    fontFamily: fontFamily.mono,
+    fontSize: 9,
+    letterSpacing: 0.8,
+    marginTop: 1,
+  },
+  sheetFooter: {
+    flexDirection: 'row',
+    gap: 10,
+    paddingHorizontal: 22,
+    paddingTop: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  sheetIconBtn: {
+    width: 48,
+    height: 48,
+    borderRadius: 999,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sheetDoneBtn: {
+    flex: 1.4,
+    height: 48,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sheetDoneText: {
+    fontFamily: fontFamily.medium,
+    fontSize: 14,
+    letterSpacing: -0.14,
+  },
+  saveInputWrap: {
+    flex: 1.4,
+    height: 48,
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    justifyContent: 'center',
+  },
+  saveInput: {
+    fontFamily: fontFamily.medium,
+    fontSize: 14,
+    letterSpacing: -0.14,
+    padding: 0,
+    margin: 0,
+  },
+
+  // Lege-resultaten — gecentreerd, minHeight zorgt dat het keyboard
+  // 'm niet over de tekst legt als je in de zoek tikt en geen events
+  // matcht. Zelfde icon-title-body design als andere empty-states.
+  emptyResults: {
+    paddingHorizontal: 32,
+    paddingVertical: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyResultsTitle: {
+    fontFamily: fontFamily.display,
+    fontSize: 18,
+    letterSpacing: -0.4,
+    textAlign: 'center',
+    marginTop: 12,
+  },
+  emptyResultsBody: {
+    fontFamily: fontFamily.body,
+    fontSize: 14.5,
+    lineHeight: 19,
+    textAlign: 'center',
+    marginTop: 4,
   },
 
   // List loading / error
@@ -789,39 +1848,31 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
 
-  // Kaart-banner — prominent CTA tussen FeaturedCard en de events-
-  // lijst. Top-spacing wordt door FeaturedCard's marginBottom geleverd
-  // (20), dus onze eigen marginBottom van 20 zorgt voor gelijkmatige
-  // ruimte rondom de banner.
+  // Kaart-banner — accent-getinte vlakke pill. Geen border, geen
+  // ronde icon-tile; kicker + zin direct naast het map-icoon en
+  // dicht op elkaar. Beide regels in bold.
   kaartBanner: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 14,
+    gap: 12,
     marginHorizontal: 22,
     marginBottom: 20,
-    padding: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
     borderRadius: 14,
     borderWidth: 1,
   },
-  kaartIconWrap: {
-    width: 44,
-    height: 44,
-    borderRadius: 999,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   kaartBody: { flex: 1, minWidth: 0 },
   kaartKicker: {
-    fontFamily: fontFamily.mono,
+    fontFamily: fontFamily.monoMedium,
     fontSize: 10,
     letterSpacing: 1.4,
     textTransform: 'uppercase',
-    marginBottom: 4,
   },
   kaartTitle: {
-    fontFamily: fontFamily.medium,
+    fontFamily: fontFamily.bold,
     fontSize: 14,
-    lineHeight: 19,
+    lineHeight: 18,
     letterSpacing: -0.14,
   },
 });

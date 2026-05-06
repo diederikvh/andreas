@@ -79,6 +79,7 @@ export default function Agenda() {
     tb?: string;
     gn?: string;
     vr?: string;
+    fv?: string;
   }>();
   // Categories is multi-select — comma-separated in `?cat=Muziek,Kunst`.
   // Voor backwards-compat met deeplinks die nog één enkele categorie
@@ -112,6 +113,7 @@ export default function Agenda() {
     [params.gn]
   );
   const onlyFriends = params.vr === '1';
+  const onlyFavorites = params.fv === '1';
   const { data: session } = useSession();
   const { data: friends } = useFriends({
     enabled: Boolean(session?.user?.id),
@@ -145,6 +147,7 @@ export default function Agenda() {
         if (!evGenres.some((g) => activeGenres.includes(g))) return false;
       }
       if (onlyFriends && (e.friendsSaved?.length ?? 0) === 0) return false;
+      if (onlyFavorites && !e.venueFollowed) return false;
       if (needle.length > 0) {
         const inTitle = e.title.toLowerCase().includes(needle);
         const inVenue = e.venue.name.toLowerCase().includes(needle);
@@ -153,7 +156,12 @@ export default function Agenda() {
       }
       return true;
     });
-  }, [events, activeCats, activeGenres, query, onlyFriends]);
+  }, [events, activeCats, activeGenres, query, onlyFriends, onlyFavorites]);
+
+  const showFavoritesChip = useMemo(
+    () => Boolean(events?.some((e) => e.venueFollowed)),
+    [events]
+  );
 
   // Tikt elke 60s zodat occurrences waarvan de eindtijd voorbij is
   // automatisch wegvallen tussen server-refetches door.
@@ -321,6 +329,8 @@ export default function Agenda() {
           activeGenres={activeGenres}
           onlyFriends={onlyFriends}
           showFriendsChip={showFriendsChip}
+          onlyFavorites={onlyFavorites}
+          showFavoritesChip={showFavoritesChip}
           onCats={(next) =>
             router.setParams({
               cat: next.length > 0 ? next.join(',') : undefined,
@@ -340,6 +350,9 @@ export default function Agenda() {
           onToggleFriends={() =>
             router.setParams({ vr: onlyFriends ? undefined : '1' })
           }
+          onToggleFavorites={() =>
+            router.setParams({ fv: onlyFavorites ? undefined : '1' })
+          }
         />
       </AppHeader>
     </View>
@@ -353,11 +366,14 @@ function ChipRow({
   activeGenres,
   onlyFriends,
   showFriendsChip,
+  onlyFavorites,
+  showFavoritesChip,
   onCats,
   onQuery,
   onBlocks,
   onGenres,
   onToggleFriends,
+  onToggleFavorites,
 }: {
   activeCats: ApiEvent['category'][];
   query: string;
@@ -365,11 +381,14 @@ function ChipRow({
   activeGenres: string[];
   onlyFriends: boolean;
   showFriendsChip: boolean;
+  onlyFavorites: boolean;
+  showFavoritesChip: boolean;
   onCats: (next: ApiEvent['category'][]) => void;
   onQuery: (q: string) => void;
   onBlocks: (next: TimeBlock[]) => void;
   onGenres: (next: string[]) => void;
   onToggleFriends: () => void;
+  onToggleFavorites: () => void;
 }) {
   const mode = useMode();
   const roles = useRoles();
@@ -543,6 +562,37 @@ function ChipRow({
               name="people"
               size={14}
               color={onlyFriends ? roles.bg : roles.fgMuted}
+            />
+          </Pressable>
+        )}
+        {showFavoritesChip && (
+          <Pressable
+            accessibilityLabel={
+              onlyFavorites
+                ? 'Toon alle events'
+                : 'Alleen events bij favoriete venues'
+            }
+            onPress={onToggleFavorites}
+            style={[
+              styles.friendsToggle,
+              {
+                borderColor: onlyFavorites
+                  ? roles.fg
+                  : isNacht
+                    ? '#2a2a2d'
+                    : palette.paper,
+                backgroundColor: onlyFavorites
+                  ? roles.fg
+                  : isNacht
+                    ? palette.noir2
+                    : palette.paper2,
+              },
+            ]}
+          >
+            <Ionicons
+              name={onlyFavorites ? 'heart' : 'heart-outline'}
+              size={14}
+              color={onlyFavorites ? roles.bg : roles.fgMuted}
             />
           </Pressable>
         )}

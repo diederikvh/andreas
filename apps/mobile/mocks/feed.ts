@@ -66,7 +66,7 @@ export const FEED: Record<Mode, FeedData> = {
       titleAfter: ' tellen.',
     },
     featured: {
-      kicker: '— Avondkeuze',
+      kicker: 'Avondkeuze',
       title: 'Lewsberg\nlive',
       meta: 'OCCII · 23:30 · €12 · nog 3 kaarten',
       photo:
@@ -157,7 +157,7 @@ export const FEED: Record<Mode, FeedData> = {
       titleAfter: ' te denken.',
     },
     featured: {
-      kicker: '— Zaterdagkeuze',
+      kicker: 'Zaterdagkeuze',
       title: 'Poëzie van\nde Middenmoot',
       meta: 'PERDU · 20:00 · €8 · Maria Barnas',
       photo:
