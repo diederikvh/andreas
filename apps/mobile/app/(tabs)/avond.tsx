@@ -2,8 +2,16 @@ import { Ionicons } from '@expo/vector-icons';
 import { useScrollToTop } from '@react-navigation/native';
 import { Image } from 'expo-image';
 import { router } from 'expo-router';
-import { useMemo, useRef } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useMemo, useRef, useState } from 'react';
+import {
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
+import { useQueryClient } from '@tanstack/react-query';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -20,6 +28,7 @@ import {
   isNachtHour,
   type OccurrenceRow,
   socialWindow,
+  useFocusedNow,
   useNowMinute,
 } from '@/lib/eventDisplay';
 import { useEvents } from '@/lib/queries';
@@ -125,21 +134,38 @@ export default function Avond() {
   const scrollRef = useRef<ScrollView>(null);
   useScrollToTop(scrollRef);
 
-  // Tikt elke 60s. Dezelfde `now` drijft drie dingen tegelijk aan:
-  //   1. socialWindow → query-key kantelt automatisch om middernacht en
-  //      bij de 17:00-grens; ververst-vlag laat React Query een fresh
-  //      fetch doen zodra de from/to wijzigt.
-  //   2. Hero-tekst (datum + Vanavond/Morgen) blijft kloppen ook als de
-  //      app uren in de achtergrond stond — bij re-focus krijg je de
-  //      juiste copy zonder dat je iets hoeft te doen.
-  //   3. Client-side filter op effectieve eindtijd haalt voorbij-events
-  //      direct uit de lijst, ook als de server-cache nog stale is.
+  // Twee tijd-tikkers met verschillende doelen:
+  //
+  // - `focusedNow` ververst alleen bij tab-focus en app-resume. Drijft
+  //   het socialWindow + de hero-tekst aan. Tijdens scrollen blijf je
+  //   dus in dezelfde "vanavond"-bubbel — ook als 17:00 of middernacht
+  //   passeert. Pas wanneer je wegloopt en terugkomt wordt het venster
+  //   opnieuw bepaald (bv. om 23:00 ben je nog op vanavond, om 09:00
+  //   's morgens ben je terug → nieuwe dag, nieuwe lijst).
+  // - `now` (continuous, 60s) drijft alleen de client-side filter op
+  //   effectieve eindtijd: zo valt een lopend event waarvan de eindtijd
+  //   net gepasseerd is automatisch weg, zonder een refetch te triggeren.
+  const focusedNow = useFocusedNow();
   const now = useNowMinute();
-  const window = useMemo(() => socialWindow(mode, now), [mode, now]);
+  const window = useMemo(() => socialWindow(mode, focusedNow), [mode, focusedNow]);
   const { data: events, isLoading, error } = useEvents({
     from: window.from,
     to: window.to,
   });
+
+  // Pull-to-refresh: invalideert events-cache zodat de huidige
+  // window-query opnieuw fetched. Voor wanneer de gebruiker denkt
+  // "klopt dit nog wel?" en wil forceren.
+  const qc = useQueryClient();
+  const [refreshing, setRefreshing] = useState(false);
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await qc.invalidateQueries({ queryKey: ['events'] });
+    } finally {
+      setRefreshing(false);
+    }
+  }, [qc]);
 
   // Spread events naar één rij per moment in het venster, dan filter op
   // dag/nacht-uur. Een 3-daags festival verschijnt zo per avond op het
@@ -198,6 +224,14 @@ export default function Avond() {
           paddingTop: insets.top + HEADER_HEIGHT,
           paddingBottom: insets.bottom + 96,
         }}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={roles.fgMuted}
+            progressViewOffset={insets.top + HEADER_HEIGHT}
+          />
+        }
       >
         <View style={styles.hero}>
           <Text style={[styles.heroKicker, { color: roles.accent }]}>

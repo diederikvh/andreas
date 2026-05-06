@@ -260,22 +260,53 @@ export function groupEventsByDay(events: ApiEvent[]): EventGroup[] {
   return Array.from(map.values());
 }
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import { AppState } from 'react-native';
+import { useFocusEffect } from 'expo-router';
 
 import type { ApiOccurrence } from './api';
 
 /**
  * Tikt elke 60s een nieuwe `now`-timestamp uit zodat list-views
  * automatisch events laten vallen die hun eindtijd net gepasseerd zijn,
- * zonder dat we een server-roundtrip nodig hebben. Cache-stale (60s)
+ * zonder dat we een server-roundtrip nodig hebben. Cache-stale (10 min)
  * + window-focus refetch dekken de server-side; deze hook dekt het
- * gat tussen refetches.
+ * gat tussen refetches voor de client-side filter.
  */
 export function useNowMinute(): number {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 60_000);
     return () => clearInterval(id);
+  }, []);
+  return now;
+}
+
+/**
+ * Geeft een timestamp die alleen ververst bij **focus events**: tab-
+ * focus (terug op deze tab) en app-resume (uit background). Niet
+ * continuous — gebruik dit voor zaken die tijdens actief gebruik
+ * stabiel moeten blijven (zoals het socialWindow op Avond) maar wél
+ * mee moeten kantelen wanneer de gebruiker wegloopt en terugkomt.
+ *
+ * Verschil met `useNowMinute`: die tikt elke minuut tijdens gebruik,
+ * deze tikt alleen op focus-events. Voor de Avond-window: tijdens
+ * gebruik blijf je dus in dezelfde "vanavond"-bubbel ook als 17:00 of
+ * middernacht passeert; pas wanneer je terugkomt op de tab is het
+ * venster opnieuw ingesteld.
+ */
+export function useFocusedNow(): number {
+  const [now, setNow] = useState(() => Date.now());
+  useFocusEffect(
+    useCallback(() => {
+      setNow(Date.now());
+    }, [])
+  );
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') setNow(Date.now());
+    });
+    return () => sub.remove();
   }, []);
   return now;
 }

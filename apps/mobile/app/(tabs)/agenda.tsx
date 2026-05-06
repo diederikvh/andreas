@@ -1,7 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useScrollToTop } from '@react-navigation/native';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   Alert,
   KeyboardAvoidingView,
@@ -11,6 +12,7 @@ import {
   type NativeSyntheticEvent,
   Platform,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -36,6 +38,7 @@ import {
   type OccurrenceRow,
   TIME_BLOCKS,
   type TimeBlock,
+  useFocusedNow,
   useNowMinute,
 } from '@/lib/eventDisplay';
 import { useEventGenres, useEvents } from '@/lib/queries';
@@ -105,14 +108,16 @@ export default function Agenda() {
     [params.gn]
   );
 
-  // Vanaf vandaag 00:00 — geen verleden events op de Agenda. Geheugen
-  // door de hele render zodat de query-key stabiel blijft binnen één
-  // sessie (cross-midnight refresh komt vanzelf bij re-mount).
+  // Vanaf vandaag 00:00 — geen verleden events op de Agenda. Refreshed
+  // bij tab-focus en app-resume (niet continuous), dus tijdens
+  // scrollen blijft de query-key stabiel ook als middernacht passeert.
+  // Bij volgende focus zit je automatisch op de nieuwe dag.
+  const focusedNow = useFocusedNow();
   const todayStartIso = useMemo(() => {
-    const d = new Date();
+    const d = new Date(focusedNow);
     d.setHours(0, 0, 0, 0);
     return d.toISOString();
-  }, []);
+  }, [focusedNow]);
 
   const { data: events, isLoading, error } = useEvents({ from: todayStartIso });
 
@@ -160,6 +165,20 @@ export default function Agenda() {
 
   const [positions, setPositions] = useState<Record<string, number>>({});
   const [selected, setSelected] = useState<string | null>(null);
+
+  // Pull-to-refresh: invalideert events-cache zodat de query opnieuw
+  // fetched. Voor manuele override van de 10 min staleTime + focus-
+  // refetch — voor wanneer je denkt "klopt dit nog wel?".
+  const qc = useQueryClient();
+  const [refreshing, setRefreshing] = useState(false);
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await qc.invalidateQueries({ queryKey: ['events'] });
+    } finally {
+      setRefreshing(false);
+    }
+  }, [qc]);
 
   // Reset selectie wanneer de eerste echte day-group binnenkomt of
   // wanneer een filter de huidige selectie weghaalt.
@@ -217,6 +236,14 @@ export default function Agenda() {
           paddingTop: stickyOffset,
           paddingBottom: insets.bottom + 96,
         }}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={roles.fgMuted}
+            progressViewOffset={stickyOffset}
+          />
+        }
       >
         {isLoading && (
           <View style={styles.loadingWrap}>
