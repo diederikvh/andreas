@@ -129,7 +129,9 @@ export function TabBar({ state, navigation }: BottomTabBarProps) {
             navigation.navigate(route.name as never);
           }
         };
-        const showBadge = route.name === 'social' && socialBadge > 0;
+        // Geen badge op de actieve tab — je bent er al, count is dubbelop.
+        const showBadge =
+          route.name === 'social' && socialBadge > 0 && !focused;
         const badgeLabel = socialBadge > 9 ? '9+' : String(socialBadge);
         return (
           <Pressable
