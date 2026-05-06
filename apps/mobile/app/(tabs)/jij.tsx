@@ -8,7 +8,9 @@ import { router } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import {
   Alert,
+  AppState,
   KeyboardAvoidingView,
+  Linking,
   Modal,
   Platform,
   Pressable,
@@ -45,6 +47,10 @@ import {
   useOutgoingFriendRequests,
   useRemoveFriend,
 } from '@/lib/queries';
+import {
+  Notifications,
+  registerForPushNotificationsAsync,
+} from '@/lib/push';
 import { useMode, useRoles } from '@/store/mode';
 import { fontFamily, palette } from '@/theme/tokens';
 
@@ -724,6 +730,7 @@ export default function Jij() {
           </>
         )}
 
+        {me && <NotificationsSection />}
         {me && <PrivacySection me={me} onUpdated={refetchMe} />}
 
         <View style={styles.logoutWrap}>
@@ -1045,6 +1052,117 @@ function MyQrSheet({
         </Text>
       </View>
     </View>
+  );
+}
+
+function NotificationsSection() {
+  const roles = useRoles();
+  const [status, setStatus] = useState<
+    'granted' | 'denied' | 'undetermined' | 'loading'
+  >('loading');
+  const [busy, setBusy] = useState(false);
+
+  // Refresh bij mount + bij elke return-naar-foreground (de gebruiker
+  // kan in iOS-Settings de toggle hebben omgezet; we willen de juiste
+  // status tonen zodra ze terug zijn).
+  useEffect(() => {
+    let mounted = true;
+    const refresh = async () => {
+      const { status: s } = await Notifications.getPermissionsAsync();
+      if (!mounted) return;
+      setStatus(
+        s === 'granted'
+          ? 'granted'
+          : s === 'denied'
+            ? 'denied'
+            : 'undetermined'
+      );
+    };
+    refresh();
+    const sub = AppState.addEventListener('change', (next) => {
+      if (next === 'active') refresh();
+    });
+    return () => {
+      mounted = false;
+      sub.remove();
+    };
+  }, []);
+
+  const onPress = async () => {
+    if (busy) return;
+    if (status === 'undetermined') {
+      // Eerste keer: vraag direct permissie + registreer token.
+      setBusy(true);
+      const token = await registerForPushNotificationsAsync();
+      setBusy(false);
+      const { status: s } = await Notifications.getPermissionsAsync();
+      setStatus(
+        s === 'granted'
+          ? 'granted'
+          : s === 'denied'
+            ? 'denied'
+            : 'undetermined'
+      );
+      if (!token && s !== 'granted') {
+        // Gebruiker heeft 'm net geweigerd — wijs naar Settings als
+        // ze van gedachten veranderen.
+        Linking.openSettings();
+      }
+      return;
+    }
+    // granted of denied: alleen via OS-Settings te wijzigen.
+    Linking.openSettings();
+  };
+
+  const label =
+    status === 'granted'
+      ? 'Aan'
+      : status === 'denied'
+        ? 'Uit'
+        : status === 'undetermined'
+          ? 'Niet ingesteld'
+          : '…';
+  const cta =
+    status === 'granted'
+      ? 'Wijzig in instellingen'
+      : status === 'denied'
+        ? 'Open instellingen'
+        : status === 'undetermined'
+          ? 'Aanzetten'
+          : '…';
+
+  return (
+    <>
+      <SectionHead label="Notificaties" />
+      <View style={styles.privacyWrap}>
+        <View style={styles.privacyRow}>
+          <View style={styles.privacyBody}>
+            <Text style={[styles.privacyLabel, { color: roles.fg }]}>
+              Vriend-aanvragen, uitnodigingen en accepts
+            </Text>
+            <Text style={[styles.privacySub, { color: roles.fgMuted }]}>
+              Status: {label}. Alleen pings bij persoonlijke acties — geen
+              algoritmische pushes.
+            </Text>
+          </View>
+          <Pressable
+            onPress={onPress}
+            disabled={status === 'loading' || busy}
+            style={[
+              styles.notifBtn,
+              {
+                borderColor: roles.bgChip,
+                opacity: status === 'loading' || busy ? 0.4 : 1,
+              },
+            ]}
+          >
+            <Text style={[styles.notifBtnText, { color: roles.fgMuted }]}>
+              {cta}
+            </Text>
+          </Pressable>
+        </View>
+      </View>
+    </>
   );
 }
 
@@ -1650,6 +1768,19 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   privacyDivider: { height: StyleSheet.hairlineWidth },
+  notifBtn: {
+    height: 32,
+    paddingHorizontal: 14,
+    borderRadius: 999,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  notifBtnText: {
+    fontFamily: fontFamily.medium,
+    fontSize: 12,
+    letterSpacing: -0.12,
+  },
 
   // Uitloggen — full-width pill onderaan, zelfde stijl als profile-actions
   logoutWrap: {

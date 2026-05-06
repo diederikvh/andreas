@@ -338,6 +338,26 @@ export async function setVenueFollow(input: {
   });
 }
 
+export async function registerPushToken(input: {
+  token: string;
+  platform: 'ios' | 'android';
+  deviceId?: string | null;
+}): Promise<{ ok: true }> {
+  return await authedRequest<{ ok: true }>('/push/register', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+export async function unregisterPushToken(
+  token: string
+): Promise<{ ok: true }> {
+  return await authedRequest<{ ok: true }>('/push/unregister', {
+    method: 'POST',
+    body: JSON.stringify({ token }),
+  });
+}
+
 export type ApiMe = {
   id: string;
   phoneNumber: string;

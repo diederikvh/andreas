@@ -120,6 +120,13 @@
       "when": 1778012110322,
       "tag": "0016_event_category_kunst",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1778071473053,
+      "tag": "0017_fast_logan",
+      "breakpoints": true
     }
   ]
 }

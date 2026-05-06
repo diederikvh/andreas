@@ -95,6 +95,12 @@
           "cameraPermission": "Andreas gebruikt de camera alleen om een vriend-QR te scannen.",
           "recordAudioAndroid": false
         }
+      ],
+      [
+        "expo-notifications",
+        {
+          "iosDisplayInForeground": true
+        }
       ]
     ],
     "experiments": {

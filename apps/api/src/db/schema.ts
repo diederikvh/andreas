@@ -79,6 +79,8 @@ export const venueCapacity = pgEnum('venue_capacity', [
  *    in plaats van een tijdslot. */
 export const eventKind = pgEnum('event_kind', ['show', 'exhibition']);
 /** Status van een specifiek moment. Default `scheduled`. */
+export const pushPlatform = pgEnum('push_platform', ['ios', 'android']);
+
 export const occurrenceStatus = pgEnum('occurrence_status', [
   'scheduled',
   'cancelled',
@@ -438,6 +440,36 @@ export const account = pgTable('account', {
     .notNull()
     .default(sql`now()`),
 });
+
+/**
+ * Expo Push tokens per device — een user kan meerdere devices hebben
+ * (iPhone + iPad bv.) dus geen unique op (userId), wel op (token).
+ * Token is de Expo-Push-token (`ExponentPushToken[…]`) die we naar de
+ * Expo push-service sturen. APNS-credentials zijn EAS-managed.
+ */
+export const pushTokens = pgTable(
+  'push_tokens',
+  {
+    id: text().primaryKey(),
+    userId: text()
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    token: text().notNull().unique(),
+    platform: pushPlatform().notNull(),
+    /** Expo's `deviceId` (best-effort) zodat we tokens van hetzelfde
+        device kunnen mergen als de OS een nieuw token uitgeeft. */
+    deviceId: text(),
+    createdAt: timestamp({ withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+    /** Bijgewerkt elke keer dat de app het token opnieuw aanmeldt;
+        gebruik je later om stale tokens (>90d) op te schonen. */
+    lastSeenAt: timestamp({ withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+  },
+  (t) => [index('push_tokens_user_idx').on(t.userId)]
+);
 
 export const verification = pgTable('verification', {
   id: text().primaryKey(),

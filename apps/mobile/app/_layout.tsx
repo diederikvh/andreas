@@ -21,6 +21,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { ModeCurtain } from '@/components/ModeCurtain';
+import { PushManager } from '@/components/PushManager';
 import { queryClient } from '@/lib/queryClient';
 import { useHasHydrated, useMode } from '@/store/mode';
 
@@ -63,6 +64,7 @@ export default function RootLayout() {
             />
           </Stack>
           <ModeCurtain />
+          <PushManager />
           <StatusBar style={mode === 'nacht' ? 'light' : 'dark'} />
         </SafeAreaProvider>
       </QueryClientProvider>

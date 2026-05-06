@@ -75,10 +75,9 @@ Laatste sync: 2026-05-05 · branch `main`.
 8. **Festival-flows** — ADE, Lenteballet, London Calling die events koppelen aan series met `featured=true`.
 
 **App-features**:
-9. **Push notificaties** — `expo-notifications` + Apple Push Key (al via EAS gegenereerd) + server endpoint dat tokens registreert + verstuurt bij invite-accept, friend-request, etc.
-10. **Pull-to-refresh** — drag-to-refresh op Avond/Agenda/Venue-detail via `RefreshControl` → `queryClient.invalidateQueries`. (Cache-verloop tussen refetches is al gedekt via `staleTime: 60s` + `refetchOnWindowFocus` + `useNowMinute`-hook in fase 5.)
-11. **Niet-leden uitnodigen — token-flow** (zie `## Toekomstige slice` hieronder voor design).
-12. **Dynamic app-icon (iOS)** — `expo-alternate-app-icons` plugin + JS-call vanuit `useMode()` om het home-screen-icoon mee te laten kleuren met nacht/dag. Vereist native rebuild + brengt iOS-systeem-popup bij elke wissel. Optioneel.
+9. **Pull-to-refresh** — drag-to-refresh op Avond/Agenda/Venue-detail via `RefreshControl` → `queryClient.invalidateQueries`. (Cache-verloop tussen refetches is al gedekt via `staleTime: 60s` + `refetchOnWindowFocus` + `useNowMinute`-hook in fase 5.)
+10. **Niet-leden uitnodigen — token-flow** (zie `## Toekomstige slice` hieronder voor design).
+11. **Dynamic app-icon (iOS)** — `expo-alternate-app-icons` plugin + JS-call vanuit `useMode()` om het home-screen-icoon mee te laten kleuren met nacht/dag. Vereist native rebuild + brengt iOS-systeem-popup bij elke wissel. Optioneel.
 
 ---
 

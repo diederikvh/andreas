@@ -3,6 +3,7 @@ import { Hono, type Context } from 'hono';
 
 import { auth } from '../auth.js';
 import { db, schema } from '../db/index.js';
+import { sendPushToUser } from '../push.js';
 import { buildOccurrencesByEvent } from './_helpers.js';
 
 async function requireUserId(c: Context): Promise<string | Response> {
@@ -174,6 +175,10 @@ friendsRoute.post('/request', async (c) => {
             eq(schema.friendships.toUserId, me)
           )
         );
+      // Auto-accept-pad: target had mij al toegevoegd, ik antwoord
+      // met een /request en daarmee accepteren we hun pending. Push
+      // de target ("je verzoek is geaccepteerd").
+      await sendPushFromMe(me, target.id, 'accepted');
     }
     return c.json({ status: 'accepted' });
   }
@@ -198,6 +203,7 @@ friendsRoute.post('/request', async (c) => {
     toUserId: target.id,
     status: 'pending',
   });
+  await sendPushFromMe(me, target.id, 'request');
   return c.json({ status: 'pending' });
 });
 
@@ -235,6 +241,8 @@ friendsRoute.post('/accept', async (c) => {
         eq(schema.friendships.toUserId, me)
       )
     );
+  // Push de oorspronkelijke aanvrager dat ik 'm geaccepteerd heb.
+  await sendPushFromMe(me, fromUserId, 'accepted');
   return c.json({ status: 'accepted' });
 });
 
@@ -470,3 +478,40 @@ usersRoute.get('/search', async (c) => {
     })),
   });
 });
+
+/**
+ * Helper voor friend-push'es. Zoekt mijn naam/handle op (voor de
+ * notificatie-body) en stuurt de juiste copy naar de target. Wordt
+ * apart gehouden zodat we 'm niet inline bij elke route herhalen.
+ * Failures loggen we maar niet rethrowen — push-deliverability mag
+ * de hoofdactie nooit blokkeren.
+ */
+async function sendPushFromMe(
+  meId: string,
+  toUserId: string,
+  kind: 'request' | 'accepted'
+): Promise<void> {
+  try {
+    const [me] = await db
+      .select({ name: schema.users.name, handle: schema.users.handle })
+      .from(schema.users)
+      .where(eq(schema.users.id, meId))
+      .limit(1);
+    const display = me?.name?.trim() || (me?.handle ? `@${me.handle}` : 'Iemand');
+    if (kind === 'request') {
+      await sendPushToUser(toUserId, {
+        title: 'Nieuwe vriend-aanvraag',
+        body: `${display} wil je toevoegen`,
+        data: { url: '/(tabs)/jij' },
+      });
+    } else {
+      await sendPushToUser(toUserId, {
+        title: 'Nieuwe vriend',
+        body: `${display} en jij zijn nu vrienden`,
+        data: me?.handle ? { url: `/u/${me.handle}` } : { url: '/(tabs)/jij' },
+      });
+    }
+  } catch (err) {
+    console.error('[friends] push failed', err);
+  }
+}

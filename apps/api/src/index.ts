@@ -12,6 +12,7 @@ import { eventsRoute } from './routes/events.js';
 import { friendsRoute, usersRoute } from './routes/friends.js';
 import { invitesRoute } from './routes/invites.js';
 import { legalRoute } from './routes/legal.js';
+import { pushRoute } from './routes/push.js';
 import { savesRoute } from './routes/saves.js';
 import { seriesRoute } from './routes/series.js';
 import { shareRoute } from './routes/share.js';
@@ -207,6 +208,7 @@ app.route('/friends', friendsRoute);
 app.route('/users', usersRoute);
 app.route('/invites', invitesRoute);
 app.route('/venue-follows', venueFollowsRoute);
+app.route('/push', pushRoute);
 app.route('/admin', adminRoute);
 
 // Publieke web-routes (landing + share-pagina's + AASA + privacy/voorwaarden).

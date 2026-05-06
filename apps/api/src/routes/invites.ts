@@ -5,6 +5,7 @@ import { Hono, type Context } from 'hono';
 
 import { auth } from '../auth.js';
 import { db, schema } from '../db/index.js';
+import { sendPushToUser, sendPushToUsers } from '../push.js';
 
 async function requireUserId(c: Context): Promise<string | Response> {
   const session = await auth.api.getSession({ headers: c.req.raw.headers });
@@ -158,6 +159,33 @@ invitesRoute.post('/', async (c) => {
       status: 'pending' as const,
     }))
   );
+
+  // Push de ontvangers. Eén query voor mijn naam + event-titel zodat
+  // de body persoonlijk + concreet is. Failures negeren.
+  try {
+    const [me_user] = await db
+      .select({ name: schema.users.name, handle: schema.users.handle })
+      .from(schema.users)
+      .where(eq(schema.users.id, me))
+      .limit(1);
+    const [ev] = await db
+      .select({ title: schema.events.title })
+      .from(schema.events)
+      .where(eq(schema.events.id, occ.eventId))
+      .limit(1);
+    const display =
+      me_user?.name?.trim() ||
+      (me_user?.handle ? `@${me_user.handle}` : 'Iemand');
+    const eventTitle = ev?.title ?? 'een event';
+    await sendPushToUsers(fresh, {
+      title: 'Uitnodiging',
+      body: `${display} nodigt je uit voor ${eventTitle}`,
+      data: { url: `/event/${occ.eventId}?o=${occurrenceId}` },
+    });
+  } catch (err) {
+    console.error('[invites] push failed', err);
+  }
+
   return c.json({ created: fresh.length, sent: fresh });
 });
 
@@ -169,14 +197,17 @@ invitesRoute.post('/:id/accept', async (c) => {
   const [row] = await db
     .select({
       id: schema.invites.id,
+      fromUserId: schema.invites.fromUserId,
       occurrenceId: schema.invites.occurrenceId,
       eventId: schema.occurrences.eventId,
+      eventTitle: schema.events.title,
     })
     .from(schema.invites)
     .innerJoin(
       schema.occurrences,
       eq(schema.occurrences.id, schema.invites.occurrenceId)
     )
+    .innerJoin(schema.events, eq(schema.events.id, schema.occurrences.eventId))
     .where(
       and(
         eq(schema.invites.id, id),
@@ -204,6 +235,25 @@ invitesRoute.post('/:id/accept', async (c) => {
     .limit(1);
   if (!existingSave) {
     await db.insert(schema.saves).values({ userId: me, eventId: row.eventId });
+  }
+
+  // Push de oorspronkelijke uitnodiger ("X gaat met je mee naar [event]").
+  try {
+    const [meUser] = await db
+      .select({ name: schema.users.name, handle: schema.users.handle })
+      .from(schema.users)
+      .where(eq(schema.users.id, me))
+      .limit(1);
+    const display =
+      meUser?.name?.trim() ||
+      (meUser?.handle ? `@${meUser.handle}` : 'Iemand');
+    await sendPushToUser(row.fromUserId, {
+      title: 'Uitnodiging geaccepteerd',
+      body: `${display} gaat met je mee naar ${row.eventTitle}`,
+      data: { url: `/event/${row.eventId}?o=${row.occurrenceId}` },
+    });
+  } catch (err) {
+    console.error('[invites] accept push failed', err);
   }
 
   return c.json({
