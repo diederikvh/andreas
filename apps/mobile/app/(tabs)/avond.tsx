@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useScrollToTop } from '@react-navigation/native';
 import { Image } from 'expo-image';
-import { router, useLocalSearchParams } from 'expo-router';
+import { router } from 'expo-router';
 import { useCallback, useMemo, useRef, useState } from 'react';
 import {
   Pressable,
@@ -40,6 +40,7 @@ import { useEvents, useFriends } from '@/lib/queries';
 import { useSession } from '@/lib/authClient';
 import { FEED } from '@/mocks/feed';
 import { useMode, useRoles } from '@/store/mode';
+import { useVandaagFilters } from '@/store/vandaagFilters';
 import { fontFamily, palette } from '@/theme/tokens';
 
 function formatMetaForRow(row: OccurrenceRow): string {
@@ -63,6 +64,27 @@ const CATEGORIES_ORDER: ApiEvent['category'][] = [
   'Literatuur',
   'Film',
 ];
+
+// Tone-mapping per mode — zelfde patroon als in EventListRow zodat de
+// cat-titels op Vandaag dezelfde kleuren delen als de tag-pills op de
+// rijen eronder.
+const TONE: Record<
+  'nacht' | 'dag',
+  Record<'acid' | 'flare' | 'plum' | 'azure', string>
+> = {
+  nacht: {
+    acid: palette.acid,
+    flare: palette.flare,
+    plum: palette.plum,
+    azure: palette.azure,
+  },
+  dag: {
+    acid: palette.red,
+    flare: palette.forest,
+    plum: palette.cobalt,
+    azure: '#8a5b00',
+  },
+};
 
 export default function Avond() {
   const roles = useRoles();
@@ -99,34 +121,20 @@ export default function Avond() {
     to: todayWindow.to,
   });
 
-  // URL-synced filters: vrienden + tijd-blokken (multi).
-  const params = useLocalSearchParams<{ vr?: string; tb?: string }>();
-  const onlyFriends = params.vr === '1';
-  const TB_IDS = TIME_BLOCKS.map((b) => b.id) as string[];
-  const activeBlocks = useMemo<TimeBlock[]>(
-    () =>
-      (params.tb ?? '')
-        .split(',')
-        .map((t) => t.trim())
-        .filter((t): t is TimeBlock => TB_IDS.includes(t)),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [params.tb]
-  );
+  // Filter-keuze (vrienden + tijd-blokken) wordt persistent bewaard
+  // tussen sessies via een Zustand-store. URL-state was onnodig — de
+  // Vandaag-tab is geen deeplink-target voor filters.
+  const onlyFriends = useVandaagFilters((s) => s.onlyFriends);
+  const activeBlocks = useVandaagFilters((s) => s.activeBlocks);
+  const setOnlyFriends = useVandaagFilters((s) => s.setOnlyFriends);
+  const toggleBlock = useVandaagFilters((s) => s.toggleBlock);
   const { data: session } = useSession();
   const { data: friends } = useFriends({
     enabled: Boolean(session?.user?.id),
   });
   const showFriendsChip = (friends?.length ?? 0) > 0;
-  const onToggleFriends = () =>
-    router.setParams({ vr: onlyFriends ? undefined : '1' });
-  const onToggleBlock = (b: TimeBlock) => {
-    const next = activeBlocks.includes(b)
-      ? activeBlocks.filter((x) => x !== b)
-      : [...activeBlocks, b];
-    router.setParams({
-      tb: next.length > 0 ? next.join(',') : undefined,
-    });
-  };
+  const onToggleFriends = () => setOnlyFriends(!onlyFriends);
+  const onToggleBlock = (b: TimeBlock) => toggleBlock(b);
 
   // Pull-to-refresh: invalideert events-cache zodat de huidige
   // window-query opnieuw fetched. Voor wanneer de gebruiker denkt
@@ -175,18 +183,6 @@ export default function Avond() {
     });
   }, [events, now, activeBlocks, onlyFriends]);
 
-  // Totaal aantal events vandaag — voor de hero-tekst, NIET filter-
-  // afhankelijk. Geeft de gebruiker context wat de filter doet
-  // ("12 dingen vandaag" → na filter "nu 3 zichtbaar").
-  const totalToday = useMemo<number>(() => {
-    if (!events) return 0;
-    return expandToOccurrenceRows(events).filter((row) => {
-      if (row.event.kind === 'exhibition') return false;
-      if (effectiveEndsAtMs(row.occurrence) < now) return false;
-      return true;
-    }).length;
-  }, [events, now]);
-
   // Lopende tentoonstellingen — altijd zichtbaar als losse strook,
   // ongeacht mode of filter (Diederik: "doorlopend te zien blijft
   // altijd").
@@ -195,15 +191,27 @@ export default function Avond() {
     return events.filter((e) => e.kind === 'exhibition');
   }, [events]);
 
-  // Hoofd-artikel: featured event uit de gefilterde lijst. Geen
-  // featured? Eerste rij. Lead-event wordt geskipt in de cat-secties
-  // zodat-ie niet dubbel verschijnt.
+  // Alle events vandaag (zonder filter) — gebruikt voor de feature en
+  // voor de totaal-telling in de hero. Filter werkt alleen op de
+  // cat-secties eronder.
+  const allToday = useMemo<OccurrenceRow[]>(() => {
+    if (!events) return [];
+    return expandToOccurrenceRows(events).filter((row) => {
+      if (row.event.kind === 'exhibition') return false;
+      if (effectiveEndsAtMs(row.occurrence) < now) return false;
+      return true;
+    });
+  }, [events, now]);
+
+  // Hoofd-artikel: featured event uit alle vandaag-events (NIET
+  // filter-afhankelijk). Geen featured? Eerste rij. Lead-event wordt
+  // geskipt in de cat-secties zodat-ie niet dubbel verschijnt.
   const lead = useMemo(() => {
-    if (filtered.length === 0) return undefined;
-    const featuredRows = filtered.filter((r) => r.event.featured);
-    if (featuredRows.length === 0) return filtered[0];
+    if (allToday.length === 0) return undefined;
+    const featuredRows = allToday.filter((r) => r.event.featured);
+    if (featuredRows.length === 0) return allToday[0];
     return featuredRows[Math.floor(Math.random() * featuredRows.length)];
-  }, [filtered]);
+  }, [allToday]);
 
   // Cat-secties: groepeer rest per categorie (zelfde volgorde als
   // CATEGORIES_ORDER). Featured-events bovenaan in elke sublijst, dan
@@ -246,11 +254,11 @@ export default function Avond() {
     return `${DOW_NL_FULL[d.getDay()].toLowerCase()} ${d.getDate()} ${MONTHS_NL_FULL[d.getMonth()]}`;
   }, [todayWindow.refDate]);
   const heroCountLine =
-    totalToday === 0
+    allToday.length === 0
       ? 'Niets vandaag op de agenda.'
-      : totalToday === 1
+      : allToday.length === 1
         ? '1 ding vandaag op de agenda.'
-        : `${totalToday} dingen vandaag op de agenda.`;
+        : `${allToday.length} dingen vandaag op de agenda.`;
 
   return (
     <View style={[styles.root, { backgroundColor: roles.bg }]}>
@@ -279,34 +287,12 @@ export default function Avond() {
           />
         }
       >
-        <View style={styles.hero}>
-          <Text style={[styles.heroDate, { color: roles.accent }]}>
-            {heroDateLine}
-          </Text>
-          <Text style={[styles.heroCount, { color: roles.fg }]}>
-            {heroCountLine}
-          </Text>
-        </View>
-
-        {/* Filter-chips: vrienden-toggle (alleen als je vrienden hebt) +
-            vier tijd-blok-chips. Mode-onafhankelijk — dag/nacht is
-            puur stilistisch. */}
-        <FilterChips
-          onlyFriends={onlyFriends}
-          onToggleFriends={onToggleFriends}
-          showFriendsChip={showFriendsChip}
-          activeBlocks={activeBlocks}
-          onToggleBlock={onToggleBlock}
-        />
-
-        {/* Hoofd-artikel: eerste featured event als grote kaart bovenaan.
-            Tot we een dedicated lead-flag hebben pakken we de eerstvolgende
-            featured-pick. */}
+        {/* Hoofd-artikel: featured event uit alle vandaag-events.
+            NIET filter-afhankelijk — staat bovenaan onafhankelijk
+            van wat je beneden filtert. */}
         {lead && (
           <Pressable
-            onPress={() =>
-              router.push(eventPathFor(lead) as never)
-            }
+            onPress={() => router.push(eventPathFor(lead) as never)}
           >
             <FeaturedCard
               kicker={data.featured.kicker}
@@ -317,9 +303,35 @@ export default function Avond() {
           </Pressable>
         )}
 
-        {/* Kaart-CTA — direct onder het featured artikel zodat-ie
-            opvalt voordat de lijst begint. */}
+        {/* Kaart-CTA — onafhankelijk van de filter. */}
         <KaartBanner />
+
+        {/* Doorlopend te zien (musea/galleries) — altijd zichtbaar als
+            losse strook, niet beïnvloed door de tijd-blok filter. */}
+        <RunningExhibitions events={runningExhibitions} />
+
+        {/* Hero — datum + totaal-telling, zit als header net boven de
+            filter-labels en de cat-lijsten. NIET filter-afhankelijk;
+            toont totaal voor de hele dag. */}
+        <View style={styles.hero}>
+          <Text style={[styles.heroDate, { color: roles.accent }]}>
+            {heroDateLine}
+          </Text>
+          <Text style={[styles.heroCount, { color: roles.fg }]}>
+            {heroCountLine}
+          </Text>
+        </View>
+
+        {/* Filter-chips zitten direct boven de cat-secties zodat het
+            visueel duidelijk is dat ze alleen op die lijsten werken.
+            Vrienden-toggle (alleen bij >=1 vriend) + tijd-blokken. */}
+        <FilterChips
+          onlyFriends={onlyFriends}
+          onToggleFriends={onToggleFriends}
+          showFriendsChip={showFriendsChip}
+          activeBlocks={activeBlocks}
+          onToggleBlock={onToggleBlock}
+        />
 
         {isLoading && (
           <View style={styles.loadingWrap}>
@@ -329,7 +341,6 @@ export default function Avond() {
         {error && <ListState text="Kon events niet laden." tone="error" />}
         {!isLoading && !error && (
           <Animated.View entering={FadeIn.duration(220)}>
-            <RunningExhibitions events={runningExhibitions} />
             {filtered.length === 0 && events && (
               <ListState
                 text={
@@ -343,6 +354,7 @@ export default function Avond() {
               <View key={category}>
                 <SectionTitle
                   title={category}
+                  titleColor={TONE[mode][CATEGORY_TICK[category]]}
                   meta="Meer →"
                   onMetaPress={() =>
                     router.push({
@@ -477,12 +489,14 @@ function ApiEventRow({
     name: f.name,
     avatar: f.avatarUrl,
   }));
+  // Op Vandaag laten we de categorie-tag weg in de rij — die staat
+  // al in de sectie-titel erboven. Ster + genre/series/friends
+  // blijven; tick-kleur volgt nog steeds het thema.
   return (
     <EventListRow
       thumb={event.imageUrl ?? ''}
       title={event.title}
       venue={formatMetaForRow(row)}
-      tags={[{ label: event.category, tone: CATEGORY_TICK[event.category] }]}
       seriesLabel={event.series?.[0]?.name}
       genreLabel={event.genres?.[0]}
       friends={friends && friends.length > 0 ? friends : undefined}
@@ -569,32 +583,41 @@ function FeaturedCard({
 
 function SectionTitle({
   title,
+  titleColor,
   meta,
   onMetaPress,
 }: {
   title: string;
+  titleColor?: string;
   meta: string;
   onMetaPress?: () => void;
 }) {
   const roles = useRoles();
-  if (onMetaPress) {
-    return (
-      <View style={styles.sectionTitle}>
-        <Text style={[styles.sectionTitleText, { color: roles.fg }]}>
-          {title}
-        </Text>
+  // Match het kop-design van "Doorlopend te zien" en "Series": bold-
+  // uppercase label links (in optionele thema-kleur), mono-uppercase
+  // meta rechts in een rustig grijs zodat de "Meer →"-link niet de
+  // aandacht steelt van het thema-label.
+  return (
+    <View style={styles.sectionTitle}>
+      <Text
+        style={[
+          styles.sectionTitleLabel,
+          { color: titleColor ?? roles.fg },
+        ]}
+      >
+        {title}
+      </Text>
+      {onMetaPress ? (
         <Pressable onPress={onMetaPress} hitSlop={8}>
-          <Text style={[styles.sectionTitleText, { color: roles.accent }]}>
+          <Text style={[styles.sectionTitleMeta, { color: roles.fgMuted }]}>
             {meta}
           </Text>
         </Pressable>
-      </View>
-    );
-  }
-  return (
-    <View style={styles.sectionTitle}>
-      <Text style={[styles.sectionTitleText, { color: roles.fg }]}>{title}</Text>
-      <Text style={[styles.sectionTitleText, { color: roles.fgMuted }]}>{meta}</Text>
+      ) : (
+        <Text style={[styles.sectionTitleMeta, { color: roles.fgMuted }]}>
+          {meta}
+        </Text>
+      )}
     </View>
   );
 }
@@ -693,16 +716,25 @@ const styles = StyleSheet.create({
     marginTop: 10,
   },
 
-  // Section title
+  // Section title — coherent met de afstand tussen sub-secties (row
+  // paddingBottom 14 + sectionTitle paddingTop 14 = 28). Korte
+  // paddingBottom houdt 'm strak tegen de eerste row.
   sectionTitle: {
-    paddingHorizontal: 18,
-    paddingBottom: 14,
+    paddingHorizontal: 22,
+    paddingTop: 14,
+    paddingBottom: 6,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'baseline',
   },
-  sectionTitleText: {
-    fontFamily: fontFamily.monoMedium,
+  sectionTitleLabel: {
+    fontFamily: fontFamily.bold,
+    fontSize: 12,
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+  },
+  sectionTitleMeta: {
+    fontFamily: fontFamily.mono,
     fontSize: 10,
     letterSpacing: 1,
     textTransform: 'uppercase',
@@ -717,14 +749,16 @@ const styles = StyleSheet.create({
     paddingBottom: 14,
   },
   catTab: {
+    height: 32,
     paddingHorizontal: 14,
-    paddingVertical: 8,
     borderRadius: 999,
     borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   friendsChip: {
-    width: 36,
-    height: 36,
+    width: 32,
+    height: 32,
     borderRadius: 999,
     borderWidth: 1,
     alignItems: 'center',
@@ -734,6 +768,7 @@ const styles = StyleSheet.create({
     fontFamily: fontFamily.medium,
     fontSize: 12,
     letterSpacing: -0.06,
+    lineHeight: 14,
   },
 
   // List loading / error

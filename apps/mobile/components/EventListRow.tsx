@@ -89,30 +89,34 @@ export function EventListRow({
           contentFit="cover"
         />
         <View style={styles.rowBody}>
-          <View style={styles.titleLine}>
-            {featured && (
-              <Ionicons
-                name="star"
-                size={12}
-                color={tickColor}
-                style={styles.featuredStar}
-              />
-            )}
-            <Text
-              numberOfLines={2}
-              style={[styles.rowTitle, { color: roles.fg, flex: 1 }]}
-            >
-              {title}
-            </Text>
-          </View>
+          <Text
+            numberOfLines={2}
+            style={[styles.rowTitle, { color: roles.fg }]}
+          >
+            {title}
+          </Text>
           <Text
             numberOfLines={1}
             style={[styles.rowVenue, { color: roles.fgMuted }]}
           >
             {[time, duration, venue].filter(Boolean).join(' · ')}
           </Text>
-          {(tags?.length || status || seriesLabel || genreLabel || friends?.length) && (
+          {(featured || tags?.length || status || seriesLabel || genreLabel || friends?.length) && (
             <View style={styles.rowTags}>
+              {featured && (
+                <View
+                  style={[
+                    styles.tag,
+                    { backgroundColor: `${tickColor}26` },
+                  ]}
+                >
+                  <Ionicons
+                    name="star"
+                    size={10}
+                    color={toneForLabelText(tickColor, mode)}
+                  />
+                </View>
+              )}
               {tags?.map((tag) => {
                 const tone = TONE[mode][tag.tone];
                 const bg = `${tone}26`; // ~15% alpha
@@ -265,14 +269,6 @@ const styles = StyleSheet.create({
     borderRadius: 10,
   },
   rowBody: { flex: 1, minWidth: 0, gap: 4 },
-  titleLine: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 4,
-  },
-  featuredStar: {
-    marginTop: 3,
-  },
   rowTitle: {
     fontFamily: fontFamily.bold,
     fontSize: 15,
