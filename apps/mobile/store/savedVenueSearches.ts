@@ -15,10 +15,18 @@ export type SavedVenueSearch = {
   dn: VenueDayNight[];
   type: VenueType[];
   sc: VenueScene[];
+  /** Multi-select sub-type tags (vrije strings: techno, queer, arthouse, …).
+      Backwards-compat: oude saved-venue-searches hadden dit veld nog
+      niet — persist-migrate vult 'm met []. */
+  st: string[];
   /** Alleen venues die de gebruiker volgt (myFollowState === 'volgen'). */
   vo: boolean;
   q: string;
   createdAt: number;
+};
+
+type LegacySavedVenueSearch = SavedVenueSearch & {
+  st?: string[];
 };
 
 type SavedVenueSearchesState = {
@@ -48,6 +56,22 @@ export const useSavedVenueSearchesStore = create<SavedVenueSearchesState>()(
     {
       name: 'andreas:saved-venue-searches.v1',
       storage: createJSONStorage(() => AsyncStorage),
+      version: 2,
+      migrate: (persistedState: unknown, version: number) => {
+        // v1 had geen `st` veld; v2 wel. Vul op [] zodat de Venues-tab
+        // nooit crashed op `s.st.length` bij rehydratie.
+        const state = persistedState as { searches?: LegacySavedVenueSearch[] };
+        if (!state || !Array.isArray(state.searches)) {
+          return { searches: [] };
+        }
+        if (version < 2) {
+          state.searches = state.searches.map((s) => ({
+            ...s,
+            st: Array.isArray(s.st) ? s.st : [],
+          }));
+        }
+        return state as SavedVenueSearchesState;
+      },
     }
   )
 );
@@ -65,6 +89,7 @@ export function isSavedVenueSearchActive(
     dn: VenueDayNight[];
     type: VenueType[];
     sc: VenueScene[];
+    st: string[];
     vo: boolean;
     q: string;
   }
@@ -74,13 +99,20 @@ export function isSavedVenueSearchActive(
     s.q === current.q &&
     sameSet(s.dn, current.dn) &&
     sameSet(s.type, current.type) &&
-    sameSet(s.sc, current.sc)
+    sameSet(s.sc, current.sc) &&
+    sameSet(s.st, current.st)
   );
 }
 
-function sameSet(a: string[], b: string[]): boolean {
-  if (a.length !== b.length) return false;
-  const sa = new Set(a);
-  for (const v of b) if (!sa.has(v)) return false;
+// Defensive: oude persisted searches kunnen ontbrekende velden hebben.
+function sameSet(
+  a: string[] | undefined,
+  b: string[] | undefined
+): boolean {
+  const aa = a ?? [];
+  const bb = b ?? [];
+  if (aa.length !== bb.length) return false;
+  const sa = new Set(aa);
+  for (const v of bb) if (!sa.has(v)) return false;
   return true;
 }

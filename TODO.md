@@ -76,11 +76,9 @@ Laatste sync: 2026-05-05 · branch `main`.
 
 **App-features**:
 9. **Push notificaties** — `expo-notifications` + Apple Push Key (al via EAS gegenereerd) + server endpoint dat tokens registreert + verstuurt bij invite-accept, friend-request, etc.
-10. **Multi-category events** — `events.category: enum` → `events.categories: enum[]`. Een Kunst-opening met DJ-set valt zo onder zowel Kunst als Muziek. 2-stage migratie (zelfde patroon als occurrences); raakt filter-logic (`eq` → `arrayContains`/overlap), EventListRow-tag (eerste primair + "+1"), admin multi-select chips, genre-buckets endpoint (event telt mee in álle z'n categorieën).
-11. **Subtype-filter voor Venues-tab** — chip-multi-select op `venues.subtype` (techno/queer/arthouse/conceptueel/contemporary/etc.) zoals genres in Agenda, met aparte sub-filter chips voor galleries/musea. Vereist `GET /venues/subtypes` endpoint analoog aan `/events/genres`.
-12. **Pull-to-refresh** — drag-to-refresh op Avond/Agenda/Venue-detail via `RefreshControl` → `queryClient.invalidateQueries`. (Cache-verloop tussen refetches is al gedekt via `staleTime: 60s` + `refetchOnWindowFocus` + `useNowMinute`-hook in fase 5.)
-13. **Niet-leden uitnodigen — token-flow** (zie `## Toekomstige slice` hieronder voor design).
-14. **Dynamic app-icon (iOS)** — `expo-alternate-app-icons` plugin + JS-call vanuit `useMode()` om het home-screen-icoon mee te laten kleuren met nacht/dag. Vereist native rebuild + brengt iOS-systeem-popup bij elke wissel. Optioneel.
+10. **Pull-to-refresh** — drag-to-refresh op Avond/Agenda/Venue-detail via `RefreshControl` → `queryClient.invalidateQueries`. (Cache-verloop tussen refetches is al gedekt via `staleTime: 60s` + `refetchOnWindowFocus` + `useNowMinute`-hook in fase 5.)
+11. **Niet-leden uitnodigen — token-flow** (zie `## Toekomstige slice` hieronder voor design).
+12. **Dynamic app-icon (iOS)** — `expo-alternate-app-icons` plugin + JS-call vanuit `useMode()` om het home-screen-icoon mee te laten kleuren met nacht/dag. Vereist native rebuild + brengt iOS-systeem-popup bij elke wissel. Optioneel.
 
 ---
 

@@ -2,6 +2,8 @@ import {
   and,
   arrayContains,
   asc,
+  count,
+  desc,
   eq,
   gt,
   gte,
@@ -9,6 +11,7 @@ import {
   inArray,
   isNull,
   or,
+  sql,
   type SQL,
 } from 'drizzle-orm';
 import { Hono } from 'hono';
@@ -159,6 +162,58 @@ venuesRoute.get('/', async (c) => {
 
   return c.json({ venues });
 });
+
+/**
+ * Distinct subtype-tags per venue-type, met count. Gebruikt door de
+ * Venues filter-sheet om de "Sub-types"-chips te bouwen. Caller geeft
+ * optioneel een lijst types mee om de subtypes scope-bound te maken
+ * (bv. alleen subtypes binnen `galerie` + `museum`); zonder types
+ * komen alle subtypes per type terug.
+ *
+ * MOET vóór `GET /:slug` blijven staan omdat Hono z'n routes in
+ * declaratie-volgorde matcht.
+ */
+venuesRoute.get('/subtypes', async (c) => {
+  const types = c.req.queries('type') ?? [];
+  const conditions: SQL[] = [eq(schema.venues.published, true)];
+  if (types.length > 0) {
+    const validTypes = types.filter((t) =>
+      VALID_VENUE_TYPES.has(t)
+    ) as Array<typeof VENUE_TYPE_VALUES[number]>;
+    if (validTypes.length > 0) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      conditions.push(inArray(schema.venues.type, validTypes as any));
+    }
+  }
+
+  const rows = await db
+    .select({
+      subtype: sql<string>`unnest(${schema.venues.subtype})`.as('subtype'),
+      type: schema.venues.type,
+      n: count(),
+    })
+    .from(schema.venues)
+    .where(and(...conditions))
+    .groupBy(sql`unnest(${schema.venues.subtype})`, schema.venues.type)
+    .orderBy(desc(count()));
+
+  const subtypes = rows.map((r) => ({
+    subtype: r.subtype,
+    type: r.type,
+    count: Number(r.n),
+  }));
+  return c.json({ subtypes });
+});
+
+const VENUE_TYPE_VALUES = [
+  'galerie',
+  'museum',
+  'podium',
+  'club',
+  'film',
+  'ruimte',
+  'boekhandel-cafe',
+] as const;
 
 venuesRoute.get('/:slug', async (c) => {
   const slug = c.req.param('slug');

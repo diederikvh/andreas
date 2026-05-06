@@ -32,7 +32,7 @@ import type {
   VenueType,
 } from '@/lib/api';
 import { MONTHS_NL, VENUE_TYPE_TICK } from '@/lib/eventDisplay';
-import { useSeriesList, useVenues } from '@/lib/queries';
+import { useSeriesList, useVenues, useVenueSubtypes } from '@/lib/queries';
 import { useMode, useRoles } from '@/store/mode';
 import {
   isSavedVenueSearchActive,
@@ -114,6 +114,7 @@ export default function Venues() {
     dn?: string;
     t?: string;
     sc?: string;
+    st?: string;
     vo?: string;
   }>();
   const activeDn = useMemo<VenueDayNight[]>(
@@ -142,6 +143,16 @@ export default function Venues() {
         ),
     [params.sc]
   );
+  // Sub-types is een vrije array — geen enum-validatie nodig, alleen
+  // strippen en deduplicaten via de Set in toggleSubtype.
+  const activeSubtypes = useMemo<string[]>(
+    () =>
+      (params.st ?? '')
+        .split(',')
+        .map((x) => x.trim())
+        .filter((x) => x.length > 0),
+    [params.st]
+  );
   const onlyVolgend = params.vo === '1';
   const initialQ = params.q ?? '';
 
@@ -169,9 +180,15 @@ export default function Venues() {
       if (activeScene.length > 0) {
         if (!v.scene || !activeScene.includes(v.scene)) return false;
       }
+      if (activeSubtypes.length > 0) {
+        // Array-overlap: venue moet minstens één van de gekozen
+        // subtypes hebben.
+        const vs = v.subtype ?? [];
+        if (!vs.some((s) => activeSubtypes.includes(s))) return false;
+      }
       return true;
     });
-  }, [venuesAll, onlyVolgend, activeDn, activeType, activeScene]);
+  }, [venuesAll, onlyVolgend, activeDn, activeType, activeScene, activeSubtypes]);
 
   // Pull-to-refresh: invalideert venues + series. 700ms minimum
   // zichtbaarheid voor de banner.
@@ -238,6 +255,7 @@ export default function Venues() {
           activeDn={activeDn}
           activeType={activeType}
           activeScene={activeScene}
+          activeSubtypes={activeSubtypes}
           onlyVolgend={onlyVolgend}
           onDn={(next) =>
             router.setParams({ dn: next.length > 0 ? next.join(',') : '' })
@@ -247,6 +265,9 @@ export default function Venues() {
           }
           onScene={(next) =>
             router.setParams({ sc: next.length > 0 ? next.join(',') : '' })
+          }
+          onSubtypes={(next) =>
+            router.setParams({ st: next.length > 0 ? next.join(',') : '' })
           }
           onVolgend={(next) => router.setParams({ vo: next ? '1' : '' })}
         />
@@ -265,7 +286,8 @@ export default function Venues() {
                     ? 'Je volgt nog geen venues.'
                     : activeDn.length +
                           activeType.length +
-                          activeScene.length >
+                          activeScene.length +
+                          activeSubtypes.length >
                         0
                       ? 'Geen venues voor deze filter.'
                       : 'Geen venues om te tonen.'}
@@ -485,10 +507,12 @@ function ChipRow({
   activeDn,
   activeType,
   activeScene,
+  activeSubtypes,
   onlyVolgend,
   onDn,
   onType,
   onScene,
+  onSubtypes,
   onVolgend,
 }: {
   query: string;
@@ -496,10 +520,12 @@ function ChipRow({
   activeDn: VenueDayNight[];
   activeType: VenueType[];
   activeScene: VenueScene[];
+  activeSubtypes: string[];
   onlyVolgend: boolean;
   onDn: (next: VenueDayNight[]) => void;
   onType: (next: VenueType[]) => void;
   onScene: (next: VenueScene[]) => void;
+  onSubtypes: (next: string[]) => void;
   onVolgend: (next: boolean) => void;
 }) {
   const mode = useMode();
@@ -533,6 +559,7 @@ function ChipRow({
     activeDn.length +
     activeType.length +
     activeScene.length +
+    activeSubtypes.length +
     (onlyVolgend ? 1 : 0);
   const filterActive = filterCount > 0;
 
@@ -540,6 +567,7 @@ function ChipRow({
     dn: activeDn,
     type: activeType,
     sc: activeScene,
+    st: activeSubtypes,
     vo: onlyVolgend,
     q: query,
   };
@@ -550,6 +578,7 @@ function ChipRow({
       onDn([]);
       onType([]);
       onScene([]);
+      onSubtypes([]);
       onVolgend(false);
       onQuery('');
       return;
@@ -557,6 +586,7 @@ function ChipRow({
     onDn(s.dn);
     onType(s.type);
     onScene(s.sc);
+    onSubtypes(s.st ?? []);
     onVolgend(s.vo);
     onQuery(s.q);
   };
@@ -702,11 +732,13 @@ function ChipRow({
           activeDn={activeDn}
           activeType={activeType}
           activeScene={activeScene}
+          activeSubtypes={activeSubtypes}
           onlyVolgend={onlyVolgend}
           query={query}
           onDn={onDn}
           onType={onType}
           onScene={onScene}
+          onSubtypes={onSubtypes}
           onVolgend={onVolgend}
           onClose={() => setFilterOpen(false)}
         />
@@ -719,22 +751,26 @@ function FilterSheet({
   activeDn,
   activeType,
   activeScene,
+  activeSubtypes,
   onlyVolgend,
   query,
   onDn,
   onType,
   onScene,
+  onSubtypes,
   onVolgend,
   onClose,
 }: {
   activeDn: VenueDayNight[];
   activeType: VenueType[];
   activeScene: VenueScene[];
+  activeSubtypes: string[];
   onlyVolgend: boolean;
   query: string;
   onDn: (next: VenueDayNight[]) => void;
   onType: (next: VenueType[]) => void;
   onScene: (next: VenueScene[]) => void;
+  onSubtypes: (next: string[]) => void;
   onVolgend: (next: boolean) => void;
   onClose: () => void;
 }) {
@@ -745,29 +781,76 @@ function FilterSheet({
   const [saveOpen, setSaveOpen] = useState(false);
   const [saveName, setSaveName] = useState('');
 
+  // Subtypes scope-bound op de gekozen types — als er niets gekozen
+  // is komen alle subtypes per type terug; we groeperen straks per type
+  // in de UI zodat "techno" onder Club niet wordt gemerged met "techno"
+  // onder Podium.
+  const {
+    data: subtypeData,
+    isLoading: subtypesLoading,
+    error: subtypesError,
+  } = useVenueSubtypes(activeType.length > 0 ? activeType : undefined);
+
+  const groupedSubtypes = useMemo(() => {
+    if (!subtypeData) return [] as Array<{
+      type: VenueType;
+      items: { subtype: string; count: number }[];
+    }>;
+    const map = new Map<VenueType, { subtype: string; count: number }[]>();
+    for (const b of subtypeData) {
+      if (!b.type) continue;
+      const arr = map.get(b.type) ?? [];
+      arr.push({ subtype: b.subtype, count: b.count });
+      map.set(b.type, arr);
+    }
+    // Stabiele volgorde: zelfde als TYPE_CHIPS zodat Podium boven Club
+    // staat en niet random alfabetisch op enum-naam.
+    return TYPE_CHIPS.flatMap(({ value }) => {
+      const items = map.get(value);
+      return items && items.length > 0 ? [{ type: value, items }] : [];
+    });
+  }, [subtypeData]);
+
   const toggleDn = (v: VenueDayNight) => {
     if (activeDn.includes(v)) onDn(activeDn.filter((x) => x !== v));
     else onDn([...activeDn, v]);
   };
   const toggleType = (v: VenueType) => {
-    if (activeType.includes(v)) onType(activeType.filter((x) => x !== v));
-    else onType([...activeType, v]);
+    if (activeType.includes(v)) {
+      onType(activeType.filter((x) => x !== v));
+      // Subtypes die alleen onder dit type voorkwamen: laat ze staan,
+      // de filter-logica negeert ze automatisch (geen overlap meer).
+      // Maar wel netjes opschonen — anders blijft Sub-types-count hangen.
+      const stillReachable = (subtypeData ?? [])
+        .filter((b) => b.type !== v)
+        .map((b) => b.subtype);
+      const reachableSet = new Set(stillReachable);
+      const next = activeSubtypes.filter((s) => reachableSet.has(s));
+      if (next.length !== activeSubtypes.length) onSubtypes(next);
+    } else onType([...activeType, v]);
   };
   const toggleScene = (v: VenueScene) => {
     if (activeScene.includes(v)) onScene(activeScene.filter((x) => x !== v));
     else onScene([...activeScene, v]);
+  };
+  const toggleSubtype = (s: string) => {
+    if (activeSubtypes.includes(s))
+      onSubtypes(activeSubtypes.filter((x) => x !== s));
+    else onSubtypes([...activeSubtypes, s]);
   };
 
   const filterCount =
     activeDn.length +
     activeType.length +
     activeScene.length +
+    activeSubtypes.length +
     (onlyVolgend ? 1 : 0);
 
   const onClearAll = () => {
     onDn([]);
     onType([]);
     onScene([]);
+    onSubtypes([]);
     onVolgend(false);
   };
 
@@ -779,6 +862,7 @@ function FilterSheet({
       dn: activeDn,
       type: activeType,
       sc: activeScene,
+      st: activeSubtypes,
       vo: onlyVolgend,
       q: query,
     });
@@ -816,8 +900,8 @@ function FilterSheet({
       <View style={styles.sheetHead}>
         <Text style={[styles.sheetTitle, { color: roles.fg }]}>Filter</Text>
         <Text style={[styles.sheetLead, { color: roles.fgMuted }]}>
-          Combineer dag/nacht, type, scene en volg-status. Sla 'm op om de
-          combinatie als chip te bewaren.
+          Combineer dag/nacht, type, sub-type, scene en volg-status. Sla 'm
+          op om de combinatie als chip te bewaren.
         </Text>
       </View>
 
@@ -857,6 +941,93 @@ function FilterSheet({
               active={activeType.includes(c.value)}
               onPress={() => toggleType(c.value)}
             />
+          ))}
+        </View>
+
+        <Text
+          style={[
+            styles.sheetSectionHead,
+            { color: roles.fgMuted, marginTop: 22 },
+          ]}
+        >
+          Sub-types
+        </Text>
+        {subtypesLoading && (
+          <View style={styles.sheetLoading}>
+            <SpinningCross size={24} thickness={4} color={roles.fgPlaceholder} />
+          </View>
+        )}
+        {subtypesError && (
+          <Text style={[styles.sheetEmpty, { color: '#c9453a' }]}>
+            Kon sub-types niet laden.
+          </Text>
+        )}
+        {!subtypesLoading && !subtypesError && groupedSubtypes.length === 0 && (
+          <Text style={[styles.sheetEmpty, { color: roles.fgMuted }]}>
+            {activeType.length > 0
+              ? 'Geen sub-types voor dit type.'
+              : 'Nog geen sub-types ingevuld.'}
+          </Text>
+        )}
+        <View style={styles.sheetSubSectionGroup}>
+          {groupedSubtypes.map((section) => (
+            <View key={section.type}>
+              {/* Per-type sub-heading verschijnt alleen als er meer dan
+                  één type-bucket zichtbaar is — anders is impliciet
+                  duidelijk welk type erbij hoort. */}
+              {groupedSubtypes.length > 1 && (
+                <Text
+                  style={[
+                    styles.sheetSubSectionHead,
+                    { color: roles.fgPlaceholder },
+                  ]}
+                >
+                  {TYPE_CHIPS.find((c) => c.value === section.type)?.label ??
+                    section.type}
+                </Text>
+              )}
+              <View style={styles.sheetWrap}>
+                {section.items.map((b) => {
+                  const checked = activeSubtypes.includes(b.subtype);
+                  return (
+                    <Pressable
+                      key={`${section.type}-${b.subtype}`}
+                      onPress={() => toggleSubtype(b.subtype)}
+                      style={[
+                        styles.subtypeFilterChip,
+                        {
+                          borderColor: checked ? roles.fg : roles.bgChip,
+                          backgroundColor: checked
+                            ? roles.fg
+                            : isNacht
+                              ? palette.noir2
+                              : palette.paper2,
+                        },
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.subtypeFilterChipText,
+                          { color: checked ? roles.bg : roles.fg },
+                        ]}
+                      >
+                        {b.subtype}
+                      </Text>
+                      <Text
+                        style={[
+                          styles.subtypeFilterChipCount,
+                          {
+                            color: checked ? roles.bg : roles.fgPlaceholder,
+                          },
+                        ]}
+                      >
+                        {b.count}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </View>
           ))}
         </View>
 
@@ -1328,6 +1499,46 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
+  },
+  sheetLoading: {
+    paddingVertical: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sheetEmpty: {
+    fontFamily: fontFamily.mono,
+    fontSize: 11,
+    letterSpacing: 0.8,
+    paddingVertical: 14,
+    textAlign: 'center',
+  },
+  sheetSubSectionGroup: { gap: 12 },
+  sheetSubSectionHead: {
+    fontFamily: fontFamily.mono,
+    fontSize: 9,
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
+    marginBottom: 6,
+  },
+  subtypeFilterChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    height: 34,
+    paddingHorizontal: 14,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
+  subtypeFilterChipText: {
+    fontFamily: fontFamily.medium,
+    fontSize: 13,
+    letterSpacing: -0.13,
+    textTransform: 'lowercase',
+  },
+  subtypeFilterChipCount: {
+    fontFamily: fontFamily.mono,
+    fontSize: 10,
+    letterSpacing: 0.8,
   },
   filterChip: {
     minHeight: 38,

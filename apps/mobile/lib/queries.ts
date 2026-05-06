@@ -21,6 +21,7 @@ import {
   getSeries,
   getSeriesList,
   getVenue,
+  getVenueSubtypes,
   getVenues,
   removeFriend,
   searchUsers,
@@ -32,6 +33,7 @@ import {
   type SavedApiEvent,
   type VenueCategory,
   type VenueFollowState,
+  type VenueType,
 } from '@/lib/api';
 
 export const queryKeys = {
@@ -93,6 +95,16 @@ export function useVenue(slug: string) {
     enabled: Boolean(slug),
     // Programma binnen een venue muteert pas zodra een nieuwe ingest-
     // run is gedraaid; 10 min stale dekt het zonder onnodige fetches.
+    staleTime: 10 * 60_000,
+    refetchOnWindowFocus: true,
+  });
+}
+
+export function useVenueSubtypes(types?: VenueType[]) {
+  return useQuery({
+    queryKey: ['venue-subtypes', types ?? []] as const,
+    queryFn: () => getVenueSubtypes(types),
+    // Subtypes muteren even traag als de venues zelf — 10 min stale.
     staleTime: 10 * 60_000,
     refetchOnWindowFocus: true,
   });

@@ -270,6 +270,24 @@ export async function getVenues(input: {
   return venues;
 }
 
+export type ApiVenueSubtypeBucket = {
+  subtype: string;
+  type: VenueType | null;
+  count: number;
+};
+
+export async function getVenueSubtypes(
+  types?: VenueType[]
+): Promise<ApiVenueSubtypeBucket[]> {
+  const params = new URLSearchParams();
+  if (types) for (const t of types) params.append('type', t);
+  const qs = params.toString();
+  const { subtypes } = await authedRequest<{ subtypes: ApiVenueSubtypeBucket[] }>(
+    `/venues/subtypes${qs ? `?${qs}` : ''}`
+  );
+  return subtypes;
+}
+
 // ─── Series ───────────────────────────────────────────────────────────
 
 export type ApiSeries = {
