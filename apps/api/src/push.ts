@@ -14,7 +14,15 @@ import { db, schema } from './db/index.js';
  *  - Andere errors loggen we maar negeren; één kapot device mag de
  *    rest van de batch niet stuk maken.
  */
-const expo = new Expo();
+const expo = new Expo({
+  accessToken: process.env.EXPO_ACCESS_TOKEN,
+});
+
+if (!process.env.EXPO_ACCESS_TOKEN) {
+  console.warn(
+    '[push] EXPO_ACCESS_TOKEN ontbreekt — Expo push service zal alle requests met 403 weigeren. Stel in als Fly secret.'
+  );
+}
 
 export type PushPayload = {
   title: string;
