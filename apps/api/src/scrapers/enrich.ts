@@ -267,3 +267,35 @@ export async function enrichEvent(input: EnrichInput): Promise<EnrichOutput> {
     cleanedDescription,
   };
 }
+
+/**
+ * Override `kind=show` naar `'exhibition'` bij events die op lokale
+ * middernacht starten én ≥7 dagen duren — typisch venue-summer-breaks
+ * of doorlopende tentoonstellingen die als 'show' worden ge-enriched.
+ *
+ * Conservatief: een 3-daags festival (`kind=show`) blijft show, alleen
+ * échte multi-week-spans worden exhibitions.
+ */
+export function refineKindByDuration(
+  kind: 'show' | 'exhibition',
+  startsAt: Date,
+  endsAt: Date | null
+): 'show' | 'exhibition' {
+  if (kind === 'exhibition') return kind;
+  if (!endsAt) return kind;
+  const sevenDays = 7 * 24 * 60 * 60 * 1000;
+  if (endsAt.getTime() - startsAt.getTime() < sevenDays) return kind;
+  // Lokale middernacht-check timezone-aware via Intl.
+  const dtf = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Europe/Amsterdam',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  });
+  const parts = dtf.formatToParts(startsAt);
+  const h = parts.find((p) => p.type === 'hour')?.value;
+  const m = parts.find((p) => p.type === 'minute')?.value;
+  if (h !== '00' && h !== '24') return kind; // sommige Intl-impl geven '24' voor 00:00
+  if (m !== '00') return kind;
+  return 'exhibition';
+}

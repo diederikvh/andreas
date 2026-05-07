@@ -4,7 +4,7 @@ import { eq } from 'drizzle-orm';
 
 import { db, schema } from '../db/index.js';
 import { uploadToBunny } from '../storage/bunny.js';
-import { enrichEvent } from './enrich.js';
+import { enrichEvent, refineKindByDuration } from './enrich.js';
 import {
   fetchMediamaticContent,
   type MediamaticContent,
@@ -331,6 +331,12 @@ async function scrapeOneVenue(
           )) ?? sourceImageUrl;
       }
 
+      // Refine kind: lange all-day events → exhibition. Pakt OCCII's
+      // 'summer break' soort patroon (5+ weken doorlopend).
+      const firstStart = new Date(first.startsOn);
+      const firstEnd = first.endsOn ? new Date(first.endsOn) : null;
+      const refinedKind = refineKindByDuration(enriched.kind, firstStart, firstEnd);
+
       await db.transaction(async (tx) => {
         if (!existing) {
           await tx.insert(schema.events).values({
@@ -338,7 +344,7 @@ async function scrapeOneVenue(
             venueId: venue.id,
             title,
             description: enriched.cleanedDescription ?? rawDescription,
-            kind: enriched.kind,
+            kind: refinedKind,
             imageUrl,
             category: enriched.category ?? venueCategory,
             featured: false,

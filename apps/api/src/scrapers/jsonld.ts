@@ -4,7 +4,7 @@ import { eq } from 'drizzle-orm';
 
 import { db, schema } from '../db/index.js';
 import { uploadToBunny } from '../storage/bunny.js';
-import { enrichEvent } from './enrich.js';
+import { enrichEvent, refineKindByDuration } from './enrich.js';
 import { extractJsonLdEvents } from './_jsonld-parser.js';
 
 /**
@@ -266,6 +266,9 @@ async function scrapeOneVenue(
 
       const status: 'scheduled' | 'cancelled' | 'sold_out' = 'scheduled';
 
+      // Refine kind: lange all-day events → exhibition.
+      const refinedKind = refineKindByDuration(enriched.kind, startsAt, endsAt);
+
       await db.transaction(async (tx) => {
         if (!existing) {
           await tx.insert(schema.events).values({
@@ -273,7 +276,7 @@ async function scrapeOneVenue(
             venueId: venue.id,
             title: ev.name,
             description: enriched.cleanedDescription ?? ev.description,
-            kind: enriched.kind,
+            kind: refinedKind,
             imageUrl,
             category: enriched.category ?? venueCategory,
             featured: false,
