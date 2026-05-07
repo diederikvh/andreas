@@ -18,3 +18,10 @@ node_modules/
 dist/
 .tsbuildinfo
 *.tsbuildinfo
+
+# Claude Code local state
+.claude/
+
+# Stray root configs (eas/app.json belong in apps/mobile/)
+/eas.json
+/app.json
