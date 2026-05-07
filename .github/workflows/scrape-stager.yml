@@ -22,7 +22,7 @@ jobs:
       # andere niet meeneemt; we zien beide responses in de log.
       fail-fast: false
       matrix:
-        scraper: [stager, ical]
+        scraper: [stager, ical, jsonld]
     steps:
       - name: POST /admin/api/scrapers/run/${{ matrix.scraper }}
         run: |
