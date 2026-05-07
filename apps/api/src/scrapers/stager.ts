@@ -1,8 +1,18 @@
+import { createHash } from 'node:crypto';
+
 import { eq } from 'drizzle-orm';
 
 import { db, schema } from '../db/index.js';
 import { uploadToBunny } from '../storage/bunny.js';
 import { enrichEvent } from './enrich.js';
+import {
+  fetchMediamaticContent,
+  type MediamaticContent,
+} from './_mediamatic-enrich.js';
+
+function shortHash(input: string): string {
+  return createHash('sha256').update(input).digest('hex').slice(0, 12);
+}
 
 /**
  * Stager-scraper. Voor venues die op stager.co tickets verkopen
@@ -230,45 +240,81 @@ async function scrapeOneVenue(
     (e) => new Date(e.endsOn ?? e.startsOn).getTime() > cutoff
   );
 
-  for (const ev of upcoming) {
+  // Mediamatic-enrich: hun Stager-publicity is leeg — content + image
+  // staan op mediamatic.net. Map stagerEventId → MediamaticContent.
+  // Levert ook de groep-sleutel (sourceUrl) zodat recurring workshops
+  // (6× "Distilling a Citrus Bouquet") als 1 event met N occurrences
+  // worden opgeslagen.
+  let mediamaticContent: Map<number, MediamaticContent> | null = null;
+  if (venue.slug === 'mediamatic') {
     try {
-      const [pub, tix] = await Promise.all([
-        getJson<StagerPublicity>(
-          `https://${cfg.host}/shop/v1/events/${ev.eventId}/publicity`,
-          jwt
-        ),
-        getJson<StagerTicketsOverview>(
-          `https://${cfg.host}/shop/v1/events/${ev.eventId}/tickets-overview`,
-          jwt
-        ),
-      ]);
+      mediamaticContent = await fetchMediamaticContent();
+      console.log(
+        `[stager] mediamatic enrich: ${mediamaticContent.size} events linked`
+      );
+    } catch (e) {
+      result.errors.push(`mediamatic-enrich: ${(e as Error).message}`);
+    }
+  }
 
-      const eventId = `evt-stg-${cfg.shopId}-${ev.eventId}`;
-      const occurrenceId = `occ-stg-${cfg.shopId}-${ev.eventId}`;
-      const ticketUrl = `https://${cfg.host}/shop/default/events/${ev.eventId}`;
+  // Groepeer events. Voor mediamatic: per genormaliseerde titel —
+  // recurring workshops ("Distilling a Citrus Bouquet" 6×) krijgen
+  // elke instance een eigen Stager-eventId én een eigen Mediamatic-
+  // detail-pagina, dus URL-grouping helpt niet. Titel-grouping wel.
+  // Andere Stager venues krijgen geen grouping (1 event per groep) —
+  // die hebben geen recurring-pattern in hun feed.
+  const groups = new Map<string, StagerEvent[]>();
+  for (const ev of upcoming) {
+    const key =
+      venue.slug === 'mediamatic'
+        ? `title:${ev.name.trim().toLowerCase()}`
+        : `eid:${ev.eventId}`;
+    const arr = groups.get(key) ?? [];
+    arr.push(ev);
+    groups.set(key, arr);
+  }
+  const isGrouped = venue.slug === 'mediamatic';
+
+  for (const [groupKey, instances] of groups) {
+    instances.sort(
+      (a, b) =>
+        new Date(a.startsOn).getTime() - new Date(b.startsOn).getTime()
+    );
+    const first = instances[0];
+
+    try {
+      // Publicity één keer per groep — description verandert niet per
+      // instance bij recurring workshops. Tix wordt later per instance
+      // opgehaald (prijs kan wel verschillen per datum).
+      const pub = await getJson<StagerPublicity>(
+        `https://${cfg.host}/shop/v1/events/${first.eventId}/publicity`,
+        jwt
+      );
+
+      const content = mediamaticContent?.get(first.eventId);
+
+      const eventId = isGrouped
+        ? `evt-stg-${cfg.shopId}-${shortHash(groupKey)}`
+        : `evt-stg-${cfg.shopId}-${first.eventId}`;
+
       const dutch =
         pub.eventInfoTranslations.find((t) => t.locale === 'NL') ??
         pub.eventInfoTranslations[0];
-      const rawDescription = dutch?.textHtml ? htmlToText(dutch.textHtml) : null;
-      const { cents } = pickPrice(tix);
-      const startsAt = new Date(pub.startsAt);
-      const endsAt = pub.endsAt ? new Date(pub.endsAt) : null;
-      const status = ev.soldOut ? 'sold_out' : 'scheduled';
+      const stagerDescription = dutch?.textHtml
+        ? htmlToText(dutch.textHtml)
+        : null;
+      const rawDescription = content?.description ?? stagerDescription;
+      const sourceImageUrl = content?.imageUrl ?? pub.imageUrl;
+      const title = content?.title?.trim() || pub.name || first.name;
 
-      // Claude-enrich: haalt lineup/genres/room/priceNote/kind uit de
-      // description-tekst. Strict prompt — bij twijfel laat 'ie velden
-      // null. Bij API-fout valt 'ie terug op een lege EnrichOutput
-      // (description blijft behouden).
       const enriched = await enrichEvent({
-        title: ev.name,
+        title,
         description: rawDescription,
         venueName: venue.name,
         venueCategory,
       });
 
-      // Image alleen bij eerste keer event zien naar Bunny mirroren —
-      // her-runs hergebruiken dezelfde CDN-URL. Spaart bandwidth en
-      // houdt onze CDN-cache stabiel.
+      // Image alleen bij eerste keer event zien naar Bunny mirroren.
       const [existing] = await db
         .select({ id: schema.events.id })
         .from(schema.events)
@@ -276,10 +322,13 @@ async function scrapeOneVenue(
         .limit(1);
 
       let imageUrl: string | null = null;
-      if (!existing && pub.imageUrl) {
+      if (!existing && sourceImageUrl) {
         imageUrl =
-          (await mirrorImageToBunny(pub.imageUrl, cfg.shopId, ev.eventId)) ??
-          pub.imageUrl;
+          (await mirrorImageToBunny(
+            sourceImageUrl,
+            cfg.shopId,
+            first.eventId
+          )) ?? sourceImageUrl;
       }
 
       await db.transaction(async (tx) => {
@@ -287,7 +336,7 @@ async function scrapeOneVenue(
           await tx.insert(schema.events).values({
             id: eventId,
             venueId: venue.id,
-            title: ev.name,
+            title,
             description: enriched.cleanedDescription ?? rawDescription,
             kind: enriched.kind,
             imageUrl,
@@ -299,37 +348,57 @@ async function scrapeOneVenue(
           result.inserted++;
         }
 
-        await tx
-          .insert(schema.occurrences)
-          .values({
-            id: occurrenceId,
-            eventId,
-            startsAt,
-            endsAt,
-            priceCents: cents,
-            priceNote: enriched.priceNote,
-            ticketUrl,
-            room: enriched.room,
-            lineup: enriched.lineup,
-            status,
-          })
-          .onConflictDoUpdate({
-            target: schema.occurrences.id,
-            set: {
-              startsAt,
-              endsAt,
+        for (const inst of instances) {
+          let cents: number | null = null;
+          try {
+            const tix = await getJson<StagerTicketsOverview>(
+              `https://${cfg.host}/shop/v1/events/${inst.eventId}/tickets-overview`,
+              jwt
+            );
+            cents = pickPrice(tix).cents;
+          } catch {
+            // tix-call kan falen bij gratis events / waitlist; cents blijft null
+          }
+
+          const occurrenceId = isGrouped
+            ? `occ-stg-${cfg.shopId}-${shortHash(`${groupKey}|${inst.startsOn}`)}`
+            : `occ-stg-${cfg.shopId}-${inst.eventId}`;
+          const instTicketUrl = `https://${cfg.host}/shop/default/events/${inst.eventId}`;
+          const instStatus: 'scheduled' | 'cancelled' | 'sold_out' =
+            inst.soldOut ? 'sold_out' : 'scheduled';
+
+          await tx
+            .insert(schema.occurrences)
+            .values({
+              id: occurrenceId,
+              eventId,
+              startsAt: new Date(inst.startsOn),
+              endsAt: new Date(inst.endsOn),
               priceCents: cents,
               priceNote: enriched.priceNote,
-              ticketUrl,
+              ticketUrl: instTicketUrl,
               room: enriched.room,
               lineup: enriched.lineup,
-              status,
-            },
-          });
-        result.occurrencesUpserted++;
+              status: instStatus,
+            })
+            .onConflictDoUpdate({
+              target: schema.occurrences.id,
+              set: {
+                startsAt: new Date(inst.startsOn),
+                endsAt: new Date(inst.endsOn),
+                priceCents: cents,
+                priceNote: enriched.priceNote,
+                ticketUrl: instTicketUrl,
+                room: enriched.room,
+                lineup: enriched.lineup,
+                status: instStatus,
+              },
+            });
+          result.occurrencesUpserted++;
+        }
       });
     } catch (e) {
-      result.errors.push(`event ${ev.eventId}: ${(e as Error).message}`);
+      result.errors.push(`group ${groupKey}: ${(e as Error).message}`);
       result.skipped++;
     }
   }
