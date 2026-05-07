@@ -767,7 +767,7 @@ function VenueFallback({
             {children}
           </Text>
         ) : (
-          <SpinningCross size={32} thickness={5} color={roles.fgPlaceholder} />
+          <SpinningCross size={32} color={roles.fgPlaceholder} />
         )}
         {tone === 'error' && (
           <Pressable

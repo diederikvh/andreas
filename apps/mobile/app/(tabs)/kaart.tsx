@@ -218,7 +218,19 @@ export default function Kaart() {
   useFocusEffect(
     useCallback(() => {
       recentre();
-    }, [recentre])
+      // Bij blur de event-detail bottom sheet sluiten zodat bij
+      // terugkeer een schone kaart staat. De filter-sheet is een
+      // page-sheet-Modal en blokkeert tab-navigatie zelf — geen
+      // cleanup nodig.
+      return () => {
+        setActiveId(null);
+        sheetHeight.value = withTiming(SHEET_CLOSED, {
+          duration: 220,
+          easing: brandEase,
+        });
+        setSheetOpen(false);
+      };
+    }, [recentre, sheetHeight])
   );
 
   const snapTo = (open: boolean) => {
@@ -450,7 +462,7 @@ export default function Kaart() {
                   },
                 ]}
               />
-              <Ionicons name="locate" size={16} color={roles.fgMuted} />
+              <Ionicons name="locate" size={20} color={roles.fgMuted} />
             </Pressable>
           )}
         </View>
@@ -501,39 +513,41 @@ function FilterButton({
       style={[
         styles.filterBtn,
         {
-          borderColor: active ? roles.accent : roles.bgChip,
-          backgroundColor: active ? roles.accent : 'transparent',
+          borderColor: active ? roles.fg : roles.bgChip,
+          backgroundColor: active ? roles.fg : 'transparent',
         },
       ]}
     >
-      <BlurView
-        intensity={40}
-        tint={mode === 'nacht' ? 'dark' : 'light'}
-        style={StyleSheet.absoluteFill}
-      />
       {!active && (
-        <View
-          style={[
-            StyleSheet.absoluteFill,
-            {
-              backgroundColor:
-                mode === 'nacht'
-                  ? 'rgba(23,23,26,0.65)'
-                  : 'rgba(235,230,216,0.7)',
-            },
-          ]}
-        />
+        <>
+          <BlurView
+            intensity={40}
+            tint={mode === 'nacht' ? 'dark' : 'light'}
+            style={StyleSheet.absoluteFill}
+          />
+          <View
+            style={[
+              StyleSheet.absoluteFill,
+              {
+                backgroundColor:
+                  mode === 'nacht'
+                    ? 'rgba(23,23,26,0.65)'
+                    : 'rgba(235,230,216,0.7)',
+              },
+            ]}
+          />
+        </>
       )}
       <Ionicons
         name="options-outline"
-        size={14}
-        color={active ? roles.onAccent : roles.fgMuted}
+        size={18}
+        color={active ? roles.bg : roles.fgMuted}
       />
       {active && (
         <Text
           style={[
             styles.filterBtnCount,
-            { color: roles.onAccent },
+            { color: roles.bg },
           ]}
         >
           {count}
@@ -951,21 +965,20 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
-    paddingVertical: 7,
+    gap: 8,
+    paddingVertical: 9,
     borderRadius: 999,
   },
   switchBtnText: {
     fontFamily: fontFamily.medium,
-    fontSize: 12,
+    fontSize: 14,
     letterSpacing: -0.06,
   },
   switchIcon: {
-    width: 16,
-    height: 16,
+    width: 18,
+    height: 18,
     alignItems: 'center',
     justifyContent: 'center',
-    transform: [{ scale: 0.7 }],
   },
 
   // List view kicker
@@ -980,8 +993,8 @@ const styles = StyleSheet.create({
 
   // Recentre button — pill in the toolbar row
   recentre: {
-    width: 36,
-    height: 36,
+    width: 44,
+    height: 44,
     borderRadius: 999,
     borderWidth: 1,
     alignItems: 'center',
@@ -991,27 +1004,27 @@ const styles = StyleSheet.create({
 
   // Filter-knop — pill ernaast, count-bubble in accent als filter actief
   filterBtn: {
-    height: 36,
-    minWidth: 36,
-    paddingHorizontal: 10,
+    height: 44,
+    minWidth: 44,
+    paddingHorizontal: 14,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 4,
+    gap: 6,
     borderRadius: 999,
     borderWidth: 1,
     overflow: 'hidden',
   },
   filterBtnCount: {
     fontFamily: fontFamily.monoMedium,
-    fontSize: 11,
+    fontSize: 12,
     letterSpacing: 0.5,
   },
 
   // Transport-mode toggle (walk/bike) — zelfde pill-stijl als recentre.
   transport: {
-    width: 36,
-    height: 36,
+    width: 44,
+    height: 44,
     borderRadius: 999,
     borderWidth: 1,
     alignItems: 'center',

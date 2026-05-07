@@ -137,7 +137,7 @@ const styles = StyleSheet.create({
   crossBar: {
     position: 'absolute',
     width: 72,
-    height: 12,
+    height: 18,
     borderRadius: 1,
   },
 });

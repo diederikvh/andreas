@@ -59,7 +59,7 @@ import {
 import { useMode, useRoles } from '@/store/mode';
 import { fontFamily, palette } from '@/theme/tokens';
 
-const SUB_TAB_HEIGHT = 44;
+const SUB_TAB_HEIGHT = 60;
 
 type Sub = 'vrienden' | 'planning';
 
@@ -483,7 +483,7 @@ function PlanningPanel({
   if (isLoading) {
     return (
       <View style={styles.loadingWrap}>
-        <SpinningCross size={28} thickness={5} color={roles.fgPlaceholder} />
+        <SpinningCross size={28} color={roles.fgPlaceholder} />
       </View>
     );
   }
@@ -881,14 +881,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
-    paddingVertical: 7,
-    paddingHorizontal: 14,
+    gap: 8,
+    paddingVertical: 11,
+    paddingHorizontal: 16,
     borderRadius: 999,
   },
   switchBtnText: {
     fontFamily: fontFamily.medium,
-    fontSize: 12,
+    fontSize: 14,
     letterSpacing: -0.06,
   },
   switchBadge: {
@@ -1013,8 +1013,8 @@ const styles = StyleSheet.create({
 
   twin: { flexDirection: 'row', gap: 8 },
   twinBtn: {
-    width: 34,
-    height: 34,
+    width: 44,
+    height: 44,
     borderRadius: 999,
     borderWidth: 1,
     alignItems: 'center',

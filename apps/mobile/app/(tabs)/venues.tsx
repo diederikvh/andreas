@@ -145,7 +145,7 @@ const TONE: Record<
   },
 };
 
-const CHIPROW_HEIGHT = 48;
+const CHIPROW_HEIGHT = 60;
 
 /**
  * Venues-tab — bladerbare lijst van alle venues met categorie-chips
@@ -285,7 +285,7 @@ export default function Venues() {
 
         {isLoading ? (
           <View style={styles.loadingWrap}>
-            <SpinningCross size={28} thickness={5} color={roles.fgPlaceholder} />
+            <SpinningCross size={28} color={roles.fgPlaceholder} />
           </View>
         ) : (
           <Animated.View entering={FadeIn.duration(220)}>
@@ -574,10 +574,10 @@ function ChipRow({
   const removeSaved = useRemoveSavedVenueSearch();
 
   const open = focused || query.length > 0;
-  const COLLAPSED_W = 36;
-  const MIN_OPEN_W = 110;
-  const MAX_OPEN_W = 240;
-  const textWidthEstimate = 36 + query.length * 7 + 16;
+  const COLLAPSED_W = 44;
+  const MIN_OPEN_W = 130;
+  const MAX_OPEN_W = 260;
+  const textWidthEstimate = 44 + query.length * 8 + 18;
   const width = !open
     ? COLLAPSED_W
     : Math.min(MAX_OPEN_W, Math.max(MIN_OPEN_W, textWidthEstimate));
@@ -660,13 +660,16 @@ function ChipRow({
               backgroundColor: isNacht ? palette.noir2 : palette.paper2,
               borderColor: isNacht ? '#2a2a2d' : palette.paper,
               width,
+              paddingHorizontal: open ? 14 : 0,
+              gap: open ? 8 : 0,
+              justifyContent: open ? 'flex-start' : 'center',
             },
           ]}
         >
           <Pressable onPress={onIconPress} hitSlop={6} style={styles.searchIcon}>
             <Ionicons
               name={open ? 'close' : 'search'}
-              size={14}
+              size={18}
               color={roles.fgMuted}
             />
           </Pressable>
@@ -681,7 +684,14 @@ function ChipRow({
             autoCapitalize="characters"
             autoCorrect={false}
             returnKeyType="search"
-            style={[styles.searchInput, { color: roles.fg }]}
+            style={[
+              styles.searchInput,
+              {
+                color: roles.fg,
+                flex: open ? 1 : 0,
+                width: open ? undefined : 0,
+              },
+            ]}
           />
         </View>
         <Pressable
@@ -1004,7 +1014,7 @@ function FilterSheet({
         </Text>
         {subtypesLoading && (
           <View style={styles.sheetLoading}>
-            <SpinningCross size={24} thickness={4} color={roles.fgPlaceholder} />
+            <SpinningCross size={24} color={roles.fgPlaceholder} />
           </View>
         )}
         {subtypesError && (
@@ -1213,22 +1223,15 @@ function FilterSheet({
               },
             ]}
           >
-            <Ionicons name="bookmark-outline" size={18} color={roles.fgMuted} />
+            <Ionicons name="bookmark-outline" size={18} color={roles.accent} />
           </Pressable>
           <Pressable
-            accessibilityLabel={t('Wis filters en sluit', 'Clear filters and close')}
+            accessibilityLabel={t('Sluit filter', 'Close filter')}
             onPress={() => {
-              onClearAll();
+              if (filterCount > 0) onClearAll();
               onClose();
             }}
-            disabled={filterCount === 0}
-            style={[
-              styles.sheetIconBtn,
-              {
-                borderColor: roles.bgChip,
-                opacity: filterCount === 0 ? 0.4 : 1,
-              },
-            ]}
+            style={[styles.sheetIconBtn, { borderColor: roles.bgChip }]}
           >
             <Ionicons name="close" size={18} color={roles.fgMuted} />
           </Pressable>
@@ -1340,31 +1343,31 @@ const styles = StyleSheet.create({
   searchChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    height: 32,
-    paddingHorizontal: 10,
+    gap: 8,
+    height: 44,
+    paddingHorizontal: 14,
     borderRadius: 999,
     borderWidth: 1,
     overflow: 'hidden',
   },
   searchIcon: {
-    width: 16,
-    height: 16,
+    width: 18,
+    height: 18,
     alignItems: 'center',
     justifyContent: 'center',
   },
   searchInput: {
     flex: 1,
     fontFamily: fontFamily.mono,
-    fontSize: 11,
+    fontSize: 13,
     letterSpacing: 0.8,
     padding: 0,
     margin: 0,
-    height: 20,
+    height: 24,
   },
   catChip: {
-    height: 32,
-    paddingHorizontal: 14,
+    height: 44,
+    paddingHorizontal: 18,
     borderRadius: 999,
     borderWidth: 1,
     alignItems: 'center',
@@ -1372,7 +1375,7 @@ const styles = StyleSheet.create({
   },
   catChipText: {
     fontFamily: fontFamily.medium,
-    fontSize: 12,
+    fontSize: 14,
     letterSpacing: -0.06,
   },
 
@@ -1514,10 +1517,10 @@ const styles = StyleSheet.create({
   },
   sheetCloseBtn: {
     position: 'absolute',
-    top: 16,
-    right: 16,
-    width: 36,
-    height: 36,
+    top: 12,
+    right: 12,
+    width: 44,
+    height: 44,
     borderRadius: 999,
     alignItems: 'center',
     justifyContent: 'center',
@@ -1579,27 +1582,27 @@ const styles = StyleSheet.create({
   subtypeFilterChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    height: 34,
-    paddingHorizontal: 14,
+    gap: 8,
+    height: 44,
+    paddingHorizontal: 18,
     borderRadius: 999,
     borderWidth: 1,
   },
   subtypeFilterChipText: {
     fontFamily: fontFamily.medium,
-    fontSize: 13,
+    fontSize: 14,
     letterSpacing: -0.13,
     textTransform: 'lowercase',
   },
   subtypeFilterChipCount: {
     fontFamily: fontFamily.mono,
-    fontSize: 10,
+    fontSize: 11,
     letterSpacing: 0.8,
   },
   filterChip: {
-    minHeight: 38,
-    paddingHorizontal: 14,
-    paddingVertical: 6,
+    minHeight: 44,
+    paddingHorizontal: 18,
+    paddingVertical: 8,
     borderRadius: 999,
     borderWidth: 1,
     alignItems: 'center',
@@ -1607,7 +1610,7 @@ const styles = StyleSheet.create({
   },
   filterChipText: {
     fontFamily: fontFamily.medium,
-    fontSize: 13,
+    fontSize: 14,
     letterSpacing: -0.13,
   },
   sheetFooter: {

@@ -64,7 +64,7 @@ export function RefreshBanner({
           },
         ]}
       >
-        <SpinningCross size={14} thickness={3} color={roles.fg} />
+        <SpinningCross size={14} color={roles.fg} />
         <Text style={[styles.text, { color: roles.fg }]}>Vernieuwen…</Text>
       </View>
     </Animated.View>

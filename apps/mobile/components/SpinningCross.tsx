@@ -14,10 +14,14 @@ import { Cross } from '@/components/Cross';
  * Loading-indicator in Andreas-stijl: het brand-kruis dat continu
  * roteert. Vervangt overal de tekst "Laden…". Standaard 24px,
  * fg-kleur — pas `size` en `color` aan voor varianten.
+ *
+ * Default thickness = size / 4 zodat de visuele lijndikte matcht met
+ * het brand-kruis in het logo (zelfde ratio). Expliciete thickness
+ * blijft mogelijk voor uitzonderingen.
  */
 export function SpinningCross({
   size = 24,
-  thickness = 4,
+  thickness,
   color,
   durationMs = 900,
 }: {
@@ -26,6 +30,7 @@ export function SpinningCross({
   color: string;
   durationMs?: number;
 }) {
+  const effectiveThickness = thickness ?? Math.round(size / 4);
   const rot = useSharedValue(0);
 
   useEffect(() => {
@@ -46,7 +51,7 @@ export function SpinningCross({
   return (
     <View style={styles.wrap}>
       <Animated.View style={style}>
-        <Cross size={size} thickness={thickness} color={color} />
+        <Cross size={size} thickness={effectiveThickness} color={color} />
       </Animated.View>
     </View>
   );

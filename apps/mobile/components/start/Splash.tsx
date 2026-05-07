@@ -70,7 +70,7 @@ export function Splash() {
     <View style={styles.root}>
       <View style={styles.center}>
         <Animated.View style={crossStyle}>
-          <Cross size={96} thickness={17} color={roles.accent} />
+          <Cross size={96} thickness={24} color={roles.accent} />
         </Animated.View>
         <Animated.Text style={[styles.word, { color: roles.fg }, wordStyle]}>
           Andreas X

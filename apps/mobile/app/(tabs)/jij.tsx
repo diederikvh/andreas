@@ -280,7 +280,7 @@ export default function Jij() {
   if (stageUnknown) {
     return (
       <View style={[styles.root, styles.loadingRoot, { backgroundColor: roles.bg }]}>
-        <SpinningCross size={28} thickness={5} color={roles.fgPlaceholder} />
+        <SpinningCross size={28} color={roles.fgPlaceholder} />
         <AppHeader />
       </View>
     );
@@ -1453,10 +1453,10 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
   },
 
-  twin: { flexDirection: 'row', gap: 6 },
+  twin: { flexDirection: 'row', gap: 8 },
   twinBtn: {
-    width: 32,
-    height: 32,
+    width: 44,
+    height: 44,
     borderRadius: 999,
     borderWidth: 1,
     alignItems: 'center',
@@ -1485,8 +1485,8 @@ const styles = StyleSheet.create({
     opacity: 0.6,
   },
   qrCloseBtn: {
-    width: 36,
-    height: 36,
+    width: 44,
+    height: 44,
     borderRadius: 999,
     alignItems: 'center',
     justifyContent: 'center',
@@ -1566,8 +1566,8 @@ const styles = StyleSheet.create({
   },
   privacyDivider: { height: StyleSheet.hairlineWidth },
   notifBtn: {
-    height: 32,
-    paddingHorizontal: 14,
+    height: 44,
+    paddingHorizontal: 18,
     borderRadius: 999,
     borderWidth: 1,
     alignItems: 'center',
@@ -1575,7 +1575,7 @@ const styles = StyleSheet.create({
   },
   notifBtnText: {
     fontFamily: fontFamily.medium,
-    fontSize: 12,
+    fontSize: 14,
     letterSpacing: -0.12,
   },
   languageRow: {
