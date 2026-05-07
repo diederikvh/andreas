@@ -15,6 +15,7 @@ import { BackButton } from '@/components/BackButton';
 import { EventListRow } from '@/components/EventListRow';
 import type { ApiEvent } from '@/lib/api';
 import {
+  eventImageUrl,
   CATEGORY_TICK,
   type EventGroup,
   formatTime,
@@ -218,7 +219,7 @@ function FriendSavedRow({ event }: { event: ApiEvent }) {
   return (
     <EventListRow
       time={formatTime(event.startsAt)}
-      thumb={event.imageUrl ?? ''}
+      thumb={eventImageUrl(event) ?? ''}
       title={event.title}
       venue={event.venue.name}
       tags={[

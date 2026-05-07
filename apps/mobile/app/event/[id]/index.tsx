@@ -24,6 +24,7 @@ import type { ApiEvent, ApiLineupEntry, ApiOccurrence } from '@/lib/api';
 import { useSession } from '@/lib/authClient';
 import {
   dowMixed,
+  eventImageUrl,
   formatPrice,
   formatTime,
   monthShort,
@@ -870,7 +871,7 @@ function toViewModel(
     time: formatTime(sourceStart),
     venue: event.venue.name,
     description: event.description,
-    photo: event.imageUrl,
+    photo: eventImageUrl(event),
     price: formatPrice(sourcePriceCents, locale),
     priceNote,
   };

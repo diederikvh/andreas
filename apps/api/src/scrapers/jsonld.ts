@@ -79,6 +79,47 @@ function looksLikeLogo(url: string): boolean {
   return /\b(logo|favicon|icon)\b/.test(u);
 }
 
+/** Default-uur in Europe/Amsterdam voor date-only events per venue-type.
+ *  Voor date-only `startDate: "2026-05-08"` zonder tijd: kies een
+ *  plausibele avond-tijd zodat de event niet als 02:00 NL eindigt. */
+function defaultStartHourForVenueType(type: string | null): number {
+  switch (type) {
+    case 'club':
+      return 23;
+    case 'podium':
+    case 'film':
+      return 20;
+    case 'museum':
+    case 'galerie':
+      return 11;
+    default:
+      return 20;
+  }
+}
+
+/** Verschuif een UTC-midnight Date naar de lokale `hour` in Europe/Amsterdam.
+ *  Voor `2026-05-08T00:00:00Z` met hour=23 → `2026-05-08T21:00:00Z`
+ *  (= 23:00 NL zomertijd). Houdt rekening met DST. */
+function shiftToLocalEvening(utcMidnight: Date, hour: number): Date {
+  // Bouw een lokale tijd in Europe/Amsterdam, vraag de offset, corrigeer.
+  const dtf = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Europe/Amsterdam',
+    timeZoneName: 'longOffset',
+  });
+  const tzNamePart = dtf
+    .formatToParts(utcMidnight)
+    .find((p) => p.type === 'timeZoneName');
+  const m = tzNamePart?.value.match(/GMT([+-])(\d{1,2})(?::?(\d{2}))?/);
+  const sign = m && m[1] === '+' ? 1 : -1;
+  const offsetH = m ? parseInt(m[2], 10) : 0;
+  const offsetMin = m ? parseInt(m[3] ?? '0', 10) : 0;
+  const offsetMinutes = sign * (offsetH * 60 + offsetMin);
+  // utcMidnight = UTC start of day. Local hour 23 = UTC (23 - offsetH).
+  // Add hours to UTC, subtract offset to keep "local hour" interpretation.
+  const utcHourEquivalent = hour * 60 - offsetMinutes;
+  return new Date(utcMidnight.getTime() + utcHourEquivalent * 60_000);
+}
+
 async function scrapeOneVenue(
   venue: typeof schema.venues.$inferSelect,
   cfg: JsonLdConfig
@@ -125,12 +166,36 @@ async function scrapeOneVenue(
       const eventId = `evt-jld-${venue.id}-${uidHash}`;
       const occurrenceId = `occ-jld-${venue.id}-${uidHash}`;
 
+      // Date-only events (zoals Lofi's "2026-05-08" zonder tijd):
+      // verschuif naar een plausibel lokaal startuur op basis van
+      // venue-type, zodat een club-avond niet om 02:00 NL begint.
+      // endsAt zetten we expliciet op null — we hebben geen idee hoe
+      // laat het event eindigt en startsAt = endsAt zou een 0-duration
+      // event geven dat in occurrence-filters wegvalt.
+      let startsAt = ev.startsAt;
+      let endsAt = ev.endsAt;
+      if (ev.isDateOnly) {
+        const hour = defaultStartHourForVenueType(venue.type);
+        startsAt = shiftToLocalEvening(ev.startsAt, hour);
+        endsAt = null;
+      }
+
       const enriched = await enrichEvent({
         title: ev.name,
         description: ev.description,
         venueName: venue.name,
         venueCategory,
       });
+
+      // Performers uit JSON-LD als lineup-fallback wanneer Claude er
+      // geen heeft gevonden. Default rol = "act"; Claude's lineup
+      // (met dj/headliner/support rollen) wint als die er is.
+      const lineup =
+        enriched.lineup && enriched.lineup.length > 0
+          ? enriched.lineup
+          : ev.performers.length > 0
+            ? ev.performers.map((name) => ({ name }))
+            : null;
 
       const [existing] = await db
         .select({ id: schema.events.id })
@@ -169,24 +234,24 @@ async function scrapeOneVenue(
           .values({
             id: occurrenceId,
             eventId,
-            startsAt: ev.startsAt,
-            endsAt: ev.endsAt,
+            startsAt,
+            endsAt,
             priceCents: null,
             priceNote: enriched.priceNote,
             ticketUrl: ev.ticketUrl,
             room: enriched.room,
-            lineup: enriched.lineup,
+            lineup,
             status,
           })
           .onConflictDoUpdate({
             target: schema.occurrences.id,
             set: {
-              startsAt: ev.startsAt,
-              endsAt: ev.endsAt,
+              startsAt,
+              endsAt,
               priceNote: enriched.priceNote,
               ticketUrl: ev.ticketUrl,
               room: enriched.room,
-              lineup: enriched.lineup,
+              lineup,
               status,
             },
           });

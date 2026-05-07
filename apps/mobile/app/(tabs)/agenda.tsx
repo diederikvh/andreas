@@ -32,6 +32,7 @@ import { RunningExhibitions } from '@/components/RunningExhibitions';
 import { SpinningCross } from '@/components/SpinningCross';
 import type { ApiEvent } from '@/lib/api';
 import {
+  eventImageUrl,
   CATEGORY_TICK,
   dowMixed,
   effectiveEndsAtMs,
@@ -1238,7 +1239,7 @@ function AgendaRow({ row }: { row: OccurrenceRow }) {
   return (
     <EventListRow
       time={formatTime(occurrence.startsAt)}
-      thumb={event.imageUrl ?? ''}
+      thumb={eventImageUrl(event) ?? ''}
       title={event.title}
       venue={event.venue.name}
       tags={[

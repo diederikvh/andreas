@@ -37,6 +37,7 @@ import type {
 } from '@/lib/api';
 import { useSession } from '@/lib/authClient';
 import {
+  eventImageUrl,
   CATEGORY_TICK,
   dowMixed,
   type EventGroup,
@@ -835,7 +836,7 @@ function SavedRow({ event, dim = false }: { event: ApiEvent; dim?: boolean }) {
     <View style={dim ? styles.rowDim : undefined}>
       <EventListRow
         time={formatTime(event.startsAt)}
-        thumb={event.imageUrl ?? ''}
+        thumb={eventImageUrl(event) ?? ''}
         title={event.title}
         venue={event.venue.name}
         tags={[{ label: translateCategory(event.category, locale), tone }]}

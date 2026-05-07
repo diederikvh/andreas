@@ -7,6 +7,19 @@ import type { BadgeTone } from '@/lib/types';
  * lijst- en detail-schermen direct kunnen renderen.
  */
 
+/**
+ * Image-URL voor een event met fallback op de venue-image. Voor venues
+ * die in hun feed/scrape geen per-event poster meegeven (Lofi, kleinere
+ * venues) toont de venue-foto i.p.v. een leeg vlak. Geeft null terug
+ * als er ook geen venue-image is — caller toont dan een placeholder.
+ */
+export function eventImageUrl(event: {
+  imageUrl: string | null;
+  venue: { imageUrl?: string | null };
+}): string | null {
+  return event.imageUrl ?? event.venue.imageUrl ?? null;
+}
+
 export const DOW_NL_UPPER = ['ZO', 'MA', 'DI', 'WO', 'DO', 'VR', 'ZA'] as const;
 export const DOW_NL_MIXED = ['Zo', 'Ma', 'Di', 'Wo', 'Do', 'Vr', 'Za'] as const;
 export const DOW_NL_FULL = [

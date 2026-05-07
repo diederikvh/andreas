@@ -33,6 +33,7 @@ import { RefreshBanner } from '@/components/RefreshBanner';
 import { SpinningCross } from '@/components/SpinningCross';
 import type { ApiVenueProgramItem, VenueFollowState } from '@/lib/api';
 import {
+
   CATEGORY_TICK,
   dowMixed,
   formatWijk,
@@ -411,7 +412,11 @@ export default function VenueDetail() {
             )}
 
             {events.map((e) => (
-              <ProgramRow key={e.id} event={e} />
+              <ProgramRow
+                key={e.id}
+                event={e}
+                venueImageUrl={venue.imageUrl ?? null}
+              />
             ))}
           </View>
         )}
@@ -470,7 +475,13 @@ export default function VenueDetail() {
   );
 }
 
-function ProgramRow({ event }: { event: ApiVenueProgramItem }) {
+function ProgramRow({
+  event,
+  venueImageUrl,
+}: {
+  event: ApiVenueProgramItem;
+  venueImageUrl: string | null;
+}) {
   const locale = useLocale();
   const d = new Date(event.startsAt);
   const dow = dowMixed(d.getDay(), locale);
@@ -480,7 +491,7 @@ function ProgramRow({ event }: { event: ApiVenueProgramItem }) {
     <EventListRow
       time={formatTime(event.startsAt)}
       duration={`${dow} ${num} ${month}`}
-      thumb={event.imageUrl ?? ''}
+      thumb={event.imageUrl ?? venueImageUrl ?? ''}
       title={event.title}
       venue=""
       tags={[

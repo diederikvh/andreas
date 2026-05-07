@@ -53,6 +53,7 @@ savesRoute.get('/', async (c) => {
         address: schema.venues.address,
         lat: schema.venues.lat,
         lng: schema.venues.lng,
+        imageUrl: schema.venues.imageUrl,
         priceNote: schema.venues.priceNote,
       },
       savedAt: schema.saves.createdAt,

@@ -31,6 +31,7 @@ import { RunningExhibitions } from '@/components/RunningExhibitions';
 import { SpinningCross } from '@/components/SpinningCross';
 import type { ApiEvent } from '@/lib/api';
 import {
+  eventImageUrl,
   CATEGORY_TICK,
   dowFull,
   dowUpper,
@@ -1338,7 +1339,7 @@ function ApiEventRow({
   // blijven; tick-kleur volgt nog steeds het thema.
   return (
     <EventListRow
-      thumb={event.imageUrl ?? ''}
+      thumb={eventImageUrl(event) ?? ''}
       title={event.title}
       venue={formatMetaForRow(row, locale)}
       seriesLabel={event.series?.[0]?.name}
@@ -1436,7 +1437,7 @@ function FeaturedCarousel({
           kicker={kicker}
           title={lead.event.title}
           meta={formatMetaForRow(lead, locale)}
-          photo={lead.event.imageUrl ?? undefined}
+          photo={eventImageUrl(lead.event) ?? undefined}
           category={lead.event.category}
         />
       </Pressable>
@@ -1465,7 +1466,7 @@ function FeaturedCarousel({
                 kicker={kicker}
                 title={lead.event.title}
                 meta={formatMetaForRow(lead, locale)}
-                photo={lead.event.imageUrl ?? undefined}
+                photo={eventImageUrl(lead.event) ?? undefined}
                 category={lead.event.category}
               />
             </Pressable>

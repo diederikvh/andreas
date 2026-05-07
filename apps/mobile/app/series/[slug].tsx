@@ -18,6 +18,7 @@ import { EventListRow } from '@/components/EventListRow';
 import { SpinningCross } from '@/components/SpinningCross';
 import type { ApiEvent } from '@/lib/api';
 import {
+  eventImageUrl,
   CATEGORY_TICK,
   dowMixed,
   monthShort,
@@ -244,7 +245,7 @@ function ProgramRow({ event }: { event: ApiEvent }) {
     <EventListRow
       time={formatTime(event.startsAt)}
       duration={`${dow} ${num} ${month}`}
-      thumb={event.imageUrl ?? ''}
+      thumb={eventImageUrl(event) ?? ''}
       title={event.title}
       venue={event.venue.name}
       tags={[

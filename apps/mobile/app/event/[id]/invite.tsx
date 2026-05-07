@@ -19,6 +19,7 @@ import { Cross } from '@/components/Cross';
 import { EventListRow } from '@/components/EventListRow';
 import type { ApiEventInviteRecord, ApiPublicUser } from '@/lib/api';
 import {
+  eventImageUrl,
   CATEGORY_TICK,
   dowMixed,
   formatTime,
@@ -202,7 +203,7 @@ export default function InviteModal() {
         {event && resolvedOccurrence && (
           <EventListRow
             time={formatTime(resolvedOccurrence.startsAt)}
-            thumb={event.imageUrl ?? ''}
+            thumb={eventImageUrl(event) ?? ''}
             title={event.title}
             venue={event.venue.name}
             tags={[

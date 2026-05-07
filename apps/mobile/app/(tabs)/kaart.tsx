@@ -31,6 +31,7 @@ import {
   CATEGORY_DOT,
   CATEGORY_TICK,
   distanceKm,
+  eventImageUrl,
   formatTime,
   getTimeBlock,
   travelMinutes,
@@ -755,13 +756,16 @@ function DrawerCard({ mapEvent }: { mapEvent: MapEvent }) {
       style={styles.cardWrap}
     >
       <View style={styles.cardTop}>
-        {mapEvent.event.imageUrl && (
-          <Image
-            source={{ uri: mapEvent.event.imageUrl }}
-            style={styles.cardThumb}
-            contentFit="cover"
-          />
-        )}
+        {(() => {
+          const img = eventImageUrl(mapEvent.event);
+          return img ? (
+            <Image
+              source={{ uri: img }}
+              style={styles.cardThumb}
+              contentFit="cover"
+            />
+          ) : null;
+        })()}
         <View style={styles.cardBody}>
           <View style={styles.cardMetaRow}>
             <View style={[styles.cardTag, { backgroundColor: `${tone}26` }]}>

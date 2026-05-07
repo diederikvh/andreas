@@ -3,7 +3,7 @@ import { router } from 'expo-router';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import type { ApiEvent } from '@/lib/api';
-import { monthShort } from '@/lib/eventDisplay';
+import { eventImageUrl, monthShort } from '@/lib/eventDisplay';
 import { useLocale, useT, type Locale } from '@/lib/i18n';
 import { useMode, useRoles } from '@/store/mode';
 import { fontFamily, palette } from '@/theme/tokens';
@@ -82,9 +82,9 @@ function ExhibitionCard({ event }: { event: ApiEvent }) {
         },
       ]}
     >
-      {event.imageUrl ? (
+      {eventImageUrl(event) ? (
         <Image
-          source={{ uri: event.imageUrl }}
+          source={{ uri: eventImageUrl(event)! }}
           style={styles.cardImg}
           contentFit="cover"
         />

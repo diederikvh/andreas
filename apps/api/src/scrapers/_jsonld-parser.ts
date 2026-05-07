@@ -20,6 +20,14 @@ export type ParsedJsonLdEvent = {
   ticketUrl: string | null;
   /** Schema.org eventStatus URL — gebruikt om cancelled events te skippen. */
   eventStatus: string | null;
+  /** True als startDate `YYYY-MM-DD` was (geen tijd). Caller bepaalt wat
+   *  voor default-tijd plausibel is voor de venue (club = avond, museum
+   *  = ochtend, etc.). */
+  isDateOnly: boolean;
+  /** Performers/acts uit Schema.org `performer`/`performers`-velden.
+   *  Wordt door de orchestrator als lineup-fallback gebruikt wanneer
+   *  Claude geen lineup uit de description haalt. */
+  performers: string[];
 };
 
 const EVENT_TYPES = new Set([
@@ -107,6 +115,59 @@ function parseDate(value: unknown): Date | null {
   return isNaN(d.getTime()) ? null : d;
 }
 
+const NAMED_ENTITIES: Record<string, string> = {
+  amp: '&',
+  lt: '<',
+  gt: '>',
+  quot: '"',
+  apos: "'",
+  nbsp: ' ',
+  ndash: '–',
+  mdash: '—',
+  lsquo: '‘',
+  rsquo: '’',
+  ldquo: '“',
+  rdquo: '”',
+  hellip: '…',
+};
+
+/** Decodeer veelvoorkomende HTML-entities (`&amp;`, `&#8211;`, `&#x2014;`).
+ *  WordPress/JSON-LD-feeds laten deze regelmatig staan in titel-velden. */
+function decodeHtmlEntities(s: string): string {
+  return s
+    .replace(/&#(\d+);/g, (_, code) => String.fromCodePoint(parseInt(code, 10)))
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) =>
+      String.fromCodePoint(parseInt(hex, 16))
+    )
+    .replace(/&([a-zA-Z]+);/g, (m, name) => NAMED_ENTITIES[name] ?? m);
+}
+
+const DATE_ONLY_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+function isDateOnlyString(value: unknown): boolean {
+  return typeof value === 'string' && DATE_ONLY_RE.test(value);
+}
+
+function extractPerformers(value: unknown): string[] {
+  if (!value) return [];
+  if (Array.isArray(value)) {
+    return value.flatMap(extractPerformers);
+  }
+  if (typeof value === 'object') {
+    const obj = value as Record<string, unknown>;
+    const name =
+      typeof obj.name === 'string' ? decodeHtmlEntities(obj.name).trim() : '';
+    if (!name) return [];
+    // Sommige venues stoppen meerdere namen in één `name`-veld:
+    // "Hot Since 82, Kim April, Ranger Trucco" → splitsen op komma/&.
+    return name
+      .split(/[,&]+/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+  }
+  return [];
+}
+
 export function extractJsonLdEvents(html: string): ParsedJsonLdEvent[] {
   const events: ParsedJsonLdEvent[] = [];
   const re = /<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
@@ -126,7 +187,8 @@ export function extractJsonLdEvents(html: string): ParsedJsonLdEvent[] {
     }
 
     for (const ev of walkEvents(parsed)) {
-      const name = typeof ev.name === 'string' ? ev.name.trim() : '';
+      const name =
+        typeof ev.name === 'string' ? decodeHtmlEntities(ev.name).trim() : '';
       const startsAt = parseDate(ev.startDate);
       if (!name || !startsAt) continue;
 
@@ -140,9 +202,17 @@ export function extractJsonLdEvents(html: string): ParsedJsonLdEvent[] {
       const ticketUrl = pickTicketUrl(ev.offers, null);
       const eventUrl = typeof ev.url === 'string' ? ev.url : null;
       const description =
-        typeof ev.description === 'string' ? ev.description.trim() || null : null;
+        typeof ev.description === 'string'
+          ? decodeHtmlEntities(ev.description).trim() || null
+          : null;
       const imageUrl = pickImage(ev.image);
       const endsAt = parseDate(ev.endDate);
+      const isDateOnly =
+        isDateOnlyString(ev.startDate) || isDateOnlyString(ev.endDate);
+      const performers = [
+        ...extractPerformers(ev.performer),
+        ...extractPerformers(ev.performers),
+      ];
 
       // Stable UID: voorkeur ticketUrl > eventUrl > name+startDate.
       // Behoudt idempotency over scrapes heen: dezelfde voorstelling
@@ -160,6 +230,8 @@ export function extractJsonLdEvents(html: string): ParsedJsonLdEvent[] {
         imageUrl,
         ticketUrl: ticketUrl ?? eventUrl,
         eventStatus,
+        isDateOnly,
+        performers,
       });
     }
   }

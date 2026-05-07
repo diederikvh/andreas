@@ -168,6 +168,7 @@ seriesRoute.get('/:slug', async (c) => {
         address: schema.venues.address,
         lat: schema.venues.lat,
         lng: schema.venues.lng,
+        imageUrl: schema.venues.imageUrl,
       },
     })
     .from(schema.events)
