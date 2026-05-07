@@ -59,6 +59,17 @@ export const auth = betterAuth({
     expiresIn: 60 * 60 * 24 * 180, // 180 dagen ≈ 6 maanden
     updateAge: 60 * 60 * 24, // 1 dag — sessie wordt dagelijks ververst
   },
+  advanced: {
+    // Forceer dezelfde 180-dagen Max-Age op de Set-Cookie response
+    // zodat de mobile-client (better-auth-expo) het cookie ook 180
+    // dagen vasthoudt in SecureStore. Zonder deze override viel een
+    // cookie soms terug op de 7-dagen-default, waardoor users na ±een
+    // week leek-uitgelogd waren terwijl hun server-side sessie nog
+    // lang geldig was.
+    defaultCookieAttributes: {
+      maxAge: 60 * 60 * 24 * 180,
+    },
+  },
   plugins: [
     expo(),
     // Mobile draagt sessie via Authorization: Bearer <token> i.p.v.

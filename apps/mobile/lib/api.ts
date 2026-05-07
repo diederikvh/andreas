@@ -395,7 +395,11 @@ async function getSessionBearer(): Promise<string | null> {
       parsed['__Secure-better-auth.session_token'] ??
       parsed['better-auth.session_token'];
     if (!entry?.value) return null;
-    if (entry.expires && new Date(entry.expires) < new Date()) return null;
+    // Bewust GEEN client-side `expires`-check meer: de cookie-expires
+    // wordt niet bijgewerkt door onze fetch-calls (die gaan langs
+    // better-auth's $fetch heen), dus een verlopen-lijkend cookie kan
+    // best nog een geldig server-side sessie-token zijn. Server is
+    // de bron van waarheid; bij een echte 401 mogen we 'm pas weghalen.
     return entry.value;
   } catch {
     return null;
