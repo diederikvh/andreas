@@ -487,6 +487,10 @@ function ProgramRow({
   const dow = dowMixed(d.getDay(), locale);
   const num = String(d.getDate()).padStart(2, '0');
   const month = monthShort(d.getMonth(), locale).toLowerCase();
+  const friends = event.friendsSaved?.map((f) => ({
+    name: f.name,
+    avatar: f.avatarUrl,
+  }));
   return (
     <EventListRow
       time={formatTime(event.startsAt)}
@@ -500,6 +504,10 @@ function ProgramRow({
           tone: CATEGORY_TICK[event.category],
         },
       ]}
+      seriesLabel={event.series?.[0]?.name}
+      genreLabel={event.genres?.[0]}
+      friends={friends && friends.length > 0 ? friends : undefined}
+      featured={event.featured}
       tick={CATEGORY_TICK[event.category]}
       onPress={() => router.push(`/event/${event.id}`)}
     />

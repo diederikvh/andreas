@@ -18,7 +18,11 @@ import { Hono } from 'hono';
 
 import { auth } from '../auth.js';
 import { db, schema } from '../db/index.js';
-import { findEventsWithOccurrencesInRange } from './_helpers.js';
+import {
+  buildFriendsByOccurrence,
+  buildSeriesByEvent,
+  findEventsWithOccurrencesInRange,
+} from './_helpers.js';
 import { getVenueFollowState } from './venue-follows.js';
 
 export const venuesRoute = new Hono();
@@ -236,6 +240,8 @@ venuesRoute.get('/:slug', async (c) => {
       kind: schema.events.kind,
       imageUrl: schema.events.imageUrl,
       category: schema.events.category,
+      featured: schema.events.featured,
+      genres: schema.events.genres,
     })
     .from(schema.events)
     .where(
@@ -248,12 +254,35 @@ venuesRoute.get('/:slug', async (c) => {
   const occRange = await findEventsWithOccurrencesInRange({
     eventIds: eventRows.map((e) => e.id),
   });
+
+  // myFollowState: alleen als ingelogd. Default voor anonieme requests
+  // is `normaal` zodat de UI zonder auth-context ook werkt.
+  const session = await auth.api.getSession({ headers: c.req.raw.headers });
+  const me = session?.user.id ?? null;
+  const myFollowState = me
+    ? await getVenueFollowState(me, venue.id)
+    : 'normaal';
+
+  // Per occurrence z'n eigen friends-pill + per event de series-pill,
+  // zodat ProgramRow op /venue/[slug] dezelfde rijke labels krijgt als
+  // Avond/Agenda. Bouwt op alle occurrences in range zodat een
+  // ?o=switch later zonder extra fetch werkt.
+  const allOccurrenceIds = occRange.eventIds.flatMap((id) => {
+    const occ = occRange.byEvent.get(id);
+    return occ?.all.map((o) => o.id) ?? [];
+  });
+  const friendsByOcc = me
+    ? await buildFriendsByOccurrence(me, allOccurrenceIds)
+    : new Map();
+  const seriesMap = await buildSeriesByEvent(occRange.eventIds);
+
   const eventById = new Map(eventRows.map((e) => [e.id, e]));
   const events = occRange.eventIds
     .map((id) => {
       const event = eventById.get(id);
       const occ = occRange.byEvent.get(id);
       if (!event || !occ) return null;
+      const headFriends = occ.next ? friendsByOcc.get(occ.next.id) : undefined;
       return {
         ...event,
         startsAt: occ.next?.startsAt ?? null,
@@ -262,16 +291,12 @@ venuesRoute.get('/:slug', async (c) => {
         priceNote: occ.next?.priceNote ?? null,
         ticketUrl: occ.next?.ticketUrl ?? null,
         occurrenceCount: occ.count,
+        friendsSaved: headFriends?.friends ?? [],
+        friendsSavedCount: headFriends?.count ?? 0,
+        series: seriesMap.get(event.id) ?? [],
       };
     })
     .filter((x) => x !== null);
-
-  // myFollowState: alleen als ingelogd. Default voor anonieme requests
-  // is `normaal` zodat de UI zonder auth-context ook werkt.
-  const session = await auth.api.getSession({ headers: c.req.raw.headers });
-  const myFollowState = session
-    ? await getVenueFollowState(session.user.id, venue.id)
-    : 'normaal';
 
   // Welke series spelen er in deze venue? Distinct op series.id, alleen
   // als er minstens één toekomstig event in deze venue speelt dat in
