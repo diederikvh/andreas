@@ -77,9 +77,16 @@ export const auth = betterAuth({
     bearer(),
     phoneNumber({
       sendOTP: async ({ phoneNumber, code }) => {
+        // Apple "domain-bound code" format: de tweede regel
+        // `@<domain> #<code>` triggert iOS' SMS-autofill direct in
+        // het OTP-veld. Domain moet matchen met een associatedDomain
+        // in de app (zie app.json: applinks:andreas.amsterdam).
+        // Android (SMS Retriever API) gebruikt een ander format —
+        // pakken we later op zodra Android-build live is.
+        const body = `Andreas: je inlogcode is ${code}. Geldig 5 minuten.\n\n@andreas.amsterdam #${code}`;
         await sendSms({
           to: phoneNumber,
-          body: `Andreas: je inlogcode is ${code}. Geldig 5 minuten.`,
+          body,
         });
       },
       otpLength: 6,

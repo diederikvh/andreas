@@ -87,8 +87,10 @@ export default function Jij() {
     }
   }, [stageOverride, sessionStage]);
 
-  // Auth-form state
-  const [local, setLocal] = useState('');
+  // Auth-form state. `phoneInput` is wat de gebruiker typt of plakt
+  // — vrij formaat (+31 6, 06, 0031, +1 555, etc). Bij submit
+  // normaliseren we naar E.164 voor better-auth/MessageBird.
+  const [phoneInput, setPhoneInput] = useState('');
   const [code, setCode] = useState('');
   const [name, setName] = useState('');
   const [handle, setHandle] = useState('');
@@ -96,7 +98,7 @@ export default function Jij() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const codeRef = useRef<TextInput>(null);
-  const phone = `+31${local.replace(/^0+/, '')}`;
+  const phone = normalizePhone(phoneInput);
 
   // Onboarding (eerste keer profile-stap zonder handle): laat het
   // naam-veld leeg als de DB-naam nog het telefoonnummer is.
@@ -114,7 +116,7 @@ export default function Jij() {
   }
 
   const sendCode = async () => {
-    if (local.length < 9) {
+    if (!phone) {
       setError(t('Vul een geldig nummer in.', 'Enter a valid phone number.'));
       return;
     }
@@ -193,7 +195,7 @@ export default function Jij() {
     // Wis de hele query-cache zodat de volgende ingelogde user (of
     // empty state) geen stale data van de vorige sessie ziet.
     queryClient.clear();
-    setLocal('');
+    setPhoneInput('');
     setCode('');
     setName('');
     setHandle('');
@@ -330,14 +332,16 @@ export default function Jij() {
                   authFieldStyle(isNacht),
                 ]}
               >
-                <Text style={[styles.prefix, { color: roles.fgMuted }]}>
-                  +31
-                </Text>
                 <TextInput
                   key="phone"
-                  value={local}
-                  onChangeText={(t) => setLocal(t.replace(/[^0-9]/g, ''))}
-                  placeholder="612345678"
+                  value={phoneInput}
+                  onChangeText={(next) =>
+                    setPhoneInput(next.replace(/[^0-9+ ]/g, ''))
+                  }
+                  placeholder={t(
+                    '+31 6 12 34 56 78  /  06 12 34 56 78',
+                    '+31 6 12 34 56 78  /  +1 555 123 4567'
+                  )}
                   placeholderTextColor={roles.fgPlaceholder}
                   keyboardType="phone-pad"
                   autoFocus
@@ -350,8 +354,8 @@ export default function Jij() {
               </View>
               <Text style={[styles.helper, { color: roles.fgMuted }]}>
                 {t(
-                  'Je krijgt een SMS met een 6-cijferige code.',
-                  'You’ll receive an SMS with a 6-digit code.'
+                  'Je krijgt een SMS met een 6-cijferige code. Vul je nummer in met landcode (06… wordt automatisch +31).',
+                  'You’ll receive an SMS with a 6-digit code. Enter your number with country code (06… converts to +31 automatically).'
                 )}
               </Text>
             </>
@@ -727,6 +731,37 @@ export default function Jij() {
       </Modal>
     </View>
   );
+}
+
+/**
+ * Normaliseer wat de gebruiker typt of plakt naar E.164 (+CC + digits).
+ *
+ *  "+31 6 12345678"  → "+31612345678"
+ *  "06 12 34 56 78"  → "+31612345678"   (NL aanname bij leidende 0)
+ *  "0031612345678"   → "+31612345678"   (00-prefix → +)
+ *  "+1 555 123 4567" → "+15551234567"
+ *
+ * Returns null als niet te normaliseren.
+ */
+function normalizePhone(input: string): string | null {
+  const trimmed = input.replace(/[\s\-()]/g, '');
+  if (trimmed.length === 0) return null;
+  let normalized: string;
+  if (trimmed.startsWith('+')) {
+    normalized = `+${trimmed.slice(1).replace(/\D/g, '')}`;
+  } else if (trimmed.startsWith('00')) {
+    normalized = `+${trimmed.slice(2).replace(/\D/g, '')}`;
+  } else if (trimmed.startsWith('0')) {
+    // NL-gewoonte: 06… of 020… → +31
+    normalized = `+31${trimmed.slice(1).replace(/\D/g, '')}`;
+  } else {
+    // Geen + en geen 0-prefix: nemen aan dat de gebruiker een NL
+    // nummer zonder leading 0 typte (zoals het oude veld accepteerde).
+    normalized = `+31${trimmed.replace(/\D/g, '')}`;
+  }
+  // Sanity: minimaal +CC + 7 digits, maximaal 15 digits totaal (E.164).
+  if (!/^\+\d{8,15}$/.test(normalized)) return null;
+  return normalized;
 }
 
 function initialFor(name: string): string {
