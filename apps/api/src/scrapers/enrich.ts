@@ -29,7 +29,7 @@ const SYSTEM_PROMPT =
   '- priceNote: ALLEEN als de tekst een notitie OVER PRIJS bevat: bv. "lidmaatschap vereist", "donatie", "pay-what-you-can", "CJP-korting", "studentenkorting beschikbaar", "vanaf €5". NIET voor leeftijdsgrenzen ("21+", "18+"), huisregels (geen telefoon, geen foto), of dresscode. Bij twijfel: null.\n' +
   '- kind: "show" voor concert/club/voorstelling/film/lezing/opening. "exhibition" voor doorlopende tentoonstelling. Default: "show".\n' +
   '- category: kies altijd één van "Muziek" | "Theater" | "Literatuur" | "Film" | "Kunst" op basis van titel + beschrijving + venue-context. Geef je BESTE GOK — niet null tenzij er ECHT helemaal geen aanknopingspunt is. Heuristiek: tentoonstelling/installatie/galerie-opening = "Kunst". Concert/feest/dj-set/album launch = "Muziek". Theatervoorstelling/dans/cabaret/performance = "Theater". Film/screening/cinema = "Film". Lezing/boekpresentatie/poëzie/spoken word = "Literatuur". Een lezing op een kunstgalerie blijft "Literatuur" — kies op event, niet op venue.\n' +
-  '- cleanedDescription: de description in plain text, zonder de lineup-block en zonder herhaalde meta-info (huisregels, ~~~~~~~ separators). NIET inkorten of herschrijven — alleen lineup-blok en boilerplate weghalen. Behoud paragraph-breaks als \\n\\n.';
+  '- cleanedDescription: de description in plain text, zonder de lineup-block en zonder herhaalde meta-info (huisregels, ~~~~~~~ separators). NIET inkorten of herschrijven — alleen lineup-blok en boilerplate weghalen. Gebruik ECHTE newlines voor paragraph-breaks, NIET de literal 2 tekens backslash-n.';
 
 const TOOL_INPUT_SCHEMA = {
   type: 'object',
@@ -249,9 +249,12 @@ export async function enrichEvent(input: EnrichInput): Promise<EnrichOutput> {
     (ALLOWED_CATEGORIES as readonly string[]).includes(raw.category)
       ? (raw.category as EventCategory)
       : null;
+  // Defensief: Claude schrijft soms `\n` als 2 letterlijke tekens
+  // (backslash + n) i.p.v. een echte newline. Vervangen door echte
+  // newline zodat de UI de paragraaf-breaks goed rendert.
   const cleanedDescription =
     typeof raw.cleanedDescription === 'string' && raw.cleanedDescription.trim()
-      ? raw.cleanedDescription.trim()
+      ? raw.cleanedDescription.trim().replace(/\\n/g, '\n')
       : input.description;
 
   return {
