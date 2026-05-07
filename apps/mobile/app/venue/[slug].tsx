@@ -34,11 +34,13 @@ import { SpinningCross } from '@/components/SpinningCross';
 import type { ApiVenueProgramItem, VenueFollowState } from '@/lib/api';
 import {
   CATEGORY_TICK,
-  DOW_NL_MIXED,
-  MONTHS_NL,
+  dowMixed,
+  monthShort,
+  translateCategory,
   VENUE_TYPE_TICK,
   formatTime,
 } from '@/lib/eventDisplay';
+import { useLocale, useT, type Locale } from '@/lib/i18n';
 import { useSession } from '@/lib/authClient';
 import { useSetVenueFollow, useVenue } from '@/lib/queries';
 import { useMode, useRoles } from '@/store/mode';
@@ -53,6 +55,8 @@ export default function VenueDetail() {
   const roles = useRoles();
   const insets = useSafeAreaInsets();
   const isNacht = mode === 'nacht';
+  const t = useT();
+  const locale = useLocale();
 
   const scrollRef = useAnimatedRef<Animated.ScrollView>();
   const scrollY = useScrollViewOffset(scrollRef);
@@ -104,7 +108,7 @@ export default function VenueDetail() {
   if (error || !data) {
     return (
       <VenueFallback tone="error">
-        Deze venue is niet beschikbaar.
+        {t('Deze venue is niet beschikbaar.', 'This venue is not available.')}
       </VenueFallback>
     );
   }
@@ -239,10 +243,10 @@ export default function VenueDetail() {
                   />
                   <Text style={[styles.metaPillText, { color: roles.fg }]}>
                     {venue.dayNight === 'day'
-                      ? 'Dag'
+                      ? t('Dag', 'Day')
                       : venue.dayNight === 'night'
-                        ? 'Avond'
-                        : 'Beide'}
+                        ? t('Avond', 'Evening')
+                        : t('Beide', 'Both')}
                   </Text>
                 </View>
               )}
@@ -318,7 +322,7 @@ export default function VenueDetail() {
                 <Pressable
                   onPress={() => openMaps(venue.name, venue.lat, venue.lng)}
                   hitSlop={10}
-                  accessibilityLabel="Route openen"
+                  accessibilityLabel={t('Route openen', 'Open route')}
                   style={styles.addrMapBtn}
                 >
                   <Ionicons
@@ -331,7 +335,7 @@ export default function VenueDetail() {
                   <Pressable
                     onPress={() => openWebsite(venue.website!)}
                     hitSlop={10}
-                    accessibilityLabel="Website openen"
+                    accessibilityLabel={t('Website openen', 'Open website')}
                     style={styles.addrMapBtn}
                   >
                     <Ionicons
@@ -345,7 +349,7 @@ export default function VenueDetail() {
                   <Pressable
                     onPress={() => openInstagram(venue.instagram!)}
                     hitSlop={10}
-                    accessibilityLabel="Instagram openen"
+                    accessibilityLabel={t('Instagram openen', 'Open Instagram')}
                     style={styles.addrMapBtn}
                   >
                     <Ionicons
@@ -369,7 +373,9 @@ export default function VenueDetail() {
         {(events.length > 0 || (data.series && data.series.length > 0)) && (
           <>
             <View style={styles.progHead}>
-              <Text style={[styles.progLabel, { color: roles.fg }]}>Programma</Text>
+              <Text style={[styles.progLabel, { color: roles.fg }]}>
+                {t('Programma', 'Programme')}
+              </Text>
             </View>
 
             {data.series && data.series.length > 0 && (
@@ -461,10 +467,11 @@ export default function VenueDetail() {
 }
 
 function ProgramRow({ event }: { event: ApiVenueProgramItem }) {
+  const locale = useLocale();
   const d = new Date(event.startsAt);
-  const dow = DOW_NL_MIXED[d.getDay()];
+  const dow = dowMixed(d.getDay(), locale);
   const num = String(d.getDate()).padStart(2, '0');
-  const month = MONTHS_NL[d.getMonth()].toLowerCase();
+  const month = monthShort(d.getMonth(), locale).toLowerCase();
   return (
     <EventListRow
       time={formatTime(event.startsAt)}
@@ -472,7 +479,12 @@ function ProgramRow({ event }: { event: ApiVenueProgramItem }) {
       thumb={event.imageUrl ?? ''}
       title={event.title}
       venue=""
-      tags={[{ label: event.category, tone: CATEGORY_TICK[event.category] }]}
+      tags={[
+        {
+          label: translateCategory(event.category, locale),
+          tone: CATEGORY_TICK[event.category],
+        },
+      ]}
       tick={CATEGORY_TICK[event.category]}
       onPress={() => router.push(`/event/${event.id}`)}
     />
@@ -562,6 +574,7 @@ function FollowVenueSheet({
   const mode = useMode();
   const roles = useRoles();
   const isNacht = mode === 'nacht';
+  const t = useT();
 
   const options: {
     state: VenueFollowState;
@@ -571,20 +584,29 @@ function FollowVenueSheet({
   }[] = [
     {
       state: 'volgen',
-      title: 'Volgen',
-      sub: 'Events van deze venue komen prominent in je feed.',
+      title: t('Volgen', 'Follow'),
+      sub: t(
+        'Events van deze venue komen prominent in je feed.',
+        'Events from this venue appear prominently in your feed.'
+      ),
       icon: 'heart',
     },
     {
       state: 'normaal',
-      title: 'Niet volgen',
-      sub: 'Standaard. Events worden gewoon getoond, geen voorkeur.',
+      title: t('Niet volgen', 'Don’t follow'),
+      sub: t(
+        'Standaard. Events worden gewoon getoond, geen voorkeur.',
+        'Default. Events show as usual, no preference.'
+      ),
       icon: 'heart-outline',
     },
     {
       state: 'blokken',
-      title: 'Blokkeren',
-      sub: 'Events van deze venue verschijnen nergens meer in de app.',
+      title: t('Blokkeren', 'Block'),
+      sub: t(
+        'Events van deze venue verschijnen nergens meer in de app.',
+        'Events from this venue won’t appear anywhere in the app.'
+      ),
       icon: 'ban-outline',
     },
   ];
@@ -614,7 +636,7 @@ function FollowVenueSheet({
       <View style={styles.sheetBody}>
         <Text style={[styles.sheetTitle, { color: roles.fg }]}>{name}</Text>
         <Text style={[styles.sheetLead, { color: roles.fgMuted }]}>
-          Hoe wil je deze venue zien?
+          {t('Hoe wil je deze venue zien?', 'How do you want to see this venue?')}
         </Text>
 
         <View style={styles.sheetOptions}>

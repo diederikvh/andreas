@@ -18,7 +18,14 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Cross } from '@/components/Cross';
 import { EventListRow } from '@/components/EventListRow';
 import type { ApiEventInviteRecord, ApiPublicUser } from '@/lib/api';
-import { CATEGORY_TICK, DOW_NL_MIXED, formatTime, MONTHS_NL } from '@/lib/eventDisplay';
+import {
+  CATEGORY_TICK,
+  dowMixed,
+  formatTime,
+  monthShort,
+  translateCategory,
+} from '@/lib/eventDisplay';
+import { useLocale, useT } from '@/lib/i18n';
 import {
   useEvent,
   useFriends,
@@ -39,6 +46,8 @@ export default function InviteModal() {
   const roles = useRoles();
   const insets = useSafeAreaInsets();
   const isNacht = mode === 'nacht';
+  const t = useT();
+  const locale = useLocale();
 
   const { data: event } = useEvent(eventId);
   const { data: friends } = useFriends();
@@ -197,7 +206,10 @@ export default function InviteModal() {
             title={event.title}
             venue={event.venue.name}
             tags={[
-              { label: event.category, tone: CATEGORY_TICK[event.category] },
+              {
+                label: translateCategory(event.category, locale),
+                tone: CATEGORY_TICK[event.category],
+              },
             ]}
             tick={CATEGORY_TICK[event.category]}
           />
@@ -212,17 +224,17 @@ export default function InviteModal() {
           event.occurrences.length > 1 && (
             <View style={[styles.targetBanner, { backgroundColor: roles.bgTag }]}>
               <Text style={[styles.targetLabel, { color: roles.fgMuted }]}>
-                JE NODIGT UIT VOOR
+                {t('JE NODIGT UIT VOOR', 'YOU’RE INVITING FOR')}
               </Text>
               <Text style={[styles.targetValue, { color: roles.fg }]}>
-                {formatTargetDate(resolvedOccurrence.startsAt)}
+                {formatTargetDate(resolvedOccurrence.startsAt, locale)}
                 {resolvedOccurrence.room ? ` · ${resolvedOccurrence.room}` : ''}
               </Text>
             </View>
           )}
 
         <Text style={[styles.sectionTitle, { color: roles.fg }]}>
-          Nodig iemand uit
+          {t('Nodig iemand uit', 'Invite someone')}
         </Text>
 
 
@@ -244,14 +256,20 @@ export default function InviteModal() {
             />
             <Text style={[styles.emptyHeading, { color: roles.fg }]}>
               {rows.length === 0
-                ? 'Voeg eerst een vriend toe'
-                : 'Iemand anders erbij?'}
+                ? t('Voeg eerst een vriend toe', 'Add a friend first')
+                : t('Iemand anders erbij?', 'Someone else along?')}
             </Text>
             <View style={styles.emptyWrap}>
             <Text style={[styles.empty, { color: roles.fgMuted }]}>
               {rows.length === 0
-                ? 'Je hebt nog geen vrienden op Andreas. Voeg er eentje toe om iemand mee te kunnen vragen.'
-                : 'De beste avonden zijn die waar je achteraf iemand over kunt bellen met ‘zag je dat ook?’. Voeg iemand toe die er ook op gaat staan.'}
+                ? t(
+                    'Je hebt nog geen vrienden op Andreas. Voeg er eentje toe om iemand mee te kunnen vragen.',
+                    'You don’t have any friends on Andreas yet. Add one to invite them along.'
+                  )
+                : t(
+                    'De beste avonden zijn die waar je achteraf iemand over kunt bellen met ‘zag je dat ook?’. Voeg iemand toe die er ook op gaat staan.',
+                    'The best nights are the ones you can call someone about afterwards with ‘did you see that too?’. Add someone else who’ll also be there.'
+                  )}
             </Text>
             <Pressable
               onPress={() => {
@@ -262,7 +280,7 @@ export default function InviteModal() {
             >
               <Ionicons name="person-add-outline" size={16} color={roles.fgMuted} />
               <Text style={[styles.emptyActionText, { color: roles.fgMuted }]}>
-                Vriend zoeken
+                {t('Vriend zoeken', 'Find friends')}
               </Text>
             </Pressable>
             </View>
@@ -272,7 +290,7 @@ export default function InviteModal() {
         {hasSelectable && (
           <View style={styles.fieldGroup}>
             <Text style={[styles.label, { color: roles.fgMuted }]}>
-              BERICHT (optioneel)
+              {t('BERICHT (optioneel)', 'MESSAGE (optional)')}
             </Text>
             <View
               style={[
@@ -286,7 +304,10 @@ export default function InviteModal() {
               <TextInput
                 value={message}
                 onChangeText={setMessage}
-                placeholder="bv. ik haal je om 19:30 op"
+                placeholder={t(
+                  'bv. ik haal je om 19:30 op',
+                  'e.g. I’ll pick you up at 7.30pm'
+                )}
                 placeholderTextColor={roles.fgPlaceholder}
                 multiline
                 maxLength={280}
@@ -310,10 +331,13 @@ export default function InviteModal() {
       >
         <Text style={[styles.count, { color: roles.fgMuted }]}>
           {selected.size === 0
-            ? 'Selecteer iemand'
+            ? t('Selecteer iemand', 'Select someone')
             : selected.size === 1
-              ? '1 vriend gekozen'
-              : `${selected.size} vrienden gekozen`}
+              ? t('1 vriend gekozen', '1 friend selected')
+              : t(
+                  `${selected.size} vrienden gekozen`,
+                  `${selected.size} friends selected`
+                )}
         </Text>
         <Pressable
           onPress={onSend}
@@ -339,10 +363,10 @@ export default function InviteModal() {
             ]}
           >
             {sent
-              ? 'Verstuurd'
+              ? t('Verstuurd', 'Sent')
               : sendInvites.isPending
-                ? 'Versturen…'
-                : 'Stuur uitnodiging'}
+                ? t('Versturen…', 'Sending…')
+                : t('Stuur uitnodiging', 'Send invitation')}
           </Text>
         </Pressable>
       </View>
@@ -351,11 +375,11 @@ export default function InviteModal() {
   );
 }
 
-function formatTargetDate(iso: string): string {
+function formatTargetDate(iso: string, locale: import('@/lib/i18n').Locale): string {
   const d = new Date(iso);
-  const dow = DOW_NL_MIXED[d.getDay()];
+  const dow = dowMixed(d.getDay(), locale);
   const day = d.getDate();
-  const month = MONTHS_NL[d.getMonth()].toLowerCase();
+  const month = monthShort(d.getMonth(), locale).toLowerCase();
   const time = formatTime(iso);
   return `${dow} ${day} ${month} · ${time}`;
 }
@@ -376,6 +400,7 @@ function FriendCheckRow({
   const mode = useMode();
   const roles = useRoles();
   const isNacht = mode === 'nacht';
+  const t = useT();
   const disabled = Boolean(existingStatus) || Boolean(friendshipPending);
   return (
     <Pressable
@@ -425,7 +450,7 @@ function FriendCheckRow({
           style={[styles.statusPill, { borderColor: `${roles.fgMuted}80` }]}
         >
           <Text style={[styles.statusText, { color: roles.fgMuted }]}>
-            Wacht op acceptatie
+            {t('Wacht op acceptatie', 'Awaiting acceptance')}
           </Text>
         </View>
       ) : (
@@ -452,12 +477,13 @@ function InviteStatusBadge({
   status: ApiEventInviteRecord['status'];
 }) {
   const roles = useRoles();
+  const t = useT();
   const label =
     status === 'accepted'
-      ? 'Gaat mee'
+      ? t('Gaat mee', 'Going')
       : status === 'declined'
-        ? 'Afgewezen'
-        : 'Verstuurd';
+        ? t('Afgewezen', 'Declined')
+        : t('Verstuurd', 'Sent');
   const textTone =
     status === 'accepted'
       ? roles.accent

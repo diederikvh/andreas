@@ -19,7 +19,9 @@ import {
   type EventGroup,
   formatTime,
   groupEventsByDay,
+  translateCategory,
 } from '@/lib/eventDisplay';
+import { useLocale, useT } from '@/lib/i18n';
 import { useFriend, useRemoveFriend } from '@/lib/queries';
 import { useMode, useRoles } from '@/store/mode';
 import { fontFamily, palette } from '@/theme/tokens';
@@ -31,27 +33,42 @@ export default function FriendDetail() {
   const roles = useRoles();
   const insets = useSafeAreaInsets();
   const isNacht = mode === 'nacht';
+  const t = useT();
+  const locale = useLocale();
 
   const { data, isLoading, error } = useFriend(id);
   const removeFriend = useRemoveFriend();
 
   const onUnfollow = () => {
     if (!data) return;
-    const name = data.user.name || (data.user.handle ? `@${data.user.handle}` : 'deze vriend');
+    const name =
+      data.user.name ||
+      (data.user.handle
+        ? `@${data.user.handle}`
+        : t('deze vriend', 'this friend'));
     Alert.alert(
-      'Ontvolgen',
-      `${name} verwijderen uit je vrienden?`,
+      t('Ontvolgen', 'Unfriend'),
+      t(
+        `${name} verwijderen uit je vrienden?`,
+        `Remove ${name} from your friends?`
+      ),
       [
-        { text: 'Annuleren', style: 'cancel' },
+        { text: t('Annuleren', 'Cancel'), style: 'cancel' },
         {
-          text: 'Ontvolgen',
+          text: t('Ontvolgen', 'Unfriend'),
           style: 'destructive',
           onPress: async () => {
             try {
               await removeFriend.mutateAsync(id);
               router.back();
             } catch {
-              Alert.alert('Mislukt', 'Kon niet ontvolgen. Probeer opnieuw.');
+              Alert.alert(
+                t('Mislukt', 'Failed'),
+                t(
+                  'Kon niet ontvolgen. Probeer opnieuw.',
+                  'Couldn’t unfriend. Try again.'
+                )
+              );
             }
           },
         },
@@ -80,7 +97,7 @@ export default function FriendDetail() {
         </View>
         <View style={styles.center}>
           <Text style={[styles.errorText, { color: '#c9453a' }]}>
-            Profiel niet beschikbaar.
+            {t('Profiel niet beschikbaar.', 'Profile not available.')}
           </Text>
         </View>
       </View>
@@ -147,7 +164,9 @@ export default function FriendDetail() {
             ]}
           >
             <Text style={[styles.unfollowText, { color: roles.fgMuted }]}>
-              {removeFriend.isPending ? 'Bezig…' : 'Ontvolgen'}
+              {removeFriend.isPending
+                ? t('Bezig…', 'Working…')
+                : t('Ontvolgen', 'Unfriend')}
             </Text>
           </Pressable>
         </View>
@@ -155,8 +174,14 @@ export default function FriendDetail() {
         {upcomingDays.length === 0 && (
           <Text style={[styles.empty, { color: roles.fgMuted }]}>
             {savesPrivate
-              ? `${user.name.split(' ')[0]} heeft saves op privé staan.`
-              : 'Niks aankomends opgeslagen.'}
+              ? t(
+                  `${user.name.split(' ')[0]} heeft saves op privé staan.`,
+                  `${user.name.split(' ')[0]} has saves set to private.`
+                )
+              : t(
+                  'Niks aankomends opgeslagen.',
+                  'Nothing upcoming saved.'
+                )}
           </Text>
         )}
         {upcomingDays.map((day) => (
@@ -189,13 +214,19 @@ function DateAnchor({ group }: { group: EventGroup }) {
 }
 
 function FriendSavedRow({ event }: { event: ApiEvent }) {
+  const locale = useLocale();
   return (
     <EventListRow
       time={formatTime(event.startsAt)}
       thumb={event.imageUrl ?? ''}
       title={event.title}
       venue={event.venue.name}
-      tags={[{ label: event.category, tone: CATEGORY_TICK[event.category] }]}
+      tags={[
+        {
+          label: translateCategory(event.category, locale),
+          tone: CATEGORY_TICK[event.category],
+        },
+      ]}
       seriesLabel={event.series?.[0]?.name}
       genreLabel={event.genres?.[0]}
       tick={CATEGORY_TICK[event.category]}

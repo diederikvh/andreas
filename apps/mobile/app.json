@@ -13,8 +13,13 @@
       "bundleIdentifier": "amsterdam.andreas.app",
       "associatedDomains": ["applinks:andreas.amsterdam"],
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "CFBundleLocalizations": ["nl", "en"]
       }
+    },
+    "locales": {
+      "nl": "./locales/nl.json",
+      "en": "./locales/en.json"
     },
     "android": {
       "package": "amsterdam.andreas.app",

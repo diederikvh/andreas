@@ -29,19 +29,22 @@ import { SpinningCross } from '@/components/SpinningCross';
 import type { ApiEvent } from '@/lib/api';
 import {
   CATEGORY_TICK,
-  DOW_NL_FULL,
-  DOW_NL_UPPER,
-  MONTHS_NL_FULL,
-  TIME_BLOCKS,
+  dowFull,
+  dowUpper,
   effectiveEndsAtMs,
   expandToOccurrenceRows,
   formatTime,
+  freeLabel,
   getTimeBlock,
+  monthFull,
+  translateCategory,
   type OccurrenceRow,
   type TimeBlock,
   useFocusedNow,
   useNowMinute,
+  useTimeBlocks,
 } from '@/lib/eventDisplay';
+import { useLocale, useT, type Locale } from '@/lib/i18n';
 import { useEventGenres, useEvents, useFriends } from '@/lib/queries';
 import { useSession } from '@/lib/authClient';
 import { FEED } from '@/mocks/feed';
@@ -56,12 +59,16 @@ import {
 import { useVandaagFilters } from '@/store/vandaagFilters';
 import { fontFamily, palette } from '@/theme/tokens';
 
-function formatMetaForRow(row: OccurrenceRow): string {
+function formatMetaForRow(row: OccurrenceRow, locale: Locale): string {
   const d = new Date(row.occurrence.startsAt);
-  const dow = DOW_NL_UPPER[d.getDay()];
+  const dow = dowUpper(d.getDay(), locale);
   const cents = row.occurrence.priceCents;
   const price =
-    cents == null ? null : cents === 0 ? 'gratis' : `€${(cents / 100).toFixed(0)}`;
+    cents == null
+      ? null
+      : cents === 0
+        ? freeLabel(locale)
+        : `€${(cents / 100).toFixed(0)}`;
   return [dow, formatTime(row.occurrence.startsAt), row.event.venue.name.toUpperCase(), price]
     .filter(Boolean)
     .join(' · ');
@@ -104,6 +111,8 @@ export default function Avond() {
   const mode = useMode();
   const insets = useSafeAreaInsets();
   const data = FEED[mode];
+  const t = useT();
+  const locale = useLocale();
   const scrollRef = useRef<ScrollView>(null);
   useScrollToTop(scrollRef);
 
@@ -333,10 +342,10 @@ export default function Avond() {
   const heroParts = useMemo(() => {
     const d = todayWindow.refDate;
     return {
-      day: DOW_NL_FULL[d.getDay()].toLowerCase(),
-      date: `${d.getDate()} ${MONTHS_NL_FULL[d.getMonth()]}`,
+      day: dowFull(d.getDay(), locale).toLowerCase(),
+      date: `${d.getDate()} ${monthFull(d.getMonth(), locale)}`,
     };
-  }, [todayWindow.refDate]);
+  }, [todayWindow.refDate, locale]);
 
   return (
     <View style={[styles.root, { backgroundColor: roles.bg }]}>
@@ -359,7 +368,11 @@ export default function Avond() {
             // op iOS toont de title als label onder de spinner.
             tintColor={roles.accent}
             colors={[roles.accent]}
-            title={refreshing ? 'Vernieuwen…' : 'Trek om te vernieuwen'}
+            title={
+              refreshing
+                ? t('Vernieuwen…', 'Refreshing…')
+                : t('Trek om te vernieuwen', 'Pull to refresh')
+            }
             titleColor={roles.fgMuted}
             progressViewOffset={insets.top + HEADER_HEIGHT}
           />
@@ -373,9 +386,9 @@ export default function Avond() {
             onPress={() => router.push(eventPathFor(lead) as never)}
           >
             <FeaturedCard
-              kicker={data.featured.kicker}
+              kicker={t('Onze keuze', 'Our pick')}
               title={lead.event.title}
-              meta={formatMetaForRow(lead)}
+              meta={formatMetaForRow(lead, locale)}
               photo={lead.event.imageUrl ?? data.featured.photo}
               category={lead.event.category}
             />
@@ -430,7 +443,12 @@ export default function Avond() {
             <SpinningCross size={28} thickness={5} color={roles.fgPlaceholder} />
           </View>
         )}
-        {error && <ListState text="Kon events niet laden." tone="error" />}
+        {error && (
+          <ListState
+            text={t('Kon events niet laden.', 'Couldn’t load events.')}
+            tone="error"
+          />
+        )}
         {!isLoading && !error && (
           <Animated.View entering={FadeIn.duration(220)}>
             {filtered.length === 0 && events && (
@@ -449,9 +467,9 @@ export default function Avond() {
             {restByCategory.map(({ category, items }) => (
               <View key={category}>
                 <SectionTitle
-                  title={category}
+                  title={translateCategory(category, locale)}
                   titleColor={TONE[mode][CATEGORY_TICK[category]]}
-                  meta="Meer →"
+                  meta={t('Meer →', 'More →')}
                   onMetaPress={() =>
                     router.push({
                       pathname: '/agenda',
@@ -512,6 +530,7 @@ function AvondChipRow({
   const mode = useMode();
   const roles = useRoles();
   const isNacht = mode === 'nacht';
+  const t = useT();
   const [focused, setFocused] = useState(false);
   const [filterOpen, setFilterOpen] = useState(false);
   const inputRef = useRef<TextInput>(null);
@@ -571,12 +590,15 @@ function AvondChipRow({
 
   const onLongPressSaved = (s: SavedVandaagSearch) => {
     Alert.alert(
-      'Verwijderen',
-      `"${s.name}" verwijderen uit je opgeslagen filters?`,
+      t('Verwijderen', 'Remove'),
+      t(
+        `"${s.name}" verwijderen uit je opgeslagen filters?`,
+        `Remove "${s.name}" from your saved filters?`
+      ),
       [
-        { text: 'Annuleren', style: 'cancel' },
+        { text: t('Annuleren', 'Cancel'), style: 'cancel' },
         {
-          text: 'Verwijder',
+          text: t('Verwijder', 'Remove'),
           style: 'destructive',
           onPress: () => removeSaved(s.id),
         },
@@ -615,7 +637,7 @@ function AvondChipRow({
             onChangeText={onQuery}
             onFocus={() => setFocused(true)}
             onBlur={() => setFocused(false)}
-            placeholder={open ? 'ZOEK' : ''}
+            placeholder={open ? t('ZOEK', 'SEARCH') : ''}
             placeholderTextColor={roles.fgPlaceholder}
             autoCapitalize="characters"
             autoCorrect={false}
@@ -654,15 +676,17 @@ function AvondChipRow({
               { color: filterActive ? roles.bg : roles.fgMuted },
             ]}
           >
-            {filterActive ? `Filter · ${filterCount}` : 'Filter'}
+            {filterActive
+              ? `${t('Filter', 'Filter')} · ${filterCount}`
+              : t('Filter', 'Filter')}
           </Text>
         </Pressable>
         {showFriendsChip && (
           <Pressable
             accessibilityLabel={
               onlyFriends
-                ? 'Toon alle events'
-                : 'Alleen events met vrienden'
+                ? t('Toon alle events', 'Show all events')
+                : t('Alleen events met vrienden', 'Only events with friends')
             }
             onPress={onToggleFriends}
             style={[
@@ -692,8 +716,11 @@ function AvondChipRow({
           <Pressable
             accessibilityLabel={
               onlyFavorites
-                ? 'Toon alle events'
-                : 'Alleen events bij favoriete venues'
+                ? t('Toon alle events', 'Show all events')
+                : t(
+                    'Alleen events bij favoriete venues',
+                    'Only events at favourite venues'
+                  )
             }
             onPress={onToggleFavorites}
             style={[
@@ -825,7 +852,10 @@ function AvondFilterSheet({
 }) {
   const mode = useMode();
   const roles = useRoles();
+  const locale = useLocale();
   const isNacht = mode === 'nacht';
+  const t = useT();
+  const timeBlocks = useTimeBlocks();
   const addSaved = useAddSavedVandaagSearch();
   const [saveOpen, setSaveOpen] = useState(false);
   const [saveName, setSaveName] = useState('');
@@ -921,10 +951,14 @@ function AvondFilterSheet({
         </Pressable>
       )}
       <View style={styles.sheetHead}>
-        <Text style={[styles.sheetTitle, { color: roles.fg }]}>Filter</Text>
+        <Text style={[styles.sheetTitle, { color: roles.fg }]}>
+          {t('Filter', 'Filter')}
+        </Text>
         <Text style={[styles.sheetLead, { color: roles.fgMuted }]}>
-          Combineer tijd, vrienden en favorieten. Sla 'm op om de
-          combinatie als chip te bewaren.
+          {t(
+            "Combineer tijd, vrienden en favorieten. Sla 'm op om de combinatie als chip te bewaren.",
+            'Combine time, friends and favourites. Save it to keep the combination as a chip.'
+          )}
         </Text>
       </View>
 
@@ -935,13 +969,13 @@ function AvondFilterSheet({
         keyboardShouldPersistTaps="handled"
       >
         <Text style={[styles.sheetSectionHead, { color: roles.fgMuted }]}>
-          Categorie
+          {t('Categorie', 'Category')}
         </Text>
         <View style={styles.sheetWrap}>
           {CATEGORIES_ORDER.map((cat) => (
             <SheetChip
               key={cat}
-              label={cat}
+              label={translateCategory(cat, locale)}
               active={activeCats.includes(cat)}
               onPress={() => toggleCat(cat)}
             />
@@ -954,10 +988,10 @@ function AvondFilterSheet({
             { color: roles.fgMuted, marginTop: 22 },
           ]}
         >
-          Tijd
+          {t('Tijd', 'Time')}
         </Text>
         <View style={styles.sheetWrap}>
-          {TIME_BLOCKS.map((b) => (
+          {timeBlocks.map((b) => (
             <SheetChip
               key={b.id}
               label={b.label}
@@ -974,7 +1008,7 @@ function AvondFilterSheet({
             { color: roles.fgMuted, marginTop: 22 },
           ]}
         >
-          Genre
+          {t('Genre', 'Genre')}
         </Text>
         {genresLoading && (
           <View style={styles.sheetLoading}>
@@ -987,16 +1021,22 @@ function AvondFilterSheet({
         )}
         {genresError && (
           <Text style={[styles.sheetEmpty, { color: '#c9453a' }]}>
-            Kon genres niet laden.
+            {t('Kon genres niet laden.', 'Couldn’t load genres.')}
           </Text>
         )}
         {!genresLoading && !genresError && groupedGenres.length === 0 && (
           <Text style={[styles.sheetEmpty, { color: roles.fgMuted }]}>
             {activeCats.length === 1
-              ? `Geen genres gevonden voor ${activeCats[0]}.`
+              ? t(
+                  `Geen genres gevonden voor ${activeCats[0]}.`,
+                  `No genres found for ${translateCategory(activeCats[0], 'en')}.`
+                )
               : activeCats.length > 1
-                ? 'Geen genres gevonden voor deze categorieën.'
-                : 'Nog geen genres ingevuld.'}
+                ? t(
+                    'Geen genres gevonden voor deze categorieën.',
+                    'No genres found for these categories.'
+                  )
+                : t('Nog geen genres ingevuld.', 'No genres yet.')}
           </Text>
         )}
         <View style={styles.sheetSubGroup}>
@@ -1009,7 +1049,7 @@ function AvondFilterSheet({
                     { color: roles.fgPlaceholder },
                   ]}
                 >
-                  {section.category}
+                  {translateCategory(section.category, locale)}
                 </Text>
               )}
               <View style={styles.sheetWrap}>
@@ -1067,19 +1107,19 @@ function AvondFilterSheet({
                 { color: roles.fgMuted, marginTop: 22 },
               ]}
             >
-              Persoonlijk
+              {t('Persoonlijk', 'Personal')}
             </Text>
             <View style={styles.sheetWrap}>
               {showFriendsChip && (
                 <SheetChip
-                  label="Vrienden"
+                  label={t('Vrienden', 'Friends')}
                   active={onlyFriends}
                   onPress={() => onSetFriends(!onlyFriends)}
                 />
               )}
               {showFavoritesChip && (
                 <SheetChip
-                  label="Favoriete venues"
+                  label={t('Favoriete venues', 'Favourite venues')}
                   active={onlyFavorites}
                   onPress={() => onSetFavorites(!onlyFavorites)}
                 />
@@ -1108,7 +1148,10 @@ function AvondFilterSheet({
             <TextInput
               value={saveName}
               onChangeText={setSaveName}
-              placeholder="Naam (bv. Avond met vrienden)"
+              placeholder={t(
+                'Naam (bv. Avond met vrienden)',
+                'Name (e.g. Evening with friends)'
+              )}
               placeholderTextColor={roles.fgPlaceholder}
               autoFocus
               returnKeyType="done"
@@ -1118,7 +1161,7 @@ function AvondFilterSheet({
             />
           </View>
           <Pressable
-            accessibilityLabel="Opslaan"
+            accessibilityLabel={t('Opslaan', 'Save')}
             onPress={onSave}
             disabled={saveName.trim().length === 0}
             style={[
@@ -1137,7 +1180,7 @@ function AvondFilterSheet({
             />
           </Pressable>
           <Pressable
-            accessibilityLabel="Annuleer"
+            accessibilityLabel={t('Annuleer', 'Cancel')}
             onPress={() => {
               setSaveOpen(false);
               setSaveName('');
@@ -1167,11 +1210,11 @@ function AvondFilterSheet({
                 { color: isNacht ? palette.noir : palette.paper3 },
               ]}
             >
-              Bekijk
+              {t('Bekijk', 'View')}
             </Text>
           </Pressable>
           <Pressable
-            accessibilityLabel="Bewaar filter"
+            accessibilityLabel={t('Bewaar filter', 'Save filter')}
             onPress={() => setSaveOpen(true)}
             disabled={filterCount === 0}
             style={[
@@ -1185,7 +1228,7 @@ function AvondFilterSheet({
             <Ionicons name="bookmark-outline" size={18} color={roles.fgMuted} />
           </Pressable>
           <Pressable
-            accessibilityLabel="Wis filters en sluit"
+            accessibilityLabel={t('Wis filters en sluit', 'Clear filters and close')}
             onPress={() => {
               onClearAll();
               onClose();
@@ -1279,6 +1322,7 @@ function ApiEventRow({
   featured?: boolean;
 }) {
   const { event } = row;
+  const locale = useLocale();
   const friends = event.friendsSaved?.map((f) => ({
     name: f.name,
     avatar: f.avatarUrl,
@@ -1290,7 +1334,7 @@ function ApiEventRow({
     <EventListRow
       thumb={event.imageUrl ?? ''}
       title={event.title}
-      venue={formatMetaForRow(row)}
+      venue={formatMetaForRow(row, locale)}
       seriesLabel={event.series?.[0]?.name}
       genreLabel={event.genres?.[0]}
       friends={friends && friends.length > 0 ? friends : undefined}
@@ -1331,12 +1375,19 @@ function EmptyResults({
   minHeight: number;
 }) {
   const roles = useRoles();
+  const t = useT();
   const title = hasFilter
-    ? 'Niets gevonden met deze filters.'
-    : 'Vandaag niets op de agenda.';
+    ? t('Niets gevonden met deze filters.', 'Nothing found with these filters.')
+    : t('Vandaag niets op de agenda.', 'Nothing on today’s agenda.');
   const body = hasFilter
-    ? 'Pas je filter of zoekterm aan om meer events te zien.'
-    : 'Kijk morgen weer, of bekijk de hele week op Agenda.';
+    ? t(
+        'Pas je filter of zoekterm aan om meer events te zien.',
+        'Adjust your filter or search to see more events.'
+      )
+    : t(
+        'Kijk morgen weer, of bekijk de hele week op Agenda.',
+        'Check back tomorrow, or browse the whole week on Agenda.'
+      );
   return (
     <View style={[styles.emptyResults, { minHeight }]}>
       <Ionicons
@@ -1369,6 +1420,7 @@ function FeaturedCard({
 }) {
   const mode = useMode();
   const roles = useRoles();
+  const locale = useLocale();
   const isNacht = mode === 'nacht';
   const titleColor = isNacht ? palette.ink : palette.paper3;
   const metaColor = isNacht
@@ -1432,7 +1484,7 @@ function FeaturedCard({
                       { color: roles.onAccent },
                     ]}
                   >
-                    {category}
+                    {translateCategory(category, locale)}
                   </Text>
                 </View>
               )}
@@ -1493,6 +1545,7 @@ function SectionTitle({
 
 function KaartBanner() {
   const roles = useRoles();
+  const t = useT();
   return (
     <Pressable
       onPress={() => router.push('/kaart' as never)}
@@ -1507,10 +1560,13 @@ function KaartBanner() {
       <Ionicons name="map-outline" size={22} color={roles.fgMuted} />
       <View style={styles.kaartBody}>
         <Text style={[styles.kaartKicker, { color: roles.fgMuted }]}>
-          Op de kaart
+          {t('Op de kaart', 'On the map')}
         </Text>
         <Text style={[styles.kaartTitle, { color: roles.fg }]}>
-          Zie wat er nu speelt in de buurt.
+          {t(
+            'Zie wat er nu speelt in de buurt.',
+            'See what’s on around you right now.'
+          )}
         </Text>
       </View>
       <Ionicons

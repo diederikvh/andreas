@@ -30,6 +30,7 @@ import {
   travelMinutes,
   type TransportMode,
 } from '@/lib/eventDisplay';
+import { useT } from '@/lib/i18n';
 import { useEvents } from '@/lib/queries';
 import { useDeviceLocation } from '@/lib/useDeviceLocation';
 import type { BadgeTone } from '@/mocks/feed';
@@ -76,6 +77,7 @@ export default function Kaart() {
   const mode = useMode();
   const roles = useRoles();
   const insets = useSafeAreaInsets();
+  const t = useT();
   const locationStatus = useDeviceLocation();
   const centre = (() => {
     if (locationStatus.status !== 'granted') return AMSTERDAM_CS;
@@ -326,14 +328,16 @@ export default function Kaart() {
         <View style={styles.contextLine}>
           <Text style={[styles.contextLabel, { color: roles.accent }]}>
             {mode === 'nacht'
-              ? 'Vanavond'
+              ? t('Vanavond', 'Tonight')
               : window.shifted
-                ? 'Morgen overdag'
-                : 'Vandaag overdag'}
+                ? t('Morgen overdag', 'Tomorrow')
+                : t('Vandaag overdag', 'Today')}
           </Text>
           <Text style={[styles.contextMeta, { color: roles.fgMuted }]}>
             {mapEvents.length}{' '}
-            {mapEvents.length === 1 ? 'plek in de buurt' : 'plekken in de buurt'}
+            {mapEvents.length === 1
+              ? t('plek in de buurt', 'spot nearby')
+              : t('plekken in de buurt', 'spots nearby')}
           </Text>
         </View>
         <View style={styles.toolbar}>
@@ -383,6 +387,7 @@ function ViewSwitch({
 }) {
   const mode = useMode();
   const roles = useRoles();
+  const t = useT();
   const [trackW, setTrackW] = useState(0);
   const activeIndex = view === 'map' ? 0 : 1;
   const progress = useSharedValue(activeIndex);
@@ -431,13 +436,13 @@ function ViewSwitch({
       />
       <SwitchBtn
         Icon={TabIconVenues}
-        label="Kaart"
+        label={t('Kaart', 'Map')}
         active={view === 'map'}
         onPress={() => onChange('map')}
       />
       <SwitchBtn
         Icon={TabIconAgenda}
-        label="Lijst"
+        label={t('Lijst', 'List')}
         active={view === 'list'}
         onPress={() => onChange('list')}
       />

@@ -37,11 +37,13 @@ import type {
 import { useSession } from '@/lib/authClient';
 import {
   CATEGORY_TICK,
-  DOW_NL_MIXED,
+  dowMixed,
   type EventGroup,
   formatTime,
   groupEventsByDay,
+  translateCategory,
 } from '@/lib/eventDisplay';
+import { useLocale, useT } from '@/lib/i18n';
 import {
   useAcceptFriendRequest,
   useAcceptInvite,
@@ -178,6 +180,7 @@ function SubTabs({
 }) {
   const mode = useMode();
   const roles = useRoles();
+  const t = useT();
   // Track-breedte meten zodat we de blob in pixels kunnen positioneren
   // — % laat 't 4-6px verschuiven door padding/gap-rounding.
   const [trackW, setTrackW] = useState(0);
@@ -229,13 +232,13 @@ function SubTabs({
           ]}
         />
         <SwitchBtn
-          label="Vrienden"
+          label={t('Vrienden', 'Friends')}
           active={sub === 'vrienden'}
           badge={inboxCount}
           onPress={() => onChange('vrienden')}
         />
         <SwitchBtn
-          label="Planning"
+          label={t('Planning', 'Planning')}
           active={sub === 'planning'}
           onPress={() => onChange('planning')}
         />
@@ -304,17 +307,20 @@ function FriendsPanel({
   busyInv: boolean;
 }) {
   const roles = useRoles();
+  const t = useT();
 
   if (!authed) {
     return (
       <View style={styles.emptyCenter}>
         <Ionicons name="people-outline" size={48} color={roles.fgMuted} />
         <Text style={[styles.emptyTitle, { color: roles.fg }]}>
-          Log in om je vrienden te zien
+          {t('Log in om je vrienden te zien', 'Sign in to see your friends')}
         </Text>
         <Text style={[styles.emptySub, { color: roles.fgMuted }]}>
-          Vrienden delen wat ze hebben gepland — log in via Jij om jullie
-          netwerk te zien.
+          {t(
+            'Vrienden delen wat ze hebben gepland — log in via Jij om jullie netwerk te zien.',
+            'Friends share what they’ve planned — sign in via You to see your network.'
+          )}
         </Text>
       </View>
     );
@@ -330,18 +336,20 @@ function FriendsPanel({
       <View style={styles.emptyCenter}>
         <Ionicons name="people-outline" size={48} color={roles.fgMuted} />
         <Text style={[styles.emptyTitle, { color: roles.fg }]}>
-          Nog geen vrienden
+          {t('Nog geen vrienden', 'No friends yet')}
         </Text>
         <Text style={[styles.emptySub, { color: roles.fgMuted }]}>
-          Voeg iemand toe via @handle of QR-code. Hun gereeplande events
-          komen hier terug.
+          {t(
+            'Voeg iemand toe via @handle of QR-code. Hun gereeplande events komen hier terug.',
+            'Add someone by @handle or QR code. Their planned events will show up here.'
+          )}
         </Text>
         <Pressable
           onPress={() => router.push('/add-friend')}
           style={[styles.emptyCta, { backgroundColor: roles.accent }]}
         >
           <Text style={[styles.emptyCtaText, { color: roles.onAccent }]}>
-            Vriend toevoegen
+            {t('Vriend toevoegen', 'Add friend')}
           </Text>
         </Pressable>
       </View>
@@ -352,7 +360,10 @@ function FriendsPanel({
     <Animated.View entering={FadeIn.duration(180)}>
       {invites && invites.length > 0 && (
         <>
-          <SectionHead label="Uitnodigingen" count={invites.length} />
+          <SectionHead
+            label={t('Uitnodigingen', 'Invitations')}
+            count={invites.length}
+          />
           {invites.map((inv) => (
             <InviteRow
               key={inv.id}
@@ -366,7 +377,10 @@ function FriendsPanel({
       )}
       {requests && requests.length > 0 && (
         <>
-          <SectionHead label="Aanvragen" count={requests.length} />
+          <SectionHead
+            label={t('Aanvragen', 'Requests')}
+            count={requests.length}
+          />
           {requests.map((r) => (
             <RequestRow
               key={r.id}
@@ -381,9 +395,9 @@ function FriendsPanel({
       {hasFriends && (
         <>
           <SectionHead
-            label="Vrienden"
+            label={t('Vrienden', 'Friends')}
             count={friends?.length}
-            action="Toevoegen"
+            action={t('Toevoegen', 'Add')}
             onAction={() => router.push('/add-friend')}
           />
           {friends?.map((f) => <FriendRow key={f.id} friend={f} />)}
@@ -391,7 +405,10 @@ function FriendsPanel({
       )}
       {hasOutgoing && (
         <>
-          <SectionHead label="Aangevraagd" count={outgoing?.length} />
+          <SectionHead
+            label={t('Aangevraagd', 'Pending')}
+            count={outgoing?.length}
+          />
           {outgoing?.map((o) => <PendingRow key={o.id} user={o} />)}
         </>
       )}
@@ -413,6 +430,7 @@ function PlanningPanel({
   error: unknown;
 }) {
   const roles = useRoles();
+  const t = useT();
 
   const upcoming = useMemo(() => {
     if (!saves) return [];
@@ -450,12 +468,13 @@ function PlanningPanel({
       <View style={styles.emptyCenter}>
         <Ionicons name="heart-outline" size={48} color={roles.fgMuted} />
         <Text style={[styles.emptyTitle, { color: roles.fg }]}>
-          Nog niks opgeslagen.
+          {t('Nog niks opgeslagen.', 'Nothing saved yet.')}
         </Text>
         <Text style={[styles.emptySub, { color: roles.fgMuted }]}>
-          Hier komt je planning te staan — alle feestjes, voorstellingen
-          en tentoonstellingen waar je naartoe wil. Tik bij een event op
-          het hartje om hem op te slaan.
+          {t(
+            'Hier komt je planning te staan — alle feestjes, voorstellingen en tentoonstellingen waar je naartoe wil. Tik bij een event op het hartje om hem op te slaan.',
+            'This is where your plans live — all the parties, performances and exhibitions you want to go to. Tap the heart on an event to save it.'
+          )}
         </Text>
       </View>
     );
@@ -472,7 +491,7 @@ function PlanningPanel({
     return (
       <View style={styles.listState}>
         <Text style={[styles.listStateText, { color: '#c9453a' }]}>
-          Kon je saves niet laden.
+          {t('Kon je saves niet laden.', 'Couldn’t load your saves.')}
         </Text>
       </View>
     );
@@ -604,8 +623,10 @@ function InviteRow({
   busy: boolean;
 }) {
   const roles = useRoles();
+  const t = useT();
+  const locale = useLocale();
   const d = new Date(invite.occurrence.startsAt);
-  const dateLabel = `${DOW_NL_MIXED[d.getDay()]} · ${formatTime(invite.occurrence.startsAt)}`;
+  const dateLabel = `${dowMixed(d.getDay(), locale)} · ${formatTime(invite.occurrence.startsAt)}`;
   return (
     <Pressable
       onPress={() =>
@@ -625,7 +646,7 @@ function InviteRow({
           <Text style={[styles.inviteEm, { color: roles.fg }]}>
             {invite.from.name}
           </Text>
-          {' vraagt je mee naar '}
+          {t(' vraagt je mee naar ', ' is inviting you to ')}
           <Text style={[styles.inviteEm, { color: roles.fg }]}>
             {invite.event.title}
           </Text>
@@ -698,16 +719,20 @@ function FriendRow({ friend }: { friend: ApiFriend }) {
 
 function PendingRow({ user }: { user: ApiFriendRequest }) {
   const roles = useRoles();
+  const t = useT();
   const removeFriend = useRemoveFriend();
   const onCancel = () => {
     const firstName = user.name.split(' ')[0] || `@${user.handle ?? ''}`;
     Alert.alert(
-      'Verzoek terugtrekken?',
-      `${firstName} krijgt geen melding hierover.`,
+      t('Verzoek terugtrekken?', 'Withdraw request?'),
+      t(
+        `${firstName} krijgt geen melding hierover.`,
+        `${firstName} won’t be notified.`
+      ),
       [
-        { text: 'Annuleer', style: 'cancel' },
+        { text: t('Annuleer', 'Cancel'), style: 'cancel' },
         {
-          text: 'Terugtrekken',
+          text: t('Terugtrekken', 'Withdraw'),
           style: 'destructive',
           onPress: () => removeFriend.mutate(user.id),
         },
@@ -732,7 +757,7 @@ function PendingRow({ user }: { user: ApiFriendRequest }) {
       </View>
       <View style={[styles.pendingPill, { borderColor: `${roles.fgMuted}80` }]}>
         <Text style={[styles.pendingPillText, { color: roles.fgMuted }]}>
-          Wacht
+          {t('Wacht', 'Pending')}
         </Text>
       </View>
       <Pressable
@@ -761,6 +786,7 @@ function DateAnchor({
   dim?: boolean;
 }) {
   const roles = useRoles();
+  const t = useT();
   const fg = dim ? roles.fgMuted : roles.fg;
   const meta = dim ? roles.fgPlaceholder : roles.fgMuted;
   return (
@@ -774,7 +800,8 @@ function DateAnchor({
         </Text>
       </View>
       <Text style={[styles.anchorCount, { color: roles.fgPlaceholder }]}>
-        {group.count} {group.count === 1 ? 'plan' : 'plannen'}
+        {group.count}{' '}
+        {group.count === 1 ? t('plan', 'plan') : t('plannen', 'plans')}
       </Text>
     </View>
   );
@@ -782,11 +809,14 @@ function DateAnchor({
 
 function PastAnchor({ count }: { count: number }) {
   const roles = useRoles();
+  const t = useT();
   return (
     <View style={[styles.anchor, styles.pastAnchor]}>
-      <Text style={[styles.pastLabel, { color: roles.fgMuted }]}>Geweest</Text>
+      <Text style={[styles.pastLabel, { color: roles.fgMuted }]}>
+        {t('Geweest', 'Past')}
+      </Text>
       <Text style={[styles.anchorCount, { color: roles.fgPlaceholder }]}>
-        {count} {count === 1 ? 'plan' : 'plannen'}
+        {count} {count === 1 ? t('plan', 'plan') : t('plannen', 'plans')}
       </Text>
     </View>
   );
@@ -794,6 +824,7 @@ function PastAnchor({ count }: { count: number }) {
 
 function SavedRow({ event, dim = false }: { event: ApiEvent; dim?: boolean }) {
   const tone = CATEGORY_TICK[event.category];
+  const locale = useLocale();
   const friends = event.friendsSaved?.map((f) => ({
     name: f.name,
     avatar: f.avatarUrl,
@@ -805,7 +836,7 @@ function SavedRow({ event, dim = false }: { event: ApiEvent; dim?: boolean }) {
         thumb={event.imageUrl ?? ''}
         title={event.title}
         venue={event.venue.name}
-        tags={[{ label: event.category, tone }]}
+        tags={[{ label: translateCategory(event.category, locale), tone }]}
         seriesLabel={event.series?.[0]?.name}
         genreLabel={event.genres?.[0]}
         friends={friends && friends.length > 0 ? friends : undefined}

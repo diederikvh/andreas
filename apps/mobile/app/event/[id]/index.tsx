@@ -23,11 +23,13 @@ import { SpinningCross } from '@/components/SpinningCross';
 import type { ApiEvent, ApiLineupEntry, ApiOccurrence } from '@/lib/api';
 import { useSession } from '@/lib/authClient';
 import {
-  DOW_NL_MIXED,
+  dowMixed,
   formatPrice,
   formatTime,
-  MONTHS_NL,
+  monthShort,
+  translateCategory,
 } from '@/lib/eventDisplay';
+import { useLocale, useT, type Locale } from '@/lib/i18n';
 import { useEvent, useMySaves, useToggleSave } from '@/lib/queries';
 import { useMode, useRoles } from '@/store/mode';
 import { fontFamily, palette } from '@/theme/tokens';
@@ -49,6 +51,8 @@ export default function EventDetail() {
   const roles = useRoles();
   const insets = useSafeAreaInsets();
   const isNacht = mode === 'nacht';
+  const t = useT();
+  const locale = useLocale();
 
   const scrollRef = useAnimatedRef<Animated.ScrollView>();
   const scrollY = useScrollViewOffset(scrollRef);
@@ -103,7 +107,7 @@ export default function EventDetail() {
     ? event.occurrences?.find((o) => o.id === selectedOccurrenceId) ?? null
     : null;
 
-  const view = toViewModel(event, selectedOccurrence);
+  const view = toViewModel(event, selectedOccurrence, locale);
   const stickyTitle = view.title;
 
   return (
@@ -217,8 +221,11 @@ export default function EventDetail() {
                   style={[styles.expiredNoticeText, { color: roles.accent }]}
                 >
                   {eventOver
-                    ? 'Dit event is afgelopen.'
-                    : 'De voorstelling die je selecteerde is voorbij. Dit is de eerstvolgende.'}
+                    ? t('Dit event is afgelopen.', 'This event is over.')
+                    : t(
+                        'De voorstelling die je selecteerde is voorbij. Dit is de eerstvolgende.',
+                        'The performance you selected is over. This is the next one.'
+                      )}
                 </Text>
               </View>
               <View style={[styles.divider, { backgroundColor: roles.bgChip }]} />
@@ -228,20 +235,24 @@ export default function EventDetail() {
           <View style={styles.metaRow}>
             <View style={styles.metaCellWrap}>
               <MetaCell
-                label={event.kind === 'exhibition' ? 'Loopt t/m' : 'Datum'}
+                label={
+                  event.kind === 'exhibition'
+                    ? t('Loopt t/m', 'Runs until')
+                    : t('Datum', 'Date')
+                }
                 value={
                   event.kind === 'exhibition' && event.endsAt
-                    ? formatExhibitionEnd(event.endsAt)
+                    ? formatExhibitionEnd(event.endsAt, locale)
                     : view.date
                 }
               />
             </View>
             <View style={styles.metaCellWrap}>
-              <MetaCell label="Aanvang" value={view.time} />
+              <MetaCell label={t('Aanvang', 'Doors')} value={view.time} />
             </View>
             <View style={styles.metaCellWrap}>
               <MetaCell
-                label="Venue"
+                label={t('Venue', 'Venue')}
                 value={view.venue}
                 onPress={() => router.push(`/venue/${event.venue.slug}`)}
               />
@@ -263,7 +274,7 @@ export default function EventDetail() {
               lineup={selectedOccurrence.lineup}
               kicker={
                 event.occurrences && event.occurrences.length > 1
-                  ? formatLineupKicker(selectedOccurrence.startsAt)
+                  ? formatLineupKicker(selectedOccurrence.startsAt, locale)
                   : null
               }
             />
@@ -386,6 +397,7 @@ function CrewAndInvite({
   const mode = useMode();
   const roles = useRoles();
   const isNacht = mode === 'nacht';
+  const t = useT();
 
   const rows = useMemo<CrewRow[]>(() => {
     const map = new Map<string, CrewRow>();
@@ -411,7 +423,9 @@ function CrewAndInvite({
 
   return (
     <>
-      <Text style={[styles.crewHeading, { color: roles.fg }]}>Vrienden</Text>
+      <Text style={[styles.crewHeading, { color: roles.fg }]}>
+        {t('Vrienden', 'Friends')}
+      </Text>
       <View
         style={[
           styles.crewInviteContainer,
@@ -441,7 +455,9 @@ function CrewAndInvite({
         >
           <Ionicons name="person-add-outline" size={18} color={roles.fg} />
           <Text style={[styles.inviteText, { color: roles.fg }]}>
-            {hasCrew ? 'Nog iemand uitnodigen' : 'Nodig iemand uit'}
+            {hasCrew
+              ? t('Nog iemand uitnodigen', 'Invite someone else')
+              : t('Nodig iemand uit', 'Invite someone')}
           </Text>
           <Text style={[styles.inviteChev, { color: roles.fgPlaceholder }]}>
             ›
@@ -501,6 +517,7 @@ function CrewRowItem({ row, first }: { row: CrewRow; first: boolean }) {
 
 function CrewStatusBadge({ row }: { row: CrewRow }) {
   const roles = useRoles();
+  const t = useT();
   // "Gaat mee" alleen tonen als ik 'm heb uitgenodigd én ze hebben
   // geaccepteerd — dan is het mijn beslissing die zichtbaar wordt.
   // Spontaan-saved vrienden krijgen geen badge: hun aanwezigheid in
@@ -508,10 +525,10 @@ function CrewStatusBadge({ row }: { row: CrewRow }) {
   if (row.saved && row.inviteStatus !== 'accepted') return null;
   const label =
     row.inviteStatus === 'accepted'
-      ? 'Gaat mee'
+      ? t('Gaat mee', 'Going')
       : row.inviteStatus === 'declined'
-        ? 'Afgewezen'
-        : 'Wacht op antwoord';
+        ? t('Afgewezen', 'Declined')
+        : t('Wacht op antwoord', 'Awaiting reply');
   const textTone =
     row.inviteStatus === 'accepted'
       ? roles.accent
@@ -525,14 +542,14 @@ function CrewStatusBadge({ row }: { row: CrewRow }) {
   );
 }
 
-function formatExhibitionEnd(endsAt: string): string {
+function formatExhibitionEnd(endsAt: string, locale: Locale): string {
   const d = new Date(endsAt);
-  return `${d.getDate()} ${MONTHS_NL[d.getMonth()].toLowerCase()}`;
+  return `${d.getDate()} ${monthShort(d.getMonth(), locale).toLowerCase()}`;
 }
 
-function formatLineupKicker(startsAt: string): string {
+function formatLineupKicker(startsAt: string, locale: Locale): string {
   const d = new Date(startsAt);
-  return `${DOW_NL_MIXED[d.getDay()]} ${d.getDate()} ${MONTHS_NL[d.getMonth()].toLowerCase()}`;
+  return `${dowMixed(d.getDay(), locale)} ${d.getDate()} ${monthShort(d.getMonth(), locale).toLowerCase()}`;
 }
 
 const ROLE_LABEL: Record<NonNullable<ApiLineupEntry['role']>, string> = {
@@ -556,6 +573,7 @@ function Lineup({
   kicker: string | null;
 }) {
   const roles = useRoles();
+  const t = useT();
   return (
     <>
       <View style={styles.lineupHeading}>
@@ -567,7 +585,7 @@ function Lineup({
             { color: roles.fg, marginTop: 0, marginBottom: 0 },
           ]}
         >
-          Lineup
+          {t('Lineup', 'Lineup')}
         </Text>
         {kicker && (
           <Text style={[styles.lineupKicker, { color: roles.fgMuted }]}>
@@ -638,10 +656,13 @@ function TicketsBlock({
   soldOut: boolean;
 }) {
   const roles = useRoles();
-  const ctaLabel = soldOut ? 'Uitverkocht' : 'Tickets';
+  const t = useT();
+  const ctaLabel = soldOut ? t('Uitverkocht', 'Sold out') : t('Tickets', 'Tickets');
   return (
     <>
-      <Text style={[styles.crewHeading, { color: roles.fg }]}>Tickets</Text>
+      <Text style={[styles.crewHeading, { color: roles.fg }]}>
+        {t('Tickets', 'Tickets')}
+      </Text>
       <View
         style={[
           styles.ticketsBlock,
@@ -703,17 +724,19 @@ function OccurrenceList({
   onSelect: (occurrenceId: string) => void;
 }) {
   const roles = useRoles();
+  const t = useT();
+  const locale = useLocale();
   return (
     <>
       <Text style={[styles.crewHeading, { color: roles.fg }]}>
-        Alle voorstellingen ({occurrences.length})
+        {t('Alle voorstellingen', 'All performances')} ({occurrences.length})
       </Text>
       <View style={[styles.occList, { borderColor: roles.bgChip }]}>
         {occurrences.map((o) => {
           const d = new Date(o.startsAt);
-          const dow = DOW_NL_MIXED[d.getDay()];
+          const dow = dowMixed(d.getDay(), locale);
           const day = d.getDate();
-          const month = MONTHS_NL[d.getMonth()].toLowerCase();
+          const month = monthShort(d.getMonth(), locale).toLowerCase();
           const time = formatTime(o.startsAt);
           const lineupHint =
             o.lineup && o.lineup.length > 0
@@ -751,10 +774,10 @@ function OccurrenceList({
                 </Text>
                 <Text style={[styles.occPrice, { color: roles.fgMuted }]}>
                   {o.status === 'sold_out'
-                    ? 'Uitverkocht'
+                    ? t('Uitverkocht', 'Sold out')
                     : o.status === 'cancelled'
-                      ? 'Geannuleerd'
-                      : formatPrice(o.priceCents)}
+                      ? t('Geannuleerd', 'Cancelled')
+                      : formatPrice(o.priceCents, locale)}
                 </Text>
               </View>
               {lineupHint && (
@@ -799,7 +822,11 @@ type ViewModel = {
   priceNote: string | null;
 };
 
-function toViewModel(event: ApiEvent, occ: ApiOccurrence | null): ViewModel {
+function toViewModel(
+  event: ApiEvent,
+  occ: ApiOccurrence | null,
+  locale: Locale
+): ViewModel {
   // Voor exhibitions zonder selected occurrence valt 'ie terug op
   // event.startsAt (gedenormaliseerd vanuit nextOccurrence). Voor shows
   // verwachten we altijd een occurrence — past door een query mismatch.
@@ -808,9 +835,9 @@ function toViewModel(event: ApiEvent, occ: ApiOccurrence | null): ViewModel {
   const sourcePriceCents = occ?.priceCents ?? event.priceCents;
   const sourcePriceNote = occ?.priceNote ?? event.priceNote;
   const d = new Date(sourceStart);
-  const dow = DOW_NL_MIXED[d.getDay()];
+  const dow = dowMixed(d.getDay(), locale);
   const day = d.getDate();
-  const month = MONTHS_NL[d.getMonth()].toLowerCase();
+  const month = monthShort(d.getMonth(), locale).toLowerCase();
   const priceNote =
     (sourcePriceNote && sourcePriceNote.trim().length > 0
       ? sourcePriceNote.trim()
@@ -820,26 +847,30 @@ function toViewModel(event: ApiEvent, occ: ApiOccurrence | null): ViewModel {
       : null);
   void sourceEnd; // endsAt wordt apart in <MetaCell> gebruikt voor exhibitions
   return {
-    tag: event.category,
+    tag: translateCategory(event.category, locale),
     title: event.title,
     date: `${dow} ${day} ${month}`,
     time: formatTime(sourceStart),
     venue: event.venue.name,
     description: event.description,
     photo: event.imageUrl,
-    price: formatPrice(sourcePriceCents),
+    price: formatPrice(sourcePriceCents, locale),
     priceNote,
   };
 }
 
 function ShareButton({ event }: { event: ApiEvent }) {
   const { data: session } = useSession();
+  const t = useT();
   const onPress = async () => {
     const refQs = session?.user?.id
       ? `?ref=${encodeURIComponent(session.user.id)}`
       : '';
     const url = `https://andreas.amsterdam/e/${encodeURIComponent(event.id)}${refQs}`;
-    const messageBody = `Ik ga naar ${event.title} via Andreas. Wil je mee?\n${url}`;
+    const messageBody = t(
+      `Ik ga naar ${event.title} via Andreas. Wil je mee?\n${url}`,
+      `I’m going to ${event.title} via Andreas. Want to come?\n${url}`
+    );
     try {
       await Share.share(
         Platform.OS === 'ios'

@@ -2,6 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { useLocale, type Locale } from '@/lib/i18n';
 import type { BadgeTone } from '@/mocks/feed';
 import type { Friend } from '@/mocks/gered';
 import { useMode, useRoles } from '@/store/mode';
@@ -205,6 +206,7 @@ function FriendsPill({
 }) {
   const roles = useRoles();
   const mode = useMode();
+  const locale = useLocale();
   const bg = `${accent}1f`; // ~12% alpha
   const textColor = toneForLabelText(accent, mode);
   return (
@@ -242,16 +244,17 @@ function FriendsPill({
         )}
       </View>
       <Text style={[styles.friendsText, { color: textColor }]}>
-        {friendsLabel(friends.map((f) => f.name))}
+        {friendsLabel(friends.map((f) => f.name), locale)}
       </Text>
     </View>
   );
 }
 
-function friendsLabel(names: string[]): string {
-  if (names.length === 1) return `${names[0]} ook`;
-  if (names.length === 2) return `${names[0]} & ${names[1]} ook`;
-  return `${names[0]} +${names.length - 1} ook`;
+function friendsLabel(names: string[], locale: Locale): string {
+  const tail = locale === 'nl' ? 'ook' : 'too';
+  if (names.length === 1) return `${names[0]} ${tail}`;
+  if (names.length === 2) return `${names[0]} & ${names[1]} ${tail}`;
+  return `${names[0]} +${names.length - 1} ${tail}`;
 }
 
 const styles = StyleSheet.create({

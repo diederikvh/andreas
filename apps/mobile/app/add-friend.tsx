@@ -21,6 +21,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import type { ApiSearchUser } from '@/lib/api';
+import { useT } from '@/lib/i18n';
 import {
   useAcceptFriendRequest,
   useSendFriendRequest,
@@ -34,6 +35,7 @@ export default function AddFriend() {
   const roles = useRoles();
   const insets = useSafeAreaInsets();
   const isNacht = mode === 'nacht';
+  const tx = useT();
 
   // ?handle= komt binnen via universal-link of vanuit de QR-scanner.
   // Vul het zoekveld voor zodat de juiste user direct verschijnt.
@@ -92,7 +94,9 @@ export default function AddFriend() {
         ]}
       >
         <BackButton />
-        <Text style={[styles.topTitle, { color: roles.fg }]}>Toevoegen</Text>
+        <Text style={[styles.topTitle, { color: roles.fg }]}>
+          {tx('Toevoegen', 'Add')}
+        </Text>
         <Pressable
           onPress={() => setScannerOpen(true)}
           style={[
@@ -121,7 +125,7 @@ export default function AddFriend() {
             onChangeText={(t) =>
               setQ(t.toLowerCase().replace(/[^a-z0-9_]/g, ''))
             }
-            placeholder="zoek op handle"
+            placeholder={tx('zoek op handle', 'search by handle')}
             placeholderTextColor={roles.fgPlaceholder}
             autoCapitalize="none"
             autoCorrect={false}
@@ -140,13 +144,21 @@ export default function AddFriend() {
         >
           {debouncedQ.length < 2 ? (
             <Text style={[styles.hint, { color: roles.fgMuted }]}>
-              Typ minstens 2 tekens om te zoeken.
+              {tx(
+                'Typ minstens 2 tekens om te zoeken.',
+                'Type at least 2 characters to search.'
+              )}
             </Text>
           ) : search.isLoading ? (
-            <Text style={[styles.hint, { color: roles.fgMuted }]}>Zoeken…</Text>
+            <Text style={[styles.hint, { color: roles.fgMuted }]}>
+              {tx('Zoeken…', 'Searching…')}
+            </Text>
           ) : (search.data ?? []).length === 0 ? (
             <Text style={[styles.hint, { color: roles.fgMuted }]}>
-              Geen handle gevonden voor "@{debouncedQ}".
+              {tx(
+                `Geen handle gevonden voor "@${debouncedQ}".`,
+                `No handle found for "@${debouncedQ}".`
+              )}
             </Text>
           ) : (
             (search.data ?? []).map((u) => (
@@ -275,10 +287,13 @@ function RowAction({
   busy: boolean;
 }) {
   const roles = useRoles();
+  const t = useT();
   if (relation === 'accepted') {
     return (
       <View style={[styles.actionPill, styles.actionPillMuted, { borderColor: roles.bgChip }]}>
-        <Text style={[styles.actionText, { color: roles.fgMuted }]}>Vriend</Text>
+        <Text style={[styles.actionText, { color: roles.fgMuted }]}>
+          {t('Vriend', 'Friend')}
+        </Text>
       </View>
     );
   }
@@ -286,7 +301,7 @@ function RowAction({
     return (
       <View style={[styles.actionPill, styles.actionPillMuted, { borderColor: roles.bgChip }]}>
         <Text style={[styles.actionText, { color: roles.fgMuted }]}>
-          Aangevraagd
+          {t('Aangevraagd', 'Pending')}
         </Text>
       </View>
     );
@@ -306,7 +321,7 @@ function RowAction({
         ]}
       >
         <Text style={[styles.actionText, { color: roles.onAccent }]}>
-          Accepteer
+          {t('Accepteer', 'Accept')}
         </Text>
       </Pressable>
     );
@@ -325,7 +340,7 @@ function RowAction({
       ]}
     >
       <Text style={[styles.actionText, { color: roles.onAccent }]}>
-        + Toevoegen
+        {t('+ Toevoegen', '+ Add')}
       </Text>
     </Pressable>
   );
@@ -346,6 +361,7 @@ function ScanQRSheet({
 }) {
   const insets = useSafeAreaInsets();
   const roles = useRoles();
+  const t = useT();
   const [permission, requestPermission] = useCameraPermissions();
   const [scanned, setScanned] = useState(false);
 
@@ -377,8 +393,11 @@ function ScanQRSheet({
         <View style={[StyleSheet.absoluteFill, styles.scannerFallback]}>
           <Text style={styles.scannerFallbackText}>
             {permission?.canAskAgain === false
-              ? 'Geen camera-toegang. Sta toegang toe via Instellingen → Andreas → Camera.'
-              : 'Camera-toegang aanvragen…'}
+              ? t(
+                  'Geen camera-toegang. Sta toegang toe via Instellingen → Andreas → Camera.',
+                  'No camera access. Enable it via Settings → Andreas → Camera.'
+                )
+              : t('Camera-toegang aanvragen…', 'Requesting camera access…')}
           </Text>
         </View>
       )}
@@ -392,7 +411,9 @@ function ScanQRSheet({
         >
           <Cross size={14} thickness={2.6} color="#f2f2ef" />
         </Pressable>
-        <Text style={styles.scannerTitle}>Scan een Andreas-QR</Text>
+        <Text style={styles.scannerTitle}>
+          {t('Scan een Andreas-QR', 'Scan an Andreas QR')}
+        </Text>
         <View style={{ width: 40, height: 40 }} />
       </View>
       <View pointerEvents="none" style={styles.scannerReticle} />

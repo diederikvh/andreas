@@ -3,7 +3,8 @@ import { router } from 'expo-router';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import type { ApiEvent } from '@/lib/api';
-import { MONTHS_NL } from '@/lib/eventDisplay';
+import { monthShort } from '@/lib/eventDisplay';
+import { useLocale, useT, type Locale } from '@/lib/i18n';
 import { useMode, useRoles } from '@/store/mode';
 import { fontFamily, palette } from '@/theme/tokens';
 
@@ -28,15 +29,18 @@ export function RunningExhibitions({ events }: { events: ApiEvent[] }) {
 
 function RunningExhibitionsView({ exhibitions }: { exhibitions: ApiEvent[] }) {
   const roles = useRoles();
+  const t = useT();
   return (
     <View style={styles.section}>
       <View style={styles.head}>
         <Text style={[styles.headLabel, { color: roles.fg }]}>
-          Doorlopend te zien
+          {t('Doorlopend te zien', 'On view now')}
         </Text>
         <Text style={[styles.headCount, { color: roles.fgMuted }]}>
           {exhibitions.length}
-          {exhibitions.length === 1 ? ' tentoonstelling' : ' tentoonstellingen'}
+          {exhibitions.length === 1
+            ? t(' tentoonstelling', ' exhibition')
+            : t(' tentoonstellingen', ' exhibitions')}
         </Text>
       </View>
       <ScrollView
@@ -56,8 +60,15 @@ function ExhibitionCard({ event }: { event: ApiEvent }) {
   const mode = useMode();
   const roles = useRoles();
   const isNacht = mode === 'nacht';
-  const endsLabel = formatExhibitionEnd(event.endsAt);
-  const subtitle = [event.venue.name, endsLabel ? `loopt t/m ${endsLabel}` : null]
+  const locale = useLocale();
+  const t = useT();
+  const endsLabel = formatExhibitionEnd(event.endsAt, locale);
+  const subtitle = [
+    event.venue.name,
+    endsLabel
+      ? t(`loopt t/m ${endsLabel}`, `runs until ${endsLabel}`)
+      : null,
+  ]
     .filter(Boolean)
     .join(' · ');
   return (
@@ -103,10 +114,13 @@ function ExhibitionCard({ event }: { event: ApiEvent }) {
   );
 }
 
-function formatExhibitionEnd(endsAt: string | null): string | null {
+function formatExhibitionEnd(
+  endsAt: string | null,
+  locale: Locale
+): string | null {
   if (!endsAt) return null;
   const d = new Date(endsAt);
-  return `${d.getDate()} ${MONTHS_NL[d.getMonth()].toLowerCase()}`;
+  return `${d.getDate()} ${monthShort(d.getMonth(), locale).toLowerCase()}`;
 }
 
 const styles = StyleSheet.create({

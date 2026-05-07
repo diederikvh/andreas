@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { useT } from '@/lib/i18n';
 import { useRoles } from '@/store/mode';
 import { fontFamily } from '@/theme/tokens';
 
@@ -21,6 +22,7 @@ type Props = {
 export function Welkom({ onSubmit }: Props) {
   const roles = useRoles();
   const insets = useSafeAreaInsets();
+  const t = useT();
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [focused, setFocused] = useState<'name' | 'phone' | null>(null);
@@ -55,17 +57,26 @@ export function Welkom({ onSubmit }: Props) {
       style={styles.kavInner}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      <Text style={[styles.kicker, { color: roles.accent }]}>— Welkom</Text>
+      <Text style={[styles.kicker, { color: roles.accent }]}>
+        {t('— Welkom', '— Welcome')}
+      </Text>
 
-      <Text style={[styles.title, { color: roles.fg }]}>Eerst dit.</Text>
+      <Text style={[styles.title, { color: roles.fg }]}>
+        {t('Eerst dit.', 'First this.')}
+      </Text>
 
       <Text style={[styles.sub, { color: roles.fgRead }]}>
-        Zo kunnen vrienden je later vinden in Andreas X.
+        {t(
+          'Zo kunnen vrienden je later vinden in Andreas X.',
+          'So friends can find you later in Andreas X.'
+        )}
       </Text>
 
       <View style={styles.fields}>
         <View style={styles.field}>
-          <Text style={[styles.label, { color: roles.fgMuted }]}>Naam</Text>
+          <Text style={[styles.label, { color: roles.fgMuted }]}>
+            {t('Naam', 'Name')}
+          </Text>
           <TextInput
             value={name}
             onChangeText={setName}
@@ -84,7 +95,9 @@ export function Welkom({ onSubmit }: Props) {
         </View>
 
         <View style={styles.field}>
-          <Text style={[styles.label, { color: roles.fgMuted }]}>Telefoon</Text>
+          <Text style={[styles.label, { color: roles.fgMuted }]}>
+            {t('Telefoon', 'Phone')}
+          </Text>
           <TextInput
             value={phone}
             onChangeText={setPhone}
@@ -117,13 +130,18 @@ export function Welkom({ onSubmit }: Props) {
                 },
               ]}
             >
-              <Text style={[styles.goLabel, { color: roles.onAccent }]}>Verder</Text>
+              <Text style={[styles.goLabel, { color: roles.onAccent }]}>
+                {t('Verder', 'Continue')}
+              </Text>
               <Text style={[styles.goArrow, { color: roles.onAccent }]}>→</Text>
             </View>
           )}
         </Pressable>
         <Text style={[styles.tiny, { color: roles.fgMuted }]}>
-          Door verder te gaan ga je akkoord met de voorwaarden.
+          {t(
+            'Door verder te gaan ga je akkoord met de voorwaarden.',
+            'By continuing you agree to the terms.'
+          )}
         </Text>
       </View>
     </KeyboardAvoidingView>

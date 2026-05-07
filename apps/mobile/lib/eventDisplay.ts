@@ -1,4 +1,5 @@
 import type { ApiEvent, VenueType } from '@/lib/api';
+import { useLocale, type Locale, useLocaleStore } from '@/lib/i18n';
 import type { BadgeTone } from '@/mocks/feed';
 
 /**
@@ -19,6 +20,41 @@ export const MONTHS_NL_FULL = [
   'januari', 'februari', 'maart', 'april', 'mei', 'juni',
   'juli', 'augustus', 'september', 'oktober', 'november', 'december',
 ] as const;
+export const DOW_EN_UPPER = ['SU', 'MO', 'TU', 'WE', 'TH', 'FR', 'SA'] as const;
+export const DOW_EN_MIXED = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'] as const;
+export const DOW_EN_FULL = [
+  'Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday',
+] as const;
+export const MONTHS_EN = [
+  'JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN',
+  'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC',
+] as const;
+export const MONTHS_EN_FULL = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
+] as const;
+
+/** Locale-aware wrappers — read the active locale at call time. */
+export function dowUpper(dayIndex: number, locale?: Locale): string {
+  const l = locale ?? useLocaleStore.getState().locale;
+  return (l === 'nl' ? DOW_NL_UPPER : DOW_EN_UPPER)[dayIndex];
+}
+export function dowMixed(dayIndex: number, locale?: Locale): string {
+  const l = locale ?? useLocaleStore.getState().locale;
+  return (l === 'nl' ? DOW_NL_MIXED : DOW_EN_MIXED)[dayIndex];
+}
+export function dowFull(dayIndex: number, locale?: Locale): string {
+  const l = locale ?? useLocaleStore.getState().locale;
+  return (l === 'nl' ? DOW_NL_FULL : DOW_EN_FULL)[dayIndex];
+}
+export function monthShort(monthIndex: number, locale?: Locale): string {
+  const l = locale ?? useLocaleStore.getState().locale;
+  return (l === 'nl' ? MONTHS_NL : MONTHS_EN)[monthIndex];
+}
+export function monthFull(monthIndex: number, locale?: Locale): string {
+  const l = locale ?? useLocaleStore.getState().locale;
+  return (l === 'nl' ? MONTHS_NL_FULL : MONTHS_EN_FULL)[monthIndex];
+}
 
 export const CATEGORY_TICK: Record<ApiEvent['category'], BadgeTone> = {
   Muziek: 'acid',
@@ -28,6 +64,22 @@ export const CATEGORY_TICK: Record<ApiEvent['category'], BadgeTone> = {
   // Kunst deelt `plum` met galleries/musea — zelfde curatorial-vibe.
   Kunst: 'plum',
 };
+
+const CATEGORY_EN: Record<ApiEvent['category'], string> = {
+  Muziek: 'Music',
+  Theater: 'Theatre',
+  Literatuur: 'Literature',
+  Film: 'Film',
+  Kunst: 'Art',
+};
+
+export function translateCategory(
+  cat: ApiEvent['category'],
+  locale?: Locale
+): string {
+  const l = locale ?? useLocaleStore.getState().locale;
+  return l === 'nl' ? cat : CATEGORY_EN[cat];
+}
 
 /** Tone per venue-type — zelfde 4 brand-tones als event-categorieën,
  *  gemapt zodat verwante types een logische kleur delen (bv. boekhandel
@@ -196,6 +248,18 @@ export const TIME_BLOCKS: {
   { id: 'nacht', label: 'Nacht', range: '23–06' },
 ];
 
+/** Locale-aware variant — same shape, English labels for EN locale. */
+export function useTimeBlocks(): typeof TIME_BLOCKS {
+  const locale = useLocale();
+  if (locale === 'nl') return TIME_BLOCKS;
+  return [
+    { id: 'ochtend', label: 'Morning', range: '06–12' },
+    { id: 'middag', label: 'Afternoon', range: '12–18' },
+    { id: 'avond', label: 'Evening', range: '18–23' },
+    { id: 'nacht', label: 'Night', range: '23–06' },
+  ];
+}
+
 export function getTimeBlock(hour: number): TimeBlock {
   if (hour >= 6 && hour < 12) return 'ochtend';
   if (hour >= 12 && hour < 18) return 'middag';
@@ -210,10 +274,18 @@ export function formatTime(iso: string): string {
   return `${hh}:${mm}`;
 }
 
-export function formatPrice(cents: number | null): string {
+export function formatPrice(cents: number | null, locale?: Locale): string {
   if (cents == null) return '—';
-  if (cents === 0) return 'Gratis';
-  return `€${(cents / 100).toFixed(2).replace('.', ',')}`;
+  const l = locale ?? useLocaleStore.getState().locale;
+  if (cents === 0) return l === 'nl' ? 'Gratis' : 'Free';
+  return l === 'nl'
+    ? `€${(cents / 100).toFixed(2).replace('.', ',')}`
+    : `€${(cents / 100).toFixed(2)}`;
+}
+
+export function freeLabel(locale?: Locale): string {
+  const l = locale ?? useLocaleStore.getState().locale;
+  return l === 'nl' ? 'gratis' : 'free';
 }
 
 export type EventGroup = {
@@ -249,9 +321,9 @@ export function groupEventsByDay(events: ApiEvent[]): EventGroup[] {
     } else {
       map.set(id, {
         id,
-        dow: DOW_NL_MIXED[d.getDay()],
+        dow: dowMixed(d.getDay()),
         num: dd,
-        month: MONTHS_NL[d.getMonth()],
+        month: monthShort(d.getMonth()),
         count: 1,
         events: [event],
       });
@@ -410,9 +482,9 @@ export function groupOccurrenceRowsByDay(
     } else {
       map.set(id, {
         id,
-        dow: DOW_NL_MIXED[d.getDay()],
+        dow: dowMixed(d.getDay()),
         num: dd,
-        month: MONTHS_NL[d.getMonth()],
+        month: monthShort(d.getMonth()),
         count: 1,
         rows: [row],
       });

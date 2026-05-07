@@ -2,6 +2,7 @@ import * as Haptics from 'expo-haptics';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { useT } from '@/lib/i18n';
 import { useMode, useModeStore, useRoles } from '@/store/mode';
 import { fontFamily, palette, type Mode } from '@/theme/tokens';
 
@@ -13,6 +14,7 @@ export function ModePick({ onPicked }: Props) {
   const roles = useRoles();
   const insets = useSafeAreaInsets();
   const setMode = useModeStore((s) => s.setMode);
+  const t = useT();
 
   const pick = (mode: Mode) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -33,26 +35,34 @@ export function ModePick({ onPicked }: Props) {
         },
       ]}
     >
-      <Text style={[styles.kicker, { color: roles.accent }]}>— Dag of nacht</Text>
+      <Text style={[styles.kicker, { color: roles.accent }]}>
+        {t('— Dag of nacht', '— Day or night')}
+      </Text>
 
-      <Text style={[styles.title, { color: roles.fg }]}>Wat zoek je?</Text>
+      <Text style={[styles.title, { color: roles.fg }]}>
+        {t('Wat zoek je?', 'What are you after?')}
+      </Text>
 
       <Text style={[styles.sub, { color: roles.fgRead }]}>
-        Twee agenda's. Twee ritmes. Eentje voor wat overdag in de stad gebeurt,
-        eentje voor wat 's avonds en 's nachts losgaat. Begin waar je nu zin in
-        hebt.
+        {t(
+          "Twee agenda's. Twee ritmes. Eentje voor wat overdag in de stad gebeurt, eentje voor wat 's avonds en 's nachts losgaat. Begin waar je nu zin in hebt.",
+          'Two agendas. Two rhythms. One for what happens in the city by day, one for what kicks off in the evening and at night. Start with whatever you’re into right now.'
+        )}
       </Text>
 
       <View style={styles.tiles}>
         <ModeTile
-          name="Nacht"
-          meta="feesten, concerten, films"
+          name={t('Nacht', 'Night')}
+          meta={t('feesten, concerten, films', 'parties, concerts, films')}
           onPress={() => pick('nacht')}
           variant="nacht"
         />
         <ModeTile
-          name="Dag"
-          meta="exposities, matinees, openings"
+          name={t('Dag', 'Day')}
+          meta={t(
+            'exposities, matinees, openings',
+            'exhibitions, matinees, openings'
+          )}
           onPress={() => pick('dag')}
           variant="dag"
         />
@@ -60,7 +70,7 @@ export function ModePick({ onPicked }: Props) {
 
       <View style={styles.footWrap}>
         <Text style={[styles.foot, { color: roles.fgMuted }]}>
-          Wisselen kan altijd
+          {t('Wisselen kan altijd', 'You can switch any time')}
         </Text>
       </View>
     </View>

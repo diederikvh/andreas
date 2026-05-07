@@ -31,7 +31,8 @@ import type {
   VenueScene,
   VenueType,
 } from '@/lib/api';
-import { MONTHS_NL, VENUE_TYPE_TICK } from '@/lib/eventDisplay';
+import { monthShort, VENUE_TYPE_TICK } from '@/lib/eventDisplay';
+import { useLocale, useT, type Locale } from '@/lib/i18n';
 import { useSeriesList, useVenues, useVenueSubtypes } from '@/lib/queries';
 import { useMode, useRoles } from '@/store/mode';
 import {
@@ -44,32 +45,83 @@ import {
 import { fontFamily, palette } from '@/theme/tokens';
 
 // Filter-opties voor de unified filter-sheet. Geordend zodat de meest
-// gebruikte chips bovenaan staan binnen elke sectie.
-const DAYNIGHT_CHIPS: { value: VenueDayNight; label: string }[] = [
-  { value: 'day', label: 'Dag' },
-  { value: 'night', label: 'Nacht' },
-  { value: 'both', label: 'Beide' },
+// gebruikte chips bovenaan staan binnen elke sectie. Labels worden
+// per locale opgehaald via getDaynightChips/Type/Scene.
+const DN_VALUES: VenueDayNight[] = ['day', 'night', 'both'];
+const TYPE_VALUES: VenueType[] = [
+  'podium',
+  'club',
+  'galerie',
+  'museum',
+  'film',
+  'ruimte',
+  'boekhandel-cafe',
 ];
-const DN_VALUES: VenueDayNight[] = DAYNIGHT_CHIPS.map((c) => c.value);
+const SCENE_VALUES: VenueScene[] = [
+  'mainstream',
+  'alternatief',
+  'underground',
+  'fringe',
+];
 
-const TYPE_CHIPS: { value: VenueType; label: string }[] = [
-  { value: 'podium', label: 'Podium' },
-  { value: 'club', label: 'Club' },
-  { value: 'galerie', label: 'Galerie' },
-  { value: 'museum', label: 'Museum' },
-  { value: 'film', label: 'Film' },
-  { value: 'ruimte', label: 'Ruimte' },
-  { value: 'boekhandel-cafe', label: 'Boekhandel' },
-];
-const TYPE_VALUES: VenueType[] = TYPE_CHIPS.map((c) => c.value);
+function getDaynightChips(
+  locale: Locale
+): { value: VenueDayNight; label: string }[] {
+  if (locale === 'nl') {
+    return [
+      { value: 'day', label: 'Dag' },
+      { value: 'night', label: 'Nacht' },
+      { value: 'both', label: 'Beide' },
+    ];
+  }
+  return [
+    { value: 'day', label: 'Day' },
+    { value: 'night', label: 'Night' },
+    { value: 'both', label: 'Both' },
+  ];
+}
 
-const SCENE_CHIPS: { value: VenueScene; label: string }[] = [
-  { value: 'mainstream', label: 'Mainstream' },
-  { value: 'alternatief', label: 'Alternatief' },
-  { value: 'underground', label: 'Underground' },
-  { value: 'fringe', label: 'Fringe' },
-];
-const SCENE_VALUES: VenueScene[] = SCENE_CHIPS.map((c) => c.value);
+function getTypeChips(locale: Locale): { value: VenueType; label: string }[] {
+  if (locale === 'nl') {
+    return [
+      { value: 'podium', label: 'Podium' },
+      { value: 'club', label: 'Club' },
+      { value: 'galerie', label: 'Galerie' },
+      { value: 'museum', label: 'Museum' },
+      { value: 'film', label: 'Film' },
+      { value: 'ruimte', label: 'Ruimte' },
+      { value: 'boekhandel-cafe', label: 'Boekhandel' },
+    ];
+  }
+  return [
+    { value: 'podium', label: 'Stage' },
+    { value: 'club', label: 'Club' },
+    { value: 'galerie', label: 'Gallery' },
+    { value: 'museum', label: 'Museum' },
+    { value: 'film', label: 'Cinema' },
+    { value: 'ruimte', label: 'Space' },
+    { value: 'boekhandel-cafe', label: 'Bookshop' },
+  ];
+}
+
+function getSceneChips(
+  locale: Locale
+): { value: VenueScene; label: string }[] {
+  if (locale === 'nl') {
+    return [
+      { value: 'mainstream', label: 'Mainstream' },
+      { value: 'alternatief', label: 'Alternatief' },
+      { value: 'underground', label: 'Underground' },
+      { value: 'fringe', label: 'Fringe' },
+    ];
+  }
+  return [
+    { value: 'mainstream', label: 'Mainstream' },
+    { value: 'alternatief', label: 'Alternative' },
+    { value: 'underground', label: 'Underground' },
+    { value: 'fringe', label: 'Fringe' },
+  ];
+}
 
 // Tone-mapping voor mode-aware kleuren — zelfde shape als de TONE-map
 // in EventListRow zodat venue-types en event-categorieën dezelfde
@@ -104,6 +156,7 @@ export default function Venues() {
   const roles = useRoles();
   const insets = useSafeAreaInsets();
   const isNacht = mode === 'nacht';
+  const tx = useT();
   const scrollRef = useRef<ScrollView>(null);
   useScrollToTop(scrollRef);
 
@@ -281,16 +334,25 @@ export default function Venues() {
             {venues.length === 0 ? (
               <Text style={[styles.hint, { color: roles.fgMuted }]}>
                 {debouncedQ.length > 0
-                  ? `Geen venue gevonden voor "${debouncedQ}".`
+                  ? tx(
+                      `Geen venue gevonden voor "${debouncedQ}".`,
+                      `No venue found for "${debouncedQ}".`
+                    )
                   : onlyVolgend
-                    ? 'Je volgt nog geen venues.'
+                    ? tx(
+                        'Je volgt nog geen venues.',
+                        'You don’t follow any venues yet.'
+                      )
                     : activeDn.length +
                           activeType.length +
                           activeScene.length +
                           activeSubtypes.length >
                         0
-                      ? 'Geen venues voor deze filter.'
-                      : 'Geen venues om te tonen.'}
+                      ? tx(
+                          'Geen venues voor deze filter.',
+                          'No venues for this filter.'
+                        )
+                      : tx('Geen venues om te tonen.', 'No venues to show.')}
               </Text>
             ) : (
               venues.map((v) => <VenueRow key={v.id} venue={v} />)
@@ -307,6 +369,7 @@ function SeriesSection() {
   const mode = useMode();
   const roles = useRoles();
   const isNacht = mode === 'nacht';
+  const t = useT();
   const { data, isLoading } = useSeriesList();
   if (isLoading || !data || data.length === 0) return null;
 
@@ -314,10 +377,10 @@ function SeriesSection() {
     <View style={styles.seriesSection}>
       <View style={styles.seriesHead}>
         <Text style={[styles.seriesHeadLabel, { color: roles.fg }]}>
-          Series
+          {t('Series', 'Series')}
         </Text>
         <Text style={[styles.seriesHeadCount, { color: roles.fgMuted }]}>
-          {data.length} actief
+          {data.length} {t('actief', 'active')}
         </Text>
       </View>
       <ScrollView
@@ -337,7 +400,9 @@ function SeriesCard({ series }: { series: ApiSeriesListItem }) {
   const mode = useMode();
   const roles = useRoles();
   const isNacht = mode === 'nacht';
-  const dateRange = formatSeriesRange(series.startsAt, series.endsAt);
+  const locale = useLocale();
+  const t = useT();
+  const dateRange = formatSeriesRange(series.startsAt, series.endsAt, locale, t);
   return (
     <Pressable
       onPress={() => router.push(`/series/${series.slug}` as never)}
@@ -385,14 +450,21 @@ function SeriesCard({ series }: { series: ApiSeriesListItem }) {
 
 function formatSeriesRange(
   startsAt: string | null,
-  endsAt: string | null
+  endsAt: string | null,
+  locale: Locale,
+  t: (nl: string, en: string) => string
 ): string | null {
   if (!startsAt) return null;
   const start = new Date(startsAt);
   const end = endsAt ? new Date(endsAt) : null;
-  const monthName = (d: Date) => MONTHS_NL[d.getMonth()].toLowerCase();
+  const monthName = (d: Date) => monthShort(d.getMonth(), locale).toLowerCase();
   const day = (d: Date) => String(d.getDate());
-  if (!end) return `Vanaf ${day(start)} ${monthName(start)}`;
+  if (!end) {
+    return t(
+      `Vanaf ${day(start)} ${monthName(start)}`,
+      `From ${day(start)} ${monthName(start)}`
+    );
+  }
   const sameMonth =
     start.getFullYear() === end.getFullYear() &&
     start.getMonth() === end.getMonth();
@@ -404,6 +476,9 @@ function VenueRow({ venue }: { venue: ApiVenueListItem }) {
   const mode = useMode();
   const roles = useRoles();
   const isNacht = mode === 'nacht';
+  const locale = useLocale();
+  const typeChips = useMemo(() => getTypeChips(locale), [locale]);
+  const sceneChips = useMemo(() => getSceneChips(locale), [locale]);
   return (
     <Pressable
       onPress={() => router.push(`/venue/${venue.slug}` as never)}
@@ -444,7 +519,8 @@ function VenueRow({ venue }: { venue: ApiVenueListItem }) {
                   <Text
                     style={[styles.tagText, { color: toneText(tone, mode) }]}
                   >
-                    {venue.type}
+                    {typeChips.find((c) => c.value === venue.type)?.label ??
+                      venue.type}
                   </Text>
                 </View>
               );
@@ -454,7 +530,8 @@ function VenueRow({ venue }: { venue: ApiVenueListItem }) {
                 style={[styles.subtypeTag, { backgroundColor: roles.bgTag }]}
               >
                 <Text style={[styles.subtypeTagText, { color: roles.fg }]}>
-                  {venue.scene}
+                  {sceneChips.find((c) => c.value === venue.scene)?.label ??
+                    venue.scene}
                 </Text>
               </View>
             )}
@@ -531,6 +608,7 @@ function ChipRow({
   const mode = useMode();
   const roles = useRoles();
   const isNacht = mode === 'nacht';
+  const t = useT();
   const [focused, setFocused] = useState(false);
   const [filterOpen, setFilterOpen] = useState(false);
   const inputRef = useRef<TextInput>(null);
@@ -593,12 +671,15 @@ function ChipRow({
 
   const onLongPressSaved = (s: SavedVenueSearch) => {
     Alert.alert(
-      'Verwijderen',
-      `"${s.name}" verwijderen uit je opgeslagen filters?`,
+      t('Verwijderen', 'Remove'),
+      t(
+        `"${s.name}" verwijderen uit je opgeslagen filters?`,
+        `Remove "${s.name}" from your saved filters?`
+      ),
       [
-        { text: 'Annuleren', style: 'cancel' },
+        { text: t('Annuleren', 'Cancel'), style: 'cancel' },
         {
-          text: 'Verwijder',
+          text: t('Verwijder', 'Remove'),
           style: 'destructive',
           onPress: () => removeSaved(s.id),
         },
@@ -637,7 +718,7 @@ function ChipRow({
             onChangeText={onQuery}
             onFocus={() => setFocused(true)}
             onBlur={() => setFocused(false)}
-            placeholder={open ? 'ZOEK' : ''}
+            placeholder={open ? t('ZOEK', 'SEARCH') : ''}
             placeholderTextColor={roles.fgPlaceholder}
             autoCapitalize="characters"
             autoCorrect={false}
@@ -676,7 +757,9 @@ function ChipRow({
               { color: filterActive ? roles.bg : roles.fgMuted },
             ]}
           >
-            {filterActive ? `Filter · ${filterCount}` : 'Filter'}
+            {filterActive
+              ? `${t('Filter', 'Filter')} · ${filterCount}`
+              : t('Filter', 'Filter')}
           </Text>
         </Pressable>
         {saved.map((s) => {
@@ -777,6 +860,11 @@ function FilterSheet({
   const mode = useMode();
   const roles = useRoles();
   const isNacht = mode === 'nacht';
+  const t = useT();
+  const locale = useLocale();
+  const daynightChips = useMemo(() => getDaynightChips(locale), [locale]);
+  const typeChips = useMemo(() => getTypeChips(locale), [locale]);
+  const sceneChips = useMemo(() => getSceneChips(locale), [locale]);
   const addSaved = useAddSavedVenueSearch();
   const [saveOpen, setSaveOpen] = useState(false);
   const [saveName, setSaveName] = useState('');
@@ -805,7 +893,7 @@ function FilterSheet({
     }
     // Stabiele volgorde: zelfde als TYPE_CHIPS zodat Podium boven Club
     // staat en niet random alfabetisch op enum-naam.
-    return TYPE_CHIPS.flatMap(({ value }) => {
+    return TYPE_VALUES.flatMap((value) => {
       const items = map.get(value);
       return items && items.length > 0 ? [{ type: value, items }] : [];
     });
@@ -898,10 +986,14 @@ function FilterSheet({
         </Pressable>
       )}
       <View style={styles.sheetHead}>
-        <Text style={[styles.sheetTitle, { color: roles.fg }]}>Filter</Text>
+        <Text style={[styles.sheetTitle, { color: roles.fg }]}>
+          {t('Filter', 'Filter')}
+        </Text>
         <Text style={[styles.sheetLead, { color: roles.fgMuted }]}>
-          Combineer dag/nacht, type, sub-type, scene en volg-status. Sla 'm
-          op om de combinatie als chip te bewaren.
+          {t(
+            "Combineer dag/nacht, type, sub-type, scene en volg-status. Sla 'm op om de combinatie als chip te bewaren.",
+            'Combine day/night, type, sub-type, scene and follow-status. Save it to keep the combination as a chip.'
+          )}
         </Text>
       </View>
 
@@ -912,10 +1004,10 @@ function FilterSheet({
         keyboardShouldPersistTaps="handled"
       >
         <Text style={[styles.sheetSectionHead, { color: roles.fgMuted }]}>
-          Dag of Nacht
+          {t('Dag of Nacht', 'Day or Night')}
         </Text>
         <View style={styles.sheetWrap}>
-          {DAYNIGHT_CHIPS.map((c) => (
+          {daynightChips.map((c) => (
             <FilterChip
               key={c.value}
               label={c.label}
@@ -931,10 +1023,10 @@ function FilterSheet({
             { color: roles.fgMuted, marginTop: 22 },
           ]}
         >
-          Type
+          {t('Type', 'Type')}
         </Text>
         <View style={styles.sheetWrap}>
-          {TYPE_CHIPS.map((c) => (
+          {typeChips.map((c) => (
             <FilterChip
               key={c.value}
               label={c.label}
@@ -950,7 +1042,7 @@ function FilterSheet({
             { color: roles.fgMuted, marginTop: 22 },
           ]}
         >
-          Sub-types
+          {t('Sub-types', 'Sub-types')}
         </Text>
         {subtypesLoading && (
           <View style={styles.sheetLoading}>
@@ -959,14 +1051,14 @@ function FilterSheet({
         )}
         {subtypesError && (
           <Text style={[styles.sheetEmpty, { color: '#c9453a' }]}>
-            Kon sub-types niet laden.
+            {t('Kon sub-types niet laden.', 'Couldn’t load sub-types.')}
           </Text>
         )}
         {!subtypesLoading && !subtypesError && groupedSubtypes.length === 0 && (
           <Text style={[styles.sheetEmpty, { color: roles.fgMuted }]}>
             {activeType.length > 0
-              ? 'Geen sub-types voor dit type.'
-              : 'Nog geen sub-types ingevuld.'}
+              ? t('Geen sub-types voor dit type.', 'No sub-types for this type.')
+              : t('Nog geen sub-types ingevuld.', 'No sub-types yet.')}
           </Text>
         )}
         <View style={styles.sheetSubSectionGroup}>
@@ -982,7 +1074,7 @@ function FilterSheet({
                     { color: roles.fgPlaceholder },
                   ]}
                 >
-                  {TYPE_CHIPS.find((c) => c.value === section.type)?.label ??
+                  {typeChips.find((c) => c.value === section.type)?.label ??
                     section.type}
                 </Text>
               )}
@@ -1037,10 +1129,10 @@ function FilterSheet({
             { color: roles.fgMuted, marginTop: 22 },
           ]}
         >
-          Scene
+          {t('Scene', 'Scene')}
         </Text>
         <View style={styles.sheetWrap}>
-          {SCENE_CHIPS.map((c) => (
+          {sceneChips.map((c) => (
             <FilterChip
               key={c.value}
               label={c.label}
@@ -1056,11 +1148,11 @@ function FilterSheet({
             { color: roles.fgMuted, marginTop: 22 },
           ]}
         >
-          Volg-status
+          {t('Volg-status', 'Following')}
         </Text>
         <View style={styles.sheetWrap}>
           <FilterChip
-            label="Alleen wat ik volg"
+            label={t('Alleen wat ik volg', 'Only what I follow')}
             active={onlyVolgend}
             onPress={() => onVolgend(!onlyVolgend)}
           />
@@ -1086,7 +1178,10 @@ function FilterSheet({
             <TextInput
               value={saveName}
               onChangeText={setSaveName}
-              placeholder="Naam (bv. Galeries Oost)"
+              placeholder={t(
+                'Naam (bv. Galeries Oost)',
+                'Name (e.g. Galleries East)'
+              )}
               placeholderTextColor={roles.fgPlaceholder}
               autoFocus
               returnKeyType="done"
@@ -1096,7 +1191,7 @@ function FilterSheet({
             />
           </View>
           <Pressable
-            accessibilityLabel="Opslaan"
+            accessibilityLabel={t('Opslaan', 'Save')}
             onPress={onSave}
             disabled={saveName.trim().length === 0}
             style={[
@@ -1115,7 +1210,7 @@ function FilterSheet({
             />
           </Pressable>
           <Pressable
-            accessibilityLabel="Annuleer"
+            accessibilityLabel={t('Annuleer', 'Cancel')}
             onPress={() => {
               setSaveOpen(false);
               setSaveName('');
@@ -1145,11 +1240,11 @@ function FilterSheet({
                 { color: isNacht ? palette.noir : palette.paper3 },
               ]}
             >
-              Bekijk
+              {t('Bekijk', 'View')}
             </Text>
           </Pressable>
           <Pressable
-            accessibilityLabel="Bewaar filter"
+            accessibilityLabel={t('Bewaar filter', 'Save filter')}
             onPress={() => setSaveOpen(true)}
             disabled={filterCount === 0}
             style={[
@@ -1163,7 +1258,7 @@ function FilterSheet({
             <Ionicons name="bookmark-outline" size={18} color={roles.fgMuted} />
           </Pressable>
           <Pressable
-            accessibilityLabel="Wis filters en sluit"
+            accessibilityLabel={t('Wis filters en sluit', 'Clear filters and close')}
             onPress={() => {
               onClearAll();
               onClose();

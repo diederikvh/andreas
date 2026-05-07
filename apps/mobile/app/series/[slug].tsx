@@ -19,10 +19,12 @@ import { SpinningCross } from '@/components/SpinningCross';
 import type { ApiEvent } from '@/lib/api';
 import {
   CATEGORY_TICK,
-  DOW_NL_MIXED,
-  MONTHS_NL,
+  dowMixed,
+  monthShort,
   formatTime,
+  translateCategory,
 } from '@/lib/eventDisplay';
+import { useLocale, useT, type Locale } from '@/lib/i18n';
 import { useSeries } from '@/lib/queries';
 import { useMode, useRoles } from '@/store/mode';
 import { fontFamily, palette } from '@/theme/tokens';
@@ -36,6 +38,8 @@ export default function SeriesDetail() {
   const roles = useRoles();
   const insets = useSafeAreaInsets();
   const isNacht = mode === 'nacht';
+  const t = useT();
+  const locale = useLocale();
 
   const scrollRef = useAnimatedRef<Animated.ScrollView>();
   const scrollY = useScrollViewOffset(scrollRef);
@@ -66,13 +70,13 @@ export default function SeriesDetail() {
   if (error || !data) {
     return (
       <SeriesFallback tone="error">
-        Deze serie is niet beschikbaar.
+        {t('Deze serie is niet beschikbaar.', 'This series is not available.')}
       </SeriesFallback>
     );
   }
 
   const { series, events } = data;
-  const dateRange = formatDateRange(series.startsAt, series.endsAt);
+  const dateRange = formatDateRange(series.startsAt, series.endsAt, locale, t);
 
   return (
     <View style={[styles.root, { backgroundColor: roles.bg }]}>
@@ -120,7 +124,7 @@ export default function SeriesDetail() {
                   { color: isNacht ? palette.noir : palette.soil },
                 ]}
               >
-                Serie
+                {t('Serie', 'Series')}
               </Text>
             </View>
             <Text style={styles.heroTitle}>{series.name}</Text>
@@ -148,15 +152,20 @@ export default function SeriesDetail() {
         </View>
 
         <View style={styles.progHead}>
-          <Text style={[styles.progLabel, { color: roles.fg }]}>Programma</Text>
+          <Text style={[styles.progLabel, { color: roles.fg }]}>
+            {t('Programma', 'Programme')}
+          </Text>
           <Text style={[styles.progCount, { color: roles.fgMuted }]}>
-            {events.length} komend
+            {events.length} {t('komend', 'upcoming')}
           </Text>
         </View>
 
         {events.length === 0 && (
           <Text style={[styles.progEmpty, { color: roles.fgMuted }]}>
-            Niets aangekondigd voor de komende periode.
+            {t(
+              'Niets aangekondigd voor de komende periode.',
+              'Nothing announced for the coming period.'
+            )}
           </Text>
         )}
         {events.map((e) => (
@@ -224,10 +233,11 @@ function CircleButton({
 }
 
 function ProgramRow({ event }: { event: ApiEvent }) {
+  const locale = useLocale();
   const d = new Date(event.startsAt);
-  const dow = DOW_NL_MIXED[d.getDay()];
+  const dow = dowMixed(d.getDay(), locale);
   const num = String(d.getDate()).padStart(2, '0');
-  const month = MONTHS_NL[d.getMonth()].toLowerCase();
+  const month = monthShort(d.getMonth(), locale).toLowerCase();
   return (
     <EventListRow
       time={formatTime(event.startsAt)}
@@ -235,7 +245,12 @@ function ProgramRow({ event }: { event: ApiEvent }) {
       thumb={event.imageUrl ?? ''}
       title={event.title}
       venue={event.venue.name}
-      tags={[{ label: event.category, tone: CATEGORY_TICK[event.category] }]}
+      tags={[
+        {
+          label: translateCategory(event.category, locale),
+          tone: CATEGORY_TICK[event.category],
+        },
+      ]}
       tick={CATEGORY_TICK[event.category]}
       onPress={() => router.push(`/event/${event.id}`)}
     />
@@ -244,16 +259,22 @@ function ProgramRow({ event }: { event: ApiEvent }) {
 
 function formatDateRange(
   startsAt: string | null,
-  endsAt: string | null
+  endsAt: string | null,
+  locale: Locale,
+  t: (nl: string, en: string) => string
 ): string | null {
   if (!startsAt) return null;
   const start = new Date(startsAt);
   const end = endsAt ? new Date(endsAt) : null;
-  const monthName = (d: Date) =>
-    MONTHS_NL[d.getMonth()].toLowerCase();
+  const monthName = (d: Date) => monthShort(d.getMonth(), locale).toLowerCase();
   const day = (d: Date) => String(d.getDate());
 
-  if (!end) return `Vanaf ${day(start)} ${monthName(start)}`;
+  if (!end) {
+    return t(
+      `Vanaf ${day(start)} ${monthName(start)}`,
+      `From ${day(start)} ${monthName(start)}`
+    );
+  }
 
   const sameDay =
     start.getFullYear() === end.getFullYear() &&

@@ -31,18 +31,22 @@ import { SpinningCross } from '@/components/SpinningCross';
 import type { ApiEvent } from '@/lib/api';
 import {
   CATEGORY_TICK,
+  dowMixed,
   effectiveEndsAtMs,
   expandToOccurrenceRows,
   formatTime,
   getTimeBlock,
   groupOccurrenceRowsByDay,
+  monthShort,
+  translateCategory,
   type OccurrenceGroup,
   type OccurrenceRow,
-  TIME_BLOCKS,
   type TimeBlock,
   useFocusedNow,
   useNowMinute,
+  useTimeBlocks,
 } from '@/lib/eventDisplay';
+import { useLocale, useT } from '@/lib/i18n';
 import { useSession } from '@/lib/authClient';
 import { useEventGenres, useEvents, useFriends } from '@/lib/queries';
 import { useMode, useRoles } from '@/store/mode';
@@ -70,6 +74,9 @@ export default function Agenda() {
   const roles = useRoles();
   const mode = useMode();
   const insets = useSafeAreaInsets();
+  const t = useT();
+  const locale = useLocale();
+  const timeBlocks = useTimeBlocks();
   const scrollRef = useRef<ScrollView>(null);
   useScrollToTop(scrollRef);
 
@@ -95,7 +102,7 @@ export default function Agenda() {
     [params.cat]
   );
   const query = params.q ?? '';
-  const TB_IDS = TIME_BLOCKS.map((b) => b.id) as string[];
+  const TB_IDS = timeBlocks.map((b) => b.id) as string[];
   const activeBlocks = useMemo<TimeBlock[]>(
     () =>
       (params.tb ?? '')
@@ -272,7 +279,11 @@ export default function Agenda() {
             onRefresh={onRefresh}
             tintColor={roles.accent}
             colors={[roles.accent]}
-            title={refreshing ? 'Vernieuwen…' : 'Trek om te vernieuwen'}
+            title={
+              refreshing
+                ? t('Vernieuwen…', 'Refreshing…')
+                : t('Trek om te vernieuwen', 'Pull to refresh')
+            }
             titleColor={roles.fgMuted}
             progressViewOffset={stickyOffset}
           />
@@ -284,7 +295,10 @@ export default function Agenda() {
           </View>
         )}
         {error && (
-          <ListState text="Kon agenda niet laden." tone="error" />
+          <ListState
+            text={t('Kon agenda niet laden.', 'Couldn’t load agenda.')}
+            tone="error"
+          />
         )}
         {!isLoading && !error && (
           <Animated.View entering={FadeIn.duration(220)}>
@@ -296,8 +310,11 @@ export default function Agenda() {
                   activeBlocks.length > 0 ||
                   activeGenres.length > 0 ||
                   query
-                    ? 'Geen events voor deze filter.'
-                    : 'Nog geen events.'
+                    ? t(
+                        'Geen events voor deze filter.',
+                        'No events for this filter.'
+                      )
+                    : t('Nog geen events.', 'No events yet.')
                 }
               />
             )}
@@ -393,6 +410,7 @@ function ChipRow({
   const mode = useMode();
   const roles = useRoles();
   const isNacht = mode === 'nacht';
+  const t = useT();
   const [focused, setFocused] = useState(false);
   const [filterOpen, setFilterOpen] = useState(false);
   const inputRef = useRef<TextInput>(null);
@@ -446,12 +464,15 @@ function ChipRow({
 
   const onLongPressSaved = (s: SavedSearch) => {
     Alert.alert(
-      'Verwijderen',
-      `"${s.name}" verwijderen uit je opgeslagen zoekopdrachten?`,
+      t('Verwijderen', 'Remove'),
+      t(
+        `"${s.name}" verwijderen uit je opgeslagen zoekopdrachten?`,
+        `Remove "${s.name}" from your saved searches?`
+      ),
       [
-        { text: 'Annuleren', style: 'cancel' },
+        { text: t('Annuleren', 'Cancel'), style: 'cancel' },
         {
-          text: 'Verwijder',
+          text: t('Verwijder', 'Remove'),
           style: 'destructive',
           onPress: () => removeSaved(s.id),
         },
@@ -492,7 +513,7 @@ function ChipRow({
             onChangeText={onQuery}
             onFocus={() => setFocused(true)}
             onBlur={() => setFocused(false)}
-            placeholder={open ? 'ZOEK' : ''}
+            placeholder={open ? t('ZOEK', 'SEARCH') : ''}
             placeholderTextColor={roles.fgPlaceholder}
             autoCapitalize="characters"
             autoCorrect={false}
@@ -531,15 +552,17 @@ function ChipRow({
               { color: filterActive ? roles.bg : roles.fgMuted },
             ]}
           >
-            {filterActive ? `Filter · ${filterCount}` : 'Filter'}
+            {filterActive
+              ? `${t('Filter', 'Filter')} · ${filterCount}`
+              : t('Filter', 'Filter')}
           </Text>
         </Pressable>
         {showFriendsChip && (
           <Pressable
             accessibilityLabel={
               onlyFriends
-                ? 'Toon alle events'
-                : 'Alleen events met vrienden'
+                ? t('Toon alle events', 'Show all events')
+                : t('Alleen events met vrienden', 'Only events with friends')
             }
             onPress={onToggleFriends}
             style={[
@@ -569,8 +592,11 @@ function ChipRow({
           <Pressable
             accessibilityLabel={
               onlyFavorites
-                ? 'Toon alle events'
-                : 'Alleen events bij favoriete venues'
+                ? t('Toon alle events', 'Show all events')
+                : t(
+                    'Alleen events bij favoriete venues',
+                    'Only events at favourite venues'
+                  )
             }
             onPress={onToggleFavorites}
             style={[
@@ -684,6 +710,9 @@ function FilterSheet({
   const mode = useMode();
   const roles = useRoles();
   const isNacht = mode === 'nacht';
+  const t = useT();
+  const locale = useLocale();
+  const timeBlocks = useTimeBlocks();
   const { data: genreData, isLoading, error } = useEventGenres();
   const addSaved = useAddSavedSearch();
   const [saveOpen, setSaveOpen] = useState(false);
@@ -772,10 +801,14 @@ function FilterSheet({
         </Pressable>
       )}
       <View style={styles.sheetHead}>
-        <Text style={[styles.sheetTitle, { color: roles.fg }]}>Filter</Text>
+        <Text style={[styles.sheetTitle, { color: roles.fg }]}>
+          {t('Filter', 'Filter')}
+        </Text>
         <Text style={[styles.sheetLead, { color: roles.fgMuted }]}>
-          Combineer categorie, tijd en genre. Sla 'm op om de combinatie als
-          chip te bewaren.
+          {t(
+            "Combineer categorie, tijd en genre. Sla 'm op om de combinatie als chip te bewaren.",
+            'Combine category, time and genre. Save it to keep the combination as a chip.'
+          )}
         </Text>
       </View>
 
@@ -786,13 +819,13 @@ function FilterSheet({
         keyboardShouldPersistTaps="handled"
       >
         <Text style={[styles.sheetSectionHead, { color: roles.fgMuted }]}>
-          Categorie
+          {t('Categorie', 'Category')}
         </Text>
         <View style={styles.genreWrap}>
           {CATEGORIES.map((cat) => (
             <FilterChip
               key={cat}
-              label={cat}
+              label={translateCategory(cat, locale)}
               active={activeCats.includes(cat)}
               onPress={() => toggleCat(cat)}
             />
@@ -805,10 +838,10 @@ function FilterSheet({
             { color: roles.fgMuted, marginTop: 22 },
           ]}
         >
-          Tijd
+          {t('Tijd', 'Time')}
         </Text>
         <View style={styles.genreWrap}>
-          {TIME_BLOCKS.map((b) => (
+          {timeBlocks.map((b) => (
             <FilterChip
               key={b.id}
               label={b.label}
@@ -825,7 +858,7 @@ function FilterSheet({
             { color: roles.fgMuted, marginTop: 22 },
           ]}
         >
-          Genre
+          {t('Genre', 'Genre')}
         </Text>
         {isLoading && (
           <View style={styles.sheetLoading}>
@@ -834,16 +867,22 @@ function FilterSheet({
         )}
         {error && (
           <Text style={[styles.sheetEmpty, { color: '#c9453a' }]}>
-            Kon genres niet laden.
+            {t('Kon genres niet laden.', 'Couldn’t load genres.')}
           </Text>
         )}
         {!isLoading && !error && groupedGenres.length === 0 && (
           <Text style={[styles.sheetEmpty, { color: roles.fgMuted }]}>
             {activeCats.length === 1
-              ? `Geen genres gevonden voor ${activeCats[0]}.`
+              ? t(
+                  `Geen genres gevonden voor ${activeCats[0]}.`,
+                  `No genres found for ${translateCategory(activeCats[0], 'en')}.`
+                )
               : activeCats.length > 1
-                ? 'Geen genres gevonden voor deze categorieën.'
-                : 'Nog geen genres ingevuld.'}
+                ? t(
+                    'Geen genres gevonden voor deze categorieën.',
+                    'No genres found for these categories.'
+                  )
+                : t('Nog geen genres ingevuld.', 'No genres yet.')}
           </Text>
         )}
         <View style={styles.sheetSubSectionGroup}>
@@ -856,7 +895,7 @@ function FilterSheet({
               <Text
                 style={[styles.sheetSubSectionHead, { color: roles.fgPlaceholder }]}
               >
-                {section.category}
+                {translateCategory(section.category, locale)}
               </Text>
             )}
             <View style={styles.genreWrap}>
@@ -926,7 +965,7 @@ function FilterSheet({
             <TextInput
               value={saveName}
               onChangeText={setSaveName}
-              placeholder="Naam (bv. Late techno)"
+              placeholder={t('Naam (bv. Late techno)', 'Name (e.g. Late techno)')}
               placeholderTextColor={roles.fgPlaceholder}
               autoFocus
               returnKeyType="done"
@@ -936,7 +975,7 @@ function FilterSheet({
             />
           </View>
           <Pressable
-            accessibilityLabel="Opslaan"
+            accessibilityLabel={t('Opslaan', 'Save')}
             onPress={onSave}
             disabled={saveName.trim().length === 0}
             style={[
@@ -955,7 +994,7 @@ function FilterSheet({
             />
           </Pressable>
           <Pressable
-            accessibilityLabel="Annuleer"
+            accessibilityLabel={t('Annuleer', 'Cancel')}
             onPress={() => {
               setSaveOpen(false);
               setSaveName('');
@@ -988,11 +1027,11 @@ function FilterSheet({
                 { color: isNacht ? palette.noir : palette.paper3 },
               ]}
             >
-              Bekijk
+              {t('Bekijk', 'View')}
             </Text>
           </Pressable>
           <Pressable
-            accessibilityLabel="Bewaar filter"
+            accessibilityLabel={t('Bewaar filter', 'Save filter')}
             onPress={() => setSaveOpen(true)}
             disabled={filterCount === 0}
             style={[
@@ -1010,7 +1049,7 @@ function FilterSheet({
             />
           </Pressable>
           <Pressable
-            accessibilityLabel="Wis filters en sluit"
+            accessibilityLabel={t('Wis filters en sluit', 'Clear filters and close')}
             onPress={() => {
               onClearAll();
               onClose();
@@ -1176,6 +1215,7 @@ function DayChip({
 
 function DateAnchor({ day }: { day: OccurrenceGroup }) {
   const roles = useRoles();
+  const t = useT();
   return (
     <View style={styles.dateAnchor}>
       <View style={styles.dateAnchorLeft}>
@@ -1187,7 +1227,10 @@ function DateAnchor({ day }: { day: OccurrenceGroup }) {
         </Text>
       </View>
       <Text style={[styles.dateAnchorCount, { color: roles.fgPlaceholder }]}>
-        {day.count} {day.count === 1 ? 'plan' : 'plannen'}
+        {day.count}{' '}
+        {day.count === 1
+          ? t('plan', 'plan')
+          : t('plannen', 'plans')}
       </Text>
     </View>
   );
@@ -1195,6 +1238,7 @@ function DateAnchor({ day }: { day: OccurrenceGroup }) {
 
 function AgendaRow({ row }: { row: OccurrenceRow }) {
   const { event, occurrence } = row;
+  const locale = useLocale();
   const friends = event.friendsSaved?.map((f) => ({
     name: f.name,
     avatar: f.avatarUrl,
@@ -1212,7 +1256,12 @@ function AgendaRow({ row }: { row: OccurrenceRow }) {
       thumb={event.imageUrl ?? ''}
       title={event.title}
       venue={event.venue.name}
-      tags={[{ label: event.category, tone: CATEGORY_TICK[event.category] }]}
+      tags={[
+        {
+          label: translateCategory(event.category, locale),
+          tone: CATEGORY_TICK[event.category],
+        },
+      ]}
       seriesLabel={event.series?.[0]?.name}
       genreLabel={event.genres?.[0]}
       friends={friends && friends.length > 0 ? friends : undefined}

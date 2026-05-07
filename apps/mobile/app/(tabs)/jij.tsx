@@ -32,6 +32,12 @@ import type { ApiMe } from '@/lib/api';
 import { getMe, updateMe, uploadAvatar } from '@/lib/api';
 import { authClient, useSession } from '@/lib/authClient';
 import {
+  type LocalePreference,
+  useLocalePreference,
+  useLocaleStore,
+  useT,
+} from '@/lib/i18n';
+import {
   Notifications,
   registerForPushNotificationsAsync,
 } from '@/lib/push';
@@ -47,6 +53,7 @@ export default function Jij() {
   const roles = useRoles();
   const insets = useSafeAreaInsets();
   const isNacht = mode === 'nacht';
+  const t = useT();
   const scrollRef = useRef<ScrollView>(null);
   useScrollToTop(scrollRef);
 
@@ -108,7 +115,7 @@ export default function Jij() {
 
   const sendCode = async () => {
     if (local.length < 9) {
-      setError('Vul een geldig nummer in.');
+      setError(t('Vul een geldig nummer in.', 'Enter a valid phone number.'));
       return;
     }
     setBusy(true);
@@ -118,7 +125,7 @@ export default function Jij() {
     });
     setBusy(false);
     if (err) {
-      setError(err.message ?? 'Versturen mislukt.');
+      setError(err.message ?? t('Versturen mislukt.', 'Sending failed.'));
       return;
     }
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -128,7 +135,7 @@ export default function Jij() {
 
   const verifyCode = async () => {
     if (code.length !== 6) {
-      setError('Code is 6 cijfers.');
+      setError(t('Code is 6 cijfers.', 'Code is 6 digits.'));
       return;
     }
     setBusy(true);
@@ -139,7 +146,7 @@ export default function Jij() {
     });
     if (err) {
       setBusy(false);
-      setError(err.message ?? 'Code klopt niet.');
+      setError(err.message ?? t('Code klopt niet.', 'Code is incorrect.'));
       return;
     }
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -152,11 +159,16 @@ export default function Jij() {
   const saveProfile = async () => {
     const trimmedName = name.trim();
     if (trimmedName.length < 1) {
-      setError('Naam is verplicht.');
+      setError(t('Naam is verplicht.', 'Name is required.'));
       return;
     }
     if (!HANDLE_RE.test(handle)) {
-      setError('Handle: 3–20 kleine letters, cijfers of underscore.');
+      setError(
+        t(
+          'Handle: 3–20 kleine letters, cijfers of underscore.',
+          'Handle: 3–20 lowercase letters, digits or underscore.'
+        )
+      );
       return;
     }
     setBusy(true);
@@ -166,7 +178,11 @@ export default function Jij() {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       await refetchMe();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Opslaan mislukt.');
+      setError(
+        e instanceof Error
+          ? e.message
+          : t('Opslaan mislukt.', 'Saving failed.')
+      );
     } finally {
       setBusy(false);
     }
@@ -212,7 +228,12 @@ export default function Jij() {
     if (avatarUploading) return;
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!perm.granted) {
-      setError('Geen toegang tot foto-bibliotheek.');
+      setError(
+        t(
+          'Geen toegang tot foto-bibliotheek.',
+          'No access to photo library.'
+        )
+      );
       return;
     }
     const picked = await ImagePicker.launchImageLibraryAsync({
@@ -242,7 +263,11 @@ export default function Jij() {
     } catch (e) {
       // eslint-disable-next-line no-console
       console.warn('[avatar] failed', e);
-      setError(e instanceof Error ? e.message : 'Upload mislukt.');
+      setError(
+        e instanceof Error
+          ? e.message
+          : t('Upload mislukt.', 'Upload failed.')
+      );
     } finally {
       setAvatarUploading(false);
     }
@@ -277,20 +302,22 @@ export default function Jij() {
           }}
         >
           <Text style={[styles.kicker, { color: roles.accent }]}>
-            {stage === 'phone' ? 'Inloggen · stap 1/2' : 'Inloggen · stap 2/2'}
+            {stage === 'phone'
+              ? t('Inloggen · stap 1/2', 'Sign in · step 1/2')
+              : t('Inloggen · stap 2/2', 'Sign in · step 2/2')}
           </Text>
           <Text style={[styles.title, { color: roles.fg }]}>
             {stage === 'phone'
-              ? 'Wat is je\nnummer?'
-              : 'Vul de code\nuit de SMS.'}
+              ? t('Wat is je\nnummer?', 'What’s your\nnumber?')
+              : t('Vul de code\nuit de SMS.', 'Enter the code\nfrom the SMS.')}
           </Text>
 
           {stage === 'phone' && (
             <Text style={[styles.lead, { color: roles.fgRead }]}>
-              Met een account heb je je eigen Andreas. Je bewaart je
-              planning, voegt vrienden toe om samen op pad te gaan en
-              volgt de venues die je niet wilt missen.{'\n\n'}
-              Geen wachtwoord. Eén SMS-code op je nummer is genoeg.
+              {t(
+                'Met een account heb je je eigen Andreas. Je bewaart je planning, voegt vrienden toe om samen op pad te gaan en volgt de venues die je niet wilt missen.\n\nGeen wachtwoord. Eén SMS-code op je nummer is genoeg.',
+                'With an account you get your own Andreas. Save your plans, add friends to head out together, and follow the venues you don’t want to miss.\n\nNo password. One SMS code on your number is enough.'
+              )}
             </Text>
           )}
 
@@ -322,7 +349,10 @@ export default function Jij() {
                 />
               </View>
               <Text style={[styles.helper, { color: roles.fgMuted }]}>
-                Je krijgt een SMS met een 6-cijferige code.
+                {t(
+                  'Je krijgt een SMS met een 6-cijferige code.',
+                  'You’ll receive an SMS with a 6-digit code.'
+                )}
               </Text>
             </>
           ) : (
@@ -355,7 +385,7 @@ export default function Jij() {
               </View>
               <Pressable onPress={onBackToPhone}>
                 <Text style={[styles.helperLink, { color: roles.fgMuted }]}>
-                  Verkeerd nummer? Terug.
+                  {t('Verkeerd nummer? Terug.', 'Wrong number? Back.')}
                 </Text>
               </Pressable>
             </>
@@ -381,10 +411,10 @@ export default function Jij() {
               ]}
             >
               {busy
-                ? 'Bezig…'
+                ? t('Bezig…', 'Working…')
                 : stage === 'phone'
-                  ? 'Stuur code'
-                  : 'Inloggen'}
+                  ? t('Stuur code', 'Send code')
+                  : t('Inloggen', 'Sign in')}
             </Text>
           </Pressable>
         </ScrollView>
@@ -421,16 +451,20 @@ export default function Jij() {
           }}
         >
           <Text style={[styles.kicker, { color: roles.accent }]}>
-            {isEditing ? 'Profiel bewerken' : 'Even kennismaken'}
+            {isEditing
+              ? t('Profiel bewerken', 'Edit profile')
+              : t('Even kennismaken', 'Quick intro')}
           </Text>
           <Text style={[styles.title, { color: roles.fg }]}>
             {isEditing
-              ? 'Pas je naam\nof handle aan.'
-              : 'Hoe heet je\neigenlijk?'}
+              ? t('Pas je naam\nof handle aan.', 'Update your name\nor handle.')
+              : t('Hoe heet je\neigenlijk?', 'What’s your\nname?')}
           </Text>
 
           <View style={styles.fieldGroup}>
-            <Text style={[styles.label, { color: roles.fgMuted }]}>NAAM</Text>
+            <Text style={[styles.label, { color: roles.fgMuted }]}>
+              {t('NAAM', 'NAME')}
+            </Text>
             <View
               style={[
                 styles.field,
@@ -442,7 +476,7 @@ export default function Jij() {
                 key="name"
                 value={name}
                 onChangeText={onChangeName}
-                placeholder="bv. Harry Styles"
+                placeholder={t('bv. Harry Styles', 'e.g. Harry Styles')}
                 placeholderTextColor={roles.fgPlaceholder}
                 autoFocus
                 autoCapitalize="words"
@@ -478,8 +512,10 @@ export default function Jij() {
               />
             </View>
             <Text style={[styles.hint, { color: roles.fgPlaceholder }]}>
-              3–20 kleine letters, cijfers of underscore. Vrienden vinden je
-              hierop.
+              {t(
+                '3–20 kleine letters, cijfers of underscore. Vrienden vinden je hierop.',
+                '3–20 lowercase letters, digits or underscore. This is how friends find you.'
+              )}
             </Text>
           </View>
 
@@ -503,10 +539,10 @@ export default function Jij() {
               ]}
             >
               {busy
-                ? 'Bezig…'
+                ? t('Bezig…', 'Working…')
                 : isEditing
-                  ? 'Opslaan'
-                  : 'Doorgaan'}
+                  ? t('Opslaan', 'Save')
+                  : t('Doorgaan', 'Continue')}
             </Text>
           </Pressable>
           {isEditing && (
@@ -518,7 +554,7 @@ export default function Jij() {
               ]}
             >
               <Text style={[styles.editBtnText, { color: roles.fgMuted }]}>
-                Annuleren
+                {t('Annuleren', 'Cancel')}
               </Text>
             </Pressable>
           )}
@@ -531,8 +567,8 @@ export default function Jij() {
   // ─── Authed Jij ─────────────────────────────────────────────────────
 
   const displayName =
-    me?.name && !me.name.startsWith('+') ? me.name : 'Jij';
-  const displayHandle = me?.handle ? `@${me.handle}` : 'NIEUW';
+    me?.name && !me.name.startsWith('+') ? me.name : t('Jij', 'You');
+  const displayHandle = me?.handle ? `@${me.handle}` : t('NIEUW', 'NEW');
 
   return (
     <View style={[styles.root, { backgroundColor: roles.bg }]}>
@@ -614,7 +650,7 @@ export default function Jij() {
                   style={{ marginRight: 4 }}
                 />
                 <Text style={[styles.editBtnText, { color: roles.fgMuted }]}>
-                  Mijn QR
+                  {t('Mijn QR', 'My QR')}
                 </Text>
               </Pressable>
             )}
@@ -629,7 +665,7 @@ export default function Jij() {
                 style={{ marginRight: 6 }}
               />
               <Text style={[styles.editBtnText, { color: roles.fgMuted }]}>
-                Scan QR
+                {t('Scan QR', 'Scan QR')}
               </Text>
             </Pressable>
             <Pressable
@@ -643,7 +679,7 @@ export default function Jij() {
                 style={{ marginRight: 6 }}
               />
               <Text style={[styles.editBtnText, { color: roles.fgMuted }]}>
-                Vrienden zoeken
+                {t('Vrienden zoeken', 'Find friends')}
               </Text>
             </Pressable>
             <Pressable
@@ -651,7 +687,7 @@ export default function Jij() {
               style={[styles.editBtn, { borderColor: roles.bgChip }]}
             >
               <Text style={[styles.editBtnText, { color: roles.fgMuted }]}>
-                Bewerk profiel
+                {t('Bewerk profiel', 'Edit profile')}
               </Text>
             </Pressable>
           </View>
@@ -660,6 +696,7 @@ export default function Jij() {
 
         {me && <NotificationsSection />}
         {me && <PrivacySection me={me} onUpdated={refetchMe} />}
+        <LanguageSection />
 
         <View style={styles.logoutWrap}>
           <Pressable
@@ -667,7 +704,7 @@ export default function Jij() {
             style={[styles.editBtn, { borderColor: roles.bgChip }]}
           >
             <Text style={[styles.editBtnText, { color: roles.fgMuted }]}>
-              Uitloggen
+              {t('Uitloggen', 'Log out')}
             </Text>
           </Pressable>
         </View>
@@ -753,6 +790,7 @@ function MyQrSheet({
   const mode = useMode();
   const roles = useRoles();
   const isNacht = mode === 'nacht';
+  const t = useT();
   const url = `https://andreas.amsterdam/u/${handle}`;
   // iOS pageSheet heeft een ingebouwde drag-handle bovenin + swipe-down
   // dismiss. Op Android valt 't terug op een fullscreen modal — daar
@@ -806,15 +844,77 @@ function MyQrSheet({
           @{handle}
         </Text>
         <Text style={[styles.qrLead, { color: roles.fgMuted }]}>
-          Scan to connect.
+          {t('Scan om te connecten.', 'Scan to connect.')}
         </Text>
       </View>
     </View>
   );
 }
 
+function LanguageSection() {
+  const roles = useRoles();
+  const t = useT();
+  const preference = useLocalePreference();
+  const setPreference = useLocaleStore((s) => s.setPreference);
+
+  const options: { value: LocalePreference; label: string }[] = [
+    { value: 'auto', label: t('Automatisch', 'Automatic') },
+    { value: 'nl', label: 'Nederlands' },
+    { value: 'en', label: 'English' },
+  ];
+
+  return (
+    <>
+      <SectionHead label={t('Taal', 'Language')} />
+      <View style={styles.privacyWrap}>
+        <View style={styles.privacyRow}>
+          <View style={styles.privacyBody}>
+            <Text style={[styles.privacyLabel, { color: roles.fg }]}>
+              {t('Taal van de app', 'App language')}
+            </Text>
+            <Text style={[styles.privacySub, { color: roles.fgMuted }]}>
+              {t(
+                'Automatisch volgt de taal van je toestel — Nederlands of Engels.',
+                'Automatic follows your device language — Dutch or English.'
+              )}
+            </Text>
+          </View>
+        </View>
+        <View style={styles.languageRow}>
+          {options.map((opt) => {
+            const active = preference === opt.value;
+            return (
+              <Pressable
+                key={opt.value}
+                onPress={() => setPreference(opt.value)}
+                style={[
+                  styles.languageBtn,
+                  {
+                    borderColor: active ? roles.accent : roles.bgChip,
+                    backgroundColor: active ? roles.accent : 'transparent',
+                  },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.languageBtnText,
+                    { color: active ? roles.onAccent : roles.fgMuted },
+                  ]}
+                >
+                  {opt.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      </View>
+    </>
+  );
+}
+
 function NotificationsSection() {
   const roles = useRoles();
+  const t = useT();
   const [status, setStatus] = useState<
     'granted' | 'denied' | 'undetermined' | 'loading'
   >('loading');
@@ -874,33 +974,38 @@ function NotificationsSection() {
 
   const label =
     status === 'granted'
-      ? 'Aan'
+      ? t('Aan', 'On')
       : status === 'denied'
-        ? 'Uit'
+        ? t('Uit', 'Off')
         : status === 'undetermined'
-          ? 'Niet ingesteld'
+          ? t('Niet ingesteld', 'Not set')
           : '…';
   const cta =
     status === 'granted'
-      ? 'Wijzig in instellingen'
+      ? t('Wijzig in instellingen', 'Change in settings')
       : status === 'denied'
-        ? 'Open instellingen'
+        ? t('Open instellingen', 'Open settings')
         : status === 'undetermined'
-          ? 'Aanzetten'
+          ? t('Aanzetten', 'Turn on')
           : '…';
 
   return (
     <>
-      <SectionHead label="Notificaties" />
+      <SectionHead label={t('Notificaties', 'Notifications')} />
       <View style={styles.privacyWrap}>
         <View style={styles.privacyRow}>
           <View style={styles.privacyBody}>
             <Text style={[styles.privacyLabel, { color: roles.fg }]}>
-              Vriend-aanvragen, uitnodigingen en accepts
+              {t(
+                'Vriend-aanvragen, uitnodigingen en accepts',
+                'Friend requests, invites and accepts'
+              )}
             </Text>
             <Text style={[styles.privacySub, { color: roles.fgMuted }]}>
-              Status: {label}. Alleen pings bij persoonlijke acties — geen
-              algoritmische pushes.
+              {t(
+                `Status: ${label}. Alleen pings bij persoonlijke acties — geen algoritmische pushes.`,
+                `Status: ${label}. Only pings for personal actions — no algorithmic pushes.`
+              )}
             </Text>
           </View>
           <Pressable
@@ -934,6 +1039,7 @@ function PrivacySection({
   const mode = useMode();
   const roles = useRoles();
   const isNacht = mode === 'nacht';
+  const t = useT();
 
   // Optimistische lokale state — voor snappy switch-animatie. Server-call
   // komt erna; bij fout rollen we terug en tonen we niets bijzonders
@@ -976,16 +1082,21 @@ function PrivacySection({
 
   return (
     <>
-      <SectionHead label="Privacy" />
+      <SectionHead label={t('Privacy', 'Privacy')} />
       <View style={styles.privacyWrap}>
         <View style={styles.privacyRow}>
           <View style={styles.privacyBody}>
             <Text style={[styles.privacyLabel, { color: roles.fg }]}>
-              Vrienden zien mijn opgeslagen events
+              {t(
+                'Vrienden zien mijn opgeslagen events',
+                'Friends see my saved events'
+              )}
             </Text>
             <Text style={[styles.privacySub, { color: roles.fgMuted }]}>
-              Uit zetten verbergt jouw saves bij vrienden in friend-pills en op
-              je profiel.
+              {t(
+                'Uit zetten verbergt jouw saves bij vrienden in friend-pills en op je profiel.',
+                'Turning off hides your saves from friends in friend-pills and on your profile.'
+              )}
             </Text>
           </View>
           <Switch
@@ -1003,11 +1114,13 @@ function PrivacySection({
         <View style={styles.privacyRow}>
           <View style={styles.privacyBody}>
             <Text style={[styles.privacyLabel, { color: roles.fg }]}>
-              Vindbaar via zoeken
+              {t('Vindbaar via zoeken', 'Findable via search')}
             </Text>
             <Text style={[styles.privacySub, { color: roles.fgMuted }]}>
-              Anderen kunnen jou vinden via @handle. Uit betekent dat alleen
-              mensen die jij toevoegt vrienden met je kunnen worden.
+              {t(
+                'Anderen kunnen jou vinden via @handle. Uit betekent dat alleen mensen die jij toevoegt vrienden met je kunnen worden.',
+                'Others can find you via @handle. Off means only people you add can become friends with you.'
+              )}
             </Text>
           </View>
           <Switch
@@ -1424,6 +1537,26 @@ const styles = StyleSheet.create({
   notifBtnText: {
     fontFamily: fontFamily.medium,
     fontSize: 12,
+    letterSpacing: -0.12,
+  },
+  languageRow: {
+    flexDirection: 'row',
+    gap: 6,
+    paddingTop: 4,
+    paddingBottom: 8,
+  },
+  languageBtn: {
+    flex: 1,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 999,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  languageBtnText: {
+    fontFamily: fontFamily.medium,
+    fontSize: 12.5,
     letterSpacing: -0.12,
   },
 
