@@ -367,6 +367,20 @@ export function formatTime(iso: string): string {
   return `${hh}:${mm}`;
 }
 
+/**
+ * Tijd-range met en-dash. Voor concert-detail-pages: "21:00 – 23:00"
+ * geeft meer informatie dan alleen aanvang. Als endsAt null/leeg is:
+ * alleen starttijd.
+ */
+export function formatTimeRange(
+  startIso: string,
+  endIso: string | null | undefined
+): string {
+  const start = formatTime(startIso);
+  if (!endIso) return start;
+  return `${start} – ${formatTime(endIso)}`;
+}
+
 export function formatPrice(cents: number | null, locale?: Locale): string {
   if (cents == null) return '—';
   const l = locale ?? useLocaleStore.getState().locale;

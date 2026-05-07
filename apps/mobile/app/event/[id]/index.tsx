@@ -27,6 +27,7 @@ import {
   eventImageUrl,
   formatPrice,
   formatTime,
+  formatTimeRange,
   monthShort,
   translateCategory,
 } from '@/lib/eventDisplay';
@@ -249,7 +250,12 @@ export default function EventDetail() {
               />
             </View>
             <View style={styles.metaCellWrap}>
-              <MetaCell label={t('Aanvang', 'Doors')} value={view.time} />
+              <MetaCell
+                label={
+                  view.time.includes('–') ? t('Tijd', 'Time') : t('Aanvang', 'Doors')
+                }
+                value={view.time}
+              />
             </View>
             <View style={styles.metaCellWrap}>
               <MetaCell
@@ -863,12 +869,11 @@ function toViewModel(
     (event.venue.priceNote && event.venue.priceNote.trim().length > 0
       ? event.venue.priceNote.trim()
       : null);
-  void sourceEnd; // endsAt wordt apart in <MetaCell> gebruikt voor exhibitions
   return {
     tag: translateCategory(event.category, locale),
     title: event.title,
     date: `${dow} ${day} ${month}`,
-    time: formatTime(sourceStart),
+    time: formatTimeRange(sourceStart, sourceEnd),
     venue: event.venue.name,
     description: event.description,
     photo: eventImageUrl(event),
