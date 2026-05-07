@@ -39,6 +39,12 @@ export type ApiOccurrence = {
       vaak leeg voor films. */
   lineup: ApiLineupEntry[] | null;
   status: OccurrenceStatus;
+  /** Vrienden die specifiek díe occurrence hebben gesaved. Een save
+      voor de woensdag-voorstelling laat alleen daar de pill zien, niet
+      bij de overige occurrences van dezelfde film. Optioneel: list-
+      endpoints vullen 'm; standalone-shapes (saves, mocks) niet. */
+  friendsSaved?: ApiFriendBadge[];
+  friendsSavedCount?: number;
 };
 
 export type ApiEvent = {

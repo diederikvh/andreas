@@ -1219,7 +1219,12 @@ function DateAnchor({ day }: { day: OccurrenceGroup }) {
 function AgendaRow({ row }: { row: OccurrenceRow }) {
   const { event, occurrence } = row;
   const locale = useLocale();
-  const friends = event.friendsSaved?.map((f) => ({
+  // Friend-pill is occurrence-specific: alleen vrienden die díe avond
+  // gesaved hebben, niet alle die de film "in het algemeen" volgen.
+  // Server zet ze op occurrence.friendsSaved; fallback op event-level
+  // voor pre-refactor responses (cachebusts vrijwel direct).
+  const rawFriends = occurrence.friendsSaved ?? event.friendsSaved ?? [];
+  const friends = rawFriends.map((f) => ({
     name: f.name,
     avatar: f.avatarUrl,
   }));

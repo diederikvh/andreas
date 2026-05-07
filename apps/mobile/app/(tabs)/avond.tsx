@@ -1326,9 +1326,10 @@ function ApiEventRow({
   row: OccurrenceRow;
   featured?: boolean;
 }) {
-  const { event } = row;
+  const { event, occurrence } = row;
   const locale = useLocale();
-  const friends = event.friendsSaved?.map((f) => ({
+  const rawFriends = occurrence.friendsSaved ?? event.friendsSaved ?? [];
+  const friends = rawFriends.map((f) => ({
     name: f.name,
     avatar: f.avatarUrl,
   }));
