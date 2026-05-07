@@ -28,6 +28,12 @@ export type ParsedJsonLdEvent = {
    *  Wordt door de orchestrator als lineup-fallback gebruikt wanneer
    *  Claude geen lineup uit de description haalt. */
   performers: string[];
+  /** Tijd-range gevonden in de HTML rond dit event-block (bv. Lofi:
+   *  "14:00 – 05:00"). Alleen gevuld voor date-only events waar het
+   *  surrounding script-block 1-op-1 bij dit event hoorde. Caller
+   *  gebruikt dit om de venue-default-tijd te overrulen. */
+  htmlStartTime: { hour: number; minute: number } | null;
+  htmlEndTime: { hour: number; minute: number } | null;
 };
 
 const EVENT_TYPES = new Set([
@@ -148,6 +154,33 @@ function isDateOnlyString(value: unknown): boolean {
   return typeof value === 'string' && DATE_ONLY_RE.test(value);
 }
 
+/** Vind de eerste tijd-range "HH:MM – HH:MM" (en/dash/hyphen) in een
+ *  blok HTML/text. Strip eerst HTML-tags zodat tags geen valse digits
+ *  injecteren. Returnt null als geen plausibele range gevonden. */
+function findTimeRangeInHtml(
+  html: string
+): {
+  start: { hour: number; minute: number };
+  end: { hour: number; minute: number };
+} | null {
+  // Decode entities (&#8211; → –) zodat de regex hyphen/en-dash ziet.
+  const decoded = decodeHtmlEntities(html);
+  // Vervang HTML-tags door spatie zodat "14:00<br />– 05:00" goed parsed.
+  const text = decoded.replace(/<[^>]+>/g, ' ');
+  const re = /(\d{1,2}):(\d{2})\s*[–—-]\s*(\d{1,2}):(\d{2})/;
+  const m = text.match(re);
+  if (!m) return null;
+  const h1 = parseInt(m[1], 10);
+  const m1 = parseInt(m[2], 10);
+  const h2 = parseInt(m[3], 10);
+  const m2 = parseInt(m[4], 10);
+  if (h1 > 23 || h2 > 23 || m1 > 59 || m2 > 59) return null;
+  return {
+    start: { hour: h1, minute: m1 },
+    end: { hour: h2, minute: m2 },
+  };
+}
+
 function extractPerformers(value: unknown): string[] {
   if (!value) return [];
   if (Array.isArray(value)) {
@@ -186,6 +219,18 @@ export function extractJsonLdEvents(html: string): ParsedJsonLdEvent[] {
       continue;
     }
 
+    // Pre-script HTML-window om een tijd-range te zoeken bij date-only
+    // events. Pak ~3 kB vóór de `<script>`-tag — genoeg om Lofi's
+    // foldout met "14:00 – 05:00" te dekken zonder events van een
+    // vorige rij mee te slurpen.
+    const scriptStart = match.index;
+    const windowStart = Math.max(0, scriptStart - 3000);
+    const surroundingHtml = html.slice(windowStart, scriptStart);
+    // Verzamel events uit dit script eerst los, zodat we alleen
+    // tijd-range toepassen als het script 1 event bevatte (anders
+    // weten we niet bij welke event de range hoort).
+    const scriptEvents: ParsedJsonLdEvent[] = [];
+
     for (const ev of walkEvents(parsed)) {
       const name =
         typeof ev.name === 'string' ? decodeHtmlEntities(ev.name).trim() : '';
@@ -221,7 +266,7 @@ export function extractJsonLdEvents(html: string): ParsedJsonLdEvent[] {
       if (seenUids.has(uidSource)) continue;
       seenUids.add(uidSource);
 
-      events.push({
+      scriptEvents.push({
         uid: uidSource,
         name,
         description,
@@ -232,8 +277,21 @@ export function extractJsonLdEvents(html: string): ParsedJsonLdEvent[] {
         eventStatus,
         isDateOnly,
         performers,
+        htmlStartTime: null,
+        htmlEndTime: null,
       });
     }
+
+    // Pas tijd-range alleen toe als dit script-block precies 1 event
+    // bevatte — anders is onduidelijk bij welk event de range hoort.
+    if (scriptEvents.length === 1 && scriptEvents[0].isDateOnly) {
+      const range = findTimeRangeInHtml(surroundingHtml);
+      if (range) {
+        scriptEvents[0].htmlStartTime = range.start;
+        scriptEvents[0].htmlEndTime = range.end;
+      }
+    }
+    events.push(...scriptEvents);
   }
   return events;
 }

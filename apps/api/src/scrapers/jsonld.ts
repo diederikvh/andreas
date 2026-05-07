@@ -118,10 +118,15 @@ function defaultDurationHoursForVenueType(type: string | null): number {
   }
 }
 
-/** Verschuif een UTC-midnight Date naar de lokale `hour` in Europe/Amsterdam.
- *  Voor `2026-05-08T00:00:00Z` met hour=23 → `2026-05-08T21:00:00Z`
- *  (= 23:00 NL zomertijd). Houdt rekening met DST. */
-function shiftToLocalEvening(utcMidnight: Date, hour: number): Date {
+/** Verschuif een UTC-midnight Date naar de lokale `hour:minute` in
+ *  Europe/Amsterdam. Voor `2026-05-08T00:00:00Z` met hour=23, minute=0
+ *  → `2026-05-08T21:00:00Z` (= 23:00 NL zomertijd). Houdt rekening
+ *  met DST. */
+function shiftToLocalTime(
+  utcMidnight: Date,
+  hour: number,
+  minute: number = 0
+): Date {
   // Bouw een lokale tijd in Europe/Amsterdam, vraag de offset, corrigeer.
   const dtf = new Intl.DateTimeFormat('en-US', {
     timeZone: 'Europe/Amsterdam',
@@ -136,9 +141,9 @@ function shiftToLocalEvening(utcMidnight: Date, hour: number): Date {
   const offsetMin = m ? parseInt(m[3] ?? '0', 10) : 0;
   const offsetMinutes = sign * (offsetH * 60 + offsetMin);
   // utcMidnight = UTC start of day. Local hour 23 = UTC (23 - offsetH).
-  // Add hours to UTC, subtract offset to keep "local hour" interpretation.
-  const utcHourEquivalent = hour * 60 - offsetMinutes;
-  return new Date(utcMidnight.getTime() + utcHourEquivalent * 60_000);
+  // Add hours+minutes to UTC, subtract offset to keep "local time" interpretation.
+  const utcMinuteEquivalent = hour * 60 + minute - offsetMinutes;
+  return new Date(utcMidnight.getTime() + utcMinuteEquivalent * 60_000);
 }
 
 async function scrapeOneVenue(
@@ -188,17 +193,43 @@ async function scrapeOneVenue(
       const occurrenceId = `occ-jld-${venue.id}-${uidHash}`;
 
       // Date-only events (zoals Lofi's "2026-05-08" zonder tijd):
-      // verschuif naar een plausibel lokaal startuur + default-duur per
-      // venue-type, zodat een club-avond niet om 02:00 NL begint en de
-      // detail-page een tijd-range kan tonen ("23:00 – 05:00") i.p.v.
-      // alleen aanvang.
+      // 1) Voorkeur: tijd-range gevonden in surrounding HTML
+      //    ("14:00 – 05:00" naast het JSON-LD-script).
+      // 2) Anders: venue-type default startuur + default-duur,
+      //    zodat een club-avond niet om 02:00 NL begint en de
+      //    detail-page een tijd-range kan tonen.
       let startsAt = ev.startsAt;
       let endsAt = ev.endsAt;
       if (ev.isDateOnly) {
-        const hour = defaultStartHourForVenueType(venue.type);
-        const durationH = defaultDurationHoursForVenueType(venue.type);
-        startsAt = shiftToLocalEvening(ev.startsAt, hour);
-        endsAt = new Date(startsAt.getTime() + durationH * 60 * 60_000);
+        if (ev.htmlStartTime) {
+          startsAt = shiftToLocalTime(
+            ev.startsAt,
+            ev.htmlStartTime.hour,
+            ev.htmlStartTime.minute
+          );
+          if (ev.htmlEndTime) {
+            // Eind-uur kleiner dan start-uur betekent over middernacht.
+            const endIsNextDay =
+              ev.htmlEndTime.hour < ev.htmlStartTime.hour ||
+              (ev.htmlEndTime.hour === ev.htmlStartTime.hour &&
+                ev.htmlEndTime.minute < ev.htmlStartTime.minute);
+            const baseDay = endIsNextDay
+              ? new Date(ev.startsAt.getTime() + 24 * 60 * 60_000)
+              : ev.startsAt;
+            endsAt = shiftToLocalTime(
+              baseDay,
+              ev.htmlEndTime.hour,
+              ev.htmlEndTime.minute
+            );
+          } else {
+            endsAt = null;
+          }
+        } else {
+          const hour = defaultStartHourForVenueType(venue.type);
+          const durationH = defaultDurationHoursForVenueType(venue.type);
+          startsAt = shiftToLocalTime(ev.startsAt, hour);
+          endsAt = new Date(startsAt.getTime() + durationH * 60 * 60_000);
+        }
       }
 
       const enriched = await enrichEvent({
