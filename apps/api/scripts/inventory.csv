@@ -17,7 +17,7 @@ if-i-cant-dance,If I Can't Dance,galerie,underground,https://www.ificantdance.or
 mediamatic,Mediamatic,ruimte,alternatief,https://www.mediamatic.net,yes,200,,0,,stager,,stager,medium,
 radion,Radion,club,alternatief,https://radion.amsterdam,yes,200,,0,,stager,,stager,medium,
 splendor,Splendor,podium,alternatief,https://www.splendoramsterdam.com,yes,200,,0,,stager,,stager,medium,
-a-lab,A Lab,ruimte,alternatief,https://www.a-lab.nl,yes,200,,0,,eventbrite,,ticketing:eventbrite,low,
+a-lab,A Lab,ruimte,alternatief,https://www.a-lab.nl,yes,200,,0,,eventbrite,,scrape-html-or-newsletter,low,
 adm-noord-het-groene-veld,ADM Noord - Het Groene Veld,ruimte,fringe,https://www.hetgroeneveld.amsterdam,yes,200,,0,,,,scrape-html-or-newsletter,low,
 akinci,AKINCI,galerie,alternatief,https://akinci.nl,yes,200,,0,,,,scrape-html-or-newsletter,low,
 amsterdam-museum,Amsterdam Museum,museum,mainstream,https://www.amsterdammuseum.nl,yes,200,,0,,,,scrape-html-or-newsletter,low,
@@ -40,7 +40,7 @@ buro-stedelijk,Buro Stedelijk,galerie,underground,https://www.stedelijk.nl/nl/pr
 buurtwerkplaats-noorderhof,Buurtwerkplaats Noorderhof,ruimte,underground,https://www.buurtwerkplaatsnoorderhof.nl,yes,200,,0,https://buurtwerkplaatsnoorderhof.nl/rss,,,rss,low,
 casablanca-variete,Casablanca Variete,podium,alternatief,https://www.casablanca-variete.nl,no,,,0,,,,unreachable,low,fetch failed
 cavia,Cavia,film,underground,https://filmhuiscavia.nl,yes,200,,0,,,,scrape-html-or-newsletter,low,
-cbk-zuidoost,CBK Zuidoost,galerie,alternatief,https://cbkzuidoost.nl,yes,200,,0,,eventbrite,,ticketing:eventbrite,low,
+cbk-zuidoost,CBK Zuidoost,galerie,alternatief,https://cbkzuidoost.nl,yes,200,,0,,eventbrite,,scrape-html-or-newsletter,low,
 compagnietheater,Compagnietheater,podium,mainstream,https://www.compagnietheater.nl,yes,200,,0,,,,scrape-html-or-newsletter,low,
 de-appel,De Appel,galerie,underground,https://deappel.nl,yes,200,,0,,,,scrape-html-or-newsletter,low,
 de-balie,De Balie,ruimte,mainstream,https://debalie.nl,yes,200,,0,https://debalie.nl/feed/,,,rss,low,
@@ -48,7 +48,7 @@ de-brakke-grond,De Brakke Grond,ruimte,mainstream,https://brakkegrond.nl,yes,200
 de-ceuvel,De Ceuvel,ruimte,alternatief,https://deceuvel.nl,yes,200,,0,https://deceuvel.nl/nl/feed/,,,rss,low,
 de-culturele-stelling-van-amsterdam,De Culturele Stelling van Amsterdam,ruimte,alternatief,https://culturelestelling.amsterdam,yes,200,,0,https://culturelestelling.amsterdam/feed/,,,rss,low,
 de-fabriek,De Fabriek,ruimte,alternatief,https://www.ostade233.nl,yes,200,,0,https://ostade233.nl/index.php/feed/,,,rss,low,
-de-hoop,De Hoop,ruimte,fringe,https://www.maakdehoop.org,yes,200,,0,,eventbrite,,ticketing:eventbrite,low,
+de-hoop,De Hoop,ruimte,fringe,https://www.maakdehoop.org,yes,200,,0,,eventbrite,,scrape-html-or-newsletter,low,
 de-krakeling,De Krakeling,podium,mainstream,https://krakeling.nl,yes,200,,0,,,,scrape-html-or-newsletter,low,
 de-nieuwe-anita,De Nieuwe Anita,podium,alternatief,https://denieuweanita.nl,yes,200,,0,https://denieuweanita.nl/feed/,,,rss,low,
 de-omleiding,De Omleiding,ruimte,fringe,https://deomleiding.info,yes,200,,0,,,,scrape-html-or-newsletter,low,
@@ -74,7 +74,7 @@ galerie-fleur-wouter,Galerie Fleur & Wouter,galerie,alternatief,https://galerief
 galerie-fontana,Galerie Fontana,galerie,alternatief,https://galeriefontana.nl,yes,200,,0,,,,scrape-html-or-newsletter,low,
 galerie-martin-van-zomeren,Galerie Martin van Zomeren,galerie,alternatief,https://gmvz.com,no,,,0,,,,unreachable,low,fetch failed
 galerie-onrust,Galerie Onrust,galerie,alternatief,https://www.galerieonrust.nl,yes,200,,0,,,,scrape-html-or-newsletter,low,
-galerie-ron-mandos,Galerie Ron Mandos,galerie,mainstream,https://ronmandos.nl,yes,200,,0,https://ronmandos.nl/feed/,eventbrite,,ticketing:eventbrite,low,
+galerie-ron-mandos,Galerie Ron Mandos,galerie,mainstream,https://ronmandos.nl,yes,200,,0,https://ronmandos.nl/feed/,eventbrite,,scrape-html-or-newsletter,low,
 gallery-van-fanny-freytag,Gallery van Fanny Freytag,galerie,alternatief,https://fannyfreytag.nl,no,,,0,,,,unreachable,low,fetch failed
 gomulan-gallery,GoMulan Gallery,galerie,underground,https://gomulangallery.com,no,,,0,,,,unreachable,low,fetch failed
 grimm,GRIMM,galerie,mainstream,https://grimmgallery.com,yes,200,,0,,,,scrape-html-or-newsletter,low,
@@ -91,7 +91,7 @@ kanarie-club,Kanarie Club,boekhandel-cafe,alternatief,https://kanarieclub.nl,yes
 kaskantine,KasKantine,ruimte,fringe,https://kaskantine.nl,yes,200,,0,,,,scrape-html-or-newsletter,low,
 kersgallery,Kersgallery,galerie,alternatief,https://kersgallery.com,yes,200,,0,https://www.kersgallery.com/feed/,,,rss,low,
 kostgewonnen,Kostgewonnen,ruimte,alternatief,https://kostgewonnen.nl,yes,200,,0,https://kostgewonnen.nl/?format=feed&amp;type=rss,,,rss,low,
-kunstverein-amsterdam,Kunstverein Amsterdam,galerie,underground,https://www.kunstverein.nl,yes,200,,0,,eventbrite,/events,ticketing:eventbrite,low,
+kunstverein-amsterdam,Kunstverein Amsterdam,galerie,underground,https://www.kunstverein.nl,yes,200,,0,,eventbrite,/events,scrape-html-or-newsletter,low,
 lab111,Lab111,film,mainstream,https://lab111.nl,yes,200,,0,,,,scrape-html-or-newsletter,low,
 langart,LANGArt,galerie,alternatief,https://langart.nl,yes,200,,0,https://langgallery.com/feed/,,,rss,low,
 lima,LIMA,ruimte,alternatief,https://www.li-ma.nl,yes,200,,0,,,,scrape-html-or-newsletter,low,
@@ -108,13 +108,13 @@ ndsm-loods,NDSM Loods,podium,alternatief,https://ndsmloods.nl,yes,200,,0,https:/
 nieuwland,NieuwLand,ruimte,underground,https://nieuwland.cc,yes,200,,0,https://nieuwland.cc/feed/,,,rss,low,
 no-limits-art-castle,No Limits! Art Castle,galerie,underground,https://nolimitsartcastle.com,no,,,0,,,,unreachable,low,fetch failed
 no-mans-art-gallery,No Man's Art Gallery,galerie,alternatief,https://nomansart.com,yes,200,,0,,,,scrape-html-or-newsletter,low,
-noon-coffee-culture,Noon coffee & culture,boekhandel-cafe,alternatief,https://nooncoffeeculture.nl,yes,200,,0,,eventbrite,,ticketing:eventbrite,low,
+noon-coffee-culture,Noon coffee & culture,boekhandel-cafe,alternatief,https://nooncoffeeculture.nl,yes,200,,0,,eventbrite,,scrape-html-or-newsletter,low,
 nxt-museum,Nxt Museum,museum,mainstream,https://nxtmuseum.com,yes,200,,0,,,,scrape-html-or-newsletter,low,
 occii,OCCII,podium,underground,https://www.occii.org,yes,200,,0,https://occii.org/feed/,,,rss,low,
 oscam,OSCAM,galerie,alternatief,https://oscam.nl,yes,200,,0,https://www.oscam.nl/feed/,,,rss,low,
 ot301,OT301,ruimte,underground,https://www.ot301.nl,yes,200,,0,,,,scrape-html-or-newsletter,low,
 oude-kerk,Oude Kerk,museum,mainstream,https://oudekerk.nl,yes,200,,0,,,,scrape-html-or-newsletter,low,
-pakhuis-de-zwijger,Pakhuis de Zwijger,ruimte,mainstream,https://dezwijger.nl,yes,200,,0,,eventbrite,/agenda,ticketing:eventbrite,low,
+pakhuis-de-zwijger,Pakhuis de Zwijger,ruimte,mainstream,https://dezwijger.nl,yes,200,,0,,eventbrite,/agenda,scrape-html-or-newsletter,low,
 pakhuis-wilhelmina,Pakhuis Wilhelmina,podium,alternatief,https://pakhuiswilhelmina.nl,yes,200,,0,,,,scrape-html-or-newsletter,low,
 paktamsterdam,P/////AKT,galerie,underground,https://www.paktamsterdam.nl,no,,,0,,,,unreachable,low,fetch failed
 paradiso,Paradiso,podium,mainstream,https://www.paradiso.nl,yes,200,,0,,,,scrape-html-or-newsletter,low,
@@ -125,7 +125,7 @@ podium-mozaiek,Podium Mozaiek,podium,alternatief,https://www.podiummozaiek.nl,ye
 projectspace-38-40,Projectspace 38/40,galerie,underground,https://projectspace3840.nl,no,,,0,,,,unreachable,low,fetch failed
 puntwg,puntWG,galerie,underground,https://puntwg.nl,yes,200,,0,,,,scrape-html-or-newsletter,low,
 q-factory,Q-Factory,podium,alternatief,https://www.q-factory.nl,no,,,0,,,,unreachable,low,fetch failed
-radio-radio,Radio Radio,club,alternatief,https://radioradio.radio,yes,200,,0,,eventix,,eventix,low,
+radio-radio,Radio Radio,club,alternatief,https://radioradio.radio,yes,200,,0,,eventix,,scrape-html-or-newsletter,low,
 rialto,Rialto,film,mainstream,https://www.rialtofilm.nl,yes,200,,0,,,,scrape-html-or-newsletter,low,
 rijksakademie,Rijksakademie van beeldende kunsten,ruimte,underground,https://www.rijksakademie.nl,yes,200,,0,,,,scrape-html-or-newsletter,low,
 rijkshemelvaartdienst,RijksHemelVaartDienst,ruimte,fringe,https://rijkshemelvaart.com,no,,,0,,,,unreachable,low,fetch failed
@@ -134,9 +134,9 @@ rozenstraat,ROZENSTRAAT,galerie,underground,https://www.rozenstraat.com,yes,200,
 rutger-brandt-gallery,Rutger Brandt Gallery,galerie,alternatief,https://rutgerbrandtgallery.com,no,,,0,,,,unreachable,low,fetch failed
 salon-de-ijzerstaven,Salon de IJzerstaven,podium,underground,https://www.ijzerstaven.nl,yes,200,,0,,,,scrape-html-or-newsletter,low,
 sexyland-world,SEXYLAND World,ruimte,alternatief,https://sexylandworld.com,no,,,0,,,,unreachable,low,fetch failed
-shelter,Shelter,club,mainstream,https://shelteramsterdam.nl,yes,200,,0,https://www.shelteramsterdam.nl/feed/,eventix,,eventix,low,
+shelter,Shelter,club,mainstream,https://shelteramsterdam.nl,yes,200,,0,https://www.shelteramsterdam.nl/feed/,eventix,,scrape-html-or-newsletter,low,
 slewe-gallery,Slewe Gallery,galerie,alternatief,https://slewe.nl,yes,200,,0,,,,scrape-html-or-newsletter,low,
-space-for-dance-art,Space for Dance Art,podium,alternatief,https://spacefordanceart.nl,yes,200,,0,https://spacefordanceart.nl/feed/,eventbrite,,ticketing:eventbrite,low,
+space-for-dance-art,Space for Dance Art,podium,alternatief,https://spacefordanceart.nl,yes,200,,0,https://spacefordanceart.nl/feed/,eventbrite,,scrape-html-or-newsletter,low,
 spui25,SPUI25,ruimte,mainstream,https://spui25.nl,no,403,,0,,,,unreachable,low,status 403
 stedelijk-museum,Stedelijk Museum,museum,mainstream,https://www.stedelijk.nl,yes,200,,0,,,,scrape-html-or-newsletter,low,
 steelhenge,Steelhenge,ruimte,fringe,https://www.steelhenge.nl,yes,200,,0,,,,scrape-html-or-newsletter,low,
@@ -146,7 +146,7 @@ teatro-munganga,Teatro Munganga,podium,alternatief,https://munganga.nl,yes,200,,
 tegenboschvanvreden,tegenboschvanvreden,galerie,underground,https://tegenboschvanvreden.com,yes,200,,0,https://www.tegenboschvanvreden.com/feed/,,,rss,low,
 thuishaven,Thuishaven,club,mainstream,https://thuishaven.nl,yes,200,,0,https://thuishaven.nl/feed/,,,rss,low,
 tilla-tec,Tilla Tec,club,alternatief,https://tillatec.com,yes,200,,0,,,,scrape-html-or-newsletter,low,
-tolhuistuin,Tolhuistuin,ruimte,mainstream,https://tolhuistuin.nl,yes,200,,0,,paylogic|eventbrite|ticketkantoor,/agenda,paylogic,low,
+tolhuistuin,Tolhuistuin,ruimte,mainstream,https://tolhuistuin.nl,yes,200,,0,,paylogic|eventbrite|ticketkantoor,/agenda,scrape-html-or-newsletter,low,
 torch-gallery,TORCH Gallery,galerie,underground,https://torchgallery.com,yes,200,,0,,,,scrape-html-or-newsletter,low,
 treehouse-ndsm,Treehouse NDSM,ruimte,alternatief,https://www.treehousendsm.com,yes,200,,0,,,,scrape-html-or-newsletter,low,
 upstream-gallery,Upstream Gallery,galerie,alternatief,https://upstreamgallery.nl,yes,200,,0,,,,scrape-html-or-newsletter,low,
@@ -160,5 +160,5 @@ wereldmuseum-amsterdam,Wereldmuseum Amsterdam,museum,mainstream,https://www.were
 woonruimte-cooperatief,[ woonruimte coöperatief ],ruimte,underground,,no,,,0,,,,unreachable,low,no website
 workship-op-de-ceuvel,Workship op de Ceuvel,ruimte,underground,https://workship.nu,no,,,0,,,,unreachable,low,fetch failed
 zaal-100,Zaal 100,podium,underground,https://zaal100.nl,yes,200,,0,https://zaal100.nl/feed/,,,rss,low,
-zid-theater,ZID Theater,podium,alternatief,https://www.zidtheater.nl,yes,200,,0,https://zidtheater.nl/feed/,paylogic,/agenda,paylogic,low,
+zid-theater,ZID Theater,podium,alternatief,https://www.zidtheater.nl,yes,200,,0,https://zidtheater.nl/feed/,paylogic,/agenda,scrape-html-or-newsletter,low,
 zone-2-source,Zone 2 Source,galerie,fringe,https://zone2source.net,yes,200,,0,,,,scrape-html-or-newsletter,low,
