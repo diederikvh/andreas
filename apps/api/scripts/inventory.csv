@@ -62,7 +62,7 @@ enari-gallery,Enari Gallery,galerie,alternatief,https://enarigallery.com,yes,200
 eye-filmmuseum,Eye Filmmuseum,film,mainstream,https://www.eyefilm.nl,yes,200,,0,,,,scrape-html-or-newsletter,low,
 fc-hyena,FC Hyena,film,alternatief,https://fchyena.nl,yes,200,,0,,,,scrape-html-or-newsletter,low,
 foam,FOAM,museum,mainstream,https://www.foam.org,no,429,,0,,,,unreachable,low,status 429
-fort-van-sjakoo,Fort van Sjakoo,boekhandel-cafe,underground,https://sjakoo.nl,yes,200,,0,https://sjakoo.nl/feed/,,,rss,low,
+fort-van-sjakoo,Fort van Sjakoo,boekhandel-cafe,underground,https://sjakoo.nl,yes,200,,0,https://sjakoo.nl/feed/,,,ical,low,
 framer-framed,Framer Framed,galerie,alternatief,https://framerframed.nl,yes,200,,0,,,,scrape-html-or-newsletter,low,
 framer-framed-noord,Framer Framed Noord,galerie,underground,https://framerframed.nl,yes,200,,0,,,,scrape-html-or-newsletter,low,
 frascati,Frascati,podium,mainstream,https://www.theaterfrascati.nl,yes,200,,0,,,,scrape-html-or-newsletter,low,
@@ -110,7 +110,7 @@ no-limits-art-castle,No Limits! Art Castle,galerie,underground,https://nolimitsa
 no-mans-art-gallery,No Man's Art Gallery,galerie,alternatief,https://nomansart.com,yes,200,,0,,,,scrape-html-or-newsletter,low,
 noon-coffee-culture,Noon coffee & culture,boekhandel-cafe,alternatief,https://nooncoffeeculture.nl,yes,200,,0,,eventbrite,,scrape-html-or-newsletter,low,
 nxt-museum,Nxt Museum,museum,mainstream,https://nxtmuseum.com,yes,200,,0,,,,scrape-html-or-newsletter,low,
-occii,OCCII,podium,underground,https://www.occii.org,yes,200,,0,https://occii.org/feed/,,,rss,low,
+occii,OCCII,podium,underground,https://www.occii.org,yes,200,,0,https://occii.org/feed/,,,ical,low,
 oscam,OSCAM,galerie,alternatief,https://oscam.nl,yes,200,,0,https://www.oscam.nl/feed/,,,rss,low,
 ot301,OT301,ruimte,underground,https://www.ot301.nl,yes,200,,0,,,,scrape-html-or-newsletter,low,
 oude-kerk,Oude Kerk,museum,mainstream,https://oudekerk.nl,yes,200,,0,,,,scrape-html-or-newsletter,low,
@@ -152,7 +152,7 @@ treehouse-ndsm,Treehouse NDSM,ruimte,alternatief,https://www.treehousendsm.com,y
 upstream-gallery,Upstream Gallery,galerie,alternatief,https://upstreamgallery.nl,yes,200,,0,,,,scrape-html-or-newsletter,low,
 van-gogh-museum,Van Gogh Museum,museum,mainstream,https://www.vangoghmuseum.nl,yes,200,,0,,,,scrape-html-or-newsletter,low,
 verzetsmuseum,Verzetsmuseum,museum,mainstream,https://verzetsmuseum.org,yes,200,,0,,,,scrape-html-or-newsletter,low,
-voedselpark-amsterdam,Voedselpark Amsterdam,ruimte,fringe,https://voedselparkamsterdam.nl,yes,200,,0,https://voedselparkamsterdam.nl/feed/,,,rss,low,
+voedselpark-amsterdam,Voedselpark Amsterdam,ruimte,fringe,https://voedselparkamsterdam.nl,yes,200,,0,https://voedselparkamsterdam.nl/feed/,,,ical,low,
 volta,Volta,podium,alternatief,https://voltaamsterdam.nl,no,,,0,,,,unreachable,low,fetch failed
 vondelbunker,Vondelbunker,ruimte,underground,https://vondelbunker.nl,yes,200,,0,,,,scrape-html-or-newsletter,low,
 warehouse-elementenstraat,Warehouse Elementenstraat,club,mainstream,,no,,,0,,,,unreachable,low,no website
