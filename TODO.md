@@ -2,7 +2,7 @@
 
 Live status van het project. Cross-checken met `HANDOFF.md` voor de oorspronkelijke briefing en met de huidige codebase voor de waarheid. Per open punt staat genoeg context om een agent zelfstandig te laten werken.
 
-Laatste sync: 2026-05-05 · branch `main`.
+Laatste sync: 2026-05-07 · branch `main`.
 
 ## Stand
 
@@ -56,28 +56,39 @@ Laatste sync: 2026-05-05 · branch `main`.
 - ✅ **Series.featured flag** — alleen featured-series in de Venues-tab top-strook (festivals); mini-series rond een opening (zoals tentoonstelling+opening combo) blijven default off maar tonen nog wel als label-pill bij events. Migration 0015 + admin-toggle.
 - ✅ **Showcase-seed** (`scripts/_seed-showcase.ts`) — film met 7 sessies, theater-residency met sold-out, museum-tentoonstelling 90 dagen, opening met DJ-set, wekelijks feest met wisselende lineup, sold-out concert, drie-daags festival-blok. Alle features in één voorbeeld.
 - ✅ **Inventarisatie-script** (`scripts/_inventory-ingest.ts`) — checkt per venue website op iCal/JSON-LD/RSS/ticketing-platforms. CSV in `inventory.csv`. Clusters: 5 iCal · 5 JSON-LD · 5 Stager · 4 RA/Shotgun/Eventix/Paylogic · 25 RSS · 8 Eventbrite · 77 long-tail · 28 unreachable.
+- ✅ **Push notificaties** — `push_tokens` tabel (migration 0017) + `expo-notifications` permissie-flow + token-registratie via PushManager component. Achtergrond-deliveries werken vanaf de API.
 - ⬜ Native build nodig zodra associatedDomains/intentFilters wijzigen — bv. extra share-paden toevoegen. iOS pakt AASA-changes server-side op binnen ~24h.
-- ⬜ Push notificaties (`expo-notifications`).
 - ⬜ Niet-leden uitnodigen via deeplink (full token-flow + auto-friendship op signup).
+
+**Fase 6 — Imports + productie polish** (sessie 2026-05-07): in uitvoering.
+- ✅ **Stager-scraper-pipeline** — 5 venues (Radion, Splendor, Cinetol, Mediamatic, If I Can't Dance) via `apps/api/src/scrapers/stager.ts`. 3-call pipeline (session/new → events met `offset+limit` pagineren → publicity + tickets-overview), Bunny image-mirror op deterministische paden, Claude Haiku 4.5 enrich-step (lineup/genres/room/priceNote/cleanedDescription) met strict prompt + tool-use. `venues.scraperConfig` jsonb-kolom (migration 0018) maakt elk platform plug-and-play. `POST /admin/api/scrapers/run/:name` endpoint, GitHub Actions cron daily 04:00 UTC. 60+ events live. Mediamatic uitgesteld tot er een tweede bron (website-scrape) is voor publicity.
+- ✅ **Auth: cookie max-age 180d + client expires-check weg** — gebruikers werden na ~7 dagen onverwacht uitgelogd ondanks 180-dagen sliding-window server-side. Server zet nu expliciet `defaultCookieAttributes.maxAge = 180d`; mobile `getSessionBearer` vertrouwt server (geen client-side TTL-check meer). Internationaal telefoonnummer + iOS SMS-autofill (Apple domain-bound code) ook live.
+- ✅ **Tap-target-pass** — alle filter-chips, tab-switches en kleine icon-buttons door de hele app op Apple HIG-minimum 44pt. fontSize 11/12/13 → 14, CHIPROW_HEIGHT 48 → 60, SUB_TAB_HEIGHT op Social 44 → 60. Search-chip in collapsed state een echt rondje (icon centered, geen left-edge offset). Filter-popup × sluit drawer altijd (ook zonder selectie).
+- ✅ **X-thickness consistent op ratio 0.25** — logo, splash, SpinningCross (alle sizes), ModeCurtain. SpinningCross default = `Math.round(size / 4)` zodat call-sites geen thickness meer hoeven specificeren.
+- ✅ **Header-titel naast Andreas-X** (Vandaag/Agenda/Venues/Sociaal/Kaart/Profiel) + Venues-pagina-kop weg (overbodig met header-titel).
+- ✅ **Featured-carousel** op Vandaag — meerdere featured events vandaag worden een page-snap horizontale carousel met dots. Bij één featured: gewone hero-card.
+- ✅ **Filter-knop op Kaart** in active-state vol fg (niet meer half-transparant met blur eronder); event-detail bottom-sheet sluit automatisch bij blur.
+- ✅ **Mocks-folder uitgefaseerd** — `BadgeTone` + `Friend` types verhuisd naar `lib/types.ts`, `FEED` runtime-import weg uit avond.tsx. `apps/mobile/mocks/` volledig verwijderd (1961 regels weg).
+- ✅ **Filter-bookmark-icoon** in accent-kleur voor extra opvallendheid.
 
 ---
 
 ## Volgende slices — volgorde
 
-**Vulling & content** — eerste batches ingest:
-1. **iCal-pipeline** — 5 venues uit `inventory.csv` (high-confidence): bajesdorp-grond, de-ateliers, plantagedok, ru-pare, ruigoord. Eén parser leest WordPress `?ical=1`-feeds, mapped naar `/admin/api/events` met occurrences. Idempotent op stable id-conventie.
-2. **JSON-LD-pipeline** — 5 venues (filmhallen, kriterion, lofi, the-movies, w139). Schema.org Event-blocks parsen, occurrences extraheren. Kriterion levert al ~138 events per fetch.
-3. **Stager-pipeline** — 5 venues (cinetol, mediamatic, radion, splendor, if-i-cant-dance). Stager.co exposeert ICS/JSON per venue.
-4. **Platform-ingesters** — Eventbrite (8 venues), Eventix (2), Paylogic (2), Ticketmaster (Melkweg), Ticketkantoor (Perdu), Active-tickets (Bimhuis).
-5. **RA + Shotgun** — vereist Playwright (Cloudflare 403 op platte fetches) of API-keys. Aparte beslissing nodig — start met Garage Noord als RA-pilot.
-6. **Long-tail / nieuwsbrief-pipeline** — `ingest@andreas.amsterdam` → LLM-extractor (Claude Haiku) → admin review-queue. Voor de 77 venues zonder feed.
-7. **Kapotte venue-URLs fixen** — 28 venues in `inventory.csv` met dood domein (Volta, Nachbar, SEXYLAND, Bret, etc.) — snel door admin lopen of een script dat per venue-naam een DuckDuckGo-search doet.
-8. **Festival-flows** — ADE, Lenteballet, London Calling die events koppelen aan series met `featured=true`.
+**Vulling & content** — open import-pipelines:
+1. **iCal-pipeline** ⬜ — 5 venues uit `inventory.csv` (high-confidence): bajesdorp-grond, de-ateliers, plantagedok, ru-pare, ruigoord. Eén parser leest WordPress `?ical=1`-feeds, zelfde architectuur als Stager (`scrapers/ical.ts` + `scraperConfig.ical = { url }`). Geen pagineren, geen JWT — server-side gerenderde `.ics` files. Volgende slice.
+2. **JSON-LD-pipeline** ⬜ — 5 venues (filmhallen, kriterion, lofi, the-movies, w139). Schema.org Event-blocks parsen via fetch + cheerio/regex op `<script type="application/ld+json">`. Kriterion levert al ~138 events per fetch.
+3. ✅ **Stager-pipeline** — afgerond in Fase 6 (zie boven).
+4. **Platform-ingesters** ⬜ — Eventbrite (8 venues), Eventix (2), Paylogic (2), Ticketmaster (Melkweg), Ticketkantoor (Perdu), Active-tickets (Bimhuis). Per platform één scraper-module.
+5. **RA + Shotgun** ⬜ — vereist Playwright/Browserless (Cloudflare 403 op platte fetches) of API-keys. Aparte beslissing — start met Garage Noord als RA-pilot.
+6. **Mediamatic-website-scrape** ⬜ — Mediamatic vult Stager niet rijk (geen description/image). Tweede bron op `mediamatic.net`: HTML-fetch + Claude-extract per event-titel. Activeer Mediamatic's Stager-config zodra tweede bron werkt.
+7. **Long-tail / nieuwsbrief-pipeline** ⬜ — `ingest@andreas.amsterdam` → LLM-extractor (Claude Haiku) → admin review-queue. Voor de 77 venues zonder feed. n8n-workflow `CHIhtPcjY0Gsw0SJ` is een eerste schets maar niet productief — opnieuw bekijken na iCal/JSON-LD slices.
+8. **Kapotte venue-URLs fixen** ⬜ — 28 venues in `inventory.csv` met dood domein (Volta, Nachbar, SEXYLAND, Bret, etc.) — snel door admin lopen of een script dat per venue-naam een DuckDuckGo-search doet.
+9. **Festival-flows** ⬜ — ADE, Lenteballet, London Calling die events koppelen aan series met `featured=true`.
 
 **App-features**:
-9. **Pull-to-refresh** — drag-to-refresh op Avond/Agenda/Venue-detail via `RefreshControl` → `queryClient.invalidateQueries`. (Cache-verloop tussen refetches is al gedekt via `staleTime: 60s` + `refetchOnWindowFocus` + `useNowMinute`-hook in fase 5.)
-10. **Niet-leden uitnodigen — token-flow** (zie `## Toekomstige slice` hieronder voor design).
-11. **Dynamic app-icon (iOS)** — `expo-alternate-app-icons` plugin + JS-call vanuit `useMode()` om het home-screen-icoon mee te laten kleuren met nacht/dag. Vereist native rebuild + brengt iOS-systeem-popup bij elke wissel. Optioneel.
+10. **Niet-leden uitnodigen — token-flow** ⬜ (zie `## Toekomstige slice` hieronder voor design).
+11. **Dynamic app-icon (iOS)** ⬜ — `expo-alternate-app-icons` plugin + JS-call vanuit `useMode()` om het home-screen-icoon mee te laten kleuren met nacht/dag. Vereist native rebuild + brengt iOS-systeem-popup bij elke wissel. Optioneel.
 
 ---
 
@@ -156,7 +167,6 @@ Geschat: ~150 regels backend, ~80 regels mobile, ~2-3u.
 - **`MESSAGEBIRD_ACCESS_KEY` env-naam** is een legacy: nieuwe naam zou `BIRD_ACCESS_KEY` zijn. Werkt fijn zoals 't is, ooit clean te trekken in `apps/api/src/sms/messagebird.ts`.
 - **Drizzle Studio** (`pnpm studio`) is een handige DB-browser tijdens dev. Niet uitchecken.
 - **Kaart-tab dev-scripts**: `apps/api/scripts/{drop-all,clear-users,show-friendships,show-sessions,check-friends-pill}.ts` zijn dev-utilities. Niet automatisch draaien tijdens shared dev — `clear-users` wist sessies en haalt je inlog onderuit.
-- **Mock-files**: `apps/mobile/mocks/{feed,agenda,gered,jij,kaart}.ts` worden alleen nog op een paar plekken in Avond/Jij gebruikt voor copy-fallbacks (hero-strings, photoBand). Volledig uitfaseren wanneer die strings server-side komen.
 
 ---
 
