@@ -1,0 +1,28 @@
+name: Scrape Stager venues
+
+on:
+  # Dagelijks om 04:00 UTC = 06:00 Amsterdam zomertijd / 05:00 wintertijd.
+  # Iets na middernacht is goed: venues hebben meestal hun ticketing-
+  # updates dan al gepubliceerd, en de mobile-app users zijn nog wakker
+  # noch in het ochtendritueel.
+  schedule:
+    - cron: '0 4 * * *'
+  # Handmatig kunnen triggeren — handig voor backfills of als een
+  # scrape mislukt is en we niet 24h willen wachten.
+  workflow_dispatch:
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: POST /admin/api/scrapers/run/stager
+        run: |
+          curl --fail-with-body --silent --show-error \
+            --max-time 540 \
+            -X POST "https://api.andreas.amsterdam/admin/api/scrapers/run/stager" \
+            -H "Authorization: Bearer ${{ secrets.ANDREAS_ADMIN_API_KEY }}" \
+            -H "Content-Type: application/json" \
+            -o response.json
+          echo "── Scraper response ──"
+          cat response.json | python3 -m json.tool

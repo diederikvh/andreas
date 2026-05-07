@@ -179,6 +179,17 @@ export const venues = pgTable('venues', {
       schap vereist" voor Paradiso). Wordt op event-detail gerenderd
       onder de prijs, tenzij events.priceNote 'm overschrijft. */
   priceNote: text(),
+  /** Per-platform scraper-config. Aanwezigheid van een sleutel betekent
+      dat de bijbehorende scraper deze venue meeneemt in z'n run. Bv.
+      `{ stager: { host: "radionamsterdam.stager.co", shopId: 92 } }`
+      voor Radion. Andere keys (eventbrite, rss, ical, …) volgen wanneer
+      die scrapers er zijn. */
+  scraperConfig: jsonb().$type<{
+    stager?: { host: string; shopId: number };
+    eventbrite?: { organizerId: string };
+    rss?: { url: string };
+    ical?: { url: string };
+  }>(),
   /** Admin-toggle: false = verbergen uit publieke endpoints zonder
       data te verliezen (saves blijven, events blijven). Default true. */
   published: boolean().notNull().default(true),

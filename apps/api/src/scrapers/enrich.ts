@@ -1,0 +1,222 @@
+/**
+ * Claude-enrichment voor scraper-output. Neemt rauwe event-data
+ * (titel + description) en haalt er gestructureerde metadata uit:
+ * lineup, genres, zaal, prijs-noot, kind. Gebruikt tool-use zodat de
+ * output altijd valide JSON is — geen markdown-blok-parsing.
+ *
+ * Strict prompt-regel: liever NULL dan een gok. Velden mogen alleen
+ * gevuld worden als de bron er expliciet of zeer duidelijk naar
+ * verwijst. Dit voorkomt "troep" in de DB.
+ *
+ * Model: Claude Haiku 4.5 — snel + goedkoop voor structured extraction.
+ * 30 events/dag voor alle 5 Stager-venues = ~€0,15/maand aan API-kosten.
+ */
+
+const MODEL = 'claude-haiku-4-5';
+const ANTHROPIC_VERSION = '2023-06-01';
+
+const SYSTEM_PROMPT =
+  'Je bent een metadata-extractor voor een Amsterdamse uitgaansapp.\n' +
+  '\n' +
+  'Je krijgt informatie over één event. Roep de tool `extract_event_metadata` aan met gestructureerde metadata.\n' +
+  '\n' +
+  'STRIKTE REGEL: vul ALLEEN velden in als de bron er letterlijk of onmiskenbaar naar verwijst. Bij twijfel: null of lege array. Geen guessing op basis van titel of venue-naam alleen.\n' +
+  '\n' +
+  'Aanwijzingen per veld:\n' +
+  '- genres: lowercase tags (max 4) zoals techno, house, jazz, hip-hop, arthouse, drama, dans, kunst, lezing, klassiek, performance, ambient, queer. Alleen als de bron een genre noemt of context onmiskenbaar is. Bij twijfel: lege array.\n' +
+  '- lineup: artiesten/acts EXPLICIET genoemd in de tekst, met optionele rol. Geldige rollen: "dj", "support", "headliner", "act". Geen guessing op titel-basis. Bij geen expliciete vermelding: null.\n' +
+  '- room: zaal binnen het venue (bv. "Grote Zaal", "Kleine Zaal", "Tomastheater") — alleen als zaal-naam expliciet vermeld. Adres of stad telt NIET. Bij twijfel: null.\n' +
+  '- priceNote: ALLEEN als de tekst een notitie OVER PRIJS bevat: bv. "lidmaatschap vereist", "donatie", "pay-what-you-can", "CJP-korting", "studentenkorting beschikbaar", "vanaf €5". NIET voor leeftijdsgrenzen ("21+", "18+"), huisregels (geen telefoon, geen foto), of dresscode. Bij twijfel: null.\n' +
+  '- kind: "show" voor concert/club/voorstelling/film/lezing/opening. "exhibition" voor doorlopende tentoonstelling. Default: "show".\n' +
+  '- cleanedDescription: de description in plain text, zonder de lineup-block en zonder herhaalde meta-info (huisregels, ~~~~~~~ separators). NIET inkorten of herschrijven — alleen lineup-blok en boilerplate weghalen. Behoud paragraph-breaks als \\n\\n.';
+
+const TOOL_INPUT_SCHEMA = {
+  type: 'object',
+  properties: {
+    genres: {
+      type: 'array',
+      items: { type: 'string' },
+      description: 'Lowercase genre-tags, max 4. Lege array als onbekend.',
+    },
+    lineup: {
+      type: ['array', 'null'],
+      items: {
+        type: 'object',
+        properties: {
+          name: { type: 'string' },
+          role: {
+            type: ['string', 'null'],
+            enum: ['dj', 'support', 'headliner', 'act', null],
+          },
+        },
+        required: ['name'],
+      },
+      description: 'Lineup-array of null als niet expliciet vermeld.',
+    },
+    room: {
+      type: ['string', 'null'],
+      description: 'Zaal binnen venue, of null.',
+    },
+    priceNote: {
+      type: ['string', 'null'],
+      description: 'Korte prijs-noot, of null.',
+    },
+    kind: {
+      type: 'string',
+      enum: ['show', 'exhibition'],
+      description: 'show (point-in-time) of exhibition (doorlopend).',
+    },
+    cleanedDescription: {
+      type: ['string', 'null'],
+      description: 'Schoongemaakte description als plain text.',
+    },
+  },
+  required: [
+    'genres',
+    'lineup',
+    'room',
+    'priceNote',
+    'kind',
+    'cleanedDescription',
+  ],
+} as const;
+
+const TOOL_DEF = {
+  name: 'extract_event_metadata',
+  description:
+    'Sla gestructureerde event-metadata op. Vul alleen velden waarvoor de bron expliciet bewijs levert.',
+  input_schema: TOOL_INPUT_SCHEMA,
+};
+
+const ALLOWED_ROLES = ['dj', 'support', 'headliner', 'act'] as const;
+type Role = (typeof ALLOWED_ROLES)[number];
+
+export type EnrichInput = {
+  title: string;
+  description: string | null;
+  venueName: string;
+  venueCategory: string;
+};
+
+export type EnrichOutput = {
+  genres: string[];
+  lineup: { name: string; role?: Role }[] | null;
+  room: string | null;
+  priceNote: string | null;
+  kind: 'show' | 'exhibition';
+  cleanedDescription: string | null;
+};
+
+const FALLBACK: EnrichOutput = {
+  genres: [],
+  lineup: null,
+  room: null,
+  priceNote: null,
+  kind: 'show',
+  cleanedDescription: null,
+};
+
+/**
+ * Verrijk een event met Claude. Skipt als description ontbreekt of te
+ * kort is (< 80 chars) — dan valt er weinig te extraheren en sparen we
+ * een API-call uit. Errors worden gevangen en als FALLBACK teruggegeven
+ * zodat de scraper-pipeline blijft draaien als Claude tijdelijk down is.
+ */
+export async function enrichEvent(input: EnrichInput): Promise<EnrichOutput> {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) {
+    return { ...FALLBACK, cleanedDescription: input.description };
+  }
+  if (!input.description || input.description.length < 80) {
+    return { ...FALLBACK, cleanedDescription: input.description };
+  }
+
+  const userMessage =
+    `Venue: ${input.venueName} (categorie: ${input.venueCategory})\n` +
+    `Event-titel: ${input.title}\n\n` +
+    `Description:\n${input.description}`;
+
+  let response: Response;
+  try {
+    response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'x-api-key': apiKey,
+        'anthropic-version': ANTHROPIC_VERSION,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: MODEL,
+        max_tokens: 2048,
+        system: SYSTEM_PROMPT,
+        tools: [TOOL_DEF],
+        tool_choice: { type: 'tool', name: TOOL_DEF.name },
+        messages: [{ role: 'user', content: userMessage }],
+      }),
+    });
+  } catch (e) {
+    console.warn(`[enrich] fetch failed: ${(e as Error).message}`);
+    return { ...FALLBACK, cleanedDescription: input.description };
+  }
+
+  if (!response.ok) {
+    const body = await response.text();
+    console.warn(
+      `[enrich] Anthropic ${response.status}: ${body.slice(0, 200)}`
+    );
+    return { ...FALLBACK, cleanedDescription: input.description };
+  }
+
+  const data = (await response.json()) as {
+    content: Array<{ type: string; name?: string; input?: unknown }>;
+  };
+  const toolUse = data.content.find(
+    (c) => c.type === 'tool_use' && c.name === TOOL_DEF.name
+  );
+  if (!toolUse?.input || typeof toolUse.input !== 'object') {
+    console.warn('[enrich] no tool_use in response');
+    return { ...FALLBACK, cleanedDescription: input.description };
+  }
+
+  const raw = toolUse.input as Record<string, unknown>;
+
+  const genres = Array.isArray(raw.genres)
+    ? (raw.genres as unknown[])
+        .filter((g): g is string => typeof g === 'string')
+        .map((g) => g.trim().toLowerCase())
+        .filter((g) => g.length > 0 && g.length < 30)
+        .slice(0, 4)
+    : [];
+
+  const rawLineup = Array.isArray(raw.lineup) ? (raw.lineup as unknown[]) : [];
+  const lineupCleaned = rawLineup
+    .filter(
+      (l): l is Record<string, unknown> =>
+        l !== null && typeof l === 'object' && typeof (l as { name?: unknown }).name === 'string'
+    )
+    .map((l) => {
+      const name = String(l.name).trim();
+      const role = typeof l.role === 'string' ? l.role : null;
+      const out: { name: string; role?: Role } = { name };
+      if (role && (ALLOWED_ROLES as readonly string[]).includes(role)) {
+        out.role = role as Role;
+      }
+      return out;
+    })
+    .filter((l) => l.name.length > 0);
+  const lineup = lineupCleaned.length > 0 ? lineupCleaned : null;
+
+  const room =
+    typeof raw.room === 'string' && raw.room.trim() ? raw.room.trim() : null;
+  const priceNote =
+    typeof raw.priceNote === 'string' && raw.priceNote.trim()
+      ? raw.priceNote.trim()
+      : null;
+  const kind = raw.kind === 'exhibition' ? 'exhibition' : 'show';
+  const cleanedDescription =
+    typeof raw.cleanedDescription === 'string' && raw.cleanedDescription.trim()
+      ? raw.cleanedDescription.trim()
+      : input.description;
+
+  return { genres, lineup, room, priceNote, kind, cleanedDescription };
+}

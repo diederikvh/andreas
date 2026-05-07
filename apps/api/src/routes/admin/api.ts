@@ -3,6 +3,7 @@ import { and, asc, eq, inArray } from 'drizzle-orm';
 import { Hono } from 'hono';
 
 import { db, schema } from '../../db/index.js';
+import { scrapers, type ScraperName } from '../../scrapers/index.js';
 import { uploadToBunny } from '../../storage/bunny.js';
 import { requireAdminAny } from './auth.js';
 
@@ -774,4 +775,51 @@ adminApi.delete('/series/:id/events/:eventId', async (c) => {
       )
     );
   return c.json({ ok: true });
+});
+
+// ─── Scrapers ───────────────────────────────────────────────────────────
+//
+// Trigger een scraper voor alle venues die de bijbehorende
+// `scraperConfig.<name>` ingevuld hebben. Bedoeld voor zowel manuele
+// runs vanuit de admin webview als voor cron (Fly Machine schedule of
+// een externe poke). Returns een rapport per venue zodat je kan zien
+// hoeveel events nieuw waren, geüpdatet, of geskipt vanwege errors.
+
+adminApi.post('/scrapers/run/:name', async (c) => {
+  const name = c.req.param('name') as ScraperName;
+  const runner = scrapers[name];
+  if (!runner) {
+    return c.json(
+      { error: `unknown scraper: ${name}`, available: Object.keys(scrapers) },
+      400
+    );
+  }
+  const startedAt = Date.now();
+  try {
+    const results = await runner();
+    return c.json({
+      scraper: name,
+      durationMs: Date.now() - startedAt,
+      venues: results,
+      totals: results.reduce(
+        (acc, r) => ({
+          fetched: acc.fetched + r.fetched,
+          inserted: acc.inserted + r.inserted,
+          occurrencesUpserted:
+            acc.occurrencesUpserted + r.occurrencesUpserted,
+          skipped: acc.skipped + r.skipped,
+        }),
+        { fetched: 0, inserted: 0, occurrencesUpserted: 0, skipped: 0 }
+      ),
+    });
+  } catch (e) {
+    return c.json(
+      {
+        scraper: name,
+        durationMs: Date.now() - startedAt,
+        error: (e as Error).message,
+      },
+      500
+    );
+  }
 });
