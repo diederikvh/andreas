@@ -193,12 +193,24 @@ async function scrapeOneVenue(
     return result;
   }
 
-  let events: StagerEvent[];
+  // Stager's events-endpoint geeft default 10 events terug en kapt de
+  // limit hard af op 20 — alles erboven returnt vreemde response (1
+  // item). Pagineer met limit=20 en oplopende offset tot we minder
+  // dan 20 of 0 events terugkrijgen.
+  const PAGE_SIZE = 20;
+  let events: StagerEvent[] = [];
   try {
-    events = await getJson<StagerEvent[]>(
-      `https://${cfg.host}/shop/v1/events`,
-      jwt
-    );
+    let offset = 0;
+    while (true) {
+      const page = await getJson<StagerEvent[]>(
+        `https://${cfg.host}/shop/v1/events?offset=${offset}&limit=${PAGE_SIZE}`,
+        jwt
+      );
+      events.push(...page);
+      if (page.length < PAGE_SIZE) break;
+      offset += PAGE_SIZE;
+      if (offset > 500) break; // safety brake
+    }
   } catch (e) {
     result.errors.push(`events-list: ${(e as Error).message}`);
     return result;
