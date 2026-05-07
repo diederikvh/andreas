@@ -1,6 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useScrollToTop } from '@react-navigation/native';
 import { router, useLocalSearchParams } from 'expo-router';
+// useLocalSearchParams blijft alleen voor deeplinks (?cat=Muziek vanuit
+// Vandaag's "Meer →"-knop) — wordt gemerged in de persisted store.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import {
@@ -49,6 +51,7 @@ import {
 import { useLocale, useT } from '@/lib/i18n';
 import { useSession } from '@/lib/authClient';
 import { useEventGenres, useEvents, useFriends } from '@/lib/queries';
+import { useAgendaFilters } from '@/store/agendaFilters';
 import { useMode, useRoles } from '@/store/mode';
 import {
   isSavedSearchActive,
@@ -80,47 +83,37 @@ export default function Agenda() {
   const scrollRef = useRef<ScrollView>(null);
   useScrollToTop(scrollRef);
 
-  const params = useLocalSearchParams<{
-    cat?: string;
-    q?: string;
-    tb?: string;
-    gn?: string;
-    vr?: string;
-    fv?: string;
-  }>();
-  // Categories is multi-select — comma-separated in `?cat=Muziek,Kunst`.
-  // Voor backwards-compat met deeplinks die nog één enkele categorie
-  // doorgeven werkt `?cat=Muziek` ook (één element in de array).
-  const activeCats = useMemo<ApiEvent['category'][]>(
-    () =>
-      (params.cat ?? '')
-        .split(',')
-        .map((c) => c.trim())
-        .filter((c): c is ApiEvent['category'] =>
-          (CATEGORIES as string[]).includes(c)
-        ),
-    [params.cat]
-  );
-  const query = params.q ?? '';
-  const TB_IDS = timeBlocks.map((b) => b.id) as string[];
-  const activeBlocks = useMemo<TimeBlock[]>(
-    () =>
-      (params.tb ?? '')
-        .split(',')
-        .map((t) => t.trim())
-        .filter((t): t is TimeBlock => TB_IDS.includes(t)),
-    [params.tb]
-  );
-  const activeGenres = useMemo<string[]>(
-    () =>
-      (params.gn ?? '')
-        .split(',')
-        .map((g) => g.trim())
-        .filter((g) => g.length > 0),
-    [params.gn]
-  );
-  const onlyFriends = params.vr === '1';
-  const onlyFavorites = params.fv === '1';
+  // Filter-state komt nu uit de persistente Zustand-store ipv URL-params
+  // — zo blijft je keuze actief bij tab-wissels en app-restart.
+  const query = useAgendaFilters((s) => s.query);
+  const onlyFriends = useAgendaFilters((s) => s.onlyFriends);
+  const onlyFavorites = useAgendaFilters((s) => s.onlyFavorites);
+  const activeBlocks = useAgendaFilters((s) => s.activeBlocks);
+  const activeCats = useAgendaFilters((s) => s.activeCats);
+  const activeGenres = useAgendaFilters((s) => s.activeGenres);
+  const setQuery = useAgendaFilters((s) => s.setQuery);
+  const setOnlyFriends = useAgendaFilters((s) => s.setOnlyFriends);
+  const setOnlyFavorites = useAgendaFilters((s) => s.setOnlyFavorites);
+  const setActiveBlocks = useAgendaFilters((s) => s.setActiveBlocks);
+  const setActiveCats = useAgendaFilters((s) => s.setActiveCats);
+  const setActiveGenres = useAgendaFilters((s) => s.setActiveGenres);
+
+  // Deeplink-merge: Vandaag's "Meer →"-knop pusht naar /agenda?cat=X.
+  // Bij eerste arrival mergen we die in de store (en wissen de URL-param
+  // zodat-ie niet bij elke heractivatie opnieuw triggert).
+  const params = useLocalSearchParams<{ cat?: string }>();
+  useEffect(() => {
+    const incoming = (params.cat ?? '')
+      .split(',')
+      .map((c) => c.trim())
+      .filter((c): c is ApiEvent['category'] =>
+        (CATEGORIES as string[]).includes(c)
+      );
+    if (incoming.length === 0) return;
+    setActiveCats(incoming);
+    router.setParams({ cat: undefined });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params.cat]);
   const { data: session } = useSession();
   const { data: friends } = useFriends({
     enabled: Boolean(session?.user?.id),
@@ -348,28 +341,12 @@ export default function Agenda() {
           showFriendsChip={showFriendsChip}
           onlyFavorites={onlyFavorites}
           showFavoritesChip={showFavoritesChip}
-          onCats={(next) =>
-            router.setParams({
-              cat: next.length > 0 ? next.join(',') : undefined,
-            })
-          }
-          onQuery={(q) => router.setParams({ q: q.length > 0 ? q : undefined })}
-          onBlocks={(next) =>
-            router.setParams({
-              tb: next.length > 0 ? next.join(',') : undefined,
-            })
-          }
-          onGenres={(next) =>
-            router.setParams({
-              gn: next.length > 0 ? next.join(',') : undefined,
-            })
-          }
-          onToggleFriends={() =>
-            router.setParams({ vr: onlyFriends ? undefined : '1' })
-          }
-          onToggleFavorites={() =>
-            router.setParams({ fv: onlyFavorites ? undefined : '1' })
-          }
+          onCats={setActiveCats}
+          onQuery={setQuery}
+          onBlocks={setActiveBlocks}
+          onGenres={setActiveGenres}
+          onToggleFriends={() => setOnlyFriends(!onlyFriends)}
+          onToggleFavorites={() => setOnlyFavorites(!onlyFavorites)}
         />
       </AppHeader>
     </View>

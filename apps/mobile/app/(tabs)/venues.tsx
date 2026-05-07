@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useScrollToTop } from '@react-navigation/native';
 import { Image } from 'expo-image';
-import { router, useLocalSearchParams } from 'expo-router';
+import { router } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
@@ -35,6 +35,7 @@ import { monthShort, VENUE_TYPE_TICK } from '@/lib/eventDisplay';
 import { useLocale, useT, type Locale } from '@/lib/i18n';
 import { useSeriesList, useVenues, useVenueSubtypes } from '@/lib/queries';
 import { useMode, useRoles } from '@/store/mode';
+import { useVenuesFilters } from '@/store/venuesFilters';
 import {
   isSavedVenueSearchActive,
   type SavedVenueSearch,
@@ -160,57 +161,22 @@ export default function Venues() {
   const scrollRef = useRef<ScrollView>(null);
   useScrollToTop(scrollRef);
 
-  // URL-state — alle filters multi-select (comma-separated) zodat
-  // saved-searches 1-op-1 in een URL passen. Volgen is een booleantje.
-  const params = useLocalSearchParams<{
-    q?: string;
-    dn?: string;
-    t?: string;
-    sc?: string;
-    st?: string;
-    vo?: string;
-  }>();
-  const activeDn = useMemo<VenueDayNight[]>(
-    () =>
-      (params.dn ?? '')
-        .split(',')
-        .map((x) => x.trim())
-        .filter((x): x is VenueDayNight => (DN_VALUES as string[]).includes(x)),
-    [params.dn]
-  );
-  const activeType = useMemo<VenueType[]>(
-    () =>
-      (params.t ?? '')
-        .split(',')
-        .map((x) => x.trim())
-        .filter((x): x is VenueType => (TYPE_VALUES as string[]).includes(x)),
-    [params.t]
-  );
-  const activeScene = useMemo<VenueScene[]>(
-    () =>
-      (params.sc ?? '')
-        .split(',')
-        .map((x) => x.trim())
-        .filter((x): x is VenueScene =>
-          (SCENE_VALUES as string[]).includes(x)
-        ),
-    [params.sc]
-  );
-  // Sub-types is een vrije array — geen enum-validatie nodig, alleen
-  // strippen en deduplicaten via de Set in toggleSubtype.
-  const activeSubtypes = useMemo<string[]>(
-    () =>
-      (params.st ?? '')
-        .split(',')
-        .map((x) => x.trim())
-        .filter((x) => x.length > 0),
-    [params.st]
-  );
-  const onlyVolgend = params.vo === '1';
-  const initialQ = params.q ?? '';
+  // Filter-state komt nu uit de persistente Zustand-store ipv URL-params
+  // — zo blijven keuzes actief bij tab-wissels en app-restart.
+  const q = useVenuesFilters((s) => s.query);
+  const setQ = useVenuesFilters((s) => s.setQuery);
+  const activeDn = useVenuesFilters((s) => s.activeDn);
+  const activeType = useVenuesFilters((s) => s.activeType);
+  const activeScene = useVenuesFilters((s) => s.activeScene);
+  const activeSubtypes = useVenuesFilters((s) => s.activeSubtypes);
+  const onlyVolgend = useVenuesFilters((s) => s.onlyVolgend);
+  const setActiveDn = useVenuesFilters((s) => s.setActiveDn);
+  const setActiveType = useVenuesFilters((s) => s.setActiveType);
+  const setActiveScene = useVenuesFilters((s) => s.setActiveScene);
+  const setActiveSubtypes = useVenuesFilters((s) => s.setActiveSubtypes);
+  const setOnlyVolgend = useVenuesFilters((s) => s.setOnlyVolgend);
 
-  const [q, setQ] = useState(initialQ);
-  const [debouncedQ, setDebouncedQ] = useState(initialQ);
+  const [debouncedQ, setDebouncedQ] = useState(q.trim());
   useEffect(() => {
     const t = setTimeout(() => setDebouncedQ(q.trim()), 200);
     return () => clearTimeout(t);
@@ -310,19 +276,11 @@ export default function Venues() {
           activeScene={activeScene}
           activeSubtypes={activeSubtypes}
           onlyVolgend={onlyVolgend}
-          onDn={(next) =>
-            router.setParams({ dn: next.length > 0 ? next.join(',') : '' })
-          }
-          onType={(next) =>
-            router.setParams({ t: next.length > 0 ? next.join(',') : '' })
-          }
-          onScene={(next) =>
-            router.setParams({ sc: next.length > 0 ? next.join(',') : '' })
-          }
-          onSubtypes={(next) =>
-            router.setParams({ st: next.length > 0 ? next.join(',') : '' })
-          }
-          onVolgend={(next) => router.setParams({ vo: next ? '1' : '' })}
+          onDn={setActiveDn}
+          onType={setActiveType}
+          onScene={setActiveScene}
+          onSubtypes={setActiveSubtypes}
+          onVolgend={setOnlyVolgend}
         />
 
         {isLoading ? (

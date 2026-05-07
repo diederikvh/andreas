@@ -3,7 +3,14 @@ import { BlurView } from 'expo-blur';
 import { Image } from 'expo-image';
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  Modal,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import MapView, { Marker, PROVIDER_DEFAULT } from 'react-native-maps';
 import Animated, {
@@ -25,17 +32,20 @@ import {
   CATEGORY_TICK,
   distanceKm,
   formatTime,
-  isNachtHour,
-  socialWindow,
+  getTimeBlock,
   travelMinutes,
   type TransportMode,
 } from '@/lib/eventDisplay';
 import { useT } from '@/lib/i18n';
-import { useEvents } from '@/lib/queries';
+import { useEvents, useFriends } from '@/lib/queries';
+import { useSession } from '@/lib/authClient';
 import { useDeviceLocation } from '@/lib/useDeviceLocation';
 import type { BadgeTone } from '@/mocks/feed';
 import { useMode, useRoles } from '@/store/mode';
+import { useVandaagFilters } from '@/store/vandaagFilters';
 import { fontFamily, palette } from '@/theme/tokens';
+
+import { AvondFilterSheet } from './avond';
 
 const TONE = {
   nacht: {
@@ -88,20 +98,73 @@ export default function Kaart() {
 
   const [view, setView] = useState<'map' | 'list'>('map');
   const [transport, setTransport] = useState<TransportMode>('walk');
+  const [filterOpen, setFilterOpen] = useState(false);
 
-  // Kaart toont dezelfde subset als Avond — events binnen het sociale
-  // venster (vannacht / overdag). "Wat speelt nu in de buurt?".
-  const window = useMemo(() => socialWindow(mode), [mode]);
+  // Hele dag — 00:00 t/m morgen 00:00. Mode (nacht/dag) is alleen
+  // stijl, geen filter. Voor scope-controle dezelfde filter-store
+  // als de Vandaag-tab gebruiken zodat keuzes synced zijn.
+  const todayWindow = useMemo(() => {
+    const start = new Date();
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(start);
+    end.setDate(end.getDate() + 1);
+    return { from: start.toISOString(), to: end.toISOString() };
+  }, []);
   const { data: events } = useEvents({
-    from: window.from,
-    to: window.to,
+    from: todayWindow.from,
+    to: todayWindow.to,
   });
+
+  // Filters worden gedeeld met de Vandaag-tab — dezelfde dag,
+  // dezelfde events. Filter-sheet hergebruikt AvondFilterSheet.
+  const query = useVandaagFilters((s) => s.query);
+  const onlyFriends = useVandaagFilters((s) => s.onlyFriends);
+  const onlyFavorites = useVandaagFilters((s) => s.onlyFavorites);
+  const activeBlocks = useVandaagFilters((s) => s.activeBlocks);
+  const activeCats = useVandaagFilters((s) => s.activeCats);
+  const activeGenres = useVandaagFilters((s) => s.activeGenres);
+  const setOnlyFriends = useVandaagFilters((s) => s.setOnlyFriends);
+  const setOnlyFavorites = useVandaagFilters((s) => s.setOnlyFavorites);
+  const setActiveBlocks = useVandaagFilters((s) => s.setActiveBlocks);
+  const setActiveCats = useVandaagFilters((s) => s.setActiveCats);
+  const setActiveGenres = useVandaagFilters((s) => s.setActiveGenres);
+  const toggleBlock = useVandaagFilters((s) => s.toggleBlock);
+
+  const { data: session } = useSession();
+  const { data: friends } = useFriends({
+    enabled: Boolean(session?.user?.id),
+  });
+  const showFriendsChip = (friends?.length ?? 0) > 0;
+  const showFavoritesChip = useMemo(
+    () => Boolean(events?.some((e) => e.venueFollowed)),
+    [events]
+  );
+
   const mapEvents: MapEvent[] = useMemo(() => {
     if (!events) return [];
+    const needle = query.trim().toLowerCase();
     return events
       .filter((e) => {
-        const hour = new Date(e.startsAt).getHours();
-        return mode === 'nacht' ? isNachtHour(hour) : !isNachtHour(hour);
+        if (e.kind === 'exhibition') return false;
+        if (activeCats.length > 0 && !activeCats.includes(e.category)) {
+          return false;
+        }
+        if (activeGenres.length > 0) {
+          const evGenres = e.genres ?? [];
+          if (!evGenres.some((g) => activeGenres.includes(g))) return false;
+        }
+        if (activeBlocks.length > 0) {
+          const block = getTimeBlock(new Date(e.startsAt).getHours());
+          if (!activeBlocks.includes(block)) return false;
+        }
+        if (onlyFriends && (e.friendsSaved?.length ?? 0) === 0) return false;
+        if (onlyFavorites && !e.venueFollowed) return false;
+        if (needle.length > 0) {
+          const inTitle = e.title.toLowerCase().includes(needle);
+          const inVenue = e.venue.name.toLowerCase().includes(needle);
+          if (!inTitle && !inVenue) return false;
+        }
+        return true;
       })
       .map((e) => ({
         event: e,
@@ -111,7 +174,24 @@ export default function Kaart() {
           transport
         ),
       }));
-  }, [events, centre, mode, transport]);
+  }, [
+    events,
+    centre,
+    transport,
+    query,
+    activeCats,
+    activeGenres,
+    activeBlocks,
+    onlyFriends,
+    onlyFavorites,
+  ]);
+
+  const filterCount =
+    activeBlocks.length +
+    activeCats.length +
+    activeGenres.length +
+    (onlyFriends ? 1 : 0) +
+    (onlyFavorites ? 1 : 0);
   const sorted = useMemo(
     () => [...mapEvents].sort((a, b) => a.minutes - b.minutes),
     [mapEvents]
@@ -154,7 +234,8 @@ export default function Kaart() {
     if (!sheetOpen) snapTo(true);
   };
 
-  // Reset selection on mode swap.
+  // Reset selection on mode swap (visual context wijzigt, sheet
+  // sluiten voor schoonheid).
   useEffect(() => {
     setActiveId(null);
     sheetHeight.value = withTiming(SHEET_CLOSED, {
@@ -327,11 +408,7 @@ export default function Kaart() {
       <AppHeader solid={view === 'map'}>
         <View style={styles.contextLine}>
           <Text style={[styles.contextLabel, { color: roles.accent }]}>
-            {mode === 'nacht'
-              ? t('Vanavond', 'Tonight')
-              : window.shifted
-                ? t('Morgen overdag', 'Tomorrow')
-                : t('Vandaag overdag', 'Today')}
+            {t('Vandaag', 'Today')}
           </Text>
           <Text style={[styles.contextMeta, { color: roles.fgMuted }]}>
             {mapEvents.length}{' '}
@@ -344,6 +421,10 @@ export default function Kaart() {
           <View style={styles.toolbarSwitch}>
             <ViewSwitch view={view} onChange={setView} />
           </View>
+          <FilterButton
+            count={filterCount}
+            onPress={() => setFilterOpen(true)}
+          />
           <TransportToggle
             transport={transport}
             onChange={setTransport}
@@ -374,7 +455,92 @@ export default function Kaart() {
           )}
         </View>
       </AppHeader>
+      <Modal
+        visible={filterOpen}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setFilterOpen(false)}
+      >
+        <AvondFilterSheet
+          query={query}
+          onlyFriends={onlyFriends}
+          onlyFavorites={onlyFavorites}
+          activeBlocks={activeBlocks}
+          activeCats={activeCats}
+          activeGenres={activeGenres}
+          showFriendsChip={showFriendsChip}
+          showFavoritesChip={showFavoritesChip}
+          onSetFriends={setOnlyFriends}
+          onSetFavorites={setOnlyFavorites}
+          onToggleBlock={toggleBlock}
+          onSetBlocks={setActiveBlocks}
+          onSetCats={setActiveCats}
+          onSetGenres={setActiveGenres}
+          onClose={() => setFilterOpen(false)}
+        />
+      </Modal>
     </View>
+  );
+}
+
+function FilterButton({
+  count,
+  onPress,
+}: {
+  count: number;
+  onPress: () => void;
+}) {
+  const mode = useMode();
+  const roles = useRoles();
+  const t = useT();
+  const active = count > 0;
+  return (
+    <Pressable
+      onPress={onPress}
+      hitSlop={6}
+      style={[
+        styles.filterBtn,
+        {
+          borderColor: active ? roles.accent : roles.bgChip,
+          backgroundColor: active ? roles.accent : 'transparent',
+        },
+      ]}
+    >
+      <BlurView
+        intensity={40}
+        tint={mode === 'nacht' ? 'dark' : 'light'}
+        style={StyleSheet.absoluteFill}
+      />
+      {!active && (
+        <View
+          style={[
+            StyleSheet.absoluteFill,
+            {
+              backgroundColor:
+                mode === 'nacht'
+                  ? 'rgba(23,23,26,0.65)'
+                  : 'rgba(235,230,216,0.7)',
+            },
+          ]}
+        />
+      )}
+      <Ionicons
+        name="options-outline"
+        size={14}
+        color={active ? roles.onAccent : roles.fgMuted}
+      />
+      {active && (
+        <Text
+          style={[
+            styles.filterBtnCount,
+            { color: roles.onAccent },
+          ]}
+        >
+          {count}
+        </Text>
+      )}
+      <Text style={{ display: 'none' }}>{t('Filter', 'Filter')}</Text>
+    </Pressable>
   );
 }
 
@@ -821,6 +987,25 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
+  },
+
+  // Filter-knop — pill ernaast, count-bubble in accent als filter actief
+  filterBtn: {
+    height: 36,
+    minWidth: 36,
+    paddingHorizontal: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    borderRadius: 999,
+    borderWidth: 1,
+    overflow: 'hidden',
+  },
+  filterBtnCount: {
+    fontFamily: fontFamily.monoMedium,
+    fontSize: 11,
+    letterSpacing: 0.5,
   },
 
   // Transport-mode toggle (walk/bike) — zelfde pill-stijl als recentre.

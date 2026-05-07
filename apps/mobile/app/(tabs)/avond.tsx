@@ -817,7 +817,7 @@ function AvondChipRow({
   );
 }
 
-function AvondFilterSheet({
+export function AvondFilterSheet({
   query,
   onlyFriends,
   onlyFavorites,

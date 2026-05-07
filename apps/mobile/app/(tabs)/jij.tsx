@@ -1002,9 +1002,13 @@ function NotificationsSection() {
               )}
             </Text>
             <Text style={[styles.privacySub, { color: roles.fgMuted }]}>
+              {t('Status: ', 'Status: ')}
+              <Text style={{ color: roles.accent, fontFamily: fontFamily.bold }}>
+                {label}
+              </Text>
               {t(
-                `Status: ${label}. Alleen pings bij persoonlijke acties — geen algoritmische pushes.`,
-                `Status: ${label}. Only pings for personal actions — no algorithmic pushes.`
+                '. Alleen pings bij persoonlijke acties — geen algoritmische pushes.',
+                '. Only pings for personal actions — no algorithmic pushes.'
               )}
             </Text>
           </View>
