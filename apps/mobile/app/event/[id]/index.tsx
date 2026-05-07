@@ -282,6 +282,7 @@ export default function EventDetail() {
 
           <CrewAndInvite
             event={event}
+            selectedOccurrence={selectedOccurrence}
             onInvite={() => {
               const path =
                 selectedOccurrence && !selectedOccurrence.id.endsWith('::next')
@@ -389,9 +390,11 @@ type CrewRow = {
  */
 function CrewAndInvite({
   event,
+  selectedOccurrence,
   onInvite,
 }: {
   event: ApiEvent;
+  selectedOccurrence: ApiOccurrence | null;
   onInvite: () => void;
 }) {
   const mode = useMode();
@@ -400,11 +403,21 @@ function CrewAndInvite({
   const t = useT();
 
   const rows = useMemo<CrewRow[]>(() => {
+    // Crew is occurrence-specific: alleen vrienden die díe voorstelling
+    // gesaved hebben + invites die voor díe occurrence zijn verzonden.
+    // Een vriend die alleen de 19:30 saved staat dus niet bij de 22:00.
+    const occFriends =
+      selectedOccurrence?.friendsSaved ?? event.friendsSaved ?? [];
+    const myOccInvites = selectedOccurrence
+      ? (event.myInvites ?? []).filter(
+          (inv) => inv.occurrenceId === selectedOccurrence.id
+        )
+      : (event.myInvites ?? []);
     const map = new Map<string, CrewRow>();
-    for (const f of event.friendsSaved ?? []) {
+    for (const f of occFriends) {
       map.set(f.id, { user: f, saved: true });
     }
-    for (const inv of event.myInvites ?? []) {
+    for (const inv of myOccInvites) {
       const existing = map.get(inv.to.id);
       if (existing) existing.inviteStatus = inv.status;
       else map.set(inv.to.id, { user: inv.to, saved: false, inviteStatus: inv.status });
@@ -414,7 +427,11 @@ function CrewAndInvite({
     return Array.from(map.values()).sort(
       (a, b) => order(a) - order(b) || a.user.name.localeCompare(b.user.name)
     );
-  }, [event.friendsSaved, event.myInvites]);
+  }, [
+    selectedOccurrence,
+    event.friendsSaved,
+    event.myInvites,
+  ]);
 
   const hasCrew = rows.length > 0;
   const borderColor = isNacht ? '#232327' : palette.paper;
