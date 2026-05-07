@@ -37,6 +37,8 @@ import {
   dowMixed,
   monthShort,
   translateCategory,
+  translateVenueScene,
+  translateVenueType,
   VENUE_TYPE_TICK,
   formatTime,
 } from '@/lib/eventDisplay';
@@ -217,7 +219,7 @@ export default function VenueDetail() {
                     ]}
                   >
                     <Text style={[styles.metaPillText, { color: tone }]}>
-                      {venue.type}
+                      {translateVenueType(venue.type, locale)}
                     </Text>
                   </View>
                 );
@@ -270,7 +272,7 @@ export default function VenueDetail() {
                   ]}
                 >
                   <Text style={[styles.metaPillText, { color: roles.fg }]}>
-                    {venue.scene}
+                    {translateVenueScene(venue.scene, locale)}
                   </Text>
                 </View>
               )}

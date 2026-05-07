@@ -94,6 +94,51 @@ export const VENUE_TYPE_TICK: Record<VenueType, BadgeTone> = {
   'boekhandel-cafe': 'plum',
 };
 
+const VENUE_TYPE_LABEL_NL: Record<VenueType, string> = {
+  podium: 'Podium',
+  club: 'Club',
+  galerie: 'Galerie',
+  museum: 'Museum',
+  film: 'Film',
+  ruimte: 'Ruimte',
+  'boekhandel-cafe': 'Boekhandel',
+};
+
+const VENUE_TYPE_LABEL_EN: Record<VenueType, string> = {
+  podium: 'Stage',
+  club: 'Club',
+  galerie: 'Gallery',
+  museum: 'Museum',
+  film: 'Cinema',
+  ruimte: 'Space',
+  'boekhandel-cafe': 'Bookshop',
+};
+
+export function translateVenueType(type: VenueType, locale?: Locale): string {
+  const l = locale ?? useLocaleStore.getState().locale;
+  return (l === 'nl' ? VENUE_TYPE_LABEL_NL : VENUE_TYPE_LABEL_EN)[type];
+}
+
+const VENUE_SCENE_LABEL_EN: Record<string, string> = {
+  mainstream: 'Mainstream',
+  alternatief: 'Alternative',
+  underground: 'Underground',
+  fringe: 'Fringe',
+};
+
+const VENUE_SCENE_LABEL_NL: Record<string, string> = {
+  mainstream: 'Mainstream',
+  alternatief: 'Alternatief',
+  underground: 'Underground',
+  fringe: 'Fringe',
+};
+
+export function translateVenueScene(scene: string, locale?: Locale): string {
+  const l = locale ?? useLocaleStore.getState().locale;
+  const map = l === 'nl' ? VENUE_SCENE_LABEL_NL : VENUE_SCENE_LABEL_EN;
+  return map[scene] ?? scene;
+}
+
 export const CATEGORY_DOT: Record<ApiEvent['category'], string> = {
   Muziek: 'M',
   Theater: 'T',
