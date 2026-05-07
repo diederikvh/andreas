@@ -322,7 +322,7 @@ export default function Agenda() {
           </Animated.View>
         )}
       </ScrollView>
-      <AppHeader solid>
+      <AppHeader solid title={t('Agenda', 'Agenda')}>
         <View style={{ height: DAYSTRIP_HEIGHT }}>
           {days.length > 0 && selected && (
             <DayStrip

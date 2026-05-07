@@ -7,6 +7,8 @@ import {
   Alert,
   KeyboardAvoidingView,
   Modal,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
   Platform,
   Pressable,
   RefreshControl,
@@ -14,6 +16,7 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import { useQueryClient } from '@tanstack/react-query';
@@ -47,7 +50,6 @@ import {
 import { useLocale, useT, type Locale } from '@/lib/i18n';
 import { useEventGenres, useEvents, useFriends } from '@/lib/queries';
 import { useSession } from '@/lib/authClient';
-import { FEED } from '@/mocks/feed';
 import { useMode, useRoles } from '@/store/mode';
 import {
   isSavedVandaagSearchActive,
@@ -110,7 +112,6 @@ export default function Avond() {
   const roles = useRoles();
   const mode = useMode();
   const insets = useSafeAreaInsets();
-  const data = FEED[mode];
   const t = useT();
   const locale = useLocale();
   const scrollRef = useRef<ScrollView>(null);
@@ -285,14 +286,20 @@ export default function Avond() {
     });
   }, [events, now, todayWindow.toMs]);
 
-  // Hoofd-artikel: featured event uit alle vandaag-events (NIET
-  // filter-afhankelijk). Geen featured? Eerste rij. Lead-event wordt
-  // geskipt in de cat-secties zodat-ie niet dubbel verschijnt.
-  const lead = useMemo(() => {
-    if (allToday.length === 0) return undefined;
+  // Hoofd-artikelen: alle featured events uit vandaag-events (NIET
+  // filter-afhankelijk). Geen featured? Eerste rij als enige hero.
+  // Dedupe op event-id zodat een featured event met meerdere
+  // occurrences vandaag maar één hero-card krijgt.
+  const leads = useMemo<OccurrenceRow[]>(() => {
+    if (allToday.length === 0) return [];
     const featuredRows = allToday.filter((r) => r.event.featured);
-    if (featuredRows.length === 0) return allToday[0];
-    return featuredRows[Math.floor(Math.random() * featuredRows.length)];
+    if (featuredRows.length === 0) return [allToday[0]];
+    const seen = new Set<string>();
+    return featuredRows.filter((r) => {
+      if (seen.has(r.event.id)) return false;
+      seen.add(r.event.id);
+      return true;
+    });
   }, [allToday]);
 
   // Cat-secties: groepeer events per categorie (zelfde volgorde als
@@ -378,21 +385,16 @@ export default function Avond() {
           />
         }
       >
-        {/* Hoofd-artikel: featured event uit alle vandaag-events.
-            NIET filter-afhankelijk — staat bovenaan onafhankelijk
-            van wat je beneden filtert. */}
-        {lead && (
-          <Pressable
-            onPress={() => router.push(eventPathFor(lead) as never)}
-          >
-            <FeaturedCard
-              kicker={t('Onze keuze', 'Our pick')}
-              title={lead.event.title}
-              meta={formatMetaForRow(lead, locale)}
-              photo={lead.event.imageUrl ?? data.featured.photo}
-              category={lead.event.category}
-            />
-          </Pressable>
+        {/* Hoofd-artikelen: alle featured events uit vandaag-events.
+            NIET filter-afhankelijk — staan bovenaan onafhankelijk van
+            wat je beneden filtert. Bij meerdere featured: horizontale
+            page-snap carousel met dots-indicator. Bij één: gewone kaart. */}
+        {leads.length > 0 && (
+          <FeaturedCarousel
+            leads={leads}
+            kicker={t('Onze keuze', 'Our pick')}
+            locale={locale}
+          />
         )}
 
         {/* Kaart-CTA — onafhankelijk van de filter. */}
@@ -485,7 +487,7 @@ export default function Avond() {
           </Animated.View>
         )}
       </ScrollView>
-      <AppHeader />
+      <AppHeader title={t('Vandaag', 'Today')} />
     </View>
   );
 }
@@ -1408,6 +1410,85 @@ function EmptyResults({
   );
 }
 
+/**
+ * Page-snap carousel voor de hero-cards bovenaan Vandaag. Bij één lead
+ * vervalt 't naar een gewone Pressable+FeaturedCard zonder dots.
+ */
+function FeaturedCarousel({
+  leads,
+  kicker,
+  locale,
+}: {
+  leads: OccurrenceRow[];
+  kicker: string;
+  locale: Locale;
+}) {
+  const { width } = useWindowDimensions();
+  const roles = useRoles();
+  const [page, setPage] = useState(0);
+
+  if (leads.length === 1) {
+    const lead = leads[0];
+    return (
+      <Pressable onPress={() => router.push(eventPathFor(lead) as never)}>
+        <FeaturedCard
+          kicker={kicker}
+          title={lead.event.title}
+          meta={formatMetaForRow(lead, locale)}
+          photo={lead.event.imageUrl ?? undefined}
+          category={lead.event.category}
+        />
+      </Pressable>
+    );
+  }
+
+  const onScrollEnd = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const idx = Math.round(e.nativeEvent.contentOffset.x / width);
+    setPage(Math.min(Math.max(idx, 0), leads.length - 1));
+  };
+
+  return (
+    <View>
+      <ScrollView
+        horizontal
+        pagingEnabled
+        showsHorizontalScrollIndicator={false}
+        onMomentumScrollEnd={onScrollEnd}
+      >
+        {leads.map((lead) => (
+          <View key={lead.id} style={{ width }}>
+            <Pressable
+              onPress={() => router.push(eventPathFor(lead) as never)}
+            >
+              <FeaturedCard
+                kicker={kicker}
+                title={lead.event.title}
+                meta={formatMetaForRow(lead, locale)}
+                photo={lead.event.imageUrl ?? undefined}
+                category={lead.event.category}
+              />
+            </Pressable>
+          </View>
+        ))}
+      </ScrollView>
+      <View style={styles.featuredDots}>
+        {leads.map((_, i) => (
+          <View
+            key={i}
+            style={[
+              styles.featuredDot,
+              {
+                backgroundColor: i === page ? roles.fg : roles.fgPlaceholder,
+                width: i === page ? 18 : 6,
+              },
+            ]}
+          />
+        ))}
+      </View>
+    </View>
+  );
+}
+
 function FeaturedCard({
   kicker,
   title,
@@ -1418,7 +1499,7 @@ function FeaturedCard({
   kicker: string;
   title: string;
   meta: string;
-  photo: string;
+  photo?: string;
   category?: ApiEvent['category'];
 }) {
   const mode = useMode();
@@ -1441,11 +1522,13 @@ function FeaturedCard({
           { backgroundColor: isNacht ? palette.noir2 : roles.accent },
         ]}
       >
-        <Image
-          source={{ uri: photo }}
-          style={StyleSheet.absoluteFill}
-          contentFit="cover"
-        />
+        {photo && (
+          <Image
+            source={{ uri: photo }}
+            style={StyleSheet.absoluteFill}
+            contentFit="cover"
+          />
+        )}
         <View
           style={[
             StyleSheet.absoluteFill,
@@ -1605,6 +1688,18 @@ const styles = StyleSheet.create({
   featuredWrap: {
     paddingHorizontal: 18,
     marginBottom: 20,
+  },
+  featuredDots: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    marginTop: -8,
+    marginBottom: 20,
+  },
+  featuredDot: {
+    height: 6,
+    borderRadius: 999,
   },
   featured: {
     aspectRatio: 1 / 1.2,

@@ -257,15 +257,6 @@ export default function Venues() {
           />
         }
       >
-        <View style={styles.head}>
-          <Text style={[styles.headKicker, { color: roles.accent }]}>
-            Venues
-          </Text>
-          <Text style={[styles.headTitle, { color: roles.fg }]}>
-            Plekken in de stad.
-          </Text>
-        </View>
-
         <SeriesSection />
 
         <ChipRow
@@ -318,7 +309,7 @@ export default function Venues() {
           </Animated.View>
         )}
       </ScrollView>
-      <AppHeader />
+      <AppHeader title={tx('Venues', 'Venues')} />
     </KeyboardAvoidingView>
   );
 }
@@ -1299,24 +1290,6 @@ function toneText(hex: string, mode: 'nacht' | 'dag'): string {
 const styles = StyleSheet.create({
   root: { flex: 1 },
 
-  head: {
-    paddingHorizontal: 22,
-    paddingTop: 4,
-    paddingBottom: 12,
-  },
-  headKicker: {
-    fontFamily: fontFamily.mono,
-    fontSize: 10,
-    letterSpacing: 1.4,
-    textTransform: 'uppercase',
-  },
-  headTitle: {
-    fontFamily: fontFamily.display,
-    fontSize: 30,
-    letterSpacing: -0.9,
-    lineHeight: 30,
-    marginTop: 6,
-  },
 
   hint: {
     fontFamily: fontFamily.mono,

@@ -40,7 +40,7 @@ import { useT } from '@/lib/i18n';
 import { useEvents, useFriends } from '@/lib/queries';
 import { useSession } from '@/lib/authClient';
 import { useDeviceLocation } from '@/lib/useDeviceLocation';
-import type { BadgeTone } from '@/mocks/feed';
+import type { BadgeTone } from '@/lib/types';
 import { useMode, useRoles } from '@/store/mode';
 import { useVandaagFilters } from '@/store/vandaagFilters';
 import { fontFamily, palette } from '@/theme/tokens';
@@ -417,7 +417,7 @@ export default function Kaart() {
         </>
       )}
 
-      <AppHeader solid={view === 'map'}>
+      <AppHeader solid={view === 'map'} title={t('Kaart', 'Map')}>
         <View style={styles.contextLine}>
           <Text style={[styles.contextLabel, { color: roles.accent }]}>
             {t('Vandaag', 'Today')}

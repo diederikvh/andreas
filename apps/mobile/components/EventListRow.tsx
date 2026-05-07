@@ -3,8 +3,7 @@ import { Image } from 'expo-image';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useLocale, type Locale } from '@/lib/i18n';
-import type { BadgeTone } from '@/mocks/feed';
-import type { Friend } from '@/mocks/gered';
+import type { BadgeTone, Friend } from '@/lib/types';
 import { useMode, useRoles } from '@/store/mode';
 import { fontFamily, palette } from '@/theme/tokens';
 

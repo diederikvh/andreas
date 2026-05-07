@@ -76,6 +76,7 @@ type Sub = 'vrienden' | 'planning';
 export default function Social() {
   const roles = useRoles();
   const insets = useSafeAreaInsets();
+  const t = useT();
   const scrollRef = useRef<ScrollView>(null);
   useScrollToTop(scrollRef);
   const qc = useQueryClient();
@@ -162,7 +163,7 @@ export default function Social() {
           />
         )}
       </ScrollView>
-      <AppHeader solid>
+      <AppHeader solid title={t('Sociaal', 'Social')}>
         <SubTabs sub={sub} onChange={setSub} inboxCount={inboxCount} />
       </AppHeader>
     </View>

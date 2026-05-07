@@ -1,6 +1,6 @@
 import type { ApiEvent, VenueType } from '@/lib/api';
 import { useLocale, type Locale, useLocaleStore } from '@/lib/i18n';
-import type { BadgeTone } from '@/mocks/feed';
+import type { BadgeTone } from '@/lib/types';
 
 /**
  * Shared display-helpers voor events. ApiEvent → strings/groepen die de

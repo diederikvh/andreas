@@ -26,6 +26,12 @@ type AppHeaderProps = {
    * day-strip + chip-row); standaard uit zodat de blur het werk doet.
    */
   solid?: boolean;
+  /**
+   * Optionele scherm-naam die naast het logo wordt getoond, bv.
+   * "VANDAAG", "AGENDA". Lichter weight + muted-kleur zodat de
+   * Andreas-wordmark de primaire identiteit blijft.
+   */
+  title?: string;
 };
 
 /**
@@ -37,7 +43,7 @@ type AppHeaderProps = {
  * screen's ScrollView gets `paddingTop = insets.top + HEADER_HEIGHT`
  * (plus whatever children add).
  */
-export function AppHeader({ children, solid = false }: AppHeaderProps = {}) {
+export function AppHeader({ children, solid = false, title }: AppHeaderProps = {}) {
   const mode = useMode();
   const roles = useRoles();
   const insets = useSafeAreaInsets();
@@ -101,6 +107,14 @@ export function AppHeader({ children, solid = false }: AppHeaderProps = {}) {
           <View style={styles.logoCross}>
             <Cross size={16} thickness={4} color={roles.accent} />
           </View>
+          {title && (
+            <Text
+              style={[styles.title, { color: roles.fg }]}
+              numberOfLines={1}
+            >
+              {title}
+            </Text>
+          )}
         </View>
         <DnSwitch />
       </View>
@@ -170,7 +184,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 18,
   },
-  logoLockup: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  logoLockup: { flexDirection: 'row', alignItems: 'center', gap: 4, flexShrink: 1 },
   // Optical centring against the Archivo Black caps — uppercase has no
   // descenders so the text's visual centre sits above the row centre.
   logoCross: { transform: [{ translateY: -1 }] },
@@ -180,6 +194,14 @@ const styles = StyleSheet.create({
     letterSpacing: -0.18,
     textTransform: 'uppercase',
     lineHeight: 18,
+  },
+  title: {
+    fontFamily: fontFamily.display,
+    fontSize: 18,
+    letterSpacing: -0.18,
+    textTransform: 'uppercase',
+    lineHeight: 18,
+    flexShrink: 1,
   },
 
   // Day/night switch (52×28 pill, thumb 22)
