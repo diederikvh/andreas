@@ -35,8 +35,10 @@ import type { ApiVenueProgramItem, VenueFollowState } from '@/lib/api';
 import {
   CATEGORY_TICK,
   dowMixed,
+  formatWijk,
   monthShort,
   translateCategory,
+  translateVenueCapacity,
   translateVenueScene,
   translateVenueType,
   VENUE_TYPE_TICK,
@@ -260,7 +262,7 @@ export default function VenueDetail() {
                   ]}
                 >
                   <Text style={[styles.metaPillText, { color: roles.fg }]}>
-                    {venue.wijk}
+                    {formatWijk(venue.wijk)}
                   </Text>
                 </View>
               )}
@@ -284,7 +286,7 @@ export default function VenueDetail() {
                   ]}
                 >
                   <Text style={[styles.metaPillText, { color: roles.fg }]}>
-                    {venue.capacity}
+                    {translateVenueCapacity(venue.capacity, locale)}
                   </Text>
                 </View>
               )}

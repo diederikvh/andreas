@@ -139,6 +139,41 @@ export function translateVenueScene(scene: string, locale?: Locale): string {
   return map[scene] ?? scene;
 }
 
+const VENUE_CAPACITY_LABEL_NL: Record<string, string> = {
+  klein: 'Klein',
+  middel: 'Middel',
+  groot: 'Groot',
+  xl: 'XL',
+};
+
+const VENUE_CAPACITY_LABEL_EN: Record<string, string> = {
+  klein: 'Small',
+  middel: 'Medium',
+  groot: 'Large',
+  xl: 'XL',
+};
+
+export function translateVenueCapacity(
+  capacity: string,
+  locale?: Locale
+): string {
+  const l = locale ?? useLocaleStore.getState().locale;
+  const map = l === 'nl' ? VENUE_CAPACITY_LABEL_NL : VENUE_CAPACITY_LABEL_EN;
+  return map[capacity] ?? capacity;
+}
+
+/**
+ * Wijk-namen blijven Amsterdams (eigennaam, ook voor toeristen
+ * herkenbaarder dan "North / Centre"). We capitaliseren alleen de
+ * DB-waarden ("nieuw-west" → "Nieuw-West", "centrum" → "Centrum").
+ */
+export function formatWijk(wijk: string): string {
+  return wijk
+    .split('-')
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join('-');
+}
+
 export const CATEGORY_DOT: Record<ApiEvent['category'], string> = {
   Muziek: 'M',
   Theater: 'T',
