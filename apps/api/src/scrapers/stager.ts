@@ -291,7 +291,7 @@ async function scrapeOneVenue(
             description: enriched.cleanedDescription ?? rawDescription,
             kind: enriched.kind,
             imageUrl,
-            category: venueCategory,
+            category: enriched.category ?? venueCategory,
             featured: false,
             genres: enriched.genres,
             published: true,

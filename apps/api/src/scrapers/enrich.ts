@@ -28,6 +28,7 @@ const SYSTEM_PROMPT =
   '- room: zaal binnen het venue (bv. "Grote Zaal", "Kleine Zaal", "Tomastheater") — alleen als zaal-naam expliciet vermeld. Adres of stad telt NIET. Bij twijfel: null.\n' +
   '- priceNote: ALLEEN als de tekst een notitie OVER PRIJS bevat: bv. "lidmaatschap vereist", "donatie", "pay-what-you-can", "CJP-korting", "studentenkorting beschikbaar", "vanaf €5". NIET voor leeftijdsgrenzen ("21+", "18+"), huisregels (geen telefoon, geen foto), of dresscode. Bij twijfel: null.\n' +
   '- kind: "show" voor concert/club/voorstelling/film/lezing/opening. "exhibition" voor doorlopende tentoonstelling. Default: "show".\n' +
+  '- category: kies altijd één van "Muziek" | "Theater" | "Literatuur" | "Film" | "Kunst" op basis van titel + beschrijving + venue-context. Geef je BESTE GOK — niet null tenzij er ECHT helemaal geen aanknopingspunt is. Heuristiek: tentoonstelling/installatie/galerie-opening = "Kunst". Concert/feest/dj-set/album launch = "Muziek". Theatervoorstelling/dans/cabaret/performance = "Theater". Film/screening/cinema = "Film". Lezing/boekpresentatie/poëzie/spoken word = "Literatuur". Een lezing op een kunstgalerie blijft "Literatuur" — kies op event, niet op venue.\n' +
   '- cleanedDescription: de description in plain text, zonder de lineup-block en zonder herhaalde meta-info (huisregels, ~~~~~~~ separators). NIET inkorten of herschrijven — alleen lineup-blok en boilerplate weghalen. Behoud paragraph-breaks als \\n\\n.';
 
 const TOOL_INPUT_SCHEMA = {
@@ -66,6 +67,12 @@ const TOOL_INPUT_SCHEMA = {
       enum: ['show', 'exhibition'],
       description: 'show (point-in-time) of exhibition (doorlopend).',
     },
+    category: {
+      type: ['string', 'null'],
+      enum: ['Muziek', 'Theater', 'Literatuur', 'Film', 'Kunst', null],
+      description:
+        'Andreas-categorie. Bij echte twijfel: null — caller valt dan terug op venue-default.',
+    },
     cleanedDescription: {
       type: ['string', 'null'],
       description: 'Schoongemaakte description als plain text.',
@@ -77,6 +84,7 @@ const TOOL_INPUT_SCHEMA = {
     'room',
     'priceNote',
     'kind',
+    'category',
     'cleanedDescription',
   ],
 } as const;
@@ -98,14 +106,30 @@ export type EnrichInput = {
   venueCategory: string;
 };
 
+export type EventCategory =
+  | 'Muziek'
+  | 'Theater'
+  | 'Literatuur'
+  | 'Film'
+  | 'Kunst';
+
 export type EnrichOutput = {
   genres: string[];
   lineup: { name: string; role?: Role }[] | null;
   room: string | null;
   priceNote: string | null;
   kind: 'show' | 'exhibition';
+  category: EventCategory | null;
   cleanedDescription: string | null;
 };
+
+const ALLOWED_CATEGORIES: EventCategory[] = [
+  'Muziek',
+  'Theater',
+  'Literatuur',
+  'Film',
+  'Kunst',
+];
 
 const FALLBACK: EnrichOutput = {
   genres: [],
@@ -113,28 +137,35 @@ const FALLBACK: EnrichOutput = {
   room: null,
   priceNote: null,
   kind: 'show',
+  category: null,
   cleanedDescription: null,
 };
 
 /**
- * Verrijk een event met Claude. Skipt als description ontbreekt of te
- * kort is (< 80 chars) — dan valt er weinig te extraheren en sparen we
- * een API-call uit. Errors worden gevangen en als FALLBACK teruggegeven
- * zodat de scraper-pipeline blijft draaien als Claude tijdelijk down is.
+ * Verrijk een event met Claude. Bij geen API-key of bij een te magere
+ * input (geen titel én geen description) geven we de FALLBACK terug.
+ * Anders altijd een Claude-call — ook bij events met lege description,
+ * want de titel + venue-context kan al genoeg zijn om category te
+ * bepalen (een kunstenaars-residency met "Marion Verboom: 'Loplop'" is
+ * onmiskenbaar Kunst, ongeacht of er een beschrijving bij staat).
+ *
+ * Errors worden gevangen en als FALLBACK teruggegeven zodat de scraper-
+ * pipeline blijft draaien als Claude tijdelijk down is.
  */
 export async function enrichEvent(input: EnrichInput): Promise<EnrichOutput> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
     return { ...FALLBACK, cleanedDescription: input.description };
   }
-  if (!input.description || input.description.length < 80) {
+  const hasContent = (input.title ?? '').trim().length > 2;
+  if (!hasContent) {
     return { ...FALLBACK, cleanedDescription: input.description };
   }
 
   const userMessage =
     `Venue: ${input.venueName} (categorie: ${input.venueCategory})\n` +
     `Event-titel: ${input.title}\n\n` +
-    `Description:\n${input.description}`;
+    `Description:\n${input.description ?? '(geen beschrijving — bepaal velden op basis van titel + venue-context)'}`;
 
   let response: Response;
   try {
@@ -213,10 +244,23 @@ export async function enrichEvent(input: EnrichInput): Promise<EnrichOutput> {
       ? raw.priceNote.trim()
       : null;
   const kind = raw.kind === 'exhibition' ? 'exhibition' : 'show';
+  const category =
+    typeof raw.category === 'string' &&
+    (ALLOWED_CATEGORIES as readonly string[]).includes(raw.category)
+      ? (raw.category as EventCategory)
+      : null;
   const cleanedDescription =
     typeof raw.cleanedDescription === 'string' && raw.cleanedDescription.trim()
       ? raw.cleanedDescription.trim()
       : input.description;
 
-  return { genres, lineup, room, priceNote, kind, cleanedDescription };
+  return {
+    genres,
+    lineup,
+    room,
+    priceNote,
+    kind,
+    category,
+    cleanedDescription,
+  };
 }

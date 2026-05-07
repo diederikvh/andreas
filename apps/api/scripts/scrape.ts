@@ -1,20 +1,27 @@
 /**
- * Run de Stager-scraper lokaal tegen de productie-Stager-API én onze
- * eigen DB. Bedoeld voor ad-hoc backfills, debug-runs, en handmatige
- * tests voordat we op cron switchen.
+ * Run een specifieke scraper lokaal (tegen productie-DB via .env).
  *
- *   pnpm tsx --env-file=.env scripts/scrape-stager.ts
- *   pnpm tsx --env-file=.env scripts/scrape-stager.ts --venue radion
+ *   pnpm tsx --env-file=.env scripts/scrape.ts <name> [--venue <slug>]
  *
- * --venue <id|slug>  draai alleen voor de gegeven venue (handig om
- *                    Mediamatic apart te debuggen zonder Cinetol te
- *                    raken).
+ *   pnpm tsx --env-file=.env scripts/scrape.ts stager
+ *   pnpm tsx --env-file=.env scripts/scrape.ts ical --venue ruigoord
+ *
+ * Beschikbare namen komen uit `apps/api/src/scrapers/index.ts`.
  */
 
 import { db, schema } from '../src/db/index.js';
-import { scrapeStager } from '../src/scrapers/stager.js';
+import { scrapers, type ScraperName } from '../src/scrapers/index.js';
 
 const args = process.argv.slice(2);
+const name = args[0] as ScraperName;
+const runner = scrapers[name];
+if (!runner) {
+  console.error(
+    `✗ scraper '${name}' niet gevonden. Beschikbaar: ${Object.keys(scrapers).join(', ')}`
+  );
+  process.exit(1);
+}
+
 const venueFlag = args.indexOf('--venue');
 const venueArg = venueFlag !== -1 ? args[venueFlag + 1] : undefined;
 
@@ -30,11 +37,12 @@ if (venueArg) {
 }
 
 const startedAt = Date.now();
-const results = await scrapeStager(venueIds ? { venueIds } : undefined);
+const results = await runner(venueIds ? { venueIds } : undefined);
 
-console.log(`\nStager-scraper klaar in ${Date.now() - startedAt}ms\n`);
+console.log(`\n${name}-scraper klaar in ${Date.now() - startedAt}ms\n`);
 for (const r of results) {
-  console.log(`${r.venueName} (shop ${r.shopId})`);
+  const url = 'url' in r ? r.url : `shop ${(r as { shopId: number }).shopId}`;
+  console.log(`${r.venueName} (${url})`);
   console.log(
     `  fetched=${r.fetched}  inserted=${r.inserted}  occUpserted=${r.occurrencesUpserted}  skipped=${r.skipped}`
   );

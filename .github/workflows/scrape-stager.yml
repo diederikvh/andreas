@@ -1,4 +1,4 @@
-name: Scrape Stager venues
+name: Scrape venues
 
 on:
   # Dagelijks om 04:00 UTC = 06:00 Amsterdam zomertijd / 05:00 wintertijd.
@@ -14,12 +14,20 @@ on:
 jobs:
   scrape:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
+    strategy:
+      # Beide scrapers tegelijk laten draaien — ze schrijven naar
+      # verschillende events (verschillende venue-id's), geen conflict.
+      # `fail-fast: false` zorgt dat een crash van de ene scraper de
+      # andere niet meeneemt; we zien beide responses in de log.
+      fail-fast: false
+      matrix:
+        scraper: [stager, ical]
     steps:
-      - name: POST /admin/api/scrapers/run/stager
+      - name: POST /admin/api/scrapers/run/${{ matrix.scraper }}
         run: |
           HTTP=$(curl --silent --show-error --max-time 540 \
-            -X POST "https://api.andreas.amsterdam/admin/api/scrapers/run/stager" \
+            -X POST "https://api.andreas.amsterdam/admin/api/scrapers/run/${{ matrix.scraper }}" \
             -H "Authorization: Bearer ${{ secrets.ANDREAS_ADMIN_API_KEY }}" \
             -H "Content-Type: application/json" \
             -o response.json \
