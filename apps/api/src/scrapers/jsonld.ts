@@ -97,6 +97,27 @@ function defaultStartHourForVenueType(type: string | null): number {
   }
 }
 
+/** Default duur (in uren) voor date-only events. Conservatief gekozen
+ *  zodat de "tot ~05:00 club"-vibe duidelijk is, maar niet zo lang dat
+ *  het event op de volgende dag in agenda's blijft hangen.
+ *  Resultaat = endsAt zodat de detail-page een "23:00 – 05:00"-range
+ *  kan tonen i.p.v. alleen "Aanvang 23:00". */
+function defaultDurationHoursForVenueType(type: string | null): number {
+  switch (type) {
+    case 'club':
+      return 6; // typische club-nacht: 23:00 → 05:00
+    case 'podium':
+      return 3;
+    case 'film':
+      return 2;
+    case 'museum':
+    case 'galerie':
+      return 8; // open van 11:00 t/m 19:00
+    default:
+      return 3;
+  }
+}
+
 /** Verschuif een UTC-midnight Date naar de lokale `hour` in Europe/Amsterdam.
  *  Voor `2026-05-08T00:00:00Z` met hour=23 → `2026-05-08T21:00:00Z`
  *  (= 23:00 NL zomertijd). Houdt rekening met DST. */
@@ -167,17 +188,17 @@ async function scrapeOneVenue(
       const occurrenceId = `occ-jld-${venue.id}-${uidHash}`;
 
       // Date-only events (zoals Lofi's "2026-05-08" zonder tijd):
-      // verschuif naar een plausibel lokaal startuur op basis van
-      // venue-type, zodat een club-avond niet om 02:00 NL begint.
-      // endsAt zetten we expliciet op null — we hebben geen idee hoe
-      // laat het event eindigt en startsAt = endsAt zou een 0-duration
-      // event geven dat in occurrence-filters wegvalt.
+      // verschuif naar een plausibel lokaal startuur + default-duur per
+      // venue-type, zodat een club-avond niet om 02:00 NL begint en de
+      // detail-page een tijd-range kan tonen ("23:00 – 05:00") i.p.v.
+      // alleen aanvang.
       let startsAt = ev.startsAt;
       let endsAt = ev.endsAt;
       if (ev.isDateOnly) {
         const hour = defaultStartHourForVenueType(venue.type);
+        const durationH = defaultDurationHoursForVenueType(venue.type);
         startsAt = shiftToLocalEvening(ev.startsAt, hour);
-        endsAt = null;
+        endsAt = new Date(startsAt.getTime() + durationH * 60 * 60_000);
       }
 
       const enriched = await enrichEvent({
