@@ -37,7 +37,7 @@ import {
   dowMixed,
   effectiveEndsAtMs,
   expandToOccurrenceRows,
-  formatTime,
+  rowTimeLabel,
   getTimeBlock,
   groupOccurrenceRowsByDay,
   monthShort,
@@ -1238,7 +1238,7 @@ function AgendaRow({ row }: { row: OccurrenceRow }) {
     : `/event/${event.id}?o=${occurrence.id}`;
   return (
     <EventListRow
-      time={formatTime(occurrence.startsAt)}
+      time={rowTimeLabel(occurrence.startsAt, occurrence.endsAt, locale)}
       thumb={eventImageUrl(event) ?? ''}
       title={event.title}
       venue={event.venue.name}

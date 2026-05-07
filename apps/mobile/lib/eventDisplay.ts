@@ -368,17 +368,95 @@ export function formatTime(iso: string): string {
 }
 
 /**
+ * Tijd-label voor list-rows: "21:00" voor reguliere events, "Hele dag"
+ * voor all-day (00:00 → 23:59) — typisch multi-day exhibitions.
+ * Gebruik dit overal waar je nu `formatTime(startsAt)` had en endsAt
+ * beschikbaar is.
+ */
+export function rowTimeLabel(
+  startIso: string,
+  endIso: string | null | undefined,
+  locale?: Locale
+): string {
+  if (isAllDayRange(startIso, endIso)) {
+    const l = locale ?? useLocaleStore.getState().locale;
+    return l === 'nl' ? 'Hele dag' : 'All day';
+  }
+  return formatTime(startIso);
+}
+
+/**
+ * "Hele dag"-detectie — voor exhibitions die meerdere dagen lopen
+ * komt de bron-data binnen als 00:00 → 23:59 (bv. W139). Dat is een
+ * synthetische tijdrange die we beter weergeven als "Hele dag" /
+ * "Doorlopend" dan als "00:00 – 23:59".
+ *
+ * Criteria: start is op lokale middernacht (HH:MM = 00:00) én end is
+ * op dezelfde dag 23:59 óf op een latere dag (multi-day exhibition).
+ */
+export function isAllDayRange(
+  startIso: string,
+  endIso: string | null | undefined
+): boolean {
+  if (!endIso) return false;
+  const start = new Date(startIso);
+  const end = new Date(endIso);
+  if (start.getHours() !== 0 || start.getMinutes() !== 0) return false;
+  const sameDay =
+    start.getFullYear() === end.getFullYear() &&
+    start.getMonth() === end.getMonth() &&
+    start.getDate() === end.getDate();
+  if (sameDay) {
+    return end.getHours() === 23 && end.getMinutes() >= 59;
+  }
+  return end.getTime() - start.getTime() >= 23 * 60 * 60 * 1000;
+}
+
+/**
  * Tijd-range met en-dash. Voor concert-detail-pages: "21:00 – 23:00"
  * geeft meer informatie dan alleen aanvang. Als endsAt null/leeg is:
- * alleen starttijd.
+ * alleen starttijd. All-day events (00:00 → 23:59) → "Hele dag".
  */
 export function formatTimeRange(
   startIso: string,
-  endIso: string | null | undefined
+  endIso: string | null | undefined,
+  locale?: Locale
 ): string {
+  if (isAllDayRange(startIso, endIso)) {
+    const l = locale ?? useLocaleStore.getState().locale;
+    return l === 'nl' ? 'Hele dag' : 'All day';
+  }
   const start = formatTime(startIso);
   if (!endIso) return start;
   return `${start} – ${formatTime(endIso)}`;
+}
+
+/**
+ * Korte datum-range "24 apr – 12 jul" voor multi-day events. Zelfde
+ * dag → één datum. Zelfde maand → "24 – 28 apr". Anders → beide volledig.
+ */
+export function formatDateRange(
+  startIso: string,
+  endIso: string | null | undefined,
+  locale?: Locale
+): string {
+  const l = locale ?? useLocaleStore.getState().locale;
+  const start = new Date(startIso);
+  const startNum = start.getDate();
+  const startMonth = monthShort(start.getMonth(), l).toLowerCase();
+  if (!endIso) return `${startNum} ${startMonth}`;
+  const end = new Date(endIso);
+  const sameDay =
+    start.getFullYear() === end.getFullYear() &&
+    start.getMonth() === end.getMonth() &&
+    start.getDate() === end.getDate();
+  if (sameDay) return `${startNum} ${startMonth}`;
+  const endNum = end.getDate();
+  const endMonth = monthShort(end.getMonth(), l).toLowerCase();
+  if (start.getMonth() === end.getMonth() && start.getFullYear() === end.getFullYear()) {
+    return `${startNum} – ${endNum} ${endMonth}`;
+  }
+  return `${startNum} ${startMonth} – ${endNum} ${endMonth}`;
 }
 
 export function formatPrice(cents: number | null, locale?: Locale): string {

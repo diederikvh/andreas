@@ -22,7 +22,7 @@ import {
   eventImageUrl,
   CATEGORY_TICK,
   dowMixed,
-  formatTime,
+  rowTimeLabel,
   monthShort,
   translateCategory,
 } from '@/lib/eventDisplay';
@@ -202,7 +202,7 @@ export default function InviteModal() {
       >
         {event && resolvedOccurrence && (
           <EventListRow
-            time={formatTime(resolvedOccurrence.startsAt)}
+            time={rowTimeLabel(resolvedOccurrence.startsAt, resolvedOccurrence.endsAt, locale)}
             thumb={eventImageUrl(event) ?? ''}
             title={event.title}
             venue={event.venue.name}
@@ -228,7 +228,7 @@ export default function InviteModal() {
                 {t('JE NODIGT UIT VOOR', 'YOU’RE INVITING FOR')}
               </Text>
               <Text style={[styles.targetValue, { color: roles.fg }]}>
-                {formatTargetDate(resolvedOccurrence.startsAt, locale)}
+                {formatTargetDate(resolvedOccurrence.startsAt, resolvedOccurrence.endsAt, locale)}
                 {resolvedOccurrence.room ? ` · ${resolvedOccurrence.room}` : ''}
               </Text>
             </View>
@@ -376,12 +376,16 @@ export default function InviteModal() {
   );
 }
 
-function formatTargetDate(iso: string, locale: import('@/lib/i18n').Locale): string {
+function formatTargetDate(
+  iso: string,
+  endIso: string | null | undefined,
+  locale: import('@/lib/i18n').Locale
+): string {
   const d = new Date(iso);
   const dow = dowMixed(d.getDay(), locale);
   const day = d.getDate();
   const month = monthShort(d.getMonth(), locale).toLowerCase();
-  const time = formatTime(iso);
+  const time = rowTimeLabel(iso, endIso, locale);
   return `${dow} ${day} ${month} · ${time}`;
 }
 

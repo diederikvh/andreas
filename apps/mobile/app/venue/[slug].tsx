@@ -44,6 +44,9 @@ import {
   translateVenueType,
   VENUE_TYPE_TICK,
   formatTime,
+  formatTimeRange,
+  formatDateRange,
+  isAllDayRange,
 } from '@/lib/eventDisplay';
 import { useLocale, useT, type Locale } from '@/lib/i18n';
 import { useSession } from '@/lib/authClient';
@@ -487,14 +490,23 @@ function ProgramRow({
   const dow = dowMixed(d.getDay(), locale);
   const num = String(d.getDate()).padStart(2, '0');
   const month = monthShort(d.getMonth(), locale).toLowerCase();
+  const allDay = isAllDayRange(event.startsAt, event.endsAt);
   const friends = event.friendsSaved?.map((f) => ({
     name: f.name,
     avatar: f.avatarUrl,
   }));
   return (
     <EventListRow
-      time={formatTime(event.startsAt)}
-      duration={`${dow} ${num} ${month}`}
+      time={
+        allDay
+          ? formatTimeRange(event.startsAt, event.endsAt, locale)
+          : formatTime(event.startsAt)
+      }
+      duration={
+        allDay
+          ? formatDateRange(event.startsAt, event.endsAt, locale)
+          : `${dow} ${num} ${month}`
+      }
       thumb={event.imageUrl ?? venueImageUrl ?? ''}
       title={event.title}
       venue=""

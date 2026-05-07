@@ -26,8 +26,9 @@ import {
   dowMixed,
   eventImageUrl,
   formatPrice,
-  formatTime,
   formatTimeRange,
+  rowTimeLabel,
+  isAllDayRange,
   monthShort,
   translateCategory,
 } from '@/lib/eventDisplay';
@@ -252,7 +253,11 @@ export default function EventDetail() {
             <View style={styles.metaCellWrap}>
               <MetaCell
                 label={
-                  view.time.includes('–') ? t('Tijd', 'Time') : t('Aanvang', 'Doors')
+                  view.allDay
+                    ? t('Wanneer', 'When')
+                    : view.time.includes('–')
+                      ? t('Tijd', 'Time')
+                      : t('Aanvang', 'Doors')
                 }
                 value={view.time}
               />
@@ -761,7 +766,7 @@ function OccurrenceList({
           const dow = dowMixed(d.getDay(), locale);
           const day = d.getDate();
           const month = monthShort(d.getMonth(), locale).toLowerCase();
-          const time = formatTime(o.startsAt);
+          const time = rowTimeLabel(o.startsAt, o.endsAt, locale);
           const lineupHint =
             o.lineup && o.lineup.length > 0
               ? o.lineup.length === 1
@@ -839,6 +844,7 @@ type ViewModel = {
   title: string;
   date: string;
   time: string;
+  allDay: boolean;
   venue: string;
   description: string | null;
   photo: string | null;
@@ -873,7 +879,8 @@ function toViewModel(
     tag: translateCategory(event.category, locale),
     title: event.title,
     date: `${dow} ${day} ${month}`,
-    time: formatTimeRange(sourceStart, sourceEnd),
+    time: formatTimeRange(sourceStart, sourceEnd, locale),
+    allDay: isAllDayRange(sourceStart, sourceEnd),
     venue: event.venue.name,
     description: event.description,
     photo: eventImageUrl(event),

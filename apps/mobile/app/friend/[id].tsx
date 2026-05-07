@@ -18,7 +18,7 @@ import {
   eventImageUrl,
   CATEGORY_TICK,
   type EventGroup,
-  formatTime,
+  rowTimeLabel,
   groupEventsByDay,
   translateCategory,
 } from '@/lib/eventDisplay';
@@ -218,7 +218,7 @@ function FriendSavedRow({ event }: { event: ApiEvent }) {
   const locale = useLocale();
   return (
     <EventListRow
-      time={formatTime(event.startsAt)}
+      time={rowTimeLabel(event.startsAt, event.endsAt, locale)}
       thumb={eventImageUrl(event) ?? ''}
       title={event.title}
       venue={event.venue.name}

@@ -41,7 +41,7 @@ import {
   CATEGORY_TICK,
   dowMixed,
   type EventGroup,
-  formatTime,
+  rowTimeLabel,
   groupEventsByDay,
   translateCategory,
 } from '@/lib/eventDisplay';
@@ -629,7 +629,7 @@ function InviteRow({
   const t = useT();
   const locale = useLocale();
   const d = new Date(invite.occurrence.startsAt);
-  const dateLabel = `${dowMixed(d.getDay(), locale)} · ${formatTime(invite.occurrence.startsAt)}`;
+  const dateLabel = `${dowMixed(d.getDay(), locale)} · ${rowTimeLabel(invite.occurrence.startsAt, invite.occurrence.endsAt, locale)}`;
   return (
     <Pressable
       onPress={() =>
@@ -835,7 +835,7 @@ function SavedRow({ event, dim = false }: { event: ApiEvent; dim?: boolean }) {
   return (
     <View style={dim ? styles.rowDim : undefined}>
       <EventListRow
-        time={formatTime(event.startsAt)}
+        time={rowTimeLabel(event.startsAt, event.endsAt, locale)}
         thumb={eventImageUrl(event) ?? ''}
         title={event.title}
         venue={event.venue.name}

@@ -22,7 +22,7 @@ import {
   CATEGORY_TICK,
   dowMixed,
   monthShort,
-  formatTime,
+  rowTimeLabel,
   translateCategory,
 } from '@/lib/eventDisplay';
 import { useLocale, useT, type Locale } from '@/lib/i18n';
@@ -243,7 +243,7 @@ function ProgramRow({ event }: { event: ApiEvent }) {
   const month = monthShort(d.getMonth(), locale).toLowerCase();
   return (
     <EventListRow
-      time={formatTime(event.startsAt)}
+      time={rowTimeLabel(event.startsAt, event.endsAt, locale)}
       duration={`${dow} ${num} ${month}`}
       thumb={eventImageUrl(event) ?? ''}
       title={event.title}

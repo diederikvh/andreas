@@ -37,7 +37,7 @@ import {
   dowUpper,
   effectiveEndsAtMs,
   expandToOccurrenceRows,
-  formatTime,
+  rowTimeLabel,
   freeLabel,
   getTimeBlock,
   monthFull,
@@ -72,7 +72,7 @@ function formatMetaForRow(row: OccurrenceRow, locale: Locale): string {
       : cents === 0
         ? freeLabel(locale)
         : `€${(cents / 100).toFixed(0)}`;
-  return [dow, formatTime(row.occurrence.startsAt), row.event.venue.name.toUpperCase(), price]
+  return [dow, rowTimeLabel(row.occurrence.startsAt, row.occurrence.endsAt, locale), row.event.venue.name.toUpperCase(), price]
     .filter(Boolean)
     .join(' · ');
 }

@@ -32,7 +32,7 @@ import {
   CATEGORY_TICK,
   distanceKm,
   eventImageUrl,
-  formatTime,
+  rowTimeLabel,
   getTimeBlock,
   travelMinutes,
   type TransportMode,
@@ -740,7 +740,7 @@ function SheetRow({ mapEvent }: { mapEvent: MapEvent }) {
         </View>
       </View>
       <Text style={[styles.sheetTime, { color: roles.fgMuted }]}>
-        {formatTime(mapEvent.event.startsAt)}
+        {rowTimeLabel(mapEvent.event.startsAt, mapEvent.event.endsAt)}
       </Text>
     </Pressable>
   );
@@ -774,7 +774,7 @@ function DrawerCard({ mapEvent }: { mapEvent: MapEvent }) {
               </Text>
             </View>
             <Text style={[styles.cardMeta, { color: roles.fgMuted }]}>
-              {mapEvent.minutes} min · {formatTime(mapEvent.event.startsAt)}
+              {mapEvent.minutes} min · {rowTimeLabel(mapEvent.event.startsAt, mapEvent.event.endsAt)}
             </Text>
           </View>
           <Text
