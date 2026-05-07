@@ -151,26 +151,28 @@ export default function SeriesDetail() {
           )}
         </View>
 
-        <View style={styles.progHead}>
-          <Text style={[styles.progLabel, { color: roles.fg }]}>
-            {t('Programma', 'Programme')}
-          </Text>
-          <Text style={[styles.progCount, { color: roles.fgMuted }]}>
-            {events.length} {t('komend', 'upcoming')}
-          </Text>
-        </View>
+        <View style={[styles.progSection, { backgroundColor: roles.bg }]}>
+          <View style={styles.progHead}>
+            <Text style={[styles.progLabel, { color: roles.fg }]}>
+              {t('Programma', 'Programme')}
+            </Text>
+            <Text style={[styles.progCount, { color: roles.fgMuted }]}>
+              {events.length} {t('komend', 'upcoming')}
+            </Text>
+          </View>
 
-        {events.length === 0 && (
-          <Text style={[styles.progEmpty, { color: roles.fgMuted }]}>
-            {t(
-              'Niets aangekondigd voor de komende periode.',
-              'Nothing announced for the coming period.'
-            )}
-          </Text>
-        )}
-        {events.map((e) => (
-          <ProgramRow key={e.id} event={e} />
-        ))}
+          {events.length === 0 && (
+            <Text style={[styles.progEmpty, { color: roles.fgMuted }]}>
+              {t(
+                'Niets aangekondigd voor de komende periode.',
+                'Nothing announced for the coming period.'
+              )}
+            </Text>
+          )}
+          {events.map((e) => (
+            <ProgramRow key={e.id} event={e} />
+          ))}
+        </View>
       </Animated.ScrollView>
 
       <View
@@ -409,6 +411,11 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
 
+  // Wrapper rond de hele programma-sectie zodat de hero-foto er niet
+  // doorheen blijft schijnen wanneer je voorbij de body scrollt.
+  progSection: {
+    paddingBottom: 16,
+  },
   progHead: {
     flexDirection: 'row',
     justifyContent: 'space-between',

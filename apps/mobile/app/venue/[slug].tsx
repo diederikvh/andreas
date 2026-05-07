@@ -375,7 +375,7 @@ export default function VenueDetail() {
         </View>
 
         {(events.length > 0 || (data.series && data.series.length > 0)) && (
-          <>
+          <View style={[styles.progSection, { backgroundColor: roles.bg }]}>
             <View style={styles.progHead}>
               <Text style={[styles.progLabel, { color: roles.fg }]}>
                 {t('Programma', 'Programme')}
@@ -413,7 +413,7 @@ export default function VenueDetail() {
             {events.map((e) => (
               <ProgramRow key={e.id} event={e} />
             ))}
-          </>
+          </View>
         )}
       </Animated.ScrollView>
 
@@ -1067,6 +1067,12 @@ const styles = StyleSheet.create({
     letterSpacing: -0.07,
   },
   seriesChev: { fontFamily: fontFamily.mono, fontSize: 14 },
+
+  // Wrapper rond de hele programma-sectie zodat de hero-foto er niet
+  // doorheen blijft schijnen wanneer je voorbij de body scrollt.
+  progSection: {
+    paddingBottom: 16,
+  },
 
   // Programma header — display-stijl, zelfde als sub-koppen op event-detail.
   progHead: {
