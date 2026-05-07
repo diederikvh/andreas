@@ -25,6 +25,7 @@ import { useSession } from '@/lib/authClient';
 import {
   dowMixed,
   eventImageUrl,
+  formatDateRange,
   formatPrice,
   formatTimeRange,
   rowTimeLabel,
@@ -240,12 +241,12 @@ export default function EventDetail() {
               <MetaCell
                 label={
                   event.kind === 'exhibition'
-                    ? t('Loopt t/m', 'Runs until')
+                    ? t('Loopt', 'Runs')
                     : t('Datum', 'Date')
                 }
                 value={
                   event.kind === 'exhibition' && event.endsAt
-                    ? formatExhibitionEnd(event.endsAt, locale)
+                    ? formatDateRange(event.startsAt, event.endsAt, locale)
                     : view.date
                 }
               />
@@ -569,11 +570,6 @@ function CrewStatusBadge({ row }: { row: CrewRow }) {
       <Text style={[styles.crewPillText, { color: textTone }]}>{label}</Text>
     </View>
   );
-}
-
-function formatExhibitionEnd(endsAt: string, locale: Locale): string {
-  const d = new Date(endsAt);
-  return `${d.getDate()} ${monthShort(d.getMonth(), locale).toLowerCase()}`;
 }
 
 function formatLineupKicker(startsAt: string, locale: Locale): string {
