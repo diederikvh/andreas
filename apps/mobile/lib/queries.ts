@@ -173,17 +173,17 @@ export function useMySaves(opts: { enabled?: boolean } = {}) {
 export function useToggleSave() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (eventId: string) => toggleSave(eventId),
-    onMutate: async (eventId) => {
+    mutationFn: (occurrenceId: string) => toggleSave(occurrenceId),
+    onMutate: async (occurrenceId) => {
       await qc.cancelQueries({ queryKey: queryKeys.saves() });
       const prev = qc.getQueryData<SavedApiEvent[]>(queryKeys.saves());
-      // Optimistic: verwijder als aanwezig, anders niets toevoegen
-      // (we hebben hier het volledige event-object niet; volledige
-      // refresh komt via onSettled).
+      // Optimistic: verwijder als aanwezig (op occurrence-id), anders
+      // niets toevoegen (we hebben hier het volledige event-object niet;
+      // volledige refresh komt via onSettled).
       if (prev) {
         qc.setQueryData<SavedApiEvent[]>(
           queryKeys.saves(),
-          prev.filter((e) => e.id !== eventId)
+          prev.filter((e) => e.occurrenceId !== occurrenceId)
         );
       }
       return { prev };

@@ -453,7 +453,15 @@ export async function updateMe(input: {
   return user;
 }
 
-export type SavedApiEvent = ApiEvent & { savedAt: string };
+/**
+ * Saved-row van /saves. Server geeft één rij per gesaveterde occurrence;
+ * een film waarvan ik 3 voorstellingen heb gesaved levert 3 entries.
+ * `id` is de event-id, `occurrenceId` is de specifieke voorstelling.
+ */
+export type SavedApiEvent = ApiEvent & {
+  occurrenceId: string;
+  savedAt: string;
+};
 
 export async function getMySaves(): Promise<SavedApiEvent[]> {
   const { events } = await authedRequest<{ events: SavedApiEvent[] }>(
@@ -462,10 +470,12 @@ export async function getMySaves(): Promise<SavedApiEvent[]> {
   return events;
 }
 
-export async function toggleSave(eventId: string): Promise<{ saved: boolean }> {
+export async function toggleSave(
+  occurrenceId: string
+): Promise<{ saved: boolean }> {
   return await authedRequest<{ saved: boolean }>('/saves', {
     method: 'POST',
-    body: JSON.stringify({ eventId }),
+    body: JSON.stringify({ occurrenceId }),
   });
 }
 

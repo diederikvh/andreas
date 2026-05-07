@@ -17,7 +17,7 @@ import { Hono } from 'hono';
 
 import { db, schema } from '../db/index.js';
 import {
-  buildFriendsByEvent,
+  buildFriendsByOccurrence,
   buildSeriesByEvent,
   findEventsWithOccurrencesInRange,
   maybeUserId,
@@ -188,8 +188,11 @@ seriesRoute.get('/:slug', async (c) => {
     .filter((x) => x.row);
 
   const eventIds = ordered.map((x) => x.row.id);
-  const friendsMap = me
-    ? await buildFriendsByEvent(me, eventIds)
+  const allOccurrenceIds = ordered.flatMap(({ occ }) =>
+    occ.all.map((o) => o.id)
+  );
+  const friendsByOcc = me
+    ? await buildFriendsByOccurrence(me, allOccurrenceIds)
     : new Map();
   const seriesMap = await buildSeriesByEvent(eventIds);
   const followedVenueIds = me
@@ -197,7 +200,7 @@ seriesRoute.get('/:slug', async (c) => {
     : new Set<string>();
 
   const events = ordered.map(({ row, occ }) => {
-    const entry = friendsMap.get(row.id);
+    const headFriends = occ.next ? friendsByOcc.get(occ.next.id) : undefined;
     return {
       ...row,
       startsAt: occ.next?.startsAt ?? null,
@@ -206,8 +209,8 @@ seriesRoute.get('/:slug', async (c) => {
       priceNote: occ.next?.priceNote ?? null,
       ticketUrl: occ.next?.ticketUrl ?? null,
       occurrenceCount: occ.count,
-      friendsSaved: entry?.friends ?? [],
-      friendsSavedCount: entry?.count ?? 0,
+      friendsSaved: headFriends?.friends ?? [],
+      friendsSavedCount: headFriends?.count ?? 0,
       venueFollowed: followedVenueIds.has(row.venue.id),
       series: seriesMap.get(row.id) ?? [],
     };

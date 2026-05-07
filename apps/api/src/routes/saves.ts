@@ -1,9 +1,8 @@
-import { and, eq } from 'drizzle-orm';
+import { and, asc, desc, eq } from 'drizzle-orm';
 import { Hono, type Context } from 'hono';
 
 import { auth } from '../auth.js';
 import { db, schema } from '../db/index.js';
-import { buildOccurrencesByEvent } from './_helpers.js';
 
 async function requireUserId(c: Context): Promise<string | Response> {
   const session = await auth.api.getSession({ headers: c.req.raw.headers });
@@ -13,12 +12,22 @@ async function requireUserId(c: Context): Promise<string | Response> {
 
 export const savesRoute = new Hono();
 
+/**
+ * Lijst van mijn saves — één rij per gesaveterde occurrence. Een film
+ * met 7 voorstellingen waarvan ik er drie heb gesaved geeft drie rows
+ * met hun eigen startsAt/priceCents/ticketUrl.
+ *
+ * Sorteer-volgorde: toekomstige saves eerst (chronologisch), daarna
+ * voorbije van meest recent naar oudste — zodat de Gered-tab "Vorige"-
+ * sectie de meest recent voorbije bovenaan toont.
+ */
 savesRoute.get('/', async (c) => {
   const userId = await requireUserId(c);
   if (typeof userId !== 'string') return userId;
 
   const rows = await db
     .select({
+      // event-veld
       id: schema.events.id,
       title: schema.events.title,
       description: schema.events.description,
@@ -26,7 +35,17 @@ savesRoute.get('/', async (c) => {
       imageUrl: schema.events.imageUrl,
       category: schema.events.category,
       featured: schema.events.featured,
-      savedAt: schema.saves.createdAt,
+      // occurrence-veld
+      occurrenceId: schema.occurrences.id,
+      startsAt: schema.occurrences.startsAt,
+      endsAt: schema.occurrences.endsAt,
+      priceCents: schema.occurrences.priceCents,
+      priceNote: schema.occurrences.priceNote,
+      ticketUrl: schema.occurrences.ticketUrl,
+      room: schema.occurrences.room,
+      lineup: schema.occurrences.lineup,
+      status: schema.occurrences.status,
+      // venue
       venue: {
         id: schema.venues.id,
         slug: schema.venues.slug,
@@ -36,9 +55,14 @@ savesRoute.get('/', async (c) => {
         lng: schema.venues.lng,
         priceNote: schema.venues.priceNote,
       },
+      savedAt: schema.saves.createdAt,
     })
     .from(schema.saves)
-    .innerJoin(schema.events, eq(schema.saves.eventId, schema.events.id))
+    .innerJoin(
+      schema.occurrences,
+      eq(schema.saves.occurrenceId, schema.occurrences.id)
+    )
+    .innerJoin(schema.events, eq(schema.occurrences.eventId, schema.events.id))
     .innerJoin(schema.venues, eq(schema.events.venueId, schema.venues.id))
     .where(
       and(
@@ -48,50 +72,43 @@ savesRoute.get('/', async (c) => {
       )
     );
 
-  // Voor elk gesaved event de eerstvolgende occurrence opzoeken. Events
-  // zonder toekomstige occurrence krijgen `startsAt: null` — UI kan dan
-  // "verleden" of "afgelopen" tonen.
-  const eventIds = rows.map((r) => r.id);
-  // includePast: voor afgelopen events tonen we de laatste occurrence-datum
-  // zodat de Gered-tab "Vorige" sectie ook een datum kan laten zien.
-  const occMap = await buildOccurrencesByEvent(eventIds, { includePast: true });
-
-  const events = rows
-    .map((r) => {
-      const occ = occMap.get(r.id);
-      return {
-        ...r,
-        startsAt: occ?.next?.startsAt ?? null,
-        endsAt: occ?.next?.endsAt ?? null,
-        priceCents: occ?.next?.priceCents ?? null,
-        priceNote: occ?.next?.priceNote ?? null,
-        ticketUrl: occ?.next?.ticketUrl ?? null,
-        occurrenceCount: occ?.count ?? 0,
-      };
-    })
-    // Sorteer op nextOccurrence; afgelopen events achteraan.
-    .sort((a, b) => {
-      const aT = a.startsAt ? a.startsAt.getTime() : Infinity;
-      const bT = b.startsAt ? b.startsAt.getTime() : Infinity;
-      return aT - bT;
-    });
+  const now = Date.now();
+  const events = rows.sort((a, b) => {
+    const aT = a.startsAt.getTime();
+    const bT = b.startsAt.getTime();
+    const aFuture = aT >= now;
+    const bFuture = bT >= now;
+    if (aFuture && !bFuture) return -1;
+    if (!aFuture && bFuture) return 1;
+    if (aFuture) return aT - bT; // beide toekomst → oplopend
+    return bT - aT; // beide voorbij → meest recent eerst
+  });
 
   return c.json({ events });
 });
 
+/**
+ * Toggle save voor een occurrence. Idempotent: bestond de save al? dan
+ * deletet 'ie. Anders insert. Body: `{ occurrenceId }`.
+ */
 savesRoute.post('/', async (c) => {
   const userId = await requireUserId(c);
   if (typeof userId !== 'string') return userId;
 
-  const body = (await c.req.json()) as { eventId?: string };
-  const eventId = body.eventId;
-  if (!eventId) return c.json({ error: 'eventId is verplicht' }, 400);
+  const body = (await c.req.json()) as { occurrenceId?: string };
+  const occurrenceId = body.occurrenceId;
+  if (!occurrenceId) {
+    return c.json({ error: 'occurrenceId is verplicht' }, 400);
+  }
 
   const existing = await db
     .select()
     .from(schema.saves)
     .where(
-      and(eq(schema.saves.userId, userId), eq(schema.saves.eventId, eventId))
+      and(
+        eq(schema.saves.userId, userId),
+        eq(schema.saves.occurrenceId, occurrenceId)
+      )
     )
     .limit(1);
 
@@ -99,22 +116,22 @@ savesRoute.post('/', async (c) => {
     await db
       .delete(schema.saves)
       .where(
-        and(eq(schema.saves.userId, userId), eq(schema.saves.eventId, eventId))
+        and(
+          eq(schema.saves.userId, userId),
+          eq(schema.saves.occurrenceId, occurrenceId)
+        )
       );
     return c.json({ saved: false });
   }
 
-  // Bestaat het event überhaupt? Voorkomt dangling save-rows.
-  const [event] = await db
-    .select({ id: schema.events.id })
-    .from(schema.events)
-    .where(eq(schema.events.id, eventId))
+  // Bestaat de occurrence? Voorkomt dangling rows.
+  const [occ] = await db
+    .select({ id: schema.occurrences.id })
+    .from(schema.occurrences)
+    .where(eq(schema.occurrences.id, occurrenceId))
     .limit(1);
-  if (!event) return c.json({ error: 'event niet gevonden' }, 404);
+  if (!occ) return c.json({ error: 'occurrence niet gevonden' }, 404);
 
-  await db.insert(schema.saves).values({
-    userId,
-    eventId,
-  });
+  await db.insert(schema.saves).values({ userId, occurrenceId });
   return c.json({ saved: true });
 });

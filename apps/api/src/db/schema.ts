@@ -307,16 +307,21 @@ export const saves = pgTable(
     userId: text()
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
-    eventId: text()
+    /** Saves zitten op occurrence-niveau: een film met 7 voorstellingen
+        kan je 1× saven (de voorstelling waar je heen wil) of meerdere.
+        Een wekelijks feest dat je 4 maandagen wilt zien = 4 saves. Voor
+        single-occurrence events (point-in-time of doorlopende exhibition)
+        voelt dit identiek aan event-level saves. */
+    occurrenceId: text()
       .notNull()
-      .references(() => events.id, { onDelete: 'cascade' }),
+      .references(() => occurrences.id, { onDelete: 'cascade' }),
     createdAt: timestamp({ withTimezone: true })
       .notNull()
       .default(sql`now()`),
   },
   (t) => [
-    primaryKey({ columns: [t.userId, t.eventId] }),
-    index('saves_event_idx').on(t.eventId),
+    primaryKey({ columns: [t.userId, t.occurrenceId] }),
+    index('saves_occurrence_idx').on(t.occurrenceId),
   ]
 );
 

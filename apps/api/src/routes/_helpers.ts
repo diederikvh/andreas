@@ -19,17 +19,21 @@ export type FriendBadge = {
 };
 
 /**
- * Voor een gegeven set event-IDs: welke van mijn vrienden hebben elk event
- * opgeslagen? Limiet per event = FRIEND_PILL_LIMIT, in naam-volgorde, plus
- * een totaal-tellertje. Privacy-gate: vrienden met `savesVisibility='private'`
- * worden niet meegerekend.
+ * Voor een gegeven set occurrence-IDs: welke van mijn vrienden hebben dit
+ * specifieke moment opgeslagen? Limiet per occurrence = FRIEND_PILL_LIMIT,
+ * in naam-volgorde, plus een totaal-tellertje. Privacy-gate: vrienden met
+ * `savesVisibility='private'` worden niet meegerekend.
+ *
+ * Door op occurrence-niveau te filteren tonen list-rijen alleen vrienden
+ * die naar díe specifieke voorstelling gaan — een film op woensdag laat
+ * niet zien dat vriend X de maandag-voorstelling heeft gesaved.
  */
-export async function buildFriendsByEvent(
+export async function buildFriendsByOccurrence(
   meId: string,
-  eventIds: string[]
+  occurrenceIds: string[]
 ): Promise<Map<string, { friends: FriendBadge[]; count: number }>> {
   const map = new Map<string, { friends: FriendBadge[]; count: number }>();
-  if (eventIds.length === 0) return map;
+  if (occurrenceIds.length === 0) return map;
 
   const friendships = await db
     .select({
@@ -53,7 +57,7 @@ export async function buildFriendsByEvent(
 
   const rows = await db
     .select({
-      eventId: schema.saves.eventId,
+      occurrenceId: schema.saves.occurrenceId,
       id: schema.users.id,
       name: schema.users.name,
       handle: schema.users.handle,
@@ -64,13 +68,13 @@ export async function buildFriendsByEvent(
     .where(
       and(
         inArray(schema.saves.userId, friendIds),
-        inArray(schema.saves.eventId, eventIds),
+        inArray(schema.saves.occurrenceId, occurrenceIds),
         eq(schema.users.savesVisibility, 'friends')
       )
     );
 
   for (const r of rows) {
-    const entry = map.get(r.eventId) ?? { friends: [], count: 0 };
+    const entry = map.get(r.occurrenceId) ?? { friends: [], count: 0 };
     entry.count += 1;
     if (entry.friends.length < FRIEND_PILL_LIMIT) {
       entry.friends.push({
@@ -80,7 +84,7 @@ export async function buildFriendsByEvent(
         avatarUrl: r.avatarUrl,
       });
     }
-    map.set(r.eventId, entry);
+    map.set(r.occurrenceId, entry);
   }
   for (const entry of map.values()) {
     entry.friends.sort((a, b) => a.name.localeCompare(b.name));

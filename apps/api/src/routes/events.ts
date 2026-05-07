@@ -3,7 +3,7 @@ import { Hono } from 'hono';
 
 import { db, schema } from '../db/index.js';
 import {
-  buildFriendsByEvent,
+  buildFriendsByOccurrence,
   buildOccurrencesByEvent,
   buildSeriesByEvent,
   findEventsWithOccurrencesInRange,
@@ -116,8 +116,11 @@ eventsRoute.get('/', async (c) => {
     .filter((x) => x.event);
 
   const eventIds = ordered.map((x) => x.event.id);
-  const friendsMap = me
-    ? await buildFriendsByEvent(me, eventIds)
+  const allOccurrenceIds = ordered.flatMap(({ occ }) =>
+    occ.all.map((o) => o.id)
+  );
+  const friendsByOcc = me
+    ? await buildFriendsByOccurrence(me, allOccurrenceIds)
     : new Map();
   const seriesMap = await buildSeriesByEvent(eventIds);
   const followedVenueIds = me
@@ -125,7 +128,20 @@ eventsRoute.get('/', async (c) => {
     : new Set<string>();
 
   const events = ordered.map(({ event, occ }) => {
-    const friends = friendsMap.get(event.id);
+    // Per occurrence: friendsSaved van vrienden die díe specifieke
+    // voorstelling/avond gesaved hebben. Een film op woensdag toont
+    // niet de friends van de maandag-occurrence.
+    const occurrencesInRange = occ.all.map((o) => {
+      const f = friendsByOcc.get(o.id);
+      return {
+        ...o,
+        friendsSaved: f?.friends ?? [],
+        friendsSavedCount: f?.count ?? 0,
+      };
+    });
+    // Event-level friendsSaved = friends van de nextOccurrence (default
+    // weergave wanneer er nog geen specifieke occurrence is geselecteerd).
+    const headFriends = occ.next ? friendsByOcc.get(occ.next.id) : undefined;
     return {
       ...event,
       // gedenormaliseerd vanuit nextOccurrence
@@ -138,9 +154,9 @@ eventsRoute.get('/', async (c) => {
       // Volledige lijst occurrences in de gevraagde range — Agenda en
       // Avond gebruiken dit om per moment één rij te tonen ipv één per
       // event. Een 3-daags festival verschijnt zo op alle 3 dagen.
-      occurrencesInRange: occ.all,
-      friendsSaved: friends?.friends ?? [],
-      friendsSavedCount: friends?.count ?? 0,
+      occurrencesInRange,
+      friendsSaved: headFriends?.friends ?? [],
+      friendsSavedCount: headFriends?.count ?? 0,
       venueFollowed: followedVenueIds.has(event.venue.id),
       series: seriesMap.get(event.id) ?? [],
     };
@@ -228,21 +244,27 @@ eventsRoute.get('/:id', async (c) => {
   if (!row) return c.json({ error: 'event not found' }, 404);
 
   const me = await maybeUserId(c);
-  const friendsMap = me ? await buildFriendsByEvent(me, [row.id]) : new Map();
-  const entry = friendsMap.get(row.id);
   const seriesMap = await buildSeriesByEvent([row.id]);
   // Detail-page: ook afgelopen events kunnen geopend worden via een
   // share-link of saved-link, dus pak ook past-occurrences als fallback.
   const occMap = await buildOccurrencesByEvent([row.id], { includePast: true });
   const occ = occMap.get(row.id);
+  const occurrenceIdsAll = (occ?.all ?? []).map((o) => o.id);
+  const friendsByOcc = me
+    ? await buildFriendsByOccurrence(me, occurrenceIdsAll)
+    : new Map();
+  // Event-level friendsSaved = friends van de nextOccurrence (= huidige
+  // weergave wanneer geen ?o=… gekozen). Per-occurrence friends staat
+  // op de occurrences-lijst zodat de mobile-UI bij ?o=switch de juiste
+  // pill toont.
+  const headFriends = occ?.next ? friendsByOcc.get(occ.next.id) : undefined;
 
   // Mijn eigen verstuurde invites voor dit event — gebruikt op detail
   // (toont wie ik gevraagd heb + status) én op de invite-modal (om
   // dubbele invites te blokkeren). Filtert op de occurrences van dit
   // event zodat invites voor andere events nooit lekken.
-  const occurrenceIds = (occ?.all ?? []).map((o) => o.id);
   const myInvites =
-    me && occurrenceIds.length > 0
+    me && occurrenceIdsAll.length > 0
       ? await db
           .select({
             id: schema.invites.id,
@@ -264,11 +286,22 @@ eventsRoute.get('/:id', async (c) => {
           .where(
             and(
               eq(schema.invites.fromUserId, me),
-              inArray(schema.invites.occurrenceId, occurrenceIds)
+              inArray(schema.invites.occurrenceId, occurrenceIdsAll)
             )
           )
           .orderBy(asc(schema.invites.createdAt))
       : [];
+
+  // Per occurrence z'n eigen friendsSaved injecteren zodat de mobile-UI
+  // bij een `?o=` switch direct de juiste pill toont zonder extra fetch.
+  const occurrencesWithFriends = (occ?.all ?? []).map((o) => {
+    const f = friendsByOcc.get(o.id);
+    return {
+      ...o,
+      friendsSaved: f?.friends ?? [],
+      friendsSavedCount: f?.count ?? 0,
+    };
+  });
 
   return c.json({
     event: {
@@ -281,9 +314,9 @@ eventsRoute.get('/:id', async (c) => {
       priceNote: occ?.next?.priceNote ?? null,
       ticketUrl: occ?.next?.ticketUrl ?? null,
       occurrenceCount: occ?.count ?? 0,
-      occurrences: occ?.all ?? [],
-      friendsSaved: entry?.friends ?? [],
-      friendsSavedCount: entry?.count ?? 0,
+      occurrences: occurrencesWithFriends,
+      friendsSaved: headFriends?.friends ?? [],
+      friendsSavedCount: headFriends?.count ?? 0,
       series: seriesMap.get(row.id) ?? [],
       myInvites: myInvites.map((i) => ({
         id: i.id,

@@ -226,18 +226,25 @@ invitesRoute.post('/:id/accept', async (c) => {
     .set({ status: 'accepted' })
     .where(eq(schema.invites.id, id));
 
-  // Bij accept ook automatisch het master-event saven zodat het in Gered
-  // staat. Saves zijn op event-niveau (niet occurrence) — je redt
-  // "Hamlet", niet één voorstelling. Idempotent (skip als al gesaved).
+  // Bij accept ook automatisch deze occurrence saven zodat 'ie in Gered
+  // staat én de friends-pill van die specifieke voorstelling toont dat
+  // jij gaat. Saves zijn occurrence-level: een uitnodiging voor woensdag
+  // saved alleen woensdag, niet alle voorstellingen van die film.
+  // Idempotent (skip als al gesaved).
   const [existingSave] = await db
     .select()
     .from(schema.saves)
     .where(
-      and(eq(schema.saves.userId, me), eq(schema.saves.eventId, row.eventId))
+      and(
+        eq(schema.saves.userId, me),
+        eq(schema.saves.occurrenceId, row.occurrenceId)
+      )
     )
     .limit(1);
   if (!existingSave) {
-    await db.insert(schema.saves).values({ userId: me, eventId: row.eventId });
+    await db
+      .insert(schema.saves)
+      .values({ userId: me, occurrenceId: row.occurrenceId });
   }
 
   // Push de oorspronkelijke uitnodiger ("X gaat met je mee naar [event]").

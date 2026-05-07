@@ -4,7 +4,6 @@ import { Hono, type Context } from 'hono';
 import { auth } from '../auth.js';
 import { db, schema } from '../db/index.js';
 import { sendPushToUser } from '../push.js';
-import { buildOccurrencesByEvent } from './_helpers.js';
 
 async function requireUserId(c: Context): Promise<string | Response> {
   const session = await auth.api.getSession({ headers: c.req.raw.headers });
@@ -318,6 +317,9 @@ friendsRoute.get('/:id', async (c) => {
   const isPrivate = user.savesVisibility === 'private';
   let events: Array<Record<string, unknown>> = [];
   if (!isPrivate) {
+    // Saves zijn nu per occurrence — één rij per gesaveterde voorstelling
+    // ipv per event. Een friend die 3 voorstellingen van dezelfde film
+    // heeft gesaved geeft 3 rijen.
     const rows = await db
       .select({
         id: schema.events.id,
@@ -327,6 +329,16 @@ friendsRoute.get('/:id', async (c) => {
         imageUrl: schema.events.imageUrl,
         category: schema.events.category,
         featured: schema.events.featured,
+        // occurrence-veld
+        occurrenceId: schema.occurrences.id,
+        startsAt: schema.occurrences.startsAt,
+        endsAt: schema.occurrences.endsAt,
+        priceCents: schema.occurrences.priceCents,
+        priceNote: schema.occurrences.priceNote,
+        ticketUrl: schema.occurrences.ticketUrl,
+        room: schema.occurrences.room,
+        lineup: schema.occurrences.lineup,
+        status: schema.occurrences.status,
         savedAt: schema.saves.createdAt,
         venue: {
           id: schema.venues.id,
@@ -339,7 +351,11 @@ friendsRoute.get('/:id', async (c) => {
         },
       })
       .from(schema.saves)
-      .innerJoin(schema.events, eq(schema.events.id, schema.saves.eventId))
+      .innerJoin(
+        schema.occurrences,
+        eq(schema.occurrences.id, schema.saves.occurrenceId)
+      )
+      .innerJoin(schema.events, eq(schema.events.id, schema.occurrences.eventId))
       .innerJoin(schema.venues, eq(schema.venues.id, schema.events.venueId))
       .where(
         and(
@@ -349,27 +365,17 @@ friendsRoute.get('/:id', async (c) => {
         )
       );
 
-    const occMap = await buildOccurrencesByEvent(rows.map((r) => r.id), {
-      includePast: true,
+    const now = Date.now();
+    events = rows.sort((a, b) => {
+      const aT = a.startsAt.getTime();
+      const bT = b.startsAt.getTime();
+      const aFuture = aT >= now;
+      const bFuture = bT >= now;
+      if (aFuture && !bFuture) return -1;
+      if (!aFuture && bFuture) return 1;
+      if (aFuture) return aT - bT;
+      return bT - aT;
     });
-    events = rows
-      .map((r) => {
-        const occ = occMap.get(r.id);
-        return {
-          ...r,
-          startsAt: occ?.next?.startsAt ?? null,
-          endsAt: occ?.next?.endsAt ?? null,
-          priceCents: occ?.next?.priceCents ?? null,
-          priceNote: occ?.next?.priceNote ?? null,
-          ticketUrl: occ?.next?.ticketUrl ?? null,
-          occurrenceCount: occ?.count ?? 0,
-        };
-      })
-      .sort((a, b) => {
-        const aT = (a.startsAt as Date | null)?.getTime() ?? Infinity;
-        const bT = (b.startsAt as Date | null)?.getTime() ?? Infinity;
-        return aT - bT;
-      });
   }
 
   // savesVisibility hoeft niet naar de client — gebruikt om events leeg

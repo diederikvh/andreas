@@ -362,7 +362,7 @@ export default function EventDetail() {
             </Text>
           </Animated.View>
           <View style={styles.heroActions}>
-            <HeartButton id={id} />
+            <HeartButton occurrenceId={selectedOccurrenceId} />
             <ShareButton event={event} />
           </View>
         </View>
@@ -889,13 +889,15 @@ function ShareButton({ event }: { event: ApiEvent }) {
   );
 }
 
-function HeartButton({ id }: { id: string }) {
+function HeartButton({ occurrenceId }: { occurrenceId: string | null }) {
   const mode = useMode();
   const { data: session } = useSession();
   const authed = Boolean(session?.user?.id);
   const { data: saves } = useMySaves({ enabled: authed });
   const toggleMutation = useToggleSave();
-  const isSaved = Boolean(saves?.some((s) => s.id === id));
+  const isSaved = Boolean(
+    occurrenceId && saves?.some((s) => s.occurrenceId === occurrenceId)
+  );
   const scale = useSharedValue(1);
 
   const animStyle = useAnimatedStyle(() => ({
@@ -908,6 +910,7 @@ function HeartButton({ id }: { id: string }) {
       router.push('/jij');
       return;
     }
+    if (!occurrenceId) return; // Geen actieve occurrence (event afgelopen)
     scale.value = withSequence(
       withTiming(1.3, { duration: 140 }),
       withTiming(1, { duration: 180 })
@@ -917,7 +920,7 @@ function HeartButton({ id }: { id: string }) {
     } else {
       Haptics.selectionAsync();
     }
-    toggleMutation.mutate(id);
+    toggleMutation.mutate(occurrenceId);
   };
 
   const iconName = isSaved ? 'heart' : 'heart-outline';

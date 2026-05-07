@@ -33,6 +33,7 @@ import type {
   ApiFriend,
   ApiFriendRequest,
   ApiInvite,
+  SavedApiEvent,
 } from '@/lib/api';
 import { useSession } from '@/lib/authClient';
 import {
@@ -426,7 +427,7 @@ function PlanningPanel({
   error,
 }: {
   authed: boolean;
-  saves: ApiEvent[] | undefined;
+  saves: SavedApiEvent[] | undefined;
   isLoading: boolean;
   error: unknown;
 }) {
