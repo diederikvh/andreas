@@ -208,11 +208,13 @@ async function scrapeOneVenue(
             ev.htmlStartTime.minute
           );
           if (ev.htmlEndTime) {
-            // Eind-uur kleiner dan start-uur betekent over middernacht.
+            // Eind-uur kleiner dan of gelijk aan start-uur betekent
+            // over middernacht. Gelijk = 24h-event ("23:00 – 23:00"
+            // bij Lofi's Ratherlost).
             const endIsNextDay =
               ev.htmlEndTime.hour < ev.htmlStartTime.hour ||
               (ev.htmlEndTime.hour === ev.htmlStartTime.hour &&
-                ev.htmlEndTime.minute < ev.htmlStartTime.minute);
+                ev.htmlEndTime.minute <= ev.htmlStartTime.minute);
             const baseDay = endIsNextDay
               ? new Date(ev.startsAt.getTime() + 24 * 60 * 60_000)
               : ev.startsAt;
