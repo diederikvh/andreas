@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useScrollToTop } from '@react-navigation/native';
+import { useFocusEffect, useScrollToTop } from '@react-navigation/native';
 import { Image } from 'expo-image';
 import { router } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -39,6 +39,7 @@ import {
 } from '@/lib/eventDisplay';
 import { useLocale, useT, type Locale } from '@/lib/i18n';
 import { useSeriesList, useVenues, useVenueSubtypes } from '@/lib/queries';
+import { useTabDoubleTap } from '@/lib/useTabDoubleTap';
 import { useMode, useRoles } from '@/store/mode';
 import { useVenuesFilters } from '@/store/venuesFilters';
 import {
@@ -536,6 +537,18 @@ function ChipRow({
   const inputRef = useRef<TextInput>(null);
   const saved = useSavedVenueSearches();
   const removeSaved = useRemoveSavedVenueSearch();
+  // Dubbele tap op de Venues-tab = zoekveld leegmaken + focussen.
+  useTabDoubleTap(() => {
+    onQuery('');
+    inputRef.current?.focus();
+  });
+  // Blur bij scherm-blur zodat het keyboard niet open blijft staan
+  // wanneer je naar een andere tab of detail-pagina wisselt.
+  useFocusEffect(
+    useCallback(() => {
+      return () => inputRef.current?.blur();
+    }, [])
+  );
 
   const open = focused || query.length > 0;
   const COLLAPSED_W = 44;

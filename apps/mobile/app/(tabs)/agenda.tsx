@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useScrollToTop } from '@react-navigation/native';
+import { useFocusEffect, useScrollToTop } from '@react-navigation/native';
 import { router, useLocalSearchParams } from 'expo-router';
 // useLocalSearchParams blijft alleen voor deeplinks (?cat=Muziek vanuit
 // Vandaag's "Meer →"-knop) — wordt gemerged in de persisted store.
@@ -54,6 +54,7 @@ import {
 import { useLocale, useT } from '@/lib/i18n';
 import { useSession } from '@/lib/authClient';
 import { useEventGenres, useEvents, useFriends } from '@/lib/queries';
+import { useTabDoubleTap } from '@/lib/useTabDoubleTap';
 import { useAgendaFilters } from '@/store/agendaFilters';
 import { useMode, useRoles } from '@/store/mode';
 import {
@@ -416,6 +417,18 @@ function ChipRow({
   const inputRef = useRef<TextInput>(null);
   const saved = useSavedSearches();
   const removeSaved = useRemoveSavedSearch();
+  // Dubbele tap op de Agenda-tab = zoekveld leegmaken + focussen.
+  useTabDoubleTap(() => {
+    onQuery('');
+    inputRef.current?.focus();
+  });
+  // Blur bij scherm-blur zodat het keyboard niet open blijft staan
+  // wanneer je naar een andere tab of detail-pagina wisselt.
+  useFocusEffect(
+    useCallback(() => {
+      return () => inputRef.current?.blur();
+    }, [])
+  );
 
   // Het zoekveld is "open" zodra het focus heeft of als er tekst staat.
   const open = focused || query.length > 0;

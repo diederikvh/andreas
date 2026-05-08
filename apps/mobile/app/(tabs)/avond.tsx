@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useScrollToTop } from '@react-navigation/native';
+import { useFocusEffect, useScrollToTop } from '@react-navigation/native';
 import { Image } from 'expo-image';
 import { router } from 'expo-router';
 import { useCallback, useMemo, useRef, useState } from 'react';
@@ -53,6 +53,7 @@ import {
 import { useLocale, useT, type Locale } from '@/lib/i18n';
 import { useEventGenres, useEvents, useFriends } from '@/lib/queries';
 import { useSession } from '@/lib/authClient';
+import { useTabDoubleTap } from '@/lib/useTabDoubleTap';
 import { useMode, useRoles } from '@/store/mode';
 import {
   isSavedVandaagSearchActive,
@@ -64,11 +65,7 @@ import {
 import { useVandaagFilters } from '@/store/vandaagFilters';
 import { fontFamily, palette } from '@/theme/tokens';
 
-function formatMetaForRow(
-  row: OccurrenceRow,
-  locale: Locale,
-  opts?: { excludeVenue?: boolean }
-): string {
+function formatMetaForRow(row: OccurrenceRow, locale: Locale): string {
   const d = new Date(row.occurrence.startsAt);
   const dow = dowUpper(d.getDay(), locale);
   const cents = row.occurrence.priceCents;
@@ -81,7 +78,7 @@ function formatMetaForRow(
   return [
     dow,
     rowTimeLabel(row.occurrence.startsAt, row.occurrence.endsAt, locale),
-    opts?.excludeVenue ? null : row.event.venue.name.toUpperCase(),
+    row.event.venue.name.toUpperCase(),
     price,
   ]
     .filter(Boolean)
@@ -128,6 +125,17 @@ export default function Avond() {
   const locale = useLocale();
   const scrollRef = useRef<ScrollView>(null);
   useScrollToTop(scrollRef);
+  // Y-offset van de chip-row binnen de ScrollView-content; gevuld via
+  // onLayout op de wrapper rond <AvondChipRow/>. Wordt bij dubbel-tap
+  // op de tab gebruikt om de zoek-pill onder de AppHeader te scrollen,
+  // zodat 'ie boven het keyboard valt zodra de input focus krijgt.
+  const chipRowYRef = useRef(0);
+  const scrollToChipRow = useCallback(() => {
+    scrollRef.current?.scrollTo({
+      y: Math.max(0, chipRowYRef.current - (insets.top + HEADER_HEIGHT)),
+      animated: true,
+    });
+  }, [insets.top]);
 
   // Twee tijd-tikkers met verschillende doelen:
   //
@@ -442,28 +450,37 @@ export default function Avond() {
 
         {/* Filter-rij zit direct boven de cat-secties — zelfde patroon
             als op Agenda voor consistente leercurve. Search + filter-
-            knop + vrienden + favorieten + saved-search chips. */}
-        <AvondChipRow
-          query={query}
-          onQuery={setQuery}
-          onlyFriends={onlyFriends}
-          onToggleFriends={onToggleFriends}
-          showFriendsChip={showFriendsChip}
-          onlyFavorites={onlyFavorites}
-          onToggleFavorites={onToggleFavorites}
-          showFavoritesChip={showFavoritesChip}
-          activeBlocks={activeBlocks}
-          onToggleBlock={onToggleBlock}
-          activeCats={activeCats}
-          activeTypes={activeTypes}
-          activeGenres={activeGenres}
-          onSetBlocks={setActiveBlocks}
-          onSetFriends={setOnlyFriends}
-          onSetFavorites={setOnlyFavorites}
-          onSetCats={setActiveCats}
-          onSetTypes={setActiveTypes}
-          onSetGenres={setActiveGenres}
-        />
+            knop + vrienden + favorieten + saved-search chips. Wrapper
+            captureert Y-positie zodat dubbel-tap op de Vandaag-tab de
+            chip-row onder de AppHeader scrollt (zie scrollToChipRow). */}
+        <View
+          onLayout={(e) => {
+            chipRowYRef.current = e.nativeEvent.layout.y;
+          }}
+        >
+          <AvondChipRow
+            query={query}
+            onQuery={setQuery}
+            onlyFriends={onlyFriends}
+            onToggleFriends={onToggleFriends}
+            showFriendsChip={showFriendsChip}
+            onlyFavorites={onlyFavorites}
+            onToggleFavorites={onToggleFavorites}
+            showFavoritesChip={showFavoritesChip}
+            activeBlocks={activeBlocks}
+            onToggleBlock={onToggleBlock}
+            activeCats={activeCats}
+            activeTypes={activeTypes}
+            activeGenres={activeGenres}
+            onSetBlocks={setActiveBlocks}
+            onSetFriends={setOnlyFriends}
+            onSetFavorites={setOnlyFavorites}
+            onSetCats={setActiveCats}
+            onSetTypes={setActiveTypes}
+            onSetGenres={setActiveGenres}
+            onDoubleTapScroll={scrollToChipRow}
+          />
+        </View>
 
         {isLoading && (
           <View style={styles.loadingWrap}>
@@ -537,6 +554,7 @@ function AvondChipRow({
   onSetCats,
   onSetTypes,
   onSetGenres,
+  onDoubleTapScroll,
 }: {
   query: string;
   onQuery: (q: string) => void;
@@ -557,6 +575,10 @@ function AvondChipRow({
   onSetCats: (next: ApiEvent['category'][]) => void;
   onSetTypes: (next: VenueType[]) => void;
   onSetGenres: (next: string[]) => void;
+  /** Optioneel — bij dubbel-tap op de Vandaag-tab eerst scrollen
+      naar de chip-row, vóór focus + clear. Zo valt de zoek-pill
+      onder de AppHeader in plaats van achter het keyboard. */
+  onDoubleTapScroll?: () => void;
 }) {
   const mode = useMode();
   const roles = useRoles();
@@ -567,6 +589,23 @@ function AvondChipRow({
   const inputRef = useRef<TextInput>(null);
   const saved = useSavedVandaagSearches();
   const removeSaved = useRemoveSavedVandaagSearch();
+  // Dubbele tap op de Vandaag-tab = scroll naar de chip-row (onder
+  // de AppHeader, dus boven het keyboard) + zoekveld leegmaken +
+  // focussen. Single tap (re-tap) = scroll naar boven via
+  // useScrollToTop op schermniveau; die laten we ongemoeid.
+  useTabDoubleTap(() => {
+    onDoubleTapScroll?.();
+    onQuery('');
+    inputRef.current?.focus();
+  });
+  // Blur het zoekveld zodra het scherm de focus verliest (tab-wissel,
+  // navigatie naar detail). Anders blijft het keyboard open boven een
+  // andere tab.
+  useFocusEffect(
+    useCallback(() => {
+      return () => inputRef.current?.blur();
+    }, [])
+  );
 
   // Search-pill: collapsable. Open zodra hij focus heeft of er tekst in
   // staat. Width animeert van klein-icoon naar input-wide.
@@ -1385,10 +1424,10 @@ function ApiEventRow({ row }: { row: OccurrenceRow }) {
   }));
   // Op Vandaag laten we de categorie-tag weg in de rij — die staat
   // al in de sectie-titel erboven. Venue komt als eerste pill in
-  // venue-type tone (podium=acid, club=flare, ...). Genre/series/
-  // friends blijven; tick-kleur volgt nog steeds het thema. Pill
-  // is tappable: toggelt het bijbehorende venue-type-filter, zodat
-  // je snel "alleen clubs" kan zien zonder de filter-sheet.
+  // venue-type tone (podium=acid, club=flare, ...); de tijd staat
+  // rechts in een eigen kolom. DOW + prijs zijn weggehaald — datum
+  // is impliciet ("vandaag") en prijs zat ondergesneeuwd in de
+  // mono-subline. Pill is tappable: toggelt het venue-type-filter.
   const venueType = event.venue.type;
   const venueTone = venueType ? VENUE_TYPE_TICK[venueType] : undefined;
   const onVenuePress = venueType ? () => toggleType(venueType) : undefined;
@@ -1399,7 +1438,7 @@ function ApiEventRow({ row }: { row: OccurrenceRow }) {
       venue={event.venue.name}
       venueTone={venueTone}
       onVenuePress={onVenuePress}
-      meta={formatMetaForRow(row, locale, { excludeVenue: Boolean(venueTone) })}
+      time={rowTimeLabel(occurrence.startsAt, occurrence.endsAt, locale)}
       seriesLabel={event.series?.[0]?.name}
       genreLabel={event.genres?.[0]}
       friends={friends && friends.length > 0 ? friends : undefined}

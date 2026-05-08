@@ -762,6 +762,7 @@ function OccurrenceList({
           const dow = dowMixed(d.getDay(), locale);
           const day = d.getDate();
           const month = monthShort(d.getMonth(), locale).toLowerCase();
+          const year = d.getFullYear();
           const time = rowTimeLabel(o.startsAt, o.endsAt, locale);
           const lineupHint =
             o.lineup && o.lineup.length > 0
@@ -791,7 +792,7 @@ function OccurrenceList({
                     { color: isSelected ? roles.accent : roles.fg },
                   ]}
                 >
-                  {dow} {day} {month}
+                  {dow} {day} {month} {year}
                 </Text>
                 <Text style={[styles.occTime, { color: roles.fgMuted }]}>
                   {time}
@@ -864,6 +865,7 @@ function toViewModel(
   const dow = dowMixed(d.getDay(), locale);
   const day = d.getDate();
   const month = monthShort(d.getMonth(), locale).toLowerCase();
+  const year = d.getFullYear();
   const priceNote =
     (sourcePriceNote && sourcePriceNote.trim().length > 0
       ? sourcePriceNote.trim()
@@ -874,7 +876,7 @@ function toViewModel(
   return {
     tag: translateCategory(event.category, locale),
     title: event.title,
-    date: `${dow} ${day} ${month}`,
+    date: `${dow} ${day} ${month} ${year}`,
     time: formatTimeRange(sourceStart, sourceEnd, locale),
     allDay: isAllDayRange(sourceStart, sourceEnd),
     venue: event.venue.name,
@@ -1242,9 +1244,9 @@ const styles = StyleSheet.create({
     letterSpacing: -0.13,
   },
   occTime: {
-    fontFamily: fontFamily.mono,
-    fontSize: 11.5,
-    letterSpacing: 0.4,
+    fontFamily: fontFamily.medium,
+    fontSize: 12.5,
+    letterSpacing: -0.06,
   },
   occPrice: {
     fontFamily: fontFamily.mono,

@@ -30,14 +30,16 @@ import type { ApiEvent, ApiFriendBadge } from '@/lib/api';
 import {
   CATEGORY_DOT,
   CATEGORY_TICK,
+  VENUE_TYPE_TICK,
   distanceKm,
   eventImageUrl,
   rowTimeLabel,
   getTimeBlock,
+  translateCategory,
   travelMinutes,
   type TransportMode,
 } from '@/lib/eventDisplay';
-import { useT } from '@/lib/i18n';
+import { useLocale, useT } from '@/lib/i18n';
 import { useEvents } from '@/lib/queries';
 import { useDeviceLocation } from '@/lib/useDeviceLocation';
 import type { BadgeTone } from '@/lib/types';
@@ -416,7 +418,9 @@ export default function Kaart() {
                 />
               </Pressable>
             </GestureDetector>
-            {activeMapEvent && <DrawerCard mapEvent={activeMapEvent} />}
+            {activeMapEvent && (
+              <DrawerCard mapEvent={activeMapEvent} transport={transport} />
+            )}
           </Animated.View>
         </>
       )}
@@ -702,8 +706,10 @@ function SwitchBtn({
 function SheetRow({ mapEvent }: { mapEvent: MapEvent }) {
   const mode = useMode();
   const roles = useRoles();
-  const tone = TONE[mode][CATEGORY_TICK[mapEvent.event.category]];
-  const tagBg = `${tone}26`;
+  const locale = useLocale();
+  const catTone = TONE[mode][CATEGORY_TICK[mapEvent.event.category]];
+  const venueType = mapEvent.event.venue.type;
+  const venueTone = venueType ? TONE[mode][VENUE_TYPE_TICK[venueType]] : null;
   const friends = mapEvent.event.friendsSaved ?? [];
 
   return (
@@ -719,6 +725,16 @@ function SheetRow({ mapEvent }: { mapEvent: MapEvent }) {
           min
         </Text>
       </View>
+      {(() => {
+        const img = eventImageUrl(mapEvent.event);
+        return img ? (
+          <Image
+            source={{ uri: img }}
+            style={styles.sheetThumb}
+            contentFit="cover"
+          />
+        ) : null;
+      })()}
       <View style={styles.sheetBody}>
         <Text
           numberOfLines={1}
@@ -727,33 +743,53 @@ function SheetRow({ mapEvent }: { mapEvent: MapEvent }) {
           {mapEvent.event.title}
         </Text>
         <View style={styles.sheetMetaRow}>
-          <View style={[styles.sheetTag, { backgroundColor: tagBg }]}>
-            <Text style={[styles.sheetTagText, { color: tone }]}>
-              {mapEvent.event.category}
+          {venueTone ? (
+            <View
+              style={[styles.sheetTag, { backgroundColor: `${venueTone}26` }]}
+            >
+              <Text style={[styles.sheetTagText, { color: venueTone }]}>
+                {mapEvent.event.venue.name}
+              </Text>
+            </View>
+          ) : (
+            <Text
+              numberOfLines={1}
+              style={[styles.sheetVenue, { color: roles.fgMuted }]}
+            >
+              {mapEvent.event.venue.name}
+            </Text>
+          )}
+          <View style={[styles.sheetTag, { backgroundColor: `${catTone}26` }]}>
+            <Text style={[styles.sheetTagText, { color: catTone }]}>
+              {translateCategory(mapEvent.event.category, locale)}
             </Text>
           </View>
-          <Text
-            numberOfLines={1}
-            style={[styles.sheetVenue, { color: roles.fgMuted }]}
-          >
-            {mapEvent.event.venue.name}
-          </Text>
           {friends.length > 0 && (
             <FriendAvatarStack friends={friends} />
           )}
         </View>
       </View>
-      <Text style={[styles.sheetTime, { color: roles.fgMuted }]}>
+      <Text style={[styles.sheetTime, { color: roles.fg }]}>
         {rowTimeLabel(mapEvent.event.startsAt, mapEvent.event.endsAt)}
       </Text>
     </Pressable>
   );
 }
 
-function DrawerCard({ mapEvent }: { mapEvent: MapEvent }) {
+function DrawerCard({
+  mapEvent,
+  transport,
+}: {
+  mapEvent: MapEvent;
+  transport: TransportMode;
+}) {
   const mode = useMode();
   const roles = useRoles();
-  const tone = TONE[mode][CATEGORY_TICK[mapEvent.event.category]];
+  const locale = useLocale();
+  const catTone = TONE[mode][CATEGORY_TICK[mapEvent.event.category]];
+  const venueType = mapEvent.event.venue.type;
+  const venueTone = venueType ? TONE[mode][VENUE_TYPE_TICK[venueType]] : null;
+  const transportIcon = transport === 'walk' ? 'walk-outline' : 'bicycle-outline';
   return (
     <Pressable
       onPress={() => router.push(`/event/${mapEvent.event.id}`)}
@@ -771,28 +807,40 @@ function DrawerCard({ mapEvent }: { mapEvent: MapEvent }) {
           ) : null;
         })()}
         <View style={styles.cardBody}>
-          <View style={styles.cardMetaRow}>
-            <View style={[styles.cardTag, { backgroundColor: `${tone}26` }]}>
-              <Text style={[styles.cardTagText, { color: tone }]}>
-                {mapEvent.event.category}
-              </Text>
-            </View>
-            <Text style={[styles.cardMeta, { color: roles.fgMuted }]}>
-              {mapEvent.minutes} min · {rowTimeLabel(mapEvent.event.startsAt, mapEvent.event.endsAt)}
-            </Text>
-          </View>
           <Text
             numberOfLines={2}
             style={[styles.cardTitle, { color: roles.fg }]}
           >
             {mapEvent.event.title}
           </Text>
-          <Text
-            numberOfLines={1}
-            style={[styles.cardVenue, { color: roles.fgMuted }]}
-          >
-            {mapEvent.event.venue.name}
-          </Text>
+          <View style={styles.cardMetaRow}>
+            {venueTone && (
+              <View
+                style={[styles.cardTag, { backgroundColor: `${venueTone}26` }]}
+              >
+                <Text style={[styles.cardTagText, { color: venueTone }]}>
+                  {mapEvent.event.venue.name}
+                </Text>
+              </View>
+            )}
+            <View style={[styles.cardTag, { backgroundColor: `${catTone}26` }]}>
+              <Text style={[styles.cardTagText, { color: catTone }]}>
+                {translateCategory(mapEvent.event.category, locale)}
+              </Text>
+            </View>
+          </View>
+          <View style={styles.cardTimeRow}>
+            <Ionicons
+              name={transportIcon}
+              size={16}
+              color={roles.fgMuted}
+            />
+            <Text style={[styles.cardTime, { color: roles.fgMuted }]}>
+              {mapEvent.minutes} min ·{' '}
+              {rowTimeLabel(mapEvent.event.startsAt, mapEvent.event.endsAt)}
+              {!venueTone ? ` · ${mapEvent.event.venue.name}` : ''}
+            </Text>
+          </View>
           {mapEvent.event.description && (
             <Text
               numberOfLines={3}
@@ -805,7 +853,7 @@ function DrawerCard({ mapEvent }: { mapEvent: MapEvent }) {
             <View style={styles.cardFriendsWrap}>
               <FriendsPill
                 friends={mapEvent.event.friendsSaved!}
-                accent={tone}
+                accent={catTone}
               />
             </View>
           )}
@@ -1142,18 +1190,25 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
     textTransform: 'uppercase',
   },
+  // "X min · 20:00" onder de pills, boven de beschrijving — bold
+  // sans + transport-icoon (walk/bike). Iets meer ruimte erboven
+  // zodat 'ie zichtbaar los staat van de pills.
+  cardTimeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 4,
+  },
+  cardTime: {
+    fontFamily: fontFamily.bold,
+    fontSize: 13,
+    letterSpacing: -0.1,
+  },
   cardTitle: {
     fontFamily: fontFamily.bold,
     fontSize: 18,
     letterSpacing: -0.27,
     lineHeight: 20,
-  },
-  cardVenue: {
-    fontFamily: fontFamily.mono,
-    fontSize: 10,
-    letterSpacing: 1,
-    textTransform: 'uppercase',
-    marginTop: -4,
   },
   cardIntro: {
     fontFamily: fontFamily.body,
@@ -1178,26 +1233,29 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
   sheetMin: {
-    width: 52,
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    gap: 5,
+    width: 26,
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   sheetMinNum: {
     fontFamily: fontFamily.display,
     fontSize: 18,
     letterSpacing: -0.18,
-    lineHeight: 18,
-    // Reserveer minimaal 2 cijfers breed zodat "min" voor 1- en 2-cijfer
-    // waarden op dezelfde positie blijft staan.
-    minWidth: 22,
-    textAlign: 'right',
+    lineHeight: 20,
+    textAlign: 'center',
   },
   sheetMinUnit: {
     fontFamily: fontFamily.mono,
     fontSize: 9,
     letterSpacing: 0.5,
     textTransform: 'uppercase',
+    marginTop: 1,
+  },
+  sheetThumb: {
+    width: 40,
+    height: 40,
+    borderRadius: 8,
   },
   sheetBody: { flex: 1, minWidth: 0 },
   sheetTitle: {
@@ -1232,9 +1290,9 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
   },
   sheetTime: {
-    fontFamily: fontFamily.mono,
-    fontSize: 10,
-    letterSpacing: 0.8,
+    fontFamily: fontFamily.bold,
+    fontSize: 14,
+    letterSpacing: -0.14,
   },
 
   // Friends — avatars + optionele tinted pill

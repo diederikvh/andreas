@@ -40,11 +40,6 @@ type Props = {
       Vandaag/Agenda om de venue-type filter te toggelen vanuit de rij
       zelf (zonder eerst de filter-sheet te openen). */
   onVenuePress?: () => void;
-  /** Optional — when set, this string is rendered as the subline
-      verbatim instead of the default `[time, duration, venue].join`.
-      Used by Vandaag, which composes its own meta line (DOW · time ·
-      price). */
-  meta?: string;
   tags?: EventTag[];
   /** Optional outline tag, e.g. "Uitverkocht" / "nog 3". */
   status?: string;
@@ -79,7 +74,6 @@ export function EventListRow({
   venue,
   venueTone,
   onVenuePress,
-  meta,
   tags,
   status,
   seriesLabel,
@@ -93,9 +87,13 @@ export function EventListRow({
   const roles = useRoles();
   const tickColor = TONE[mode][tick];
   const venueAsPill = venueTone !== undefined;
-  const subline =
-    meta ??
-    [time, duration, venueAsPill ? null : venue].filter(Boolean).join(' · ');
+  // Wanneer venueAsPill aanstaat (Vandaag/Agenda) gaat de tijd naar
+  // een eigen kolom rechts; subline wordt dan compact (alleen
+  // duration als die meekomt). Anders: oude subline-layout.
+  const showTimeRight = venueAsPill && Boolean(time);
+  const subline = venueAsPill
+    ? [duration].filter(Boolean).join(' · ')
+    : [time, duration, venue].filter(Boolean).join(' · ');
   const venuePillColor = venueAsPill ? TONE[mode][venueTone] : null;
   const hasTagsRow =
     venueAsPill ||
@@ -223,6 +221,18 @@ export function EventListRow({
             </View>
           )}
         </View>
+        {showTimeRight && (
+          <View style={styles.rowTimeCol}>
+            <View style={styles.rowTimeRotate}>
+              <Text
+                numberOfLines={1}
+                style={[styles.rowTimeText, { color: roles.fg }]}
+              >
+                {time}
+              </Text>
+            </View>
+          </View>
+        )}
         <View style={[styles.tick, { backgroundColor: tickColor }]} />
       </View>
     </Pressable>
@@ -334,6 +344,36 @@ const styles = StyleSheet.create({
     fontSize: 10,
     letterSpacing: 0.8,
     textTransform: 'uppercase',
+  },
+  // Rechter tijd-kolom — vertikaal gecentreerd, smal. De tekst zit in
+  // een wrapper-View die -90° wordt gedraaid (transforms direct op
+  // <Text/> worden in RN niet altijd toegepast). De wrapper shrinkt
+  // naar de natuurlijke tekstbreedte (~50px) en is na rotatie visueel
+  // 16×50 — past in de 22px-kolom dankzij de royale row-hoogte van
+  // de thumb. Alleen actief in de Vandaag/Agenda-layout (venueAsPill).
+  rowTimeCol: {
+    width: 18,
+    alignSelf: 'stretch',
+    justifyContent: 'center',
+    alignItems: 'center',
+    // Trekt de tijd-kolom dichter naar de tick-strook toe — overrulet
+    // de row-gap van 12. Effectieve afstand tijd → tick ~4px.
+    marginRight: -8,
+  },
+  rowTimeRotate: {
+    // Expliciete breedte zodat de Text z'n natuurlijke breedte kan
+    // krijgen ipv te wrappen onder de 22px van de kolom. Royaal genoeg
+    // voor "20:00" en "Hele dag" / "All day". RotateView overlapt de
+    // kolom-grenzen en wordt na rotatie visueel ~16×60 (verticaal
+    // gecentreerd in de row).
+    width: 60,
+    alignItems: 'center',
+    transform: [{ rotate: '-90deg' }],
+  },
+  rowTimeText: {
+    fontFamily: fontFamily.bold,
+    fontSize: 14,
+    letterSpacing: -0.2,
   },
   rowTags: {
     flexDirection: 'row',
