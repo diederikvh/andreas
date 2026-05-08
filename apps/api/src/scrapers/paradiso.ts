@@ -5,186 +5,134 @@ import { uploadToBunny } from '../storage/bunny.js';
 import { enrichEvent, refineKindByDuration } from './enrich.js';
 
 /**
- * Paradiso scraper. Hun site is Next.js zonder Cloudflare-block, dus
- * platte fetch werkt prima. Geen JSON-LD, geen public data-API — wel
- * rijke OG-meta op elke event-detail-pagina.
+ * Paradiso scraper via GraphQL. De homepage toont maar een 'In the
+ * picture' selectie (~20 events), maar hun GraphQL-API
+ * (knwxh8dmh1.execute-api.eu-central-1.amazonaws.com/graphql) geeft het
+ * volledige programma terug — inclusief events die niet in Paradiso
+ * zelf maar in zustervenues spelen (Tolhuistuin, Bitterzoet, Doka).
  *
- * Strategie:
- *   1. Fetch homepage → extract event-links `/programma/{slug}/{id}`
- *   2. Per event: fetch detail-pagina, parse og:title (bevat datum),
- *      og:description (rijke promotekst), og:image
- *   3. Date-extraction uit og:title pattern: "ARTIST - 15 juni 2026 - Paradiso"
+ * We routeren elk event op `location.title` naar de juiste venue in
+ * onze DB. Locaties met een eigen actieve scraper (cinetol via Stager)
+ * worden geskipt om duplicates te voorkomen.
  *
- * Idempotency: numerieke event-id uit de URL (`/programma/dygl/2887544`
- *   → 2887544) als stable hash-input. Paradiso hergebruikt die niet.
+ * Per-event description is alleen `subtitle` (~60 chars) in de GraphQL.
+ * Voor de rijkere body fetchen we de detail-pagina via Playwright.
+ *
+ * Idempotency: event-id = `evt-par-{venueId}-{paradisoEventId}`. De
+ * Paradiso-id is stabiel over scrapes heen.
  */
 
-const VENUE_ID = 'paradiso';
 const UA = 'Andreas-Scraper/1.0 (+https://andreas.amsterdam)';
+const GRAPHQL_URL =
+  'https://knwxh8dmh1.execute-api.eu-central-1.amazonaws.com/graphql';
 const HOMEPAGE = 'https://www.paradiso.nl';
 
-const NL_MONTHS: Record<string, number> = {
-  januari: 0, februari: 1, maart: 2, april: 3, mei: 4, juni: 5,
-  juli: 6, augustus: 7, september: 8, oktober: 9, november: 10, december: 11,
+/**
+ * Mapping van Paradiso's `location.title` (zoals dat in hun GraphQL
+ * verschijnt) naar onze venue.id. Locaties die hier niet in staan
+ * worden geskipt (geen eigen venue-record OF venue heeft eigen
+ * scraper die voor conflict zou zorgen).
+ */
+const LOCATION_TO_VENUE: Record<string, string> = {
+  Paradiso: 'paradiso',
+  Tolhuistuin: 'tolhuistuin',
+  Bitterzoet: 'bitterzoet',
+  Doka: 'doka',
 };
 
-function decodeEntities(s: string): string {
-  return s
-    .replace(/&#(\d+);/g, (_, c) => String.fromCodePoint(parseInt(c, 10)))
-    .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"').replace(/&#39;/g, "'");
-}
+/** Locaties die we expliciet skippen — deze venues hebben een eigen
+ *  actieve scraper (Cinetol via Stager) waardoor Paradiso-events daar
+ *  zouden dupliceren. */
+const SKIP_LOCATIONS = new Set<string>(['Cinetol']);
 
-function extractOg(html: string, prop: string): string | null {
-  const re = new RegExp(
-    `<meta\\s+property="og:${prop}"\\s+content="([^"]+)"`,
-    'i'
-  );
-  const m = html.match(re);
-  return m ? decodeEntities(m[1]) : null;
-}
+type ParadisoImageVariant = {
+  desktop?: string;
+  desktop2x?: string;
+  desktopXL?: string;
+  desktopXL2x?: string;
+  type?: string;
+};
 
-/**
- * Extract Nederlandse datum (`28 oktober 2026`) uit een tekst-veld
- * (og:title óf og:description). Default 20:00 NL aanvang als geen
- * lichaams-tijd is.
- */
-function parseDutchDate(text: string | null): Date | null {
-  if (!text) return null;
-  const m = text.match(/\b(\d{1,2})\s+(januari|februari|maart|april|mei|juni|juli|augustus|september|oktober|november|december)\s+(\d{4})\b/i);
-  if (!m) return null;
-  const day = parseInt(m[1], 10);
-  const month = NL_MONTHS[m[2].toLowerCase()];
-  const year = parseInt(m[3], 10);
-  return shiftToLocalTime(year, month, day, 20, 0);
-}
+type ParadisoGqlEvent = {
+  id: string;
+  uri: string;
+  title: string;
+  subtitle: string | null;
+  startDateTime: string;
+  date: string;
+  eventStatus: string;
+  highlight: boolean;
+  supportAct: string | null;
+  soldOut: 'yes' | 'no' | string;
+  location: { id: string; title: string }[];
+  image: ParadisoImageVariant[];
+};
 
-/**
- * Probeer een aanvang-tijd uit de body te lezen — Paradiso schrijft
- * meestal "Aanvang: 20:30" of "Doors: 20:00" in HTML. Returns null
- * als niet gevonden — caller valt terug op default 20:00.
- */
-function parseStartTimeFromBody(html: string): { hour: number; minute: number } | null {
-  // Zoek voor "Aanvang", "Show", "Concert", "Deuren"-context met tijd
-  const patterns = [
-    /Aanvang[:\s]+(\d{1,2}):(\d{2})/i,
-    /Show[:\s]+(\d{1,2}):(\d{2})/i,
-    /Concert[:\s]+(\d{1,2}):(\d{2})/i,
-  ];
-  for (const re of patterns) {
-    const m = html.match(re);
-    if (m) {
-      const h = parseInt(m[1], 10);
-      const mi = parseInt(m[2], 10);
-      if (h <= 23 && mi <= 59) return { hour: h, minute: mi };
+async function fetchAllEvents(): Promise<ParadisoGqlEvent[]> {
+  const all: ParadisoGqlEvent[] = [];
+  // searchAfter werkt cursor-based: pagineer tot lege response of safety-brake.
+  let searchAfter: string[] | null = null;
+  const PAGE = 50;
+  const QUERY = `query Q($site:String,$size:Int,$gte:String,$searchAfter:[String]){
+    program(site:$site,size:$size,gteStartDateTime:$gte,searchAfter:$searchAfter){
+      events {
+        id uri title subtitle startDateTime date eventStatus highlight supportAct soldOut sort
+        location { id title }
+        image { desktop desktop2x desktopXL desktopXL2x type }
+      }
     }
+  }`;
+
+  for (let i = 0; i < 20; i++) {
+    const body = {
+      query: QUERY,
+      variables: {
+        site: 'paradisoNederlands',
+        size: PAGE,
+        gte: new Date().toISOString(),
+        searchAfter,
+      },
+    };
+    const r = await fetch(GRAPHQL_URL, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'user-agent': UA,
+        origin: HOMEPAGE,
+      },
+      body: JSON.stringify(body),
+    });
+    if (!r.ok) throw new Error(`GraphQL HTTP ${r.status}`);
+    const j = (await r.json()) as {
+      data: { program: { events: (ParadisoGqlEvent & { sort?: string[] })[] } };
+    };
+    const events = j.data?.program?.events ?? [];
+    if (events.length === 0) break;
+    all.push(...events);
+    if (events.length < PAGE) break;
+    // Cursor: laatste item's `sort` array
+    const lastSort = events[events.length - 1].sort;
+    if (!lastSort) break;
+    searchAfter = lastSort;
   }
-  return null;
+  return all;
 }
 
-function shiftToLocalTime(
-  y: number, m: number, d: number, hour: number, minute: number
-): Date {
-  const tentative = new Date(Date.UTC(y, m, d, hour, minute, 0));
-  const dtf = new Intl.DateTimeFormat('en-US', {
-    timeZone: 'Europe/Amsterdam',
-    timeZoneName: 'longOffset',
-  });
-  const off = dtf
-    .formatToParts(tentative)
-    .find((p) => p.type === 'timeZoneName')?.value;
-  const mm = off?.match(/GMT([+-])(\d{1,2})(?::?(\d{2}))?/);
-  const sign = mm && mm[1] === '+' ? 1 : -1;
-  const h = mm ? parseInt(mm[2], 10) : 0;
-  const mins = mm ? parseInt(mm[3] ?? '0', 10) : 0;
-  return new Date(tentative.getTime() - sign * (h * 60 + mins) * 60_000);
-}
-
-async function fetchHtml(url: string): Promise<string | null> {
-  try {
-    const r = await fetch(url, { headers: { 'user-agent': UA } });
-    if (!r.ok) return null;
-    return await r.text();
-  } catch {
-    return null;
-  }
-}
-
-/** Render Paradiso event detail met Playwright en extract:
- *   - rich description (uit rendered DOM body)
- *   - hero image (uit rendered <img>, en URL upscalen naar 1200x)
- *   - aanvang-tijd (uit "Hoofdprogramma: HH:MM" in rendered tekst)
- *
- *  Per-event browser-call is duur; alleen gebruiken voor venues waar
- *  detail-data niet via platte fetch beschikbaar is. */
-type ParadisoDetail = {
-  description: string | null;
-  imageUrl: string | null;
-  hour: number | null;
-  minute: number | null;
-};
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function renderDetail(browser: any, url: string): Promise<ParadisoDetail> {
-  const ctx = await browser.newContext({ locale: 'nl-NL', userAgent: UA });
-  const page = await ctx.newPage();
-  try {
-    await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 });
-    await page.waitForTimeout(1000);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const result: ParadisoDetail = await page.evaluate(`(() => {
-      const main = document.querySelector('main') ?? document.body;
-      const text = main.innerText;
-      // Description: pak alle paragrafen uit hoofdtekst, filter out
-      // boilerplate ("Route naar Paradiso", "Cookies").
-      const lines = text.split('\\n').map(s => s.trim()).filter(Boolean);
-      const stop = lines.findIndex(l => /^(Line-up|Route|Accepteer|Bovenzaal\\s*$)/i.test(l));
-      const start = lines.findIndex(l => l.length > 80);
-      let desc = null;
-      if (start >= 0) {
-        const end = stop > start ? stop : Math.min(start + 6, lines.length);
-        desc = lines.slice(start, end).filter(l => l.length > 30).join('\\n\\n');
-      }
-
-      // Image: pak grootste naturalWidth uit <img> die naar assets.paradiso.nl wijst.
-      const imgs = Array.from(document.querySelectorAll('img'))
-        .filter(i => /assets\\.paradiso\\.nl\\/images\\/transforms\\/event\\//.test(i.src))
-        .sort((a, b) => (b.naturalWidth || 0) - (a.naturalWidth || 0));
-      let imageUrl = imgs[0]?.src ?? null;
-      // Upscale naar 1200x: Paradiso transform-pad heeft "_120x128_crop_..."
-      // — vervang door grotere variant.
-      if (imageUrl) {
-        imageUrl = imageUrl.replace(
-          /\\/transforms\\/event\\/_[0-9]+x[0-9]+_crop_center-center_(?:[0-9]+_)?none\\//,
-          '/transforms/event/_1200x630_crop_center-center_none/'
-        );
-      }
-
-      // Tijd: "Hoofdprogramma: 19:30" of "Aanvang: 19:30"
-      const timeMatch = text.match(/(?:Hoofdprogramma|Aanvang|Show)[:\\s]+(\\d{1,2}):(\\d{2})/);
-      const hour = timeMatch ? parseInt(timeMatch[1], 10) : null;
-      const minute = timeMatch ? parseInt(timeMatch[2], 10) : null;
-
-      return { description: desc, imageUrl, hour, minute };
-    })()`);
-    return result;
-  } finally {
-    await ctx.close();
-  }
-}
-
-async function discoverEventUrls(): Promise<string[]> {
-  const html = await fetchHtml(HOMEPAGE);
-  if (!html) return [];
-  const re = /\/programma\/[a-z0-9-]+\/(\d+)/g;
-  const seen = new Set<string>();
-  const urls: string[] = [];
-  for (const m of html.matchAll(re)) {
-    if (seen.has(m[0])) continue;
-    seen.add(m[0]);
-    urls.push(`${HOMEPAGE}${m[0]}`);
-  }
-  return urls;
+/** Pak grootste image variant. Paradiso geeft per event meerdere image-
+ *  blokken (default/relatedArtists/mediumSquare/narrowCasting/
+ *  subBrandImages). Default heeft de meest neutrale crop, maar
+ *  narrowCasting (1920x1080) of subBrandImages (~600x780) zijn groter. */
+function pickLargestImage(images: ParadisoImageVariant[] | undefined): string | null {
+  if (!images || images.length === 0) return null;
+  // Prefer narrowCasting (full-resolution photo)
+  const narrowCasting = images.find((i) => i.type === 'narrowCasting');
+  const subBrand = images.find((i) => i.type === 'subBrandImages');
+  const def = images.find((i) => i.type === 'default') ?? images[0];
+  const candidate = narrowCasting ?? subBrand ?? def;
+  // Pak hoogste resolutie binnen de candidate
+  return (
+    candidate.desktopXL2x ?? candidate.desktopXL ?? candidate.desktop2x ?? candidate.desktop ?? null
+  );
 }
 
 async function mirrorImage(
@@ -207,6 +155,41 @@ async function mirrorImage(
   }
 }
 
+type ParadisoDetail = {
+  description: string | null;
+  hour: number | null;
+  minute: number | null;
+};
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function renderDetail(browser: any, url: string): Promise<ParadisoDetail> {
+  const ctx = await browser.newContext({ locale: 'nl-NL', userAgent: UA });
+  const page = await ctx.newPage();
+  try {
+    await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 });
+    await page.waitForTimeout(800);
+    const result: ParadisoDetail = await page.evaluate(`(() => {
+      const main = document.querySelector('main') ?? document.body;
+      const text = main.innerText;
+      const lines = text.split('\\n').map(s => s.trim()).filter(Boolean);
+      const stop = lines.findIndex(l => /^(Line-up|Route|Accepteer|Bovenzaal\\s*$)/i.test(l));
+      const start = lines.findIndex(l => l.length > 80);
+      let desc = null;
+      if (start >= 0) {
+        const end = stop > start ? stop : Math.min(start + 6, lines.length);
+        desc = lines.slice(start, end).filter(l => l.length > 30).join('\\n\\n');
+      }
+      const timeMatch = text.match(/(?:Hoofdprogramma|Aanvang|Show)[:\\s]+(\\d{1,2}):(\\d{2})/);
+      const hour = timeMatch ? parseInt(timeMatch[1], 10) : null;
+      const minute = timeMatch ? parseInt(timeMatch[2], 10) : null;
+      return { description: desc, hour, minute };
+    })()`);
+    return result;
+  } finally {
+    await ctx.close();
+  }
+}
+
 export type ParadisoResult = {
   venueId: string;
   fetched: number;
@@ -219,156 +202,153 @@ export type ParadisoResult = {
 export async function scrapeParadiso(options?: {
   venueIds?: string[];
 }): Promise<ParadisoResult[]> {
-  if (options?.venueIds && !options.venueIds.includes(VENUE_ID)) return [];
-
-  const result: ParadisoResult = {
-    venueId: VENUE_ID,
-    fetched: 0,
-    inserted: 0,
-    occurrencesUpserted: 0,
-    skipped: 0,
-    errors: [],
+  // Resultaat per venue, want we kunnen events naar Tolhuistuin/Bitterzoet enz routeren.
+  const results = new Map<string, ParadisoResult>();
+  const ensure = (venueId: string): ParadisoResult => {
+    let r = results.get(venueId);
+    if (!r) {
+      r = {
+        venueId,
+        fetched: 0,
+        inserted: 0,
+        occurrencesUpserted: 0,
+        skipped: 0,
+        errors: [],
+      };
+      results.set(venueId, r);
+    }
+    return r;
   };
 
-  const [venue] = await db
-    .select()
-    .from(schema.venues)
-    .where(eq(schema.venues.id, VENUE_ID));
-  if (!venue) {
-    result.errors.push('venue paradiso niet in DB');
-    return [result];
+  let events: ParadisoGqlEvent[];
+  try {
+    events = await fetchAllEvents();
+  } catch (e) {
+    const r = ensure('paradiso');
+    r.errors.push(`graphql: ${(e as Error).message}`);
+    return [r];
   }
 
-  const urls = await discoverEventUrls();
-  result.fetched = urls.length;
-  const venueCategory = venue.categories?.[0] ?? 'Muziek';
+  // Cache van venue-records die we vinden, plus categorieën-fallbacks.
+  const venueCache = new Map<string, typeof schema.venues.$inferSelect>();
+  for (const slug of Object.values(LOCATION_TO_VENUE)) {
+    const [v] = await db
+      .select()
+      .from(schema.venues)
+      .where(eq(schema.venues.id, slug));
+    if (v) venueCache.set(slug, v);
+  }
 
-  // Eén browser voor alle event-detail-renders — sneller dan een
-  // nieuwe browser per event.
+  // Browser éénmaal voor alle detail-renders.
   const { chromium } = await import('playwright');
   const browser = await chromium.launch({ headless: true });
 
   try {
-  for (const url of urls) {
-    try {
-      const html = await fetchHtml(url);
-      if (!html) { result.skipped++; continue; }
-      const ogTitle = extractOg(html, 'title');
-      const ogDescription = extractOg(html, 'description');
-      if (!ogTitle) { result.skipped++; continue; }
+    for (const ev of events) {
+      const locTitle = ev.location?.[0]?.title ?? '';
+      if (SKIP_LOCATIONS.has(locTitle)) continue;
+      const venueId = LOCATION_TO_VENUE[locTitle];
+      if (!venueId) continue; // onbekende venue-naam; skip
 
-      // Twee og:title-patterns:
-      //   "DYGL - 15 juni 2026 - Paradiso"   → datum in title
-      //   "Bel Cobain | Paradiso"            → datum in og:description ("Op 28 oktober 2026 geeft …")
-      const cleanTitle = ogTitle
-        .replace(/\s*\|\s*Paradiso\s*$/i, '')
-        .split(' - ')[0]
-        ?.trim() ?? ogTitle;
-      const title = cleanTitle;
-      let startsAt = parseDutchDate(ogTitle) ?? parseDutchDate(ogDescription);
-      if (!startsAt) { result.skipped++; continue; }
+      // Opt-in filter via --venue
+      if (options?.venueIds && !options.venueIds.includes(venueId)) continue;
 
-      // Render detail-pagina voor rich description + image + tijd.
-      // Per event ~3-5 sec — voor ~20 events totaal ~1-2 min.
-      const detail = await renderDetail(browser, url);
+      const venue = venueCache.get(venueId);
+      if (!venue) continue;
 
-      // Override default 20:00 met body-tijd als die er is.
-      if (detail.hour != null && detail.minute != null) {
-        const day = parseInt(
-          new Intl.DateTimeFormat('nl-NL', {
-            timeZone: 'Europe/Amsterdam',
-            day: '2-digit',
-          }).format(startsAt),
-          10
-        );
-        startsAt = shiftToLocalTime(
-          startsAt.getUTCFullYear(),
-          startsAt.getUTCMonth(),
-          day,
-          detail.hour,
-          detail.minute
-        );
-      }
+      const r = ensure(venueId);
+      r.fetched++;
 
-      const description = detail.description ?? ogDescription;
-      const imageSource = detail.imageUrl ?? extractOg(html, 'image');
+      try {
+        const eventId = `evt-par-${venueId}-${ev.id}`;
+        const occurrenceId = `occ-par-${venueId}-${ev.id}`;
+        const ticketUrl = `${HOMEPAGE}/${ev.uri.replace(/^\//, '')}`;
+        const startsAt = new Date(ev.startDateTime);
+        const venueCategory = venue.categories?.[0] ?? 'Muziek';
 
-      const idMatch = url.match(/\/(\d+)$/);
-      const stableId = idMatch ? idMatch[1] : url.split('/').pop() ?? url;
-      const eventId = `evt-par-${VENUE_ID}-${stableId}`;
-      const occurrenceId = `occ-par-${VENUE_ID}-${stableId}`;
+        const detail = await renderDetail(browser, ticketUrl);
+        const description = detail.description ?? ev.subtitle;
+        const imageSource = pickLargestImage(ev.image);
 
-      const enriched = await enrichEvent({
-        title,
-        description,
-        venueName: venue.name,
-        venueCategory,
-      });
+        const enriched = await enrichEvent({
+          title: ev.title,
+          description,
+          venueName: venue.name,
+          venueCategory,
+        });
 
-      const [existing] = await db
-        .select({ id: schema.events.id })
-        .from(schema.events)
-        .where(eq(schema.events.id, eventId))
-        .limit(1);
+        const [existing] = await db
+          .select({ id: schema.events.id })
+          .from(schema.events)
+          .where(eq(schema.events.id, eventId))
+          .limit(1);
 
-      let imageUrl: string | null = null;
-      if (!existing && imageSource) {
-        imageUrl = (await mirrorImage(imageSource, stableId)) ?? null;
-      }
-
-      const refinedKind = refineKindByDuration(enriched.kind, startsAt, null);
-
-      await db.transaction(async (tx) => {
-        if (!existing) {
-          await tx.insert(schema.events).values({
-            id: eventId,
-            venueId: venue.id,
-            title,
-            description: enriched.cleanedDescription ?? description,
-            kind: refinedKind,
-            imageUrl,
-            category: enriched.category ?? venueCategory,
-            featured: false,
-            genres: enriched.genres,
-            published: true,
-          });
-          result.inserted++;
+        let imageUrl: string | null = null;
+        if (!existing && imageSource) {
+          imageUrl = (await mirrorImage(imageSource, ev.id)) ?? null;
         }
 
-        await tx
-          .insert(schema.occurrences)
-          .values({
-            id: occurrenceId,
-            eventId,
-            startsAt,
-            endsAt: null,
-            priceCents: null,
-            priceNote: enriched.priceNote,
-            ticketUrl: url,
-            room: enriched.room,
-            lineup: enriched.lineup,
-            status: 'scheduled',
-          })
-          .onConflictDoUpdate({
-            target: schema.occurrences.id,
-            set: {
+        const status: 'scheduled' | 'cancelled' | 'sold_out' =
+          ev.eventStatus?.toLowerCase().includes('cancel')
+            ? 'cancelled'
+            : ev.soldOut === 'yes'
+              ? 'sold_out'
+              : 'scheduled';
+
+        const refinedKind = refineKindByDuration(enriched.kind, startsAt, null);
+
+        await db.transaction(async (tx) => {
+          if (!existing) {
+            await tx.insert(schema.events).values({
+              id: eventId,
+              venueId,
+              title: ev.title,
+              description: enriched.cleanedDescription ?? description,
+              kind: refinedKind,
+              imageUrl,
+              category: enriched.category ?? venueCategory,
+              featured: ev.highlight,
+              genres: enriched.genres,
+              published: true,
+            });
+            r.inserted++;
+          }
+
+          await tx
+            .insert(schema.occurrences)
+            .values({
+              id: occurrenceId,
+              eventId,
               startsAt,
+              endsAt: null,
+              priceCents: null,
               priceNote: enriched.priceNote,
-              ticketUrl: url,
+              ticketUrl,
               room: enriched.room,
               lineup: enriched.lineup,
-            },
-          });
-        result.occurrencesUpserted++;
-      });
-    } catch (e) {
-      result.errors.push(`event ${url}: ${(e as Error).message}`);
-      result.skipped++;
+              status,
+            })
+            .onConflictDoUpdate({
+              target: schema.occurrences.id,
+              set: {
+                startsAt,
+                priceNote: enriched.priceNote,
+                ticketUrl,
+                room: enriched.room,
+                lineup: enriched.lineup,
+                status,
+              },
+            });
+          r.occurrencesUpserted++;
+        });
+      } catch (e) {
+        r.errors.push(`event ${ev.id}: ${(e as Error).message}`);
+        r.skipped++;
+      }
     }
-  }
   } finally {
     await browser.close();
   }
 
-  return [result];
+  return Array.from(results.values());
 }
