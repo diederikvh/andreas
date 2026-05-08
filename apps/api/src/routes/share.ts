@@ -331,6 +331,7 @@ shareRoute.get('/', (c) => {
   <meta charset="utf-8" />
   <title>Andreas</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="impact-site-verification" value="fff70f25-b91e-4833-a018-ee1c1f216a6c" />
   <meta property="og:title" content="Andreas" />
   <meta property="og:description" content="Uitgaan in Amsterdam, op uitnodiging." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
