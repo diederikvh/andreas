@@ -158,7 +158,49 @@ async function scrapeOneVenue(
     try {
       const groupHash = shortHash(groupKey);
       const eventId = `evt-ical-${venue.id}-${groupHash}`;
+      const status: 'scheduled' | 'cancelled' | 'sold_out' = 'scheduled';
 
+      // Vroege existing-check: skip Claude voor bestaande events.
+      // Tijden/url worden altijd ge-upsert per instance.
+      const [existing] = await db
+        .select({ id: schema.events.id })
+        .from(schema.events)
+        .where(eq(schema.events.id, eventId))
+        .limit(1);
+
+      if (existing) {
+        for (const inst of instances) {
+          const occHash = shortHash(`${groupKey}|${inst.startsAt.toISOString()}`);
+          const occurrenceId = `occ-ical-${venue.id}-${occHash}`;
+          await db
+            .insert(schema.occurrences)
+            .values({
+              id: occurrenceId,
+              eventId,
+              startsAt: inst.startsAt,
+              endsAt: inst.endsAt,
+              priceCents: null,
+              priceNote: null,
+              ticketUrl: inst.url,
+              room: null,
+              lineup: null,
+              status,
+            })
+            .onConflictDoUpdate({
+              target: schema.occurrences.id,
+              set: {
+                startsAt: inst.startsAt,
+                endsAt: inst.endsAt,
+                ticketUrl: inst.url,
+                status,
+              },
+            });
+          result.occurrencesUpserted++;
+        }
+        continue;
+      }
+
+      // Nieuw event — Claude enrich + image-mirror.
       const enriched = await enrichEvent({
         title: first.summary,
         description: first.description,
@@ -166,25 +208,13 @@ async function scrapeOneVenue(
         venueCategory,
       });
 
-      // Image alleen bij eerste keer event zien naar Bunny mirroren —
-      // her-runs hergebruiken dezelfde CDN-URL.
-      const [existing] = await db
-        .select({ id: schema.events.id })
-        .from(schema.events)
-        .where(eq(schema.events.id, eventId))
-        .limit(1);
-
       let imageUrl: string | null = null;
-      if (!existing && first.imageUrl) {
+      if (first.imageUrl) {
         imageUrl =
           (await mirrorImageToBunny(first.imageUrl, venue.id, groupHash)) ??
           first.imageUrl;
       }
 
-      // Categories uit iCal als genres-fallback (lowercase). Claude
-      // genres winnen als die zijn ingevuld. Combineer categorieën van
-      // alle instanties — recurring events delen meestal dezelfde set,
-      // maar voor de zekerheid mergen we.
       const allCategories = new Set<string>();
       for (const inst of instances) {
         for (const c of inst.categories) allCategories.add(c.toLowerCase().trim());
@@ -195,9 +225,6 @@ async function scrapeOneVenue(
       const finalGenres =
         enriched.genres.length > 0 ? enriched.genres : fallbackGenres;
 
-      const status: 'scheduled' | 'cancelled' | 'sold_out' = 'scheduled';
-
-      // Refine kind: lange all-day events → exhibition.
       const refinedKind = refineKindByDuration(
         enriched.kind,
         first.startsAt,
@@ -205,26 +232,20 @@ async function scrapeOneVenue(
       );
 
       await db.transaction(async (tx) => {
-        if (!existing) {
-          await tx.insert(schema.events).values({
-            id: eventId,
-            venueId: venue.id,
-            title: first.summary,
-            description: enriched.cleanedDescription ?? first.description,
-            kind: refinedKind,
-            imageUrl,
-            category: enriched.category ?? venueCategory,
-            featured: false,
-            genres: finalGenres,
-            published: true,
-          });
-          result.inserted++;
-        }
+        await tx.insert(schema.events).values({
+          id: eventId,
+          venueId: venue.id,
+          title: first.summary,
+          description: enriched.cleanedDescription ?? first.description,
+          kind: refinedKind,
+          imageUrl,
+          category: enriched.category ?? venueCategory,
+          featured: false,
+          genres: finalGenres,
+          published: true,
+        });
+        result.inserted++;
 
-        // Per instance een eigen occurrence — id stabiel per (groep,
-        // startsAt) zodat herscrapes met verschoven tijden idempotent
-        // blijven (oude occurrence blijft bestaan met oude tijd, nieuwe
-        // wordt apart geinsert).
         for (const inst of instances) {
           const occHash = shortHash(`${groupKey}|${inst.startsAt.toISOString()}`);
           const occurrenceId = `occ-ical-${venue.id}-${occHash}`;

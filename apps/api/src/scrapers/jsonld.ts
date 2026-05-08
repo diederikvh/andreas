@@ -234,6 +234,39 @@ async function scrapeOneVenue(
         }
       }
 
+      const status: 'scheduled' | 'cancelled' | 'sold_out' = 'scheduled';
+
+      // Vroege existing-check: skip Claude voor bestaande events.
+      const [existing] = await db
+        .select({ id: schema.events.id })
+        .from(schema.events)
+        .where(eq(schema.events.id, eventId))
+        .limit(1);
+
+      if (existing) {
+        await db
+          .insert(schema.occurrences)
+          .values({
+            id: occurrenceId,
+            eventId,
+            startsAt,
+            endsAt,
+            priceCents: null,
+            priceNote: null,
+            ticketUrl: ev.ticketUrl,
+            room: null,
+            lineup: null,
+            status,
+          })
+          .onConflictDoUpdate({
+            target: schema.occurrences.id,
+            set: { startsAt, endsAt, ticketUrl: ev.ticketUrl, status },
+          });
+        result.occurrencesUpserted++;
+        continue;
+      }
+
+      // Nieuw event — Claude enrich + image-mirror.
       const enriched = await enrichEvent({
         title: ev.name,
         description: ev.description,
@@ -251,40 +284,29 @@ async function scrapeOneVenue(
             ? ev.performers.map((name) => ({ name }))
             : null;
 
-      const [existing] = await db
-        .select({ id: schema.events.id })
-        .from(schema.events)
-        .where(eq(schema.events.id, eventId))
-        .limit(1);
-
       let imageUrl: string | null = null;
-      if (!existing && ev.imageUrl && !looksLikeLogo(ev.imageUrl)) {
+      if (ev.imageUrl && !looksLikeLogo(ev.imageUrl)) {
         imageUrl =
           (await mirrorImageToBunny(ev.imageUrl, venue.id, uidHash)) ??
           ev.imageUrl;
       }
 
-      const status: 'scheduled' | 'cancelled' | 'sold_out' = 'scheduled';
-
-      // Refine kind: lange all-day events → exhibition.
       const refinedKind = refineKindByDuration(enriched.kind, startsAt, endsAt);
 
       await db.transaction(async (tx) => {
-        if (!existing) {
-          await tx.insert(schema.events).values({
-            id: eventId,
-            venueId: venue.id,
-            title: ev.name,
-            description: enriched.cleanedDescription ?? ev.description,
-            kind: refinedKind,
-            imageUrl,
-            category: enriched.category ?? venueCategory,
-            featured: false,
-            genres: enriched.genres,
-            published: true,
-          });
-          result.inserted++;
-        }
+        await tx.insert(schema.events).values({
+          id: eventId,
+          venueId: venue.id,
+          title: ev.name,
+          description: enriched.cleanedDescription ?? ev.description,
+          kind: refinedKind,
+          imageUrl,
+          category: enriched.category ?? venueCategory,
+          featured: false,
+          genres: enriched.genres,
+          published: true,
+        });
+        result.inserted++;
 
         await tx
           .insert(schema.occurrences)

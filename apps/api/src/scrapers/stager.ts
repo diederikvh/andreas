@@ -283,19 +283,75 @@ async function scrapeOneVenue(
     const first = instances[0];
 
     try {
-      // Publicity één keer per groep — description verandert niet per
-      // instance bij recurring workshops. Tix wordt later per instance
-      // opgehaald (prijs kan wel verschillen per datum).
+      const eventId = isGrouped
+        ? `evt-stg-${cfg.shopId}-${shortHash(groupKey)}`
+        : `evt-stg-${cfg.shopId}-${first.eventId}`;
+
+      // Vroege existing-check: spaart publicity-fetch + Claude voor
+      // bestaande events. Tix-fetch per instance blijft (prijs kan
+      // wijzigen) en occurrence-upsert ook.
+      const [existing] = await db
+        .select({ id: schema.events.id })
+        .from(schema.events)
+        .where(eq(schema.events.id, eventId))
+        .limit(1);
+
+      if (existing) {
+        // Alleen occurrences syncen — sold-out, prijs en tijd kunnen
+        // wijzigen tussen runs.
+        for (const inst of instances) {
+          let cents: number | null = null;
+          try {
+            const tix = await getJson<StagerTicketsOverview>(
+              `https://${cfg.host}/shop/v1/events/${inst.eventId}/tickets-overview`,
+              jwt
+            );
+            cents = pickPrice(tix).cents;
+          } catch {
+            // tix-call kan falen bij gratis events; cents blijft null
+          }
+          const occurrenceId = isGrouped
+            ? `occ-stg-${cfg.shopId}-${shortHash(`${groupKey}|${inst.startsOn}`)}`
+            : `occ-stg-${cfg.shopId}-${inst.eventId}`;
+          const instTicketUrl = `https://${cfg.host}/shop/default/events/${inst.eventId}`;
+          const instStatus: 'scheduled' | 'cancelled' | 'sold_out' =
+            inst.soldOut ? 'sold_out' : 'scheduled';
+          await db
+            .insert(schema.occurrences)
+            .values({
+              id: occurrenceId,
+              eventId,
+              startsAt: new Date(inst.startsOn),
+              endsAt: new Date(inst.endsOn),
+              priceCents: cents,
+              priceNote: null,
+              ticketUrl: instTicketUrl,
+              room: null,
+              lineup: null,
+              status: instStatus,
+            })
+            .onConflictDoUpdate({
+              target: schema.occurrences.id,
+              set: {
+                startsAt: new Date(inst.startsOn),
+                endsAt: new Date(inst.endsOn),
+                priceCents: cents,
+                ticketUrl: instTicketUrl,
+                status: instStatus,
+              },
+            });
+          result.occurrencesUpserted++;
+        }
+        continue;
+      }
+
+      // Nieuw event — publicity-fetch + Claude + image-mirror.
       const pub = await getJson<StagerPublicity>(
         `https://${cfg.host}/shop/v1/events/${first.eventId}/publicity`,
         jwt
       );
 
       const content = mediamaticContent?.get(first.eventId);
-
-      const eventId = isGrouped
-        ? `evt-stg-${cfg.shopId}-${shortHash(groupKey)}`
-        : `evt-stg-${cfg.shopId}-${first.eventId}`;
 
       const dutch =
         pub.eventInfoTranslations.find((t) => t.locale === 'NL') ??
@@ -314,15 +370,8 @@ async function scrapeOneVenue(
         venueCategory,
       });
 
-      // Image alleen bij eerste keer event zien naar Bunny mirroren.
-      const [existing] = await db
-        .select({ id: schema.events.id })
-        .from(schema.events)
-        .where(eq(schema.events.id, eventId))
-        .limit(1);
-
       let imageUrl: string | null = null;
-      if (!existing && sourceImageUrl) {
+      if (sourceImageUrl) {
         imageUrl =
           (await mirrorImageToBunny(
             sourceImageUrl,
@@ -331,28 +380,24 @@ async function scrapeOneVenue(
           )) ?? sourceImageUrl;
       }
 
-      // Refine kind: lange all-day events → exhibition. Pakt OCCII's
-      // 'summer break' soort patroon (5+ weken doorlopend).
       const firstStart = new Date(first.startsOn);
       const firstEnd = first.endsOn ? new Date(first.endsOn) : null;
       const refinedKind = refineKindByDuration(enriched.kind, firstStart, firstEnd);
 
       await db.transaction(async (tx) => {
-        if (!existing) {
-          await tx.insert(schema.events).values({
-            id: eventId,
-            venueId: venue.id,
-            title,
-            description: enriched.cleanedDescription ?? rawDescription,
-            kind: refinedKind,
-            imageUrl,
-            category: enriched.category ?? venueCategory,
-            featured: false,
-            genres: enriched.genres,
-            published: true,
-          });
-          result.inserted++;
-        }
+        await tx.insert(schema.events).values({
+          id: eventId,
+          venueId: venue.id,
+          title,
+          description: enriched.cleanedDescription ?? rawDescription,
+          kind: refinedKind,
+          imageUrl,
+          category: enriched.category ?? venueCategory,
+          featured: false,
+          genres: enriched.genres,
+          published: true,
+        });
+        result.inserted++;
 
         for (const inst of instances) {
           let cents: number | null = null;

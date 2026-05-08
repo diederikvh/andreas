@@ -229,6 +229,48 @@ export async function scrapeZiggodome(options?: {
       const groupHash = shortHash(`zd|${groupKey}`);
       const eventId = `evt-zd-${VENUE_ID}-${groupHash}`;
       const title = buildTitle(first);
+
+      // Vroege existing-check: skip Claude voor bestaande events.
+      const [existing] = await db
+        .select({ id: schema.events.id })
+        .from(schema.events)
+        .where(eq(schema.events.id, eventId))
+        .limit(1);
+
+      if (existing) {
+        for (const inst of instances) {
+          const startsAt = parseLocalDateTime(inst.showDate);
+          const occurrenceId = `occ-zd-${VENUE_ID}-${shortHash(`${groupKey}|${inst.showDate}`)}`;
+          const status: 'scheduled' | 'cancelled' | 'sold_out' =
+            inst.showState === 'SoldOut'
+              ? 'sold_out'
+              : inst.showState === 'Cancelled'
+                ? 'cancelled'
+                : 'scheduled';
+          await db
+            .insert(schema.occurrences)
+            .values({
+              id: occurrenceId,
+              eventId,
+              startsAt,
+              endsAt: null,
+              priceCents: null,
+              priceNote: null,
+              ticketUrl: inst.salesUrl,
+              room: null,
+              lineup: null,
+              status,
+            })
+            .onConflictDoUpdate({
+              target: schema.occurrences.id,
+              set: { startsAt, ticketUrl: inst.salesUrl, status },
+            });
+          result.occurrencesUpserted++;
+        }
+        continue;
+      }
+
+      // Nieuw event — Claude enrich + image-mirror.
       const sourceDescription =
         first.description?.trim() ?? first.preview?.trim() ?? null;
       const rawDescription = sourceDescription
@@ -247,20 +289,11 @@ export async function scrapeZiggodome(options?: {
         venueCategory,
       });
 
-      const [existing] = await db
-        .select({ id: schema.events.id })
-        .from(schema.events)
-        .where(eq(schema.events.id, eventId))
-        .limit(1);
-
       let imageUrl: string | null = null;
-      if (!existing) {
-        const sourceImg =
-          ziggoCdnUrl(first.backgroundImage) ??
-          ziggoCdnUrl(first.artistImage);
-        if (sourceImg) {
-          imageUrl = (await mirrorImage(sourceImg, groupHash)) ?? null;
-        }
+      const sourceImg =
+        ziggoCdnUrl(first.backgroundImage) ?? ziggoCdnUrl(first.artistImage);
+      if (sourceImg) {
+        imageUrl = (await mirrorImage(sourceImg, groupHash)) ?? null;
       }
 
       const finalGenres =
@@ -273,21 +306,19 @@ export async function scrapeZiggodome(options?: {
       );
 
       await db.transaction(async (tx) => {
-        if (!existing) {
-          await tx.insert(schema.events).values({
-            id: eventId,
-            venueId: venue.id,
-            title,
-            description: enriched.cleanedDescription ?? rawDescription,
-            kind: refinedKind,
-            imageUrl,
-            category: enriched.category ?? venueCategory,
-            featured: false,
-            genres: finalGenres,
-            published: true,
-          });
-          result.inserted++;
-        }
+        await tx.insert(schema.events).values({
+          id: eventId,
+          venueId: venue.id,
+          title,
+          description: enriched.cleanedDescription ?? rawDescription,
+          kind: refinedKind,
+          imageUrl,
+          category: enriched.category ?? venueCategory,
+          featured: false,
+          genres: finalGenres,
+          published: true,
+        });
+        result.inserted++;
 
         for (const inst of instances) {
           const startsAt = parseLocalDateTime(inst.showDate);

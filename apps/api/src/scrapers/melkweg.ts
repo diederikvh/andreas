@@ -232,16 +232,50 @@ export async function scrapeMelkweg(options?: {
         ? `https://www.melkweg.nl${a.url}`
         : null;
       const category = mapCategory(a.profile);
-      // Tags als genres-fallback (lowercase)
+      const status: 'scheduled' | 'cancelled' | 'sold_out' = a.isCancelled
+        ? 'cancelled'
+        : a.isSoldOut
+          ? 'sold_out'
+          : 'scheduled';
+
+      // Vroege existing-check: skip dure JSON-fetch + Claude voor
+      // bestaande events. Status/sold-out komen wel uit de listing
+      // dus die kunnen we altijd updaten.
+      const [existing] = await db
+        .select({ id: schema.events.id })
+        .from(schema.events)
+        .where(eq(schema.events.id, eventId))
+        .limit(1);
+
+      if (existing) {
+        await db
+          .insert(schema.occurrences)
+          .values({
+            id: occurrenceId,
+            eventId,
+            startsAt,
+            endsAt,
+            priceCents: null,
+            priceNote: null,
+            ticketUrl,
+            room: null,
+            lineup: null,
+            status,
+          })
+          .onConflictDoUpdate({
+            target: schema.occurrences.id,
+            set: { startsAt, endsAt, ticketUrl, status },
+          });
+        result.occurrencesUpserted++;
+        continue;
+      }
+
+      // Nieuw event — full flow.
       const fallbackGenres = (a.tags ?? [])
         .map((t) => t.toLowerCase().trim())
         .filter((t) => t.length > 0 && t.length < 30)
         .slice(0, 4);
 
-      // Per-event description ophalen via Next.js _next/data endpoint
-      // (geen browser nodig — alleen een fetch). Geeft Claude rijkere
-      // input voor genres/lineup/category-detectie + behoudt de
-      // originele tekst voor de detail-page.
       const rawDescription = await fetchEventDescription(buildId, a.url);
       const enriched = await enrichEvent({
         title: a.name,
@@ -250,20 +284,8 @@ export async function scrapeMelkweg(options?: {
         venueCategory: category,
       });
 
-      const status: 'scheduled' | 'cancelled' | 'sold_out' = a.isCancelled
-        ? 'cancelled'
-        : a.isSoldOut
-          ? 'sold_out'
-          : 'scheduled';
-
-      const [existing] = await db
-        .select({ id: schema.events.id })
-        .from(schema.events)
-        .where(eq(schema.events.id, eventId))
-        .limit(1);
-
       let imageUrl: string | null = null;
-      if (!existing && a.media?.featuredImage?.[0]?.filename) {
+      if (a.media?.featuredImage?.[0]?.filename) {
         imageUrl =
           (await mirrorImage(a.media.featuredImage[0].filename, ev.id)) ?? null;
       }
@@ -272,21 +294,19 @@ export async function scrapeMelkweg(options?: {
       const refinedKind = refineKindByDuration(enriched.kind, startsAt, endsAt);
 
       await db.transaction(async (tx) => {
-        if (!existing) {
-          await tx.insert(schema.events).values({
-            id: eventId,
-            venueId: venue.id,
-            title: a.name,
-            description: enriched.cleanedDescription ?? rawDescription,
-            kind: refinedKind,
-            imageUrl,
-            category: enriched.category ?? category,
-            featured: false,
-            genres: finalGenres,
-            published: true,
-          });
-          result.inserted++;
-        }
+        await tx.insert(schema.events).values({
+          id: eventId,
+          venueId: venue.id,
+          title: a.name,
+          description: enriched.cleanedDescription ?? rawDescription,
+          kind: refinedKind,
+          imageUrl,
+          category: enriched.category ?? category,
+          featured: false,
+          genres: finalGenres,
+          published: true,
+        });
+        result.inserted++;
 
         await tx
           .insert(schema.occurrences)

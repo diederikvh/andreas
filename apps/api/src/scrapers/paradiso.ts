@@ -266,6 +266,46 @@ export async function scrapeParadiso(options?: {
         const startsAt = new Date(ev.startDateTime);
         const venueCategory = venue.categories?.[0] ?? 'Muziek';
 
+        const status: 'scheduled' | 'cancelled' | 'sold_out' =
+          ev.eventStatus?.toLowerCase().includes('cancel')
+            ? 'cancelled'
+            : ev.soldOut === 'yes'
+              ? 'sold_out'
+              : 'scheduled';
+
+        // Vroege existing-check: bestaat dit event al, dan alleen
+        // de occurrence updaten (tijd/status kan wijzigen). Skip
+        // de dure renderDetail() + enrichEvent() en image-mirror.
+        const [existing] = await db
+          .select({ id: schema.events.id })
+          .from(schema.events)
+          .where(eq(schema.events.id, eventId))
+          .limit(1);
+
+        if (existing) {
+          await db
+            .insert(schema.occurrences)
+            .values({
+              id: occurrenceId,
+              eventId,
+              startsAt,
+              endsAt: null,
+              priceCents: null,
+              priceNote: null,
+              ticketUrl,
+              room: null,
+              lineup: null,
+              status,
+            })
+            .onConflictDoUpdate({
+              target: schema.occurrences.id,
+              set: { startsAt, ticketUrl, status },
+            });
+          r.occurrencesUpserted++;
+          continue;
+        }
+
+        // Nieuw event — volle flow met Playwright + Claude.
         const detail = await renderDetail(browser, ticketUrl);
         const description = detail.description ?? ev.subtitle;
         const imageSource = pickLargestImage(ev.image);
@@ -277,42 +317,27 @@ export async function scrapeParadiso(options?: {
           venueCategory,
         });
 
-        const [existing] = await db
-          .select({ id: schema.events.id })
-          .from(schema.events)
-          .where(eq(schema.events.id, eventId))
-          .limit(1);
-
         let imageUrl: string | null = null;
-        if (!existing && imageSource) {
+        if (imageSource) {
           imageUrl = (await mirrorImage(imageSource, ev.id)) ?? null;
         }
-
-        const status: 'scheduled' | 'cancelled' | 'sold_out' =
-          ev.eventStatus?.toLowerCase().includes('cancel')
-            ? 'cancelled'
-            : ev.soldOut === 'yes'
-              ? 'sold_out'
-              : 'scheduled';
 
         const refinedKind = refineKindByDuration(enriched.kind, startsAt, null);
 
         await db.transaction(async (tx) => {
-          if (!existing) {
-            await tx.insert(schema.events).values({
-              id: eventId,
-              venueId,
-              title: ev.title,
-              description: enriched.cleanedDescription ?? description,
-              kind: refinedKind,
-              imageUrl,
-              category: enriched.category ?? venueCategory,
-              featured: ev.highlight,
-              genres: enriched.genres,
-              published: true,
-            });
-            r.inserted++;
-          }
+          await tx.insert(schema.events).values({
+            id: eventId,
+            venueId,
+            title: ev.title,
+            description: enriched.cleanedDescription ?? description,
+            kind: refinedKind,
+            imageUrl,
+            category: enriched.category ?? venueCategory,
+            featured: ev.highlight,
+            genres: enriched.genres,
+            published: true,
+          });
+          r.inserted++;
 
           await tx
             .insert(schema.occurrences)
