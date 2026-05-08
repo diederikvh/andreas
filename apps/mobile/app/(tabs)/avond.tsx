@@ -27,7 +27,7 @@ import { AppHeader, HEADER_HEIGHT } from '@/components/AppHeader';
 import { Cross } from '@/components/Cross';
 import { EventListRow } from '@/components/EventListRow';
 import { RefreshBanner } from '@/components/RefreshBanner';
-import { RunningExhibitions } from '@/components/RunningExhibitions';
+import { RunningStrip } from '@/components/RunningStrip';
 import { SpinningCross } from '@/components/SpinningCross';
 import type { ApiEvent, VenueType } from '@/lib/api';
 import {
@@ -51,7 +51,12 @@ import {
   useTimeBlocks,
 } from '@/lib/eventDisplay';
 import { useLocale, useT, type Locale } from '@/lib/i18n';
-import { useEventGenres, useEvents, useFriends } from '@/lib/queries';
+import {
+  useEventGenres,
+  useEvents,
+  useFriends,
+  useSeriesList,
+} from '@/lib/queries';
 import { useSession } from '@/lib/authClient';
 import { useTabDoubleTap } from '@/lib/useTabDoubleTap';
 import { useMode, useRoles } from '@/store/mode';
@@ -170,6 +175,9 @@ export default function Avond() {
   const { data: events, isLoading, error } = useEvents({
     from: todayWindow.from,
   });
+  // Series + exhibitions delen één "Loopt nu"-strook bovenaan. Series
+  // komen uit /series (apart endpoint), exhibitions zitten in `events`.
+  const { data: seriesList } = useSeriesList();
 
   // Filter-keuze (zoek + vrienden + favorieten + tijd-blokken) wordt
   // persistent bewaard tussen sessies via een Zustand-store. URL-state
@@ -431,9 +439,13 @@ export default function Avond() {
         {/* Kaart-CTA — onafhankelijk van de filter. */}
         <KaartBanner />
 
-        {/* Doorlopend te zien (musea/galleries) — altijd zichtbaar als
-            losse strook, niet beïnvloed door de tijd-blok filter. */}
-        <RunningExhibitions events={runningExhibitions} />
+        {/* "Loopt nu" — actieve series eerst, doorlopende tentoon-
+            stellingen daarna. Altijd zichtbaar als losse strook, niet
+            beïnvloed door de tijd-blok filter. */}
+        <RunningStrip
+          series={seriesList ?? []}
+          exhibitionEvents={runningExhibitions}
+        />
 
         {/* Hero — divider + "{dag} {datum}" met datum in primair
             (accent). Eén regel, kort. Niet filter-afhankelijk. */}

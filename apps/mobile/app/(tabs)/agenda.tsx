@@ -28,7 +28,7 @@ import { AppHeader, HEADER_HEIGHT } from '@/components/AppHeader';
 import { Cross } from '@/components/Cross';
 import { EventListRow } from '@/components/EventListRow';
 import { RefreshBanner } from '@/components/RefreshBanner';
-import { RunningExhibitions } from '@/components/RunningExhibitions';
+import { RunningStrip } from '@/components/RunningStrip';
 import { SpinningCross } from '@/components/SpinningCross';
 import type { ApiEvent, VenueType } from '@/lib/api';
 import {
@@ -53,7 +53,12 @@ import {
 } from '@/lib/eventDisplay';
 import { useLocale, useT } from '@/lib/i18n';
 import { useSession } from '@/lib/authClient';
-import { useEventGenres, useEvents, useFriends } from '@/lib/queries';
+import {
+  useEventGenres,
+  useEvents,
+  useFriends,
+  useSeriesList,
+} from '@/lib/queries';
 import { useTabDoubleTap } from '@/lib/useTabDoubleTap';
 import { useAgendaFilters } from '@/store/agendaFilters';
 import { useMode, useRoles } from '@/store/mode';
@@ -138,6 +143,9 @@ export default function Agenda() {
   }, [focusedNow]);
 
   const { data: events, isLoading, error } = useEvents({ from: todayStartIso });
+  // Series + exhibitions delen één "Loopt nu"-strook bovenaan op de
+  // Agenda — zelfde patroon als Vandaag voor visuele rust.
+  const { data: seriesList } = useSeriesList();
 
   // Cliëntside filter op event-eigenschappen (category/genre/search) —
   // tijd-blok wordt apart per occurrence toegepast zodat een film met
@@ -312,7 +320,10 @@ export default function Agenda() {
         )}
         {!isLoading && !error && (
           <Animated.View entering={FadeIn.duration(220)}>
-            <RunningExhibitions events={filteredEvents} />
+            <RunningStrip
+              series={seriesList ?? []}
+              exhibitionEvents={filteredEvents}
+            />
             {days.length === 0 && (
               <ListState
                 text={

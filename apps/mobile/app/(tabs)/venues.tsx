@@ -25,7 +25,6 @@ import { Cross } from '@/components/Cross';
 import { RefreshBanner } from '@/components/RefreshBanner';
 import { SpinningCross } from '@/components/SpinningCross';
 import type {
-  ApiSeriesListItem,
   ApiVenueListItem,
   VenueDayNight,
   VenueScene,
@@ -38,7 +37,7 @@ import {
   VENUE_TYPE_VALUES,
 } from '@/lib/eventDisplay';
 import { useLocale, useT, type Locale } from '@/lib/i18n';
-import { useSeriesList, useVenues, useVenueSubtypes } from '@/lib/queries';
+import { useVenues, useVenueSubtypes } from '@/lib/queries';
 import { useTabDoubleTap } from '@/lib/useTabDoubleTap';
 import { useMode, useRoles } from '@/store/mode';
 import { useVenuesFilters } from '@/store/venuesFilters';
@@ -231,8 +230,6 @@ export default function Venues() {
           />
         }
       >
-        <SeriesSection />
-
         <ChipRow
           query={q}
           onQuery={setQ}
@@ -286,113 +283,6 @@ export default function Venues() {
       <AppHeader title={tx('Venues', 'Venues')} />
     </KeyboardAvoidingView>
   );
-}
-
-function SeriesSection() {
-  const mode = useMode();
-  const roles = useRoles();
-  const isNacht = mode === 'nacht';
-  const t = useT();
-  const { data, isLoading } = useSeriesList();
-  if (isLoading || !data || data.length === 0) return null;
-
-  return (
-    <View style={styles.seriesSection}>
-      <View style={styles.seriesHead}>
-        <Text style={[styles.seriesHeadLabel, { color: roles.fg }]}>
-          {t('Series', 'Series')}
-        </Text>
-        <Text style={[styles.seriesHeadCount, { color: roles.fgMuted }]}>
-          {data.length} {t('actief', 'active')}
-        </Text>
-      </View>
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.seriesScroller}
-      >
-        {data.map((s) => (
-          <SeriesCard key={s.id} series={s} />
-        ))}
-      </ScrollView>
-    </View>
-  );
-}
-
-function SeriesCard({ series }: { series: ApiSeriesListItem }) {
-  const mode = useMode();
-  const roles = useRoles();
-  const isNacht = mode === 'nacht';
-  const locale = useLocale();
-  const t = useT();
-  const dateRange = formatSeriesRange(series.startsAt, series.endsAt, locale, t);
-  return (
-    <Pressable
-      onPress={() => router.push(`/series/${series.slug}` as never)}
-      style={[
-        styles.seriesCard,
-        {
-          backgroundColor: isNacht ? palette.noir2 : palette.paper2,
-          borderColor: isNacht ? '#2a2a2d' : palette.paper,
-        },
-      ]}
-    >
-      {series.imageUrl ? (
-        <Image
-          source={{ uri: series.imageUrl }}
-          style={styles.seriesCardImg}
-          contentFit="cover"
-        />
-      ) : (
-        <View
-          style={[
-            styles.seriesCardImg,
-            { backgroundColor: isNacht ? palette.noir3 : palette.paper },
-          ]}
-        />
-      )}
-      <View style={styles.seriesCardBody}>
-        <Text
-          numberOfLines={1}
-          style={[styles.seriesCardName, { color: roles.fg }]}
-        >
-          {series.name}
-        </Text>
-        <Text
-          numberOfLines={1}
-          style={[styles.seriesCardMeta, { color: roles.fgMuted }]}
-        >
-          {[dateRange, `${series.eventCount} event${series.eventCount === 1 ? '' : 's'}`]
-            .filter(Boolean)
-            .join(' · ')}
-        </Text>
-      </View>
-    </Pressable>
-  );
-}
-
-function formatSeriesRange(
-  startsAt: string | null,
-  endsAt: string | null,
-  locale: Locale,
-  t: (nl: string, en: string) => string
-): string | null {
-  if (!startsAt) return null;
-  const start = new Date(startsAt);
-  const end = endsAt ? new Date(endsAt) : null;
-  const monthName = (d: Date) => monthShort(d.getMonth(), locale).toLowerCase();
-  const day = (d: Date) => String(d.getDate());
-  if (!end) {
-    return t(
-      `Vanaf ${day(start)} ${monthName(start)}`,
-      `From ${day(start)} ${monthName(start)}`
-    );
-  }
-  const sameMonth =
-    start.getFullYear() === end.getFullYear() &&
-    start.getMonth() === end.getMonth();
-  if (sameMonth) return `${day(start)} – ${day(end)} ${monthName(start)}`;
-  return `${day(start)} ${monthName(start)} – ${day(end)} ${monthName(end)}`;
 }
 
 function VenueRow({ venue }: { venue: ApiVenueListItem }) {
@@ -1395,62 +1285,6 @@ const styles = StyleSheet.create({
     fontFamily: fontFamily.mono,
     fontSize: 9,
     letterSpacing: 0.9,
-    textTransform: 'uppercase',
-  },
-
-  // Series-sectie — horizontale rij kaarten boven de chip-row.
-  seriesSection: {
-    paddingTop: 4,
-    paddingBottom: 4,
-  },
-  seriesHead: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'baseline',
-    paddingHorizontal: 22,
-    paddingTop: 6,
-    paddingBottom: 8,
-  },
-  seriesHeadLabel: {
-    fontFamily: fontFamily.bold,
-    fontSize: 12,
-    letterSpacing: 0.5,
-    textTransform: 'uppercase',
-  },
-  seriesHeadCount: {
-    fontFamily: fontFamily.mono,
-    fontSize: 10,
-    letterSpacing: 1,
-    textTransform: 'uppercase',
-  },
-  seriesScroller: {
-    gap: 10,
-    paddingHorizontal: 22,
-    paddingBottom: 8,
-  },
-  seriesCard: {
-    width: 220,
-    borderRadius: 12,
-    borderWidth: 1,
-    overflow: 'hidden',
-  },
-  seriesCardImg: {
-    width: '100%',
-    height: 100,
-  },
-  seriesCardBody: {
-    padding: 12,
-    gap: 4,
-  },
-  seriesCardName: {
-    fontFamily: fontFamily.bold,
-    fontSize: 14,
-    letterSpacing: -0.21,
-  },
-  seriesCardMeta: {
-    fontFamily: fontFamily.mono,
-    fontSize: 10,
-    letterSpacing: 0.8,
     textTransform: 'uppercase',
   },
 
