@@ -1024,6 +1024,13 @@ adminUi.get('/venues', async (c) => {
   const eventMap = new Map(eventCounts.map((r) => [r.venueId, Number(r.total)]));
   const upcomingMap = new Map(upcomingCounts.map((r) => [r.venueId, Number(r.total)]));
 
+  const typeCounts = new Map<string, number>();
+  let untypedCount = 0;
+  for (const v of rows) {
+    if (v.type) typeCounts.set(v.type, (typeCounts.get(v.type) ?? 0) + 1);
+    else untypedCount++;
+  }
+
   // Inline JS voor:
   //   • zoek-filter (naam), image-filter (alle / zonder / met),
   //     events-filter (met / zonder / upcoming / geen upcoming),
@@ -1036,6 +1043,7 @@ adminUi.get('/venues', async (c) => {
   const search = document.getElementById('venue-search');
   const filter = document.getElementById('venue-imgfilter');
   const eventsFilter = document.getElementById('venue-eventsfilter');
+  const typeFilter = document.getElementById('venue-typefilter');
   const sort = document.getElementById('venue-sort');
   const tbody = document.querySelector('table tbody');
   const rows = Array.from(document.querySelectorAll('[data-venue-row]'));
@@ -1044,12 +1052,14 @@ adminUi.get('/venues', async (c) => {
     const q = (search.value || '').trim().toLowerCase();
     const f = filter.value;
     const ef = eventsFilter.value;
+    const tf = typeFilter.value;
     let visible = 0;
     for (const r of rows) {
       const name = r.dataset.name || '';
       const hasImg = r.dataset.hasimage === '1';
       const events = Number(r.dataset.events || '0');
       const upcoming = Number(r.dataset.upcoming || '0');
+      const type = r.dataset.type || '';
       let show = true;
       if (q && !name.toLowerCase().includes(q)) show = false;
       if (f === 'noimg' && hasImg) show = false;
@@ -1058,6 +1068,8 @@ adminUi.get('/venues', async (c) => {
       if (ef === 'no-events' && events > 0) show = false;
       if (ef === 'has-upcoming' && upcoming === 0) show = false;
       if (ef === 'no-upcoming' && upcoming > 0) show = false;
+      if (tf === '__none' && type !== '') show = false;
+      else if (tf && tf !== 'all' && tf !== '__none' && type !== tf) show = false;
       r.style.display = show ? '' : 'none';
       if (show) visible++;
     }
@@ -1087,6 +1099,7 @@ adminUi.get('/venues', async (c) => {
         search: search.value,
         img: filter.value,
         events: eventsFilter.value,
+        type: typeFilter.value,
         sort: sort.value,
       }));
     } catch {}
@@ -1099,6 +1112,7 @@ adminUi.get('/venues', async (c) => {
       if (typeof v.search === 'string') search.value = v.search;
       if (typeof v.img === 'string') filter.value = v.img;
       if (typeof v.events === 'string') eventsFilter.value = v.events;
+      if (typeof v.type === 'string') typeFilter.value = v.type;
       if (typeof v.sort === 'string') sort.value = v.sort;
     } catch {}
   }
@@ -1109,6 +1123,7 @@ adminUi.get('/venues', async (c) => {
   search.addEventListener('input', () => { saveState(); applyFilter(); });
   filter.addEventListener('change', () => { saveState(); applyFilter(); });
   eventsFilter.addEventListener('change', () => { saveState(); applyFilter(); });
+  typeFilter.addEventListener('change', () => { saveState(); applyFilter(); });
   sort.addEventListener('change', () => { saveState(); applySort(); });
 
   // Drag-drop per rij. We luisteren op de hele <tr> zodat het hele
@@ -1230,6 +1245,15 @@ adminUi.get('/venues', async (c) => {
           <option value="has-upcoming">Met upcoming</option>
           <option value="no-upcoming">Zonder upcoming</option>
         </select>
+        <select id="venue-typefilter">
+          <option value="all">Alle types</option>
+          {VENUE_TYPES.map((t) => (
+            <option value={t}>{`${t} (${typeCounts.get(t) ?? 0})`}</option>
+          ))}
+          {untypedCount > 0 && (
+            <option value="__none">{`zonder type (${untypedCount})`}</option>
+          )}
+        </select>
         <select id="venue-sort">
           <option value="name">Sort: naam</option>
           <option value="events-desc">Sort: events ↓</option>
@@ -1264,6 +1288,7 @@ adminUi.get('/venues', async (c) => {
               data-hasimage={v.imageUrl ? '1' : '0'}
               data-events={events}
               data-upcoming={upcoming}
+              data-type={v.type ?? ''}
             >
               <td class="thumb-cell">
                 <img
