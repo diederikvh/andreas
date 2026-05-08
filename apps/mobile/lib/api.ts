@@ -82,6 +82,10 @@ export type ApiEvent = {
     address: string;
     lat: number;
     lng: number;
+    /** Venue-type (podium/club/galerie/museum/film/ruimte/boekhandel-cafe).
+        Optioneel — niet alle endpoints leveren 'm; UI gebruikt 'm voor de
+        venue-tone-pill in lijst-rijen. */
+    type?: VenueType | null;
     description?: string | null;
     imageUrl?: string | null;
     /** Default priceNote vanuit venue (bv. "lidmaatschap vereist"). */

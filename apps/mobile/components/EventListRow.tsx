@@ -32,6 +32,19 @@ type Props = {
   thumb: string;
   title: string;
   venue: string;
+  /** Optional — when set, render the venue as the first pill in the
+      tag-row (in venue-type tone). The venue is then dropped from the
+      mono-uppercase subline so it doesn't appear twice. */
+  venueTone?: BadgeTone;
+  /** Optional — when set, the venue pill becomes tappable. Used by
+      Vandaag/Agenda om de venue-type filter te toggelen vanuit de rij
+      zelf (zonder eerst de filter-sheet te openen). */
+  onVenuePress?: () => void;
+  /** Optional — when set, this string is rendered as the subline
+      verbatim instead of the default `[time, duration, venue].join`.
+      Used by Vandaag, which composes its own meta line (DOW · time ·
+      price). */
+  meta?: string;
   tags?: EventTag[];
   /** Optional outline tag, e.g. "Uitverkocht" / "nog 3". */
   status?: string;
@@ -64,6 +77,9 @@ export function EventListRow({
   thumb,
   title,
   venue,
+  venueTone,
+  onVenuePress,
+  meta,
   tags,
   status,
   seriesLabel,
@@ -76,6 +92,19 @@ export function EventListRow({
   const mode = useMode();
   const roles = useRoles();
   const tickColor = TONE[mode][tick];
+  const venueAsPill = venueTone !== undefined;
+  const subline =
+    meta ??
+    [time, duration, venueAsPill ? null : venue].filter(Boolean).join(' · ');
+  const venuePillColor = venueAsPill ? TONE[mode][venueTone] : null;
+  const hasTagsRow =
+    venueAsPill ||
+    featured ||
+    Boolean(tags?.length) ||
+    Boolean(status) ||
+    Boolean(seriesLabel) ||
+    Boolean(genreLabel) ||
+    Boolean(friends?.length);
 
   return (
     <Pressable
@@ -95,14 +124,37 @@ export function EventListRow({
           >
             {title}
           </Text>
-          <Text
-            numberOfLines={1}
-            style={[styles.rowVenue, { color: roles.fgMuted }]}
-          >
-            {[time, duration, venue].filter(Boolean).join(' · ')}
-          </Text>
-          {(featured || tags?.length || status || seriesLabel || genreLabel || friends?.length) && (
+          {subline.length > 0 && (
+            <Text
+              numberOfLines={1}
+              style={[styles.rowVenue, { color: roles.fgMuted }]}
+            >
+              {subline}
+            </Text>
+          )}
+          {hasTagsRow && (
             <View style={styles.rowTags}>
+              {venueAsPill && venuePillColor && (
+                <Pressable
+                  onPress={onVenuePress}
+                  disabled={!onVenuePress}
+                  hitSlop={4}
+                  style={[
+                    styles.tag,
+                    { backgroundColor: `${venuePillColor}26` },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.tagText,
+                      { color: toneForLabelText(venuePillColor, mode) },
+                    ]}
+                    numberOfLines={1}
+                  >
+                    {venue}
+                  </Text>
+                </Pressable>
+              )}
               {featured && (
                 <View
                   style={[

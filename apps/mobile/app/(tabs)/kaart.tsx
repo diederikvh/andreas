@@ -38,8 +38,7 @@ import {
   type TransportMode,
 } from '@/lib/eventDisplay';
 import { useT } from '@/lib/i18n';
-import { useEvents, useFriends } from '@/lib/queries';
-import { useSession } from '@/lib/authClient';
+import { useEvents } from '@/lib/queries';
 import { useDeviceLocation } from '@/lib/useDeviceLocation';
 import type { BadgeTone } from '@/lib/types';
 import { useMode, useRoles } from '@/store/mode';
@@ -123,19 +122,16 @@ export default function Kaart() {
   const onlyFavorites = useVandaagFilters((s) => s.onlyFavorites);
   const activeBlocks = useVandaagFilters((s) => s.activeBlocks);
   const activeCats = useVandaagFilters((s) => s.activeCats);
+  const activeTypes = useVandaagFilters((s) => s.activeTypes);
   const activeGenres = useVandaagFilters((s) => s.activeGenres);
   const setOnlyFriends = useVandaagFilters((s) => s.setOnlyFriends);
   const setOnlyFavorites = useVandaagFilters((s) => s.setOnlyFavorites);
   const setActiveBlocks = useVandaagFilters((s) => s.setActiveBlocks);
   const setActiveCats = useVandaagFilters((s) => s.setActiveCats);
+  const setActiveTypes = useVandaagFilters((s) => s.setActiveTypes);
   const setActiveGenres = useVandaagFilters((s) => s.setActiveGenres);
   const toggleBlock = useVandaagFilters((s) => s.toggleBlock);
 
-  const { data: session } = useSession();
-  const { data: friends } = useFriends({
-    enabled: Boolean(session?.user?.id),
-  });
-  const showFriendsChip = (friends?.length ?? 0) > 0;
   const showFavoritesChip = useMemo(
     () => Boolean(events?.some((e) => e.venueFollowed)),
     [events]
@@ -149,6 +145,11 @@ export default function Kaart() {
         if (e.kind === 'exhibition') return false;
         if (activeCats.length > 0 && !activeCats.includes(e.category)) {
           return false;
+        }
+        if (activeTypes.length > 0) {
+          if (!e.venue.type || !activeTypes.includes(e.venue.type)) {
+            return false;
+          }
         }
         if (activeGenres.length > 0) {
           const evGenres = e.genres ?? [];
@@ -181,6 +182,7 @@ export default function Kaart() {
     transport,
     query,
     activeCats,
+    activeTypes,
     activeGenres,
     activeBlocks,
     onlyFriends,
@@ -190,6 +192,7 @@ export default function Kaart() {
   const filterCount =
     activeBlocks.length +
     activeCats.length +
+    activeTypes.length +
     activeGenres.length +
     (onlyFriends ? 1 : 0) +
     (onlyFavorites ? 1 : 0);
@@ -480,14 +483,15 @@ export default function Kaart() {
           onlyFavorites={onlyFavorites}
           activeBlocks={activeBlocks}
           activeCats={activeCats}
+          activeTypes={activeTypes}
           activeGenres={activeGenres}
-          showFriendsChip={showFriendsChip}
           showFavoritesChip={showFavoritesChip}
           onSetFriends={setOnlyFriends}
           onSetFavorites={setOnlyFavorites}
           onToggleBlock={toggleBlock}
           onSetBlocks={setActiveBlocks}
           onSetCats={setActiveCats}
+          onSetTypes={setActiveTypes}
           onSetGenres={setActiveGenres}
           onClose={() => setFilterOpen(false)}
         />

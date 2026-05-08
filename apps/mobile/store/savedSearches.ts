@@ -2,7 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 
-import type { ApiEvent } from '@/lib/api';
+import type { ApiEvent, VenueType } from '@/lib/api';
 import type { TimeBlock } from '@/lib/eventDisplay';
 
 /**
@@ -18,6 +18,9 @@ export type SavedSearch = {
       lezen geconverteerd naar één-element array of leeg. */
   cats: ApiEvent['category'][];
   tb: TimeBlock[];
+  /** Venue-types (podium/club/galerie/...). Optioneel — oude saves
+      zonder vt zijn equivalent aan een lege array. */
+  vt: VenueType[];
   gn: string[];
   q: string;
   /** Unix-ms — voor sortering: nieuwste eerst. */
@@ -56,13 +59,14 @@ export const useSavedSearchesStore = create<SavedSearchesState>()(
     {
       name: 'andreas:saved-searches.v1',
       storage: createJSONStorage(() => AsyncStorage),
-      version: 2,
+      version: 3,
       migrate: (persistedState: unknown, version: number) => {
         // Schema v1 had `cat: ApiEvent['category'] | null`; v2 heeft
-        // `cats: ApiEvent['category'][]`. Convert oude rijen ipv ze
-        // te droppen — anders zou een gebruiker bij app-update z'n
-        // saved searches verliezen, en (kritischer) crashed de Agenda
-        // op `s.cats.length` als de oude shape live blijft.
+        // `cats: ApiEvent['category'][]`. v3 voegde `vt` toe (venue-
+        // types). Convert oude rijen ipv ze te droppen — anders zou
+        // een gebruiker bij app-update z'n saved searches verliezen,
+        // en (kritischer) crashed de Agenda op `s.cats.length` als
+        // de oude shape live blijft.
         const state = persistedState as { searches?: LegacySavedSearch[] };
         if (!state || !Array.isArray(state.searches)) {
           return { searches: [] };
@@ -75,6 +79,12 @@ export const useSavedSearchesStore = create<SavedSearchesState>()(
               : s.cat
                 ? [s.cat]
                 : [],
+          }));
+        }
+        if (version < 3) {
+          state.searches = state.searches.map((s) => ({
+            ...s,
+            vt: Array.isArray(s.vt) ? s.vt : [],
           }));
         }
         return state as SavedSearchesState;
@@ -98,6 +108,7 @@ export function isSavedSearchActive(
   current: {
     cats: ApiEvent['category'][];
     tb: TimeBlock[];
+    vt: VenueType[];
     gn: string[];
     q: string;
   }
@@ -106,6 +117,7 @@ export function isSavedSearchActive(
     s.q === current.q &&
     sameSet(s.cats, current.cats) &&
     sameSet(s.tb, current.tb) &&
+    sameSet(s.vt, current.vt) &&
     sameSet(s.gn, current.gn)
   );
 }

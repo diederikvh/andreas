@@ -31,7 +31,12 @@ import type {
   VenueScene,
   VenueType,
 } from '@/lib/api';
-import { monthShort, VENUE_TYPE_TICK } from '@/lib/eventDisplay';
+import {
+  getVenueTypeChips,
+  monthShort,
+  VENUE_TYPE_TICK,
+  VENUE_TYPE_VALUES,
+} from '@/lib/eventDisplay';
 import { useLocale, useT, type Locale } from '@/lib/i18n';
 import { useSeriesList, useVenues, useVenueSubtypes } from '@/lib/queries';
 import { useMode, useRoles } from '@/store/mode';
@@ -49,15 +54,6 @@ import { fontFamily, palette } from '@/theme/tokens';
 // gebruikte chips bovenaan staan binnen elke sectie. Labels worden
 // per locale opgehaald via getDaynightChips/Type/Scene.
 const DN_VALUES: VenueDayNight[] = ['day', 'night', 'both'];
-const TYPE_VALUES: VenueType[] = [
-  'podium',
-  'club',
-  'galerie',
-  'museum',
-  'film',
-  'ruimte',
-  'boekhandel-cafe',
-];
 const SCENE_VALUES: VenueScene[] = [
   'mainstream',
   'alternatief',
@@ -79,29 +75,6 @@ function getDaynightChips(
     { value: 'day', label: 'Day' },
     { value: 'night', label: 'Night' },
     { value: 'both', label: 'Both' },
-  ];
-}
-
-function getTypeChips(locale: Locale): { value: VenueType; label: string }[] {
-  if (locale === 'nl') {
-    return [
-      { value: 'podium', label: 'Podium' },
-      { value: 'club', label: 'Club' },
-      { value: 'galerie', label: 'Galerie' },
-      { value: 'museum', label: 'Museum' },
-      { value: 'film', label: 'Film' },
-      { value: 'ruimte', label: 'Ruimte' },
-      { value: 'boekhandel-cafe', label: 'Boekhandel' },
-    ];
-  }
-  return [
-    { value: 'podium', label: 'Stage' },
-    { value: 'club', label: 'Club' },
-    { value: 'galerie', label: 'Gallery' },
-    { value: 'museum', label: 'Museum' },
-    { value: 'film', label: 'Cinema' },
-    { value: 'ruimte', label: 'Space' },
-    { value: 'boekhandel-cafe', label: 'Bookshop' },
   ];
 }
 
@@ -426,7 +399,7 @@ function VenueRow({ venue }: { venue: ApiVenueListItem }) {
   const roles = useRoles();
   const isNacht = mode === 'nacht';
   const locale = useLocale();
-  const typeChips = useMemo(() => getTypeChips(locale), [locale]);
+  const typeChips = useMemo(() => getVenueTypeChips(locale), [locale]);
   const sceneChips = useMemo(() => getSceneChips(locale), [locale]);
   return (
     <Pressable
@@ -822,7 +795,7 @@ function FilterSheet({
   const t = useT();
   const locale = useLocale();
   const daynightChips = useMemo(() => getDaynightChips(locale), [locale]);
-  const typeChips = useMemo(() => getTypeChips(locale), [locale]);
+  const typeChips = useMemo(() => getVenueTypeChips(locale), [locale]);
   const sceneChips = useMemo(() => getSceneChips(locale), [locale]);
   const addSaved = useAddSavedVenueSearch();
   const [saveOpen, setSaveOpen] = useState(false);
@@ -852,7 +825,7 @@ function FilterSheet({
     }
     // Stabiele volgorde: zelfde als TYPE_CHIPS zodat Podium boven Club
     // staat en niet random alfabetisch op enum-naam.
-    return TYPE_VALUES.flatMap((value) => {
+    return VENUE_TYPE_VALUES.flatMap((value) => {
       const items = map.get(value);
       return items && items.length > 0 ? [{ type: value, items }] : [];
     });
@@ -1001,6 +974,44 @@ function FilterSheet({
             { color: roles.fgMuted, marginTop: 22 },
           ]}
         >
+          {t('Scene', 'Scene')}
+        </Text>
+        <View style={styles.sheetWrap}>
+          {sceneChips.map((c) => (
+            <FilterChip
+              key={c.value}
+              label={c.label}
+              active={activeScene.includes(c.value)}
+              onPress={() => toggleScene(c.value)}
+            />
+          ))}
+        </View>
+
+        <Text
+          style={[
+            styles.sheetSectionHead,
+            { color: roles.fgMuted, marginTop: 22 },
+          ]}
+        >
+          {t('Volg-status', 'Following')}
+        </Text>
+        <View style={styles.sheetWrap}>
+          <FilterChip
+            label={t('Alleen wat ik volg', 'Only what I follow')}
+            active={onlyVolgend}
+            onPress={() => onVolgend(!onlyVolgend)}
+          />
+        </View>
+
+        {/* Sub-types onderaan: het kunnen er veel zijn, dus eerst de
+            korte label-secties (dag/nacht, type, scene, volg-status)
+            en dan pas de lange sub-type-lijst. */}
+        <Text
+          style={[
+            styles.sheetSectionHead,
+            { color: roles.fgMuted, marginTop: 22 },
+          ]}
+        >
           {t('Sub-types', 'Sub-types')}
         </Text>
         {subtypesLoading && (
@@ -1080,41 +1091,6 @@ function FilterSheet({
               </View>
             </View>
           ))}
-        </View>
-
-        <Text
-          style={[
-            styles.sheetSectionHead,
-            { color: roles.fgMuted, marginTop: 22 },
-          ]}
-        >
-          {t('Scene', 'Scene')}
-        </Text>
-        <View style={styles.sheetWrap}>
-          {sceneChips.map((c) => (
-            <FilterChip
-              key={c.value}
-              label={c.label}
-              active={activeScene.includes(c.value)}
-              onPress={() => toggleScene(c.value)}
-            />
-          ))}
-        </View>
-
-        <Text
-          style={[
-            styles.sheetSectionHead,
-            { color: roles.fgMuted, marginTop: 22 },
-          ]}
-        >
-          {t('Volg-status', 'Following')}
-        </Text>
-        <View style={styles.sheetWrap}>
-          <FilterChip
-            label={t('Alleen wat ik volg', 'Only what I follow')}
-            active={onlyVolgend}
-            onPress={() => onVolgend(!onlyVolgend)}
-          />
         </View>
       </ScrollView>
 

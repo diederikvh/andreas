@@ -2,7 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 
-import type { ApiEvent } from '@/lib/api';
+import type { ApiEvent, VenueType } from '@/lib/api';
 import type { TimeBlock } from '@/lib/eventDisplay';
 
 /**
@@ -18,14 +18,17 @@ type VandaagFiltersState = {
   onlyFavorites: boolean;
   activeBlocks: TimeBlock[];
   activeCats: ApiEvent['category'][];
+  activeTypes: VenueType[];
   activeGenres: string[];
   setQuery: (q: string) => void;
   setOnlyFriends: (next: boolean) => void;
   setOnlyFavorites: (next: boolean) => void;
   setActiveBlocks: (next: TimeBlock[]) => void;
   setActiveCats: (next: ApiEvent['category'][]) => void;
+  setActiveTypes: (next: VenueType[]) => void;
   setActiveGenres: (next: string[]) => void;
   toggleBlock: (b: TimeBlock) => void;
+  toggleType: (t: VenueType) => void;
   reset: () => void;
 };
 
@@ -37,12 +40,14 @@ export const useVandaagFilters = create<VandaagFiltersState>()(
       onlyFavorites: false,
       activeBlocks: [],
       activeCats: [],
+      activeTypes: [],
       activeGenres: [],
       setQuery: (q) => set({ query: q }),
       setOnlyFriends: (next) => set({ onlyFriends: next }),
       setOnlyFavorites: (next) => set({ onlyFavorites: next }),
       setActiveBlocks: (next) => set({ activeBlocks: next }),
       setActiveCats: (next) => set({ activeCats: next }),
+      setActiveTypes: (next) => set({ activeTypes: next }),
       setActiveGenres: (next) => set({ activeGenres: next }),
       toggleBlock: (b) => {
         const { activeBlocks } = get();
@@ -52,6 +57,14 @@ export const useVandaagFilters = create<VandaagFiltersState>()(
             : [...activeBlocks, b],
         });
       },
+      toggleType: (t) => {
+        const { activeTypes } = get();
+        set({
+          activeTypes: activeTypes.includes(t)
+            ? activeTypes.filter((x) => x !== t)
+            : [...activeTypes, t],
+        });
+      },
       reset: () =>
         set({
           query: '',
@@ -59,13 +72,14 @@ export const useVandaagFilters = create<VandaagFiltersState>()(
           onlyFavorites: false,
           activeBlocks: [],
           activeCats: [],
+          activeTypes: [],
           activeGenres: [],
         }),
     }),
     {
       name: 'andreas:vandaag-filters.v1',
       storage: createJSONStorage(() => AsyncStorage),
-      version: 4,
+      version: 5,
       migrate: (persistedState, version) => {
         // Step-wise migration zodat oude clients schoon optillen.
         const state = (persistedState ?? {}) as Partial<VandaagFiltersState>;
@@ -76,12 +90,14 @@ export const useVandaagFilters = create<VandaagFiltersState>()(
           out.activeCats = [];
           out.activeGenres = [];
         }
+        if (version < 5) out.activeTypes = [];
         return {
           query: out.query ?? '',
           onlyFriends: out.onlyFriends ?? false,
           onlyFavorites: out.onlyFavorites ?? false,
           activeBlocks: out.activeBlocks ?? [],
           activeCats: out.activeCats ?? [],
+          activeTypes: out.activeTypes ?? [],
           activeGenres: out.activeGenres ?? [],
         } as VandaagFiltersState;
       },

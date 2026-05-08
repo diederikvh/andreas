@@ -29,10 +29,12 @@ import { EventListRow } from '@/components/EventListRow';
 import { RefreshBanner } from '@/components/RefreshBanner';
 import { RunningExhibitions } from '@/components/RunningExhibitions';
 import { SpinningCross } from '@/components/SpinningCross';
-import type { ApiEvent } from '@/lib/api';
+import type { ApiEvent, VenueType } from '@/lib/api';
 import {
   eventImageUrl,
   CATEGORY_TICK,
+  VENUE_TYPE_TICK,
+  getVenueTypeChips,
   dowFull,
   dowUpper,
   effectiveEndsAtMs,
@@ -62,7 +64,11 @@ import {
 import { useVandaagFilters } from '@/store/vandaagFilters';
 import { fontFamily, palette } from '@/theme/tokens';
 
-function formatMetaForRow(row: OccurrenceRow, locale: Locale): string {
+function formatMetaForRow(
+  row: OccurrenceRow,
+  locale: Locale,
+  opts?: { excludeVenue?: boolean }
+): string {
   const d = new Date(row.occurrence.startsAt);
   const dow = dowUpper(d.getDay(), locale);
   const cents = row.occurrence.priceCents;
@@ -72,7 +78,12 @@ function formatMetaForRow(row: OccurrenceRow, locale: Locale): string {
       : cents === 0
         ? freeLabel(locale)
         : `€${(cents / 100).toFixed(0)}`;
-  return [dow, rowTimeLabel(row.occurrence.startsAt, row.occurrence.endsAt, locale), row.event.venue.name.toUpperCase(), price]
+  return [
+    dow,
+    rowTimeLabel(row.occurrence.startsAt, row.occurrence.endsAt, locale),
+    opts?.excludeVenue ? null : row.event.venue.name.toUpperCase(),
+    price,
+  ]
     .filter(Boolean)
     .join(' · ');
 }
@@ -160,12 +171,14 @@ export default function Avond() {
   const onlyFavorites = useVandaagFilters((s) => s.onlyFavorites);
   const activeBlocks = useVandaagFilters((s) => s.activeBlocks);
   const activeCats = useVandaagFilters((s) => s.activeCats);
+  const activeTypes = useVandaagFilters((s) => s.activeTypes);
   const activeGenres = useVandaagFilters((s) => s.activeGenres);
   const setQuery = useVandaagFilters((s) => s.setQuery);
   const setOnlyFriends = useVandaagFilters((s) => s.setOnlyFriends);
   const setOnlyFavorites = useVandaagFilters((s) => s.setOnlyFavorites);
   const setActiveBlocks = useVandaagFilters((s) => s.setActiveBlocks);
   const setActiveCats = useVandaagFilters((s) => s.setActiveCats);
+  const setActiveTypes = useVandaagFilters((s) => s.setActiveTypes);
   const setActiveGenres = useVandaagFilters((s) => s.setActiveGenres);
   const toggleBlock = useVandaagFilters((s) => s.toggleBlock);
   const { data: session } = useSession();
@@ -223,6 +236,14 @@ export default function Avond() {
       if (activeCats.length > 0 && !activeCats.includes(e.category)) {
         return false;
       }
+      if (activeTypes.length > 0) {
+        // Venue zonder type valt buiten de filter — bewust strict
+        // zodat "alleen clubs" niet ineens venues zonder type mee­
+        // sleurt.
+        if (!e.venue.type || !activeTypes.includes(e.venue.type)) {
+          return false;
+        }
+      }
       if (activeGenres.length > 0) {
         const evGenres = e.genres ?? [];
         if (!evGenres.some((g) => activeGenres.includes(g))) return false;
@@ -249,6 +270,7 @@ export default function Avond() {
     todayWindow.toMs,
     activeBlocks,
     activeCats,
+    activeTypes,
     activeGenres,
     onlyFriends,
     onlyFavorites,
@@ -433,11 +455,13 @@ export default function Avond() {
           activeBlocks={activeBlocks}
           onToggleBlock={onToggleBlock}
           activeCats={activeCats}
+          activeTypes={activeTypes}
           activeGenres={activeGenres}
           onSetBlocks={setActiveBlocks}
           onSetFriends={setOnlyFriends}
           onSetFavorites={setOnlyFavorites}
           onSetCats={setActiveCats}
+          onSetTypes={setActiveTypes}
           onSetGenres={setActiveGenres}
         />
 
@@ -480,8 +504,8 @@ export default function Avond() {
                     })
                   }
                 />
-                {items.map((row, i) => (
-                  <ApiEventRow key={row.id} row={row} featured={i === 0} />
+                {items.map((row) => (
+                  <ApiEventRow key={row.id} row={row} />
                 ))}
               </View>
             ))}
@@ -505,11 +529,13 @@ function AvondChipRow({
   activeBlocks,
   onToggleBlock,
   activeCats,
+  activeTypes,
   activeGenres,
   onSetBlocks,
   onSetFriends,
   onSetFavorites,
   onSetCats,
+  onSetTypes,
   onSetGenres,
 }: {
   query: string;
@@ -523,11 +549,13 @@ function AvondChipRow({
   activeBlocks: TimeBlock[];
   onToggleBlock: (b: TimeBlock) => void;
   activeCats: ApiEvent['category'][];
+  activeTypes: VenueType[];
   activeGenres: string[];
   onSetBlocks: (next: TimeBlock[]) => void;
   onSetFriends: (next: boolean) => void;
   onSetFavorites: (next: boolean) => void;
   onSetCats: (next: ApiEvent['category'][]) => void;
+  onSetTypes: (next: VenueType[]) => void;
   onSetGenres: (next: string[]) => void;
 }) {
   const mode = useMode();
@@ -561,7 +589,10 @@ function AvondChipRow({
   };
 
   const filterCount =
-    activeBlocks.length + activeCats.length + activeGenres.length;
+    activeBlocks.length +
+    activeCats.length +
+    activeTypes.length +
+    activeGenres.length;
   const filterActive = filterCount > 0;
   const current = {
     q: query,
@@ -569,6 +600,7 @@ function AvondChipRow({
     fv: onlyFavorites,
     tb: activeBlocks,
     cats: activeCats,
+    vt: activeTypes,
     gn: activeGenres,
   };
 
@@ -580,6 +612,7 @@ function AvondChipRow({
       onSetFavorites(false);
       onSetBlocks([]);
       onSetCats([]);
+      onSetTypes([]);
       onSetGenres([]);
       return;
     }
@@ -588,6 +621,7 @@ function AvondChipRow({
     onSetFavorites(s.fv);
     onSetBlocks(s.tb);
     onSetCats(s.cats ?? []);
+    onSetTypes(s.vt ?? []);
     onSetGenres(s.gn ?? []);
   };
 
@@ -818,14 +852,15 @@ function AvondChipRow({
           onlyFavorites={onlyFavorites}
           activeBlocks={activeBlocks}
           activeCats={activeCats}
+          activeTypes={activeTypes}
           activeGenres={activeGenres}
-          showFriendsChip={showFriendsChip}
           showFavoritesChip={showFavoritesChip}
           onSetFriends={onSetFriends}
           onSetFavorites={onSetFavorites}
           onToggleBlock={onToggleBlock}
           onSetBlocks={onSetBlocks}
           onSetCats={onSetCats}
+          onSetTypes={onSetTypes}
           onSetGenres={onSetGenres}
           onClose={() => setFilterOpen(false)}
         />
@@ -840,30 +875,36 @@ export function AvondFilterSheet({
   onlyFavorites,
   activeBlocks,
   activeCats,
+  activeTypes,
   activeGenres,
-  showFriendsChip,
   showFavoritesChip,
   onSetFriends,
   onSetFavorites,
   onToggleBlock,
   onSetBlocks,
   onSetCats,
+  onSetTypes,
   onSetGenres,
   onClose,
 }: {
   query: string;
+  /** Geen visible Vrienden-toggle meer in dit sheet — die zit nu
+      enkel in de chip-row buiten het sheet. We houden onlyFriends +
+      onSetFriends wél als prop voor saved-search round-trip en zodat
+      "Wis alles" de Vrienden-filter ook reset. */
   onlyFriends: boolean;
   onlyFavorites: boolean;
   activeBlocks: TimeBlock[];
   activeCats: ApiEvent['category'][];
+  activeTypes: VenueType[];
   activeGenres: string[];
-  showFriendsChip: boolean;
   showFavoritesChip: boolean;
   onSetFriends: (next: boolean) => void;
   onSetFavorites: (next: boolean) => void;
   onToggleBlock: (b: TimeBlock) => void;
   onSetBlocks: (next: TimeBlock[]) => void;
   onSetCats: (next: ApiEvent['category'][]) => void;
+  onSetTypes: (next: VenueType[]) => void;
   onSetGenres: (next: string[]) => void;
   onClose: () => void;
 }) {
@@ -873,6 +914,7 @@ export function AvondFilterSheet({
   const isNacht = mode === 'nacht';
   const t = useT();
   const timeBlocks = useTimeBlocks();
+  const typeChips = useMemo(() => getVenueTypeChips(locale), [locale]);
   const addSaved = useAddSavedVandaagSearch();
   const [saveOpen, setSaveOpen] = useState(false);
   const [saveName, setSaveName] = useState('');
@@ -903,6 +945,11 @@ export function AvondFilterSheet({
     if (activeCats.includes(c)) onSetCats(activeCats.filter((x) => x !== c));
     else onSetCats([...activeCats, c]);
   };
+  const toggleType = (vt: VenueType) => {
+    if (activeTypes.includes(vt))
+      onSetTypes(activeTypes.filter((x) => x !== vt));
+    else onSetTypes([...activeTypes, vt]);
+  };
   const toggleGenre = (g: string) => {
     if (activeGenres.includes(g))
       onSetGenres(activeGenres.filter((x) => x !== g));
@@ -912,6 +959,7 @@ export function AvondFilterSheet({
   const filterCount =
     activeBlocks.length +
     activeCats.length +
+    activeTypes.length +
     activeGenres.length +
     (onlyFriends ? 1 : 0) +
     (onlyFavorites ? 1 : 0);
@@ -921,6 +969,7 @@ export function AvondFilterSheet({
     onSetFavorites(false);
     onSetBlocks([]);
     onSetCats([]);
+    onSetTypes([]);
     onSetGenres([]);
   };
 
@@ -934,6 +983,7 @@ export function AvondFilterSheet({
       fv: onlyFavorites,
       tb: activeBlocks,
       cats: activeCats,
+      vt: activeTypes,
       gn: activeGenres,
     });
     setSaveOpen(false);
@@ -1005,6 +1055,36 @@ export function AvondFilterSheet({
             { color: roles.fgMuted, marginTop: 22 },
           ]}
         >
+          {t('Venue-type', 'Venue type')}
+        </Text>
+        {/* Venue-type-chips, gevolgd door de "Favoriete venues"-toggle
+            als de gebruiker venues volgt — beide zijn "waar?"-filters,
+            dus thematisch één rij. Vrienden-toggle staat in de chip-row
+            buiten dit sheet en hoeft hier niet dubbel. */}
+        <View style={styles.sheetWrap}>
+          {typeChips.map((c) => (
+            <SheetChip
+              key={c.value}
+              label={c.label}
+              active={activeTypes.includes(c.value)}
+              onPress={() => toggleType(c.value)}
+            />
+          ))}
+          {showFavoritesChip && (
+            <SheetChip
+              label={t('Favoriete venues', 'Favourite venues')}
+              active={onlyFavorites}
+              onPress={() => onSetFavorites(!onlyFavorites)}
+            />
+          )}
+        </View>
+
+        <Text
+          style={[
+            styles.sheetSectionHead,
+            { color: roles.fgMuted, marginTop: 22 },
+          ]}
+        >
           {t('Tijd', 'Time')}
         </Text>
         <View style={styles.sheetWrap}>
@@ -1019,6 +1099,9 @@ export function AvondFilterSheet({
           ))}
         </View>
 
+        {/* Genres komen onderaan: het kunnen er veel zijn, dus eerst
+            de korte label-secties (categorie/venue-type/tijd) en dan
+            pas de lange genre-lijst. */}
         <Text
           style={[
             styles.sheetSectionHead,
@@ -1111,35 +1194,6 @@ export function AvondFilterSheet({
             </View>
           ))}
         </View>
-
-        {(showFriendsChip || showFavoritesChip) && (
-          <>
-            <Text
-              style={[
-                styles.sheetSectionHead,
-                { color: roles.fgMuted, marginTop: 22 },
-              ]}
-            >
-              {t('Persoonlijk', 'Personal')}
-            </Text>
-            <View style={styles.sheetWrap}>
-              {showFriendsChip && (
-                <SheetChip
-                  label={t('Vrienden', 'Friends')}
-                  active={onlyFriends}
-                  onPress={() => onSetFriends(!onlyFriends)}
-                />
-              )}
-              {showFavoritesChip && (
-                <SheetChip
-                  label={t('Favoriete venues', 'Favourite venues')}
-                  active={onlyFavorites}
-                  onPress={() => onSetFavorites(!onlyFavorites)}
-                />
-              )}
-            </View>
-          </>
-        )}
       </ScrollView>
 
       {saveOpen ? (
@@ -1320,32 +1374,35 @@ function eventPathFor(row: OccurrenceRow): string {
   return `/event/${row.event.id}?o=${row.occurrence.id}`;
 }
 
-function ApiEventRow({
-  row,
-  featured = false,
-}: {
-  row: OccurrenceRow;
-  featured?: boolean;
-}) {
+function ApiEventRow({ row }: { row: OccurrenceRow }) {
   const { event, occurrence } = row;
   const locale = useLocale();
+  const toggleType = useVandaagFilters((s) => s.toggleType);
   const rawFriends = occurrence.friendsSaved ?? event.friendsSaved ?? [];
   const friends = rawFriends.map((f) => ({
     name: f.name,
     avatar: f.avatarUrl,
   }));
   // Op Vandaag laten we de categorie-tag weg in de rij — die staat
-  // al in de sectie-titel erboven. Ster + genre/series/friends
-  // blijven; tick-kleur volgt nog steeds het thema.
+  // al in de sectie-titel erboven. Venue komt als eerste pill in
+  // venue-type tone (podium=acid, club=flare, ...). Genre/series/
+  // friends blijven; tick-kleur volgt nog steeds het thema. Pill
+  // is tappable: toggelt het bijbehorende venue-type-filter, zodat
+  // je snel "alleen clubs" kan zien zonder de filter-sheet.
+  const venueType = event.venue.type;
+  const venueTone = venueType ? VENUE_TYPE_TICK[venueType] : undefined;
+  const onVenuePress = venueType ? () => toggleType(venueType) : undefined;
   return (
     <EventListRow
       thumb={eventImageUrl(event) ?? ''}
       title={event.title}
-      venue={formatMetaForRow(row, locale)}
+      venue={event.venue.name}
+      venueTone={venueTone}
+      onVenuePress={onVenuePress}
+      meta={formatMetaForRow(row, locale, { excludeVenue: Boolean(venueTone) })}
       seriesLabel={event.series?.[0]?.name}
       genreLabel={event.genres?.[0]}
       friends={friends && friends.length > 0 ? friends : undefined}
-      featured={featured}
       tick={CATEGORY_TICK[event.category]}
       onPress={() => router.push(eventPathFor(row) as never)}
     />
@@ -1757,10 +1814,8 @@ const styles = StyleSheet.create({
     alignItems: 'baseline',
   },
   sectionTitleLabel: {
-    fontFamily: fontFamily.bold,
-    fontSize: 12,
-    letterSpacing: 0.5,
-    textTransform: 'uppercase',
+    fontFamily: fontFamily.display,
+    fontSize: 24,
   },
   sectionTitleMeta: {
     fontFamily: fontFamily.mono,

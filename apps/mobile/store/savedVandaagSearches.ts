@@ -2,7 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 
-import type { ApiEvent } from '@/lib/api';
+import type { ApiEvent, VenueType } from '@/lib/api';
 import type { TimeBlock } from '@/lib/eventDisplay';
 
 /**
@@ -19,6 +19,9 @@ export type SavedVandaagSearch = {
   fv: boolean;
   tb: TimeBlock[];
   cats: ApiEvent['category'][];
+  /** Venue-types (podium/club/galerie/...). Optioneel — oude saves
+      zonder vt zijn equivalent aan een lege array. */
+  vt: VenueType[];
   gn: string[];
   createdAt: number;
 };
@@ -50,10 +53,11 @@ export const useSavedVandaagSearchesStore = create<SavedVandaagSearchesState>()(
     {
       name: 'andreas:saved-vandaag-searches.v1',
       storage: createJSONStorage(() => AsyncStorage),
-      version: 2,
+      version: 3,
       migrate: (persistedState: unknown, version: number) => {
-        // v1 had geen cats/gn — vul met lege arrays zodat
-        // isSavedVandaagSearchActive niet crashed op s.cats.length.
+        // v1 had geen cats/gn, v3 voegde vt toe — vul ontbrekende velden
+        // met lege arrays zodat isSavedVandaagSearchActive niet crashed
+        // op s.cats.length / s.vt.length.
         const state = persistedState as { searches?: SavedVandaagSearch[] };
         if (!state || !Array.isArray(state.searches)) {
           return { searches: [] };
@@ -63,6 +67,12 @@ export const useSavedVandaagSearchesStore = create<SavedVandaagSearchesState>()(
             ...s,
             cats: Array.isArray(s.cats) ? s.cats : [],
             gn: Array.isArray(s.gn) ? s.gn : [],
+          }));
+        }
+        if (version < 3) {
+          state.searches = state.searches.map((s) => ({
+            ...s,
+            vt: Array.isArray(s.vt) ? s.vt : [],
           }));
         }
         return state as SavedVandaagSearchesState;
@@ -88,6 +98,7 @@ export function isSavedVandaagSearchActive(
     fv: boolean;
     tb: TimeBlock[];
     cats: ApiEvent['category'][];
+    vt: VenueType[];
     gn: string[];
   }
 ): boolean {
@@ -97,6 +108,7 @@ export function isSavedVandaagSearchActive(
     s.fv === current.fv &&
     sameSet(s.tb, current.tb) &&
     sameSet(s.cats, current.cats) &&
+    sameSet(s.vt, current.vt) &&
     sameSet(s.gn, current.gn)
   );
 }

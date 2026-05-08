@@ -30,10 +30,12 @@ import { EventListRow } from '@/components/EventListRow';
 import { RefreshBanner } from '@/components/RefreshBanner';
 import { RunningExhibitions } from '@/components/RunningExhibitions';
 import { SpinningCross } from '@/components/SpinningCross';
-import type { ApiEvent } from '@/lib/api';
+import type { ApiEvent, VenueType } from '@/lib/api';
 import {
   eventImageUrl,
   CATEGORY_TICK,
+  VENUE_TYPE_TICK,
+  getVenueTypeChips,
   dowMixed,
   effectiveEndsAtMs,
   expandToOccurrenceRows,
@@ -91,12 +93,14 @@ export default function Agenda() {
   const onlyFavorites = useAgendaFilters((s) => s.onlyFavorites);
   const activeBlocks = useAgendaFilters((s) => s.activeBlocks);
   const activeCats = useAgendaFilters((s) => s.activeCats);
+  const activeTypes = useAgendaFilters((s) => s.activeTypes);
   const activeGenres = useAgendaFilters((s) => s.activeGenres);
   const setQuery = useAgendaFilters((s) => s.setQuery);
   const setOnlyFriends = useAgendaFilters((s) => s.setOnlyFriends);
   const setOnlyFavorites = useAgendaFilters((s) => s.setOnlyFavorites);
   const setActiveBlocks = useAgendaFilters((s) => s.setActiveBlocks);
   const setActiveCats = useAgendaFilters((s) => s.setActiveCats);
+  const setActiveTypes = useAgendaFilters((s) => s.setActiveTypes);
   const setActiveGenres = useAgendaFilters((s) => s.setActiveGenres);
 
   // Deeplink-merge: Vandaag's "Meer →"-knop pusht naar /agenda?cat=X.
@@ -143,6 +147,9 @@ export default function Agenda() {
     const needle = query.trim().toLowerCase();
     return events.filter((e) => {
       if (activeCats.length > 0 && !activeCats.includes(e.category)) return false;
+      if (activeTypes.length > 0) {
+        if (!e.venue.type || !activeTypes.includes(e.venue.type)) return false;
+      }
       if (activeGenres.length > 0) {
         const evGenres = e.genres ?? [];
         if (!evGenres.some((g) => activeGenres.includes(g))) return false;
@@ -157,7 +164,15 @@ export default function Agenda() {
       }
       return true;
     });
-  }, [events, activeCats, activeGenres, query, onlyFriends, onlyFavorites]);
+  }, [
+    events,
+    activeCats,
+    activeTypes,
+    activeGenres,
+    query,
+    onlyFriends,
+    onlyFavorites,
+  ]);
 
   const showFavoritesChip = useMemo(
     () => Boolean(events?.some((e) => e.venueFollowed)),
@@ -301,6 +316,7 @@ export default function Agenda() {
               <ListState
                 text={
                   activeCats.length > 0 ||
+                  activeTypes.length > 0 ||
                   activeBlocks.length > 0 ||
                   activeGenres.length > 0 ||
                   query
@@ -337,6 +353,7 @@ export default function Agenda() {
           activeCats={activeCats}
           query={query}
           activeBlocks={activeBlocks}
+          activeTypes={activeTypes}
           activeGenres={activeGenres}
           onlyFriends={onlyFriends}
           showFriendsChip={showFriendsChip}
@@ -345,6 +362,7 @@ export default function Agenda() {
           onCats={setActiveCats}
           onQuery={setQuery}
           onBlocks={setActiveBlocks}
+          onTypes={setActiveTypes}
           onGenres={setActiveGenres}
           onToggleFriends={() => setOnlyFriends(!onlyFriends)}
           onToggleFavorites={() => setOnlyFavorites(!onlyFavorites)}
@@ -358,6 +376,7 @@ function ChipRow({
   activeCats,
   query,
   activeBlocks,
+  activeTypes,
   activeGenres,
   onlyFriends,
   showFriendsChip,
@@ -366,6 +385,7 @@ function ChipRow({
   onCats,
   onQuery,
   onBlocks,
+  onTypes,
   onGenres,
   onToggleFriends,
   onToggleFavorites,
@@ -373,6 +393,7 @@ function ChipRow({
   activeCats: ApiEvent['category'][];
   query: string;
   activeBlocks: TimeBlock[];
+  activeTypes: VenueType[];
   activeGenres: string[];
   onlyFriends: boolean;
   showFriendsChip: boolean;
@@ -381,6 +402,7 @@ function ChipRow({
   onCats: (next: ApiEvent['category'][]) => void;
   onQuery: (q: string) => void;
   onBlocks: (next: TimeBlock[]) => void;
+  onTypes: (next: VenueType[]) => void;
   onGenres: (next: string[]) => void;
   onToggleFriends: () => void;
   onToggleFavorites: () => void;
@@ -415,27 +437,33 @@ function ChipRow({
   };
 
   const filterCount =
-    activeCats.length + activeBlocks.length + activeGenres.length;
+    activeCats.length +
+    activeBlocks.length +
+    activeTypes.length +
+    activeGenres.length;
   const filterActive = filterCount > 0;
 
   const applySaved = (s: SavedSearch) => {
     const active = isSavedSearchActive(s, {
       cats: activeCats,
       tb: activeBlocks,
+      vt: activeTypes,
       gn: activeGenres,
       q: query,
     });
     if (active) {
       onCats([]);
       onBlocks([]);
+      onTypes([]);
       onGenres([]);
       onQuery('');
       return;
     }
     // Defensieve fallbacks voor oude persisted shape (pre-migrate
-    // schemaversie 1) waar `cats` nog niet bestond.
+    // schemaversie 1) waar `cats`/`vt` nog niet bestonden.
     onCats(s.cats ?? []);
     onBlocks(s.tb ?? []);
+    onTypes(s.vt ?? []);
     onGenres(s.gn ?? []);
     onQuery(s.q ?? '');
   };
@@ -458,7 +486,13 @@ function ChipRow({
     );
   };
 
-  const current = { cats: activeCats, tb: activeBlocks, gn: activeGenres, q: query };
+  const current = {
+    cats: activeCats,
+    tb: activeBlocks,
+    vt: activeTypes,
+    gn: activeGenres,
+    q: query,
+  };
 
   return (
     <>
@@ -664,10 +698,12 @@ function ChipRow({
         <FilterSheet
           activeCats={activeCats}
           activeBlocks={activeBlocks}
+          activeTypes={activeTypes}
           activeGenres={activeGenres}
           query={query}
           onCats={onCats}
           onBlocks={onBlocks}
+          onTypes={onTypes}
           onGenres={onGenres}
           onClose={() => setFilterOpen(false)}
         />
@@ -679,19 +715,23 @@ function ChipRow({
 function FilterSheet({
   activeCats,
   activeBlocks,
+  activeTypes,
   activeGenres,
   query,
   onCats,
   onBlocks,
+  onTypes,
   onGenres,
   onClose,
 }: {
   activeCats: ApiEvent['category'][];
   activeBlocks: TimeBlock[];
+  activeTypes: VenueType[];
   activeGenres: string[];
   query: string;
   onCats: (next: ApiEvent['category'][]) => void;
   onBlocks: (next: TimeBlock[]) => void;
+  onTypes: (next: VenueType[]) => void;
   onGenres: (next: string[]) => void;
   onClose: () => void;
 }) {
@@ -701,6 +741,7 @@ function FilterSheet({
   const t = useT();
   const locale = useLocale();
   const timeBlocks = useTimeBlocks();
+  const typeChips = useMemo(() => getVenueTypeChips(locale), [locale]);
   const { data: genreData, isLoading, error } = useEventGenres();
   const addSaved = useAddSavedSearch();
   const [saveOpen, setSaveOpen] = useState(false);
@@ -730,6 +771,10 @@ function FilterSheet({
     if (activeCats.includes(c)) onCats(activeCats.filter((x) => x !== c));
     else onCats([...activeCats, c]);
   };
+  const toggleType = (vt: VenueType) => {
+    if (activeTypes.includes(vt)) onTypes(activeTypes.filter((x) => x !== vt));
+    else onTypes([...activeTypes, vt]);
+  };
   const toggleBlock = (b: TimeBlock) => {
     if (activeBlocks.includes(b)) onBlocks(activeBlocks.filter((x) => x !== b));
     else onBlocks([...activeBlocks, b]);
@@ -739,10 +784,14 @@ function FilterSheet({
     else onGenres([...activeGenres, g]);
   };
   const filterCount =
-    activeCats.length + activeBlocks.length + activeGenres.length;
+    activeCats.length +
+    activeTypes.length +
+    activeBlocks.length +
+    activeGenres.length;
 
   const onClearAll = () => {
     onCats([]);
+    onTypes([]);
     onBlocks([]);
     onGenres([]);
   };
@@ -754,6 +803,7 @@ function FilterSheet({
       name,
       cats: activeCats,
       tb: activeBlocks,
+      vt: activeTypes,
       gn: activeGenres,
       q: query,
     });
@@ -816,6 +866,25 @@ function FilterSheet({
               label={translateCategory(cat, locale)}
               active={activeCats.includes(cat)}
               onPress={() => toggleCat(cat)}
+            />
+          ))}
+        </View>
+
+        <Text
+          style={[
+            styles.sheetSectionHead,
+            { color: roles.fgMuted, marginTop: 22 },
+          ]}
+        >
+          {t('Venue-type', 'Venue type')}
+        </Text>
+        <View style={styles.genreWrap}>
+          {typeChips.map((c) => (
+            <FilterChip
+              key={c.value}
+              label={c.label}
+              active={activeTypes.includes(c.value)}
+              onPress={() => toggleType(c.value)}
             />
           ))}
         </View>
@@ -1220,6 +1289,7 @@ function DateAnchor({ day }: { day: OccurrenceGroup }) {
 function AgendaRow({ row }: { row: OccurrenceRow }) {
   const { event, occurrence } = row;
   const locale = useLocale();
+  const toggleType = useAgendaFilters((s) => s.toggleType);
   // Friend-pill is occurrence-specific: alleen vrienden die díe avond
   // gesaved hebben, niet alle die de film "in het algemeen" volgen.
   // Server zet ze op occurrence.friendsSaved; fallback op event-level
@@ -1236,12 +1306,21 @@ function AgendaRow({ row }: { row: OccurrenceRow }) {
   const path = isSynthetic
     ? `/event/${event.id}`
     : `/event/${event.id}?o=${occurrence.id}`;
+  // Venue krijgt een tone-pill (eerste in tag-row) op basis van
+  // venue.type — categorie-tag komt erna. Voor venues zonder type
+  // valt de pill weg en blijft venue in de subline staan. Pill is
+  // tappable: toggelt het venue-type-filter.
+  const venueType = event.venue.type;
+  const venueTone = venueType ? VENUE_TYPE_TICK[venueType] : undefined;
+  const onVenuePress = venueType ? () => toggleType(venueType) : undefined;
   return (
     <EventListRow
       time={rowTimeLabel(occurrence.startsAt, occurrence.endsAt, locale)}
       thumb={eventImageUrl(event) ?? ''}
       title={event.title}
       venue={event.venue.name}
+      venueTone={venueTone}
+      onVenuePress={onVenuePress}
       tags={[
         {
           label: translateCategory(event.category, locale),

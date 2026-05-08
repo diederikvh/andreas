@@ -107,6 +107,31 @@ export const VENUE_TYPE_TICK: Record<VenueType, BadgeTone> = {
   'boekhandel-cafe': 'plum',
 };
 
+/** Stabiele volgorde voor type-chips in filter-sheets — Podium boven
+ *  Club zodat de meest gebruikte bovenaan staan, in plaats van een
+ *  alfabetische enum-volgorde. Hergebruikt door Vandaag, Agenda en
+ *  Venues. */
+export const VENUE_TYPE_VALUES: VenueType[] = [
+  'podium',
+  'club',
+  'galerie',
+  'museum',
+  'film',
+  'ruimte',
+  'boekhandel-cafe',
+];
+
+/** Locale-aware lijst voor filter-sheet chips — `value` is de DB-enum,
+ *  `label` is de UI-string. */
+export function getVenueTypeChips(
+  locale?: Locale
+): { value: VenueType; label: string }[] {
+  return VENUE_TYPE_VALUES.map((value) => ({
+    value,
+    label: translateVenueType(value, locale),
+  }));
+}
+
 const VENUE_TYPE_LABEL_NL: Record<VenueType, string> = {
   podium: 'Podium',
   club: 'Club',
