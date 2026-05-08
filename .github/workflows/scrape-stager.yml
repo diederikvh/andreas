@@ -14,15 +14,19 @@ on:
 jobs:
   scrape:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # Theater-scraper (Concertgebouw alleen al ~3-4 min warm-run met
+    # 4233 sitemap-entries) en ticketmaster (Wikipedia-summaries voor
+    # nieuwe events) kunnen pieken — ruime timeout houdt ons safe.
+    timeout-minutes: 30
     strategy:
-      # Beide scrapers tegelijk laten draaien — ze schrijven naar
-      # verschillende events (verschillende venue-id's), geen conflict.
-      # `fail-fast: false` zorgt dat een crash van de ene scraper de
-      # andere niet meeneemt; we zien beide responses in de log.
+      # Alle pure-HTTP-scrapers parallel — ze schrijven naar verschillende
+      # venue-id's, geen conflict. `fail-fast: false` zorgt dat een crash
+      # van één scraper de andere niet meeneemt. Playwright-scrapers
+      # (paradiso, melkweg, muziekgebouw, ontheroof) draaien lokaal —
+      # die zitten niet in de Dockerfile op Fly.
       fail-fast: false
       matrix:
-        scraper: [stager, ical, jsonld]
+        scraper: [stager, ical, jsonld, ticketmaster, theater, boomchicago, concertgemaal, wptheatre, p60, ziggodome]
     steps:
       - name: POST /admin/api/scrapers/run/${{ matrix.scraper }}
         run: |
