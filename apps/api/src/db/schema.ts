@@ -190,6 +190,7 @@ export const venues = pgTable('venues', {
     rss?: { url: string };
     ical?: { url: string };
     jsonld?: { url: string };
+    wpTheatre?: { agendaUrl: string };
   }>(),
   /** Admin-toggle: false = verbergen uit publieke endpoints zonder
       data te verliezen (saves blijven, events blijven). Default true. */

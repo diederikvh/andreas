@@ -3,6 +3,7 @@ import { scrapeJsonLd, type JsonLdVenueResult } from './jsonld.js';
 import { scrapeMelkweg, type MelkwegResult } from './melkweg.js';
 import { scrapeParadiso, type ParadisoResult } from './paradiso.js';
 import { scrapeStager, type StagerVenueResult } from './stager.js';
+import { scrapeWpTheatre, type WpTheatreResult } from './wptheatre.js';
 import { scrapeZiggodome, type ZiggodomeResult } from './ziggodome.js';
 
 /**
@@ -17,6 +18,7 @@ export const scrapers = {
   ziggodome: scrapeZiggodome,
   melkweg: scrapeMelkweg,
   paradiso: scrapeParadiso,
+  wptheatre: scrapeWpTheatre,
 } as const;
 
 export type ScraperName = keyof typeof scrapers;
@@ -27,4 +29,5 @@ export type ScraperResult =
   | JsonLdVenueResult
   | ZiggodomeResult
   | MelkwegResult
-  | ParadisoResult;
+  | ParadisoResult
+  | WpTheatreResult;
