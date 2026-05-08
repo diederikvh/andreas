@@ -1002,8 +1002,32 @@ adminUi.get('/venues', async (c) => {
     .from(schema.venues)
     .orderBy(asc(schema.venues.name));
 
+  // Aantal events per venue + aantal upcoming occurrences per venue.
+  // Twee aparte queries, samengevoegd in Maps in JS — sneller en simpeler
+  // dan één join met conditional count.
+  const eventCounts = await db
+    .select({
+      venueId: schema.events.venueId,
+      total: count(schema.events.id),
+    })
+    .from(schema.events)
+    .groupBy(schema.events.venueId);
+  const upcomingCounts = await db
+    .select({
+      venueId: schema.events.venueId,
+      total: count(schema.occurrences.id),
+    })
+    .from(schema.occurrences)
+    .innerJoin(schema.events, eq(schema.occurrences.eventId, schema.events.id))
+    .where(gte(schema.occurrences.startsAt, sql`now()`))
+    .groupBy(schema.events.venueId);
+  const eventMap = new Map(eventCounts.map((r) => [r.venueId, Number(r.total)]));
+  const upcomingMap = new Map(upcomingCounts.map((r) => [r.venueId, Number(r.total)]));
+
   // Inline JS voor:
-  //   • zoek-filter (naam) en image-filter (alle / zonder)
+  //   • zoek-filter (naam), image-filter (alle / zonder / met),
+  //     events-filter (met / zonder / upcoming / geen upcoming),
+  //     en sortering (naam / events / upcoming).
   //   • drag-and-drop image-upload per rij — drop een file op een
   //     rij-thumbnail en de file gaat direct naar /admin/api/uploads,
   //     daarna PATCH naar /admin/api/venues/:id met de nieuwe URL.
@@ -1011,26 +1035,81 @@ adminUi.get('/venues', async (c) => {
 (function () {
   const search = document.getElementById('venue-search');
   const filter = document.getElementById('venue-imgfilter');
+  const eventsFilter = document.getElementById('venue-eventsfilter');
+  const sort = document.getElementById('venue-sort');
+  const tbody = document.querySelector('table tbody');
   const rows = Array.from(document.querySelectorAll('[data-venue-row]'));
 
   function applyFilter() {
     const q = (search.value || '').trim().toLowerCase();
     const f = filter.value;
+    const ef = eventsFilter.value;
     let visible = 0;
     for (const r of rows) {
       const name = r.dataset.name || '';
       const hasImg = r.dataset.hasimage === '1';
+      const events = Number(r.dataset.events || '0');
+      const upcoming = Number(r.dataset.upcoming || '0');
       let show = true;
       if (q && !name.toLowerCase().includes(q)) show = false;
       if (f === 'noimg' && hasImg) show = false;
       if (f === 'hasimg' && !hasImg) show = false;
+      if (ef === 'has-events' && events === 0) show = false;
+      if (ef === 'no-events' && events > 0) show = false;
+      if (ef === 'has-upcoming' && upcoming === 0) show = false;
+      if (ef === 'no-upcoming' && upcoming > 0) show = false;
       r.style.display = show ? '' : 'none';
       if (show) visible++;
     }
     document.getElementById('venue-count').textContent = visible + ' / ' + rows.length;
   }
-  search.addEventListener('input', applyFilter);
-  filter.addEventListener('change', applyFilter);
+  function applySort() {
+    const s = sort.value;
+    const sorted = rows.slice().sort((a, b) => {
+      if (s === 'events-desc') {
+        return Number(b.dataset.events) - Number(a.dataset.events)
+          || a.dataset.name.localeCompare(b.dataset.name);
+      }
+      if (s === 'upcoming-desc') {
+        return Number(b.dataset.upcoming) - Number(a.dataset.upcoming)
+          || a.dataset.name.localeCompare(b.dataset.name);
+      }
+      return a.dataset.name.localeCompare(b.dataset.name);
+    });
+    for (const r of sorted) tbody.appendChild(r);
+  }
+  // Persist + restore filters/sort via localStorage zodat ze blijven
+  // staan als je naar een venue-detail klikt en terugkomt.
+  const STORAGE_KEY = 'andreas-admin-venues-filters';
+  function saveState() {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({
+        search: search.value,
+        img: filter.value,
+        events: eventsFilter.value,
+        sort: sort.value,
+      }));
+    } catch {}
+  }
+  function restoreState() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return;
+      const v = JSON.parse(raw);
+      if (typeof v.search === 'string') search.value = v.search;
+      if (typeof v.img === 'string') filter.value = v.img;
+      if (typeof v.events === 'string') eventsFilter.value = v.events;
+      if (typeof v.sort === 'string') sort.value = v.sort;
+    } catch {}
+  }
+  restoreState();
+  applySort();
+  applyFilter();
+
+  search.addEventListener('input', () => { saveState(); applyFilter(); });
+  filter.addEventListener('change', () => { saveState(); applyFilter(); });
+  eventsFilter.addEventListener('change', () => { saveState(); applyFilter(); });
+  sort.addEventListener('change', () => { saveState(); applySort(); });
 
   // Drag-drop per rij. We luisteren op de hele <tr> zodat het hele
   // gebied als drop-target werkt — niet alleen de thumb-cell.
@@ -1117,6 +1196,11 @@ adminUi.get('/venues', async (c) => {
         }
         td.thumb-cell { width: 64px; padding-right: 4px; }
         td.status-cell { width: 24px; font-size: 14px; padding-left: 4px; }
+        td.events-cell { font-size: 12px; white-space: nowrap; }
+        .evt-zero { opacity: 0.4; }
+        .evt-total { font-weight: 600; }
+        .evt-upcoming { color: #9fe88a; }
+        .evt-sep { opacity: 0.4; }
       `}</style>
       <div class="toolbar">
         <h2>Venues</h2>
@@ -1135,9 +1219,21 @@ adminUi.get('/venues', async (c) => {
           autocomplete="off"
         />
         <select id="venue-imgfilter">
-          <option value="all">Alle</option>
+          <option value="all">Alle foto's</option>
           <option value="noimg">Zonder foto</option>
           <option value="hasimg">Met foto</option>
+        </select>
+        <select id="venue-eventsfilter">
+          <option value="all">Alle events</option>
+          <option value="has-events">Met events</option>
+          <option value="no-events">Zonder events</option>
+          <option value="has-upcoming">Met upcoming</option>
+          <option value="no-upcoming">Zonder upcoming</option>
+        </select>
+        <select id="venue-sort">
+          <option value="name">Sort: naam</option>
+          <option value="events-desc">Sort: events ↓</option>
+          <option value="upcoming-desc">Sort: upcoming ↓</option>
         </select>
       </div>
       <table>
@@ -1145,6 +1241,7 @@ adminUi.get('/venues', async (c) => {
           <tr>
             <th class="thumb-cell"></th>
             <th>Naam</th>
+            <th>Events</th>
             <th>Type</th>
             <th>Scene</th>
             <th>Dag/nacht</th>
@@ -1155,13 +1252,18 @@ adminUi.get('/venues', async (c) => {
           </tr>
         </thead>
         <tbody>
-          {rows.map((v) => (
+          {rows.map((v) => {
+            const events = eventMap.get(v.id) ?? 0;
+            const upcoming = upcomingMap.get(v.id) ?? 0;
+            return (
             <tr
               class={v.published ? '' : 'row-unpub'}
               data-venue-row
               data-venue-id={v.id}
               data-name={v.name}
               data-hasimage={v.imageUrl ? '1' : '0'}
+              data-events={events}
+              data-upcoming={upcoming}
             >
               <td class="thumb-cell">
                 <img
@@ -1175,6 +1277,19 @@ adminUi.get('/venues', async (c) => {
                 />
               </td>
               <td><a href={`/admin/venues/${encodeURIComponent(v.id)}`}>{v.name}</a></td>
+              <td class="events-cell">
+                {events === 0 ? (
+                  <span class="evt-zero">—</span>
+                ) : (
+                  <>
+                    <span class="evt-total">{events}</span>
+                    <span class="evt-sep"> · </span>
+                    <span class={upcoming === 0 ? 'evt-zero' : 'evt-upcoming'}>
+                      {upcoming} komend
+                    </span>
+                  </>
+                )}
+              </td>
               <td style="font-size:12px;">{v.type ?? '—'}</td>
               <td style="font-size:12px;">{v.scene ?? '—'}</td>
               <td style="font-size:12px;">{v.dayNight ?? '—'}</td>
@@ -1189,7 +1304,8 @@ adminUi.get('/venues', async (c) => {
                 </form>
               </td>
             </tr>
-          ))}
+            );
+          })}
         </tbody>
       </table>
       <script dangerouslySetInnerHTML={{ __html: script }} />
@@ -1246,13 +1362,166 @@ adminUi.get('/venues/:id', async (c) => {
     .where(eq(schema.venues.id, id))
     .limit(1);
   if (!venue) return c.notFound();
+
+  // Events bij deze venue + alle occurrences in één join. Sort op
+  // de eerstvolgende occurrence (upcoming bovenaan, dan verleden, dan
+  // events zonder occurrences).
+  const venueEvents = await db
+    .select()
+    .from(schema.events)
+    .where(eq(schema.events.venueId, id))
+    .orderBy(asc(schema.events.title));
+  const eventIds = venueEvents.map((e) => e.id);
+  const allOccurrences = eventIds.length
+    ? await db
+        .select()
+        .from(schema.occurrences)
+        .where(inArray(schema.occurrences.eventId, eventIds))
+        .orderBy(asc(schema.occurrences.startsAt))
+    : [];
+  const occByEvent = new Map<string, typeof allOccurrences>();
+  for (const o of allOccurrences) {
+    const list = occByEvent.get(o.eventId) ?? [];
+    list.push(o);
+    occByEvent.set(o.eventId, list);
+  }
+  const now = Date.now();
+  type EventRow = (typeof venueEvents)[number];
+  type OccRow = (typeof allOccurrences)[number];
+  function nextOcc(evId: string): OccRow | null {
+    const list = occByEvent.get(evId) ?? [];
+    return list.find((o) => o.startsAt.getTime() >= now) ?? null;
+  }
+  function eventSortKey(e: EventRow): number {
+    const next = nextOcc(e.id);
+    if (next) return next.startsAt.getTime();
+    const list = occByEvent.get(e.id) ?? [];
+    if (list.length === 0) return Number.MAX_SAFE_INTEGER; // geen occurrences → onderaan
+    // alleen verleden — zet net boven "geen occurrences" met de laatste
+    // datum als tiebreak (recent verleden eerst).
+    const last = list[list.length - 1];
+    return Number.MAX_SAFE_INTEGER - 1 - last.startsAt.getTime();
+  }
+  const sortedEvents = venueEvents.slice().sort((a, b) => eventSortKey(a) - eventSortKey(b));
+
   return c.html(
     <Layout title={venue.name} active="venues">
+      <style>{`
+        .venue-events { margin: 2rem 0; }
+        .venue-events h3 { margin: 0 0 0.75rem; }
+        .ve-row {
+          display: grid;
+          grid-template-columns: 56px 1fr auto;
+          gap: 12px;
+          padding: 10px 0;
+          border-top: 1px solid var(--pico-muted-border-color);
+        }
+        .ve-row:last-child { border-bottom: 1px solid var(--pico-muted-border-color); }
+        .ve-thumb {
+          width: 56px; height: 56px; border-radius: 4px;
+          object-fit: cover; background: var(--pico-card-background-color);
+        }
+        .ve-thumb.empty {
+          border: 1px dashed var(--pico-muted-border-color);
+          background: transparent;
+        }
+        .ve-title { font-weight: 600; }
+        .ve-meta { font-size: 12px; opacity: 0.8; margin-top: 2px; }
+        .ve-badges { margin-top: 4px; display: flex; gap: 6px; flex-wrap: wrap; }
+        .ve-badge {
+          font-size: 10px; padding: 2px 6px; border-radius: 999px;
+          background: rgba(243, 182, 182, 0.15); color: #f3b6b6;
+          border: 1px solid rgba(243, 182, 182, 0.3);
+        }
+        .ve-badge.ok { background: rgba(159, 232, 138, 0.12); color: #9fe88a; border-color: rgba(159, 232, 138, 0.3); }
+        .ve-occs { margin-top: 6px; font-size: 12px; opacity: 0.85; }
+        .ve-occ {
+          display: inline-block; margin-right: 12px;
+          font-variant-numeric: tabular-nums;
+        }
+        .ve-occ.past { opacity: 0.45; }
+        .ve-occ.cancelled { text-decoration: line-through; opacity: 0.5; }
+        .ve-occ.sold_out::after { content: ' · uitverkocht'; opacity: 0.7; }
+        .ve-right { text-align: right; font-size: 12px; white-space: nowrap; }
+      `}</style>
       <div class="toolbar">
         <h2>{venue.name}</h2>
         <PublishedPill published={venue.published} />
       </div>
+      <p style="font-size:13px;opacity:0.7;margin:0 0 1rem;">
+        <a href="/admin/venues">← Terug naar venues</a>
+      </p>
       <VenueForm venue={venue} />
+
+      <section class="venue-events">
+        <h3>
+          Events ({sortedEvents.length})
+          {sortedEvents.length > 0 && (
+            <span style="font-weight:400;font-size:13px;opacity:0.7;">
+              {' · '}
+              {sortedEvents.filter((e) => nextOcc(e.id)).length} met upcoming
+            </span>
+          )}
+        </h3>
+        {sortedEvents.length === 0 ? (
+          <p style="opacity:0.6;font-size:13px;">Geen events bij deze venue.</p>
+        ) : (
+          sortedEvents.map((e) => {
+            const occs = occByEvent.get(e.id) ?? [];
+            const next = nextOcc(e.id);
+            const past = occs.length > 0 && !next;
+            return (
+              <div class="ve-row">
+                <img
+                  src={
+                    e.imageUrl ??
+                    'data:image/svg+xml;utf8,<svg xmlns=\'http://www.w3.org/2000/svg\'/>'
+                  }
+                  alt=""
+                  class={`ve-thumb${e.imageUrl ? '' : ' empty'}`}
+                />
+                <div>
+                  <div class="ve-title">
+                    <a href={`/admin/events/${encodeURIComponent(e.id)}`}>{e.title}</a>
+                  </div>
+                  <div class="ve-meta">
+                    {e.category} · {e.kind}
+                    {e.featured ? ' · ⭐ featured' : ''}
+                  </div>
+                  <div class="ve-badges">
+                    {!e.published && <span class="ve-badge">verborgen</span>}
+                    {!e.imageUrl && <span class="ve-badge">geen image</span>}
+                    {!e.description && <span class="ve-badge">geen beschrijving</span>}
+                    {occs.length === 0 && <span class="ve-badge">geen occurrences</span>}
+                    {past && <span class="ve-badge">alleen verleden</span>}
+                  </div>
+                  {occs.length > 0 && (
+                    <div class="ve-occs">
+                      {occs.map((o) => {
+                        const isPast = o.startsAt.getTime() < now;
+                        const cls = `ve-occ ${o.status === 'cancelled' ? 'cancelled' : ''} ${o.status === 'sold_out' ? 'sold_out' : ''} ${isPast ? 'past' : ''}`;
+                        return (
+                          <span class={cls.trim()}>
+                            {fmtDate(o.startsAt)}
+                            {o.room ? ` · ${o.room}` : ''}
+                          </span>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+                <div class="ve-right">
+                  <PublishedPill published={e.published} />
+                  <div style="margin-top:4px;opacity:0.7;">
+                    {occs.length} {occs.length === 1 ? 'moment' : 'momenten'}
+                  </div>
+                </div>
+              </div>
+            );
+          })
+        )}
+      </section>
+
       <details style="margin-top:2rem;">
         <summary>Verwijderen</summary>
         <p style="font-size:13px;opacity:0.8;">
