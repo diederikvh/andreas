@@ -2,7 +2,7 @@
 
 Prioriteit-volgorde voor scraper-implementaties, op volgorde van impact (events × belang). Vink af zodra een venue events oplevert in DB.
 
-**Stand**: 22/50 done — ~1.500 events live (Boom Chicago aangevuld met eigen-producties: +8 events / 170 occurrences).
+**Stand**: 25/50 done — ~2.080 events live.
 
 ---
 
@@ -39,6 +39,9 @@ Prioriteit-volgorde voor scraper-implementaties, op volgorde van impact (events 
 | ✅ | Johan Cruijff ArenA | 6 / 20 occ | Ticketmaster Discovery API |
 | ✅ | Boom Chicago | 14 / 15 occ | Ticketmaster Discovery API (tour-acts) |
 | ✅ | Boom Chicago — eigen | 8 / 170 occ | FareHarbor calendar API (improv + comedy embassy + sunday night live + …) |
+| ✅ | Theater Bellevue | 65 / 146 occ | Theater-scraper (Peppered SaaS) |
+| ✅ | Bijlmer Parktheater | 23 / 54 occ | Theater-scraper (Peppered SaaS) |
+| ✅ | Het Concertgebouw | 490 / 490 occ | Theater-scraper (sitemap-index + JSON-LD, future-slot filter) |
 | ✅ | RAI Theater | 7 / 12 occ | Ticketmaster Discovery API |
 | ✅ | Theater Amsterdam | 3 / 4 occ | Ticketmaster Discovery API |
 | ✅ | Carré | 48 / 235 occ | Theater-scraper (sitemap + JSON-LD `Event`, Googlebot UA) |
@@ -50,10 +53,9 @@ Prioriteit-volgorde voor scraper-implementaties, op volgorde van impact (events 
 ## ⬜ TODO (volgorde aangepast — Bimhuis & Concertgebouw omhoog)
 
 ### Phase 1 — XL/L impact (volgende-aan-de-beurt)
-- ⬜ **Het Concertgebouw** — high-impact, eigen ticketsysteem (TM heeft 0 events). Vermoedelijk gestructureerd te scrapen
-- ⬜ **Bimhuis** — wereldberoemd, dagelijks programma
-- ⬜ **Internationaal Theater Amsterdam (ITA)** — eigen ticketsysteem
-- ⬜ **Nationale Opera & Ballet (Stopera)** — eigen ticketsysteem
+- ⬜ **Bimhuis** — wereldberoemd, dagelijks programma. Calendar = client-side load-more, vereist Playwright-scraper
+- ⬜ **Internationaal Theater Amsterdam (ITA)** — agenda is volledig CSR, vereist Playwright of API-discovery
+- ⬜ **Nationale Opera & Ballet (Stopera)** — Drupal, URL-harvest via `/programma/24` (opera) + `/programma/25` (ballet)
 
 ### Phase 2 — M impact
 - ⬜ **Frascati** — onafhankelijk theater
@@ -98,5 +100,5 @@ Prioriteit-volgorde voor scraper-implementaties, op volgorde van impact (events 
 - Cloudflare-blocked venues hebben Playwright nodig of een externe API (zoals Ticketmaster Discovery).
 - Cross-venue routing (Tolhuistuin/Bitterzoet/Doka via Paradiso) is bewezen patroon — als we andere "moederpodia" tegenkomen kunnen we die opnieuw inzetten.
 - **Ticketmaster Discovery API** is bewezen patroon voor 5 venues (AFAS Live, ArenA, Boom Chicago, RAI Theater, Theater Amsterdam). Tier-suffixes (`| VIP Packages`, `| Comfort Seats`) worden gestript en gededupliceerd, multi-night runs gegroepeerd via title-slug. Geen Playwright nodig. Wikipedia summary van de hoofd-attractie als bron voor description (TM levert die niet).
-- **Theater-scraper** (`apps/api/src/scrapers/theater.ts`) is een gegeneraliseerd patroon voor venues met een eigen agenda achter een SPA: sitemap.xml geeft de complete show-lijst, per show-page parseren we JSON-LD `Event`-blokken óf `data-date` attrs voor de datums. Werkt voor Carré (Vue-SPA, Googlebot UA-trick), Meervaart (Phoenix LiveView), DeLaMar (data-date fallback). Op deze venues is TM-config bewust verwijderd — theater-bron is exhaustief en de TM-events waren een subset.
+- **Theater-scraper** (`apps/api/src/scrapers/theater.ts`) is een gegeneraliseerd patroon voor venues met een eigen agenda achter een SPA: sitemap.xml geeft de complete show-lijst, per show-page parseren we JSON-LD `Event`-blokken óf `data-date` attrs voor de datums. Werkt voor Carré (Vue-SPA, Googlebot UA-trick), Meervaart (Phoenix LiveView), DeLaMar (data-date fallback), Bellevue + Bijlmer (Peppered SaaS), Concertgebouw (sitemap-index + future-slot filter). Op de eerste 3 venues is TM-config bewust verwijderd — theater-bron is exhaustief en de TM-events waren een subset. Sitemap-index support volgt sub-sitemaps recursief; future-slot filter skipt enrich/image-mirror voor events met alle slots in het verleden (essentieel voor Concertgebouw met 4233 historische sitemap-entries: 490 nieuw, 3743 geskipt zonder Claude-cost).
 - **FareHarbor calendar-API** (Boom Chicago) levert publiek (zonder auth) per item-id maandelijkse availabilities via `GET /api/v1/companies/{co}/items/{id}/calendar/{Y}/{M}/`. Beschrijving via `/api/items/v1/{co}/{id}/structured-description/`, image via `/api/v1/companies/{co}/items/{id}/images/`. Generic `140084` item-id (gedeelde "Tickets" knop op alle show-pages) wordt overgeslagen.

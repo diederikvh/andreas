@@ -81,15 +81,26 @@ async function fetchHtml(url: string, useBot: boolean): Promise<string | null> {
   }
 }
 
-async function fetchSitemap(url: string): Promise<string[]> {
+async function fetchSitemap(url: string, depth = 0): Promise<string[]> {
+  if (depth > 3) return [];
   const r = await fetch(url, { headers: { 'user-agent': UA_REG } });
   if (!r.ok) return [];
   const xml = await r.text();
+  const isIndex = /<sitemapindex\b/.test(xml);
   const out: string[] = [];
   for (const m of xml.matchAll(/<loc>\s*([^<\s]+)\s*<\/loc>/g)) {
     out.push(m[1]);
   }
-  return out;
+  if (!isIndex) return out;
+  // Sitemap-index: recursive volgens alle sub-sitemaps. Concertgebouw,
+  // Bimhuis e.d. splitsen hun sitemap in `sitemap_sections_*.xml` of
+  // `event-sitemap{N}.xml`.
+  const all: string[] = [];
+  for (const sub of out) {
+    const subUrls = await fetchSitemap(sub, depth + 1);
+    all.push(...subUrls);
+  }
+  return all;
 }
 
 function extractEvents(html: string): SchemaOrgEvent[] {
@@ -208,6 +219,32 @@ export async function scrapeTheater(options?: {
         let description: string | null = null;
         let eventKind: 'show' | 'exhibition' = 'show';
 
+        // Bouw occurrence-list eerst — voor venues met grote sitemap
+        // (Concertgebouw: ~4000 historische concerten) skippen we de
+        // dure ops als alle slots al voorbij zijn.
+        type Slot = { startsAt: Date; endsAt: Date | null };
+        const slots: Slot[] = [];
+
+        if (cfg.useDataDateAttrs) {
+          const dates = extractDataDates(html);
+          for (const d of dates) {
+            const startsAt = new Date(`${d}T20:00:00+02:00`);
+            if (!isNaN(startsAt.getTime())) slots.push({ startsAt, endsAt: null });
+          }
+        } else {
+          for (const ev of evs) {
+            if (!ev.startDate) continue;
+            const startsAt = new Date(ev.startDate);
+            if (isNaN(startsAt.getTime())) continue;
+            const endsAt = ev.endDate ? new Date(ev.endDate) : null;
+            slots.push({ startsAt, endsAt });
+          }
+        }
+
+        const cutoff = Date.now() - 6 * 60 * 60 * 1000;
+        const fresh = slots.filter((s) => (s.endsAt ?? s.startsAt).getTime() > cutoff);
+        if (fresh.length === 0) { result.skipped++; continue; }
+
         if (!existing) {
           description = head.description ? decodeEntities(head.description) : null;
           try {
@@ -226,13 +263,9 @@ export async function scrapeTheater(options?: {
             imageUrl = (await mirrorImage(sourceImg, `${venue.id}-${titleSlug}`)) ?? sourceImg;
           }
 
-          const headStart = head.startDate ? new Date(head.startDate) : null;
-          const headEnd = head.endDate ? new Date(head.endDate) : null;
-          eventKind = refineKindByDuration(
-            enriched?.kind ?? 'show',
-            headStart ?? new Date(),
-            headEnd ?? null
-          );
+          const headStart = fresh[0]?.startsAt ?? new Date();
+          const headEnd = fresh[0]?.endsAt ?? null;
+          eventKind = refineKindByDuration(enriched?.kind ?? 'show', headStart, headEnd);
 
           try {
             await db.insert(schema.events).values({
@@ -253,35 +286,6 @@ export async function scrapeTheater(options?: {
             continue;
           }
         }
-
-        // Bouw occurrence-list. Twee strategieën:
-        //  1) Multi-block (Carré, Meervaart): elk Event-block = één
-        //     occurrence met startDate (en optioneel endDate).
-        //  2) data-date fallback (DeLaMar): één Event met range, en
-        //     `data-date` attrs voor de specifieke datums. Tijd is
-        //     dan onbekend → default 20:00 lokale tijd.
-        type Slot = { startsAt: Date; endsAt: Date | null };
-        const slots: Slot[] = [];
-
-        if (cfg.useDataDateAttrs) {
-          const dates = extractDataDates(html);
-          for (const d of dates) {
-            const startsAt = new Date(`${d}T20:00:00+02:00`);
-            if (!isNaN(startsAt.getTime())) slots.push({ startsAt, endsAt: null });
-          }
-        } else {
-          for (const ev of evs) {
-            if (!ev.startDate) continue;
-            const startsAt = new Date(ev.startDate);
-            if (isNaN(startsAt.getTime())) continue;
-            const endsAt = ev.endDate ? new Date(ev.endDate) : null;
-            slots.push({ startsAt, endsAt });
-          }
-        }
-
-        // Skip occurrences die al >6u voorbij zijn
-        const cutoff = Date.now() - 6 * 60 * 60 * 1000;
-        const fresh = slots.filter((s) => (s.endsAt ?? s.startsAt).getTime() > cutoff);
 
         for (const slot of fresh) {
           try {
