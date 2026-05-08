@@ -1,3 +1,4 @@
+import { scrapeConcertgemaal, type ConcertgemaalResult } from './concertgemaal.js';
 import { scrapeIcal, type IcalVenueResult } from './ical.js';
 import { scrapeJsonLd, type JsonLdVenueResult } from './jsonld.js';
 import { scrapeMelkweg, type MelkwegResult } from './melkweg.js';
@@ -25,6 +26,7 @@ export const scrapers = {
   muziekgebouw: scrapeMuziekgebouw,
   ontheroof: scrapeOnTheRoof,
   p60: scrapeP60,
+  concertgemaal: scrapeConcertgemaal,
 } as const;
 
 export type ScraperName = keyof typeof scrapers;
@@ -39,4 +41,5 @@ export type ScraperResult =
   | WpTheatreResult
   | MuziekgebouwResult
   | OnTheRoofResult
-  | P60Result;
+  | P60Result
+  | ConcertgemaalResult;
