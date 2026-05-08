@@ -191,6 +191,22 @@ export const venues = pgTable('venues', {
     ical?: { url: string };
     jsonld?: { url: string };
     wpTheatre?: { agendaUrl: string };
+    ticketmaster?: { venueIds: string[]; keyword?: string };
+    /** Generic theater-scraper: pakt show-URLs uit een sitemap, fetcht
+        elke show-page en parseert JSON-LD `Event`-blokken óf
+        `data-date` attributes. Gebruikt voor Carré, Meervaart, DeLaMar. */
+    theater?: {
+      sitemapUrl: string;
+      /** Regex om show-URLs uit de sitemap te selecteren. Bv.
+          `^https://carre\\.nl/voorstelling/[a-z0-9-]+$`. */
+      showUrlPattern: string;
+      /** Sommige sites (Carré Vue-SPA, Meervaart Phoenix-LiveView) leveren
+          alleen geprerenderde HTML als de UA Googlebot is. */
+      useGooglebotUA?: boolean;
+      /** Fallback voor sites waar JSON-LD alleen 1 Event-range geeft maar
+          de specifieke datums in `data-date="YYYY-MM-DD"` attrs staan. */
+      useDataDateAttrs?: boolean;
+    };
   }>(),
   /** Admin-toggle: false = verbergen uit publieke endpoints zonder
       data te verliezen (saves blijven, events blijven). Default true. */

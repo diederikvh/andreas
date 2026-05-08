@@ -7,6 +7,8 @@ import { scrapeOnTheRoof, type OnTheRoofResult } from './ontheroof.js';
 import { scrapeP60, type P60Result } from './p60.js';
 import { scrapeParadiso, type ParadisoResult } from './paradiso.js';
 import { scrapeStager, type StagerVenueResult } from './stager.js';
+import { scrapeTheater, type TheaterVenueResult } from './theater.js';
+import { scrapeTicketmaster, type TicketmasterVenueResult } from './ticketmaster.js';
 import { scrapeWpTheatre, type WpTheatreResult } from './wptheatre.js';
 import { scrapeZiggodome, type ZiggodomeResult } from './ziggodome.js';
 
@@ -27,6 +29,8 @@ export const scrapers = {
   ontheroof: scrapeOnTheRoof,
   p60: scrapeP60,
   concertgemaal: scrapeConcertgemaal,
+  ticketmaster: scrapeTicketmaster,
+  theater: scrapeTheater,
 } as const;
 
 export type ScraperName = keyof typeof scrapers;
@@ -42,4 +46,6 @@ export type ScraperResult =
   | MuziekgebouwResult
   | OnTheRoofResult
   | P60Result
-  | ConcertgemaalResult;
+  | ConcertgemaalResult
+  | TicketmasterVenueResult
+  | TheaterVenueResult;
