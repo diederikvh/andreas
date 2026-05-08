@@ -33,6 +33,7 @@ import type {
 import {
   getVenueTypeChips,
   monthShort,
+  translateVenueType,
   VENUE_TYPE_TICK,
   VENUE_TYPE_VALUES,
 } from '@/lib/eventDisplay';
@@ -182,6 +183,31 @@ export default function Venues() {
     });
   }, [venuesAll, onlyVolgend, activeDn, activeType, activeScene, activeSubtypes]);
 
+  // Groepeer per venue-type — volgorde van VENUE_TYPE_VALUES (podium,
+  // club, galerie, museum, film, ruimte, boekhandel-cafe), binnen elke
+  // groep alfabetisch. Venues zonder type komen onderaan in een aparte
+  // "Overig"-sectie zodat ze niet stilletjes verdwijnen.
+  const groupedVenues = useMemo(() => {
+    const buckets = new Map<VenueType | '__none__', ApiVenueListItem[]>();
+    for (const v of venues) {
+      const key = v.type ?? '__none__';
+      const arr = buckets.get(key) ?? [];
+      arr.push(v);
+      buckets.set(key, arr);
+    }
+    for (const arr of buckets.values()) {
+      arr.sort((a, b) => a.name.localeCompare(b.name));
+    }
+    const ordered: { type: VenueType | null; items: ApiVenueListItem[] }[] = [];
+    for (const t of VENUE_TYPE_VALUES) {
+      const items = buckets.get(t);
+      if (items && items.length > 0) ordered.push({ type: t, items });
+    }
+    const orphan = buckets.get('__none__');
+    if (orphan && orphan.length > 0) ordered.push({ type: null, items: orphan });
+    return ordered;
+  }, [venues]);
+
   // Pull-to-refresh: invalideert venues + series. 700ms minimum
   // zichtbaarheid voor de banner.
   const qc = useQueryClient();
@@ -275,13 +301,57 @@ export default function Venues() {
                       : tx('Geen venues om te tonen.', 'No venues to show.')}
               </Text>
             ) : (
-              venues.map((v) => <VenueRow key={v.id} venue={v} />)
+              groupedVenues.map((group) => (
+                <View key={group.type ?? 'overig'}>
+                  <VenueGroupTitle
+                    type={group.type}
+                    count={group.items.length}
+                  />
+                  {group.items.map((v) => (
+                    <VenueRow key={v.id} venue={v} />
+                  ))}
+                </View>
+              ))
             )}
           </Animated.View>
         )}
       </ScrollView>
       <AppHeader title={tx('Venues', 'Venues')} />
     </KeyboardAvoidingView>
+  );
+}
+
+/**
+ * Sectie-titel bij elke venue-type-groep — kleur volgt VENUE_TYPE_TICK
+ * (acid voor podium, flare voor club, ...) zodat je in één oogopslag
+ * ziet welk type onder welke kleur valt. Zelfde tone-mapping als de
+ * pills op de Vandaag/Agenda-rijen, dus visueel coherent. Voor venues
+ * zonder type-veld val je terug op een neutrale "Overig"-titel.
+ */
+function VenueGroupTitle({
+  type,
+  count,
+}: {
+  type: VenueType | null;
+  count: number;
+}) {
+  const mode = useMode();
+  const roles = useRoles();
+  const locale = useLocale();
+  const t = useT();
+  const titleColor =
+    type !== null ? TONE[mode][VENUE_TYPE_TICK[type]] : roles.fg;
+  const label = type !== null ? translateVenueType(type, locale) : t('Overig', 'Other');
+  const meta = `${count} ${count === 1 ? t('venue', 'venue') : t('venues', 'venues')}`;
+  return (
+    <View style={styles.groupTitle}>
+      <Text style={[styles.groupTitleLabel, { color: titleColor }]}>
+        {label}
+      </Text>
+      <Text style={[styles.groupTitleMeta, { color: roles.fgMuted }]}>
+        {meta}
+      </Text>
+    </View>
   );
 }
 
@@ -1176,6 +1246,28 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
     paddingHorizontal: 22,
     paddingVertical: 14,
+  },
+
+  // Sectie-titel boven elke venue-type-groep — zelfde patroon als de
+  // cat-titels op Vandaag (display-font, lowercase via natuurlijke
+  // labels, tone-color uit VENUE_TYPE_TICK).
+  groupTitle: {
+    paddingHorizontal: 22,
+    paddingTop: 18,
+    paddingBottom: 6,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'baseline',
+  },
+  groupTitleLabel: {
+    fontFamily: fontFamily.display,
+    fontSize: 24,
+  },
+  groupTitleMeta: {
+    fontFamily: fontFamily.mono,
+    fontSize: 10,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
   },
   loadingWrap: {
     paddingVertical: 32,
