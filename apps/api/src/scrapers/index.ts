@@ -1,3 +1,4 @@
+import { scrapeBoomChicago, type BoomChicagoResult } from './boomchicago.js';
 import { scrapeConcertgemaal, type ConcertgemaalResult } from './concertgemaal.js';
 import { scrapeIcal, type IcalVenueResult } from './ical.js';
 import { scrapeJsonLd, type JsonLdVenueResult } from './jsonld.js';
@@ -31,6 +32,7 @@ export const scrapers = {
   concertgemaal: scrapeConcertgemaal,
   ticketmaster: scrapeTicketmaster,
   theater: scrapeTheater,
+  boomchicago: scrapeBoomChicago,
 } as const;
 
 export type ScraperName = keyof typeof scrapers;
@@ -48,4 +50,5 @@ export type ScraperResult =
   | P60Result
   | ConcertgemaalResult
   | TicketmasterVenueResult
-  | TheaterVenueResult;
+  | TheaterVenueResult
+  | BoomChicagoResult;
