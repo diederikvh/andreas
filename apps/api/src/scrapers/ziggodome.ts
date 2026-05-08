@@ -1,8 +1,14 @@
+import { createHash } from 'node:crypto';
+
 import { eq } from 'drizzle-orm';
 
 import { db, schema } from '../db/index.js';
 import { uploadToBunny } from '../storage/bunny.js';
 import { enrichEvent, refineKindByDuration } from './enrich.js';
+
+function shortHash(input: string): string {
+  return createHash('sha256').update(input).digest('hex').slice(0, 12);
+}
 
 /**
  * Ziggo Dome scraper. Hun /agenda is een Next.js SPA achter Cloudflare,
@@ -28,8 +34,21 @@ const API_BASE = 'https://www.ziggodome.nl/api/agenda/aankomend';
 
 type ZiggoAsset = {
   assetId: string;
+  /** Stale signed URL — niet bruikbaar omdat de SAS verlopen is. */
   assetFileSas: string;
+  /** Pad naar het bestand zonder signature, gebruik op publieke CDN. */
+  assetFileName: string;
 };
+
+/** Bouw publieke CDN-URL uit assetFileName (Ziggo's Azure SAS-tokens
+ *  zijn al verlopen wanneer hun API ze teruggeeft, maar dezelfde
+ *  bestanden zijn ook publiek beschikbaar via cdn.ziggodome.nl). */
+function ziggoCdnUrl(asset?: ZiggoAsset): string | null {
+  if (!asset?.assetFileName) return null;
+  // assetFileName begint typisch met `images/event/...`. Pad URL-encode.
+  const encoded = encodeURI(asset.assetFileName);
+  return `https://cdn.ziggodome.nl/assets/${encoded}`;
+}
 
 type ZiggoEvent = {
   id: string;
@@ -186,17 +205,37 @@ export async function scrapeZiggodome(options?: {
 
   const venueCategory = venue.categories?.[0] ?? 'Muziek';
 
+  // Groepeer recurring concerten op genormaliseerde titel zodat
+  // "NE-YO & AKON — Nights Like This Tour 2026" op vr+za niet als
+  // 2 losse events maar als 1 event met 2 occurrences worden opgeslagen.
+  // Sleutel = lowercase performer + tour-titel (concat).
+  const groups = new Map<string, ZiggoEvent[]>();
   for (const ev of upcoming) {
-    try {
-      const eventId = `evt-zd-${VENUE_ID}-${ev.id}`;
-      const occurrenceId = `occ-zd-${VENUE_ID}-${ev.id}`;
-      const title = buildTitle(ev);
-      const sourceDescription =
-        ev.description?.trim() ?? ev.preview?.trim() ?? null;
-      const rawDescription = sourceDescription ? htmlToText(sourceDescription) : null;
+    const key = buildTitle(ev).toLowerCase().trim();
+    const arr = groups.get(key) ?? [];
+    arr.push(ev);
+    groups.set(key, arr);
+  }
 
-      // Genres uit Ziggo's eigen tags (lowercase)
-      const ziggoGenres = parseZiggoGenres(ev.genres)
+  for (const [groupKey, instances] of groups) {
+    instances.sort(
+      (a, b) =>
+        new Date(a.showDate.replace(' ', 'T')).getTime() -
+        new Date(b.showDate.replace(' ', 'T')).getTime()
+    );
+    const first = instances[0];
+
+    try {
+      const groupHash = shortHash(`zd|${groupKey}`);
+      const eventId = `evt-zd-${VENUE_ID}-${groupHash}`;
+      const title = buildTitle(first);
+      const sourceDescription =
+        first.description?.trim() ?? first.preview?.trim() ?? null;
+      const rawDescription = sourceDescription
+        ? htmlToText(sourceDescription)
+        : null;
+
+      const ziggoGenres = parseZiggoGenres(first.genres)
         .map((g) => g.name?.toLowerCase().trim())
         .filter((g): g is string => !!g && g.length > 0)
         .slice(0, 4);
@@ -208,18 +247,6 @@ export async function scrapeZiggodome(options?: {
         venueCategory,
       });
 
-      // ShowDate is in lokale tijd ("2026-05-08 18:00:00") — geen Z, geen offset.
-      // Behandel als Europe/Amsterdam: parse en corrigeer naar UTC.
-      const startsAt = parseLocalDateTime(ev.showDate);
-
-      const status: 'scheduled' | 'cancelled' | 'sold_out' =
-        ev.showState === 'SoldOut'
-          ? 'sold_out'
-          : ev.showState === 'Cancelled'
-            ? 'cancelled'
-            : 'scheduled';
-
-      // Image-mirror altijd (SAS-tokens verlopen)
       const [existing] = await db
         .select({ id: schema.events.id })
         .from(schema.events)
@@ -229,16 +256,21 @@ export async function scrapeZiggodome(options?: {
       let imageUrl: string | null = null;
       if (!existing) {
         const sourceImg =
-          ev.backgroundImage?.assetFileSas ?? ev.artistImage?.assetFileSas;
+          ziggoCdnUrl(first.backgroundImage) ??
+          ziggoCdnUrl(first.artistImage);
         if (sourceImg) {
-          imageUrl = (await mirrorImage(sourceImg, ev.id)) ?? null;
+          imageUrl = (await mirrorImage(sourceImg, groupHash)) ?? null;
         }
       }
 
       const finalGenres =
         enriched.genres.length > 0 ? enriched.genres : ziggoGenres;
 
-      const refinedKind = refineKindByDuration(enriched.kind, startsAt, null);
+      const refinedKind = refineKindByDuration(
+        enriched.kind,
+        parseLocalDateTime(first.showDate),
+        null
+      );
 
       await db.transaction(async (tx) => {
         if (!existing) {
@@ -257,35 +289,46 @@ export async function scrapeZiggodome(options?: {
           result.inserted++;
         }
 
-        await tx
-          .insert(schema.occurrences)
-          .values({
-            id: occurrenceId,
-            eventId,
-            startsAt,
-            endsAt: null,
-            priceCents: null,
-            priceNote: enriched.priceNote,
-            ticketUrl: ev.salesUrl,
-            room: enriched.room,
-            lineup: enriched.lineup,
-            status,
-          })
-          .onConflictDoUpdate({
-            target: schema.occurrences.id,
-            set: {
+        for (const inst of instances) {
+          const startsAt = parseLocalDateTime(inst.showDate);
+          const occurrenceId = `occ-zd-${VENUE_ID}-${shortHash(`${groupKey}|${inst.showDate}`)}`;
+          const status: 'scheduled' | 'cancelled' | 'sold_out' =
+            inst.showState === 'SoldOut'
+              ? 'sold_out'
+              : inst.showState === 'Cancelled'
+                ? 'cancelled'
+                : 'scheduled';
+
+          await tx
+            .insert(schema.occurrences)
+            .values({
+              id: occurrenceId,
+              eventId,
               startsAt,
+              endsAt: null,
+              priceCents: null,
               priceNote: enriched.priceNote,
-              ticketUrl: ev.salesUrl,
+              ticketUrl: inst.salesUrl,
               room: enriched.room,
               lineup: enriched.lineup,
               status,
-            },
-          });
-        result.occurrencesUpserted++;
+            })
+            .onConflictDoUpdate({
+              target: schema.occurrences.id,
+              set: {
+                startsAt,
+                priceNote: enriched.priceNote,
+                ticketUrl: inst.salesUrl,
+                room: enriched.room,
+                lineup: enriched.lineup,
+                status,
+              },
+            });
+          result.occurrencesUpserted++;
+        }
       });
     } catch (e) {
-      result.errors.push(`event ${ev.id}: ${(e as Error).message}`);
+      result.errors.push(`group ${groupKey}: ${(e as Error).message}`);
       result.skipped++;
     }
   }

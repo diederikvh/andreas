@@ -55,10 +55,13 @@ type MelkwegEvent = {
 const UA =
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36';
 
-async function fetchInitialEvents(): Promise<MelkwegEvent[]> {
-  // Dynamic import zodat playwright alleen wordt geladen als deze
-  // scraper draait — Fly's Docker-image hoeft 'em niet voor andere
-  // scrapers in te bakken.
+/** 1× Playwright voor de listing — return events + buildId.
+ *  buildId is nodig om per-event JSON direct via fetch op te halen
+ *  zonder elke keer een browser te starten. */
+async function fetchInitialEvents(): Promise<{
+  events: MelkwegEvent[];
+  buildId: string;
+}> {
   const { chromium } = await import('playwright');
   const browser = await chromium.launch({ headless: true });
   try {
@@ -75,13 +78,60 @@ async function fetchInitialEvents(): Promise<MelkwegEvent[]> {
       return el ? JSON.parse(el.textContent || '{}') : null;
     })()`);
     if (!data) throw new Error('__NEXT_DATA__ niet gevonden');
+    const buildId = data?.buildId;
+    if (!buildId) throw new Error('buildId niet gevonden');
     const events: MelkwegEvent[] | undefined =
       data?.props?.pageProps?.pageData?.attributes?.content?.[0]?.attributes
         ?.initialEvents;
     if (!Array.isArray(events)) throw new Error('initialEvents niet gevonden');
-    return events;
+    return { events, buildId };
   } finally {
     await browser.close();
+  }
+}
+
+/** Strip HTML naar plain text. Behoudt paragraph-breaks. */
+function htmlToText(html: string): string {
+  return html
+    .replace(/<\/p>\s*<p[^>]*>/gi, '\n\n')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/[ \t]+/g, ' ')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+/** Fetch rich description via Next.js _next/data endpoint (geen browser
+ *  nodig na initial buildId-discovery — Cloudflare blokkeert deze
+ *  endpoints niet). Returnt plain-text description of null. */
+async function fetchEventDescription(
+  buildId: string,
+  url: string
+): Promise<string | null> {
+  // url = "/nl/agenda/sk8-girls-07-03-2026"
+  const slug = url.replace(/^\/nl\/agenda\//, '').replace(/\/$/, '');
+  const jsonUrl = `https://www.melkweg.nl/_next/data/${buildId}/nl/agenda/${slug}.json?slug=nl&slug=agenda&slug=${slug}`;
+  try {
+    const r = await fetch(jsonUrl, {
+      headers: { 'user-agent': UA, accept: 'application/json' },
+    });
+    if (!r.ok) return null;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const j: any = await r.json();
+    const content = j?.pageProps?.pageData?.attributes?.content ?? [];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const info = content.find((c: any) => c?.layout === 'event_info');
+    const intro = info?.attributes?.metadata?.intro;
+    if (typeof intro !== 'string' || intro.trim().length === 0) return null;
+    return htmlToText(intro);
+  } catch {
+    return null;
   }
 }
 
@@ -151,8 +201,11 @@ export async function scrapeMelkweg(options?: {
   }
 
   let events: MelkwegEvent[];
+  let buildId: string;
   try {
-    events = await fetchInitialEvents();
+    const fetched = await fetchInitialEvents();
+    events = fetched.events;
+    buildId = fetched.buildId;
   } catch (e) {
     result.errors.push(`playwright: ${(e as Error).message}`);
     return [result];
@@ -185,11 +238,14 @@ export async function scrapeMelkweg(options?: {
         .filter((t) => t.length > 0 && t.length < 30)
         .slice(0, 4);
 
-      // Description niet beschikbaar in initialEvents — Claude krijgt
-      // alleen titel + venue-context.
+      // Per-event description ophalen via Next.js _next/data endpoint
+      // (geen browser nodig — alleen een fetch). Geeft Claude rijkere
+      // input voor genres/lineup/category-detectie + behoudt de
+      // originele tekst voor de detail-page.
+      const rawDescription = await fetchEventDescription(buildId, a.url);
       const enriched = await enrichEvent({
         title: a.name,
-        description: null,
+        description: rawDescription,
         venueName: venue.name,
         venueCategory: category,
       });
@@ -221,7 +277,7 @@ export async function scrapeMelkweg(options?: {
             id: eventId,
             venueId: venue.id,
             title: a.name,
-            description: enriched.cleanedDescription,
+            description: enriched.cleanedDescription ?? rawDescription,
             kind: refinedKind,
             imageUrl,
             category: enriched.category ?? category,
