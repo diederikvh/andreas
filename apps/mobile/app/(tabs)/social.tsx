@@ -30,6 +30,7 @@ import { RefreshBanner } from '@/components/RefreshBanner';
 import { SpinningCross } from '@/components/SpinningCross';
 import type {
   ApiEvent,
+  ApiFeedEvent,
   ApiFriend,
   ApiFriendRequest,
   ApiInvite,
@@ -39,6 +40,7 @@ import { useSession } from '@/lib/authClient';
 import {
   eventImageUrl,
   CATEGORY_TICK,
+  VENUE_TYPE_TICK,
   dowMixed,
   type EventGroup,
   rowTimeLabel,
@@ -57,13 +59,14 @@ import {
   useMySaves,
   useOutgoingFriendRequests,
   useRemoveFriend,
+  useSocialFeed,
 } from '@/lib/queries';
 import { useMode, useRoles } from '@/store/mode';
 import { fontFamily, palette } from '@/theme/tokens';
 
 const SUB_TAB_HEIGHT = 60;
 
-type Sub = 'vrienden' | 'planning';
+type Sub = 'vrienden' | 'feed' | 'planning';
 
 /**
  * Social-tab — bundelt alles wat met andere mensen te maken heeft:
@@ -94,6 +97,8 @@ export default function Social() {
   const { data: outgoing } = useOutgoingFriendRequests({ enabled: authed });
   const { data: saves, isLoading: savesLoading, error: savesError } =
     useMySaves({ enabled: authed });
+  const { data: feed, isLoading: feedLoading, error: feedError } =
+    useSocialFeed({ enabled: authed });
 
   const acceptReq = useAcceptFriendRequest();
   const declineReq = useDeclineFriendRequest();
@@ -111,6 +116,7 @@ export default function Social() {
         qc.invalidateQueries({ queryKey: ['friends'] }),
         qc.invalidateQueries({ queryKey: ['outgoing-friend-requests'] }),
         qc.invalidateQueries({ queryKey: ['saves'] }),
+        qc.invalidateQueries({ queryKey: ['social-feed'] }),
       ]);
     } finally {
       const elapsed = Date.now() - start;
@@ -142,7 +148,7 @@ export default function Social() {
           />
         }
       >
-        {sub === 'vrienden' ? (
+        {sub === 'vrienden' && (
           <FriendsPanel
             authed={authed}
             requests={requests}
@@ -156,7 +162,16 @@ export default function Social() {
             busyReq={acceptReq.isPending || declineReq.isPending}
             busyInv={acceptInv.isPending || declineInv.isPending}
           />
-        ) : (
+        )}
+        {sub === 'feed' && (
+          <FeedPanel
+            authed={authed}
+            feed={feed}
+            isLoading={feedLoading}
+            error={feedError}
+          />
+        )}
+        {sub === 'planning' && (
           <PlanningPanel
             authed={authed}
             saves={saves}
@@ -187,7 +202,7 @@ function SubTabs({
   // Track-breedte meten zodat we de blob in pixels kunnen positioneren
   // — % laat 't 4-6px verschuiven door padding/gap-rounding.
   const [trackW, setTrackW] = useState(0);
-  const activeIndex = sub === 'vrienden' ? 0 : 1;
+  const activeIndex = sub === 'vrienden' ? 0 : sub === 'feed' ? 1 : 2;
   const progress = useSharedValue(activeIndex);
   useEffect(() => {
     progress.value = withTiming(activeIndex, {
@@ -197,7 +212,7 @@ function SubTabs({
   }, [activeIndex, progress]);
   const blobStyle = useAnimatedStyle(() => {
     const inner = Math.max(0, trackW - 6); // padding 3 aan beide kanten
-    const w = inner / 2;
+    const w = inner / 3;
     return {
       width: w,
       transform: [{ translateX: progress.value * w }],
@@ -239,6 +254,11 @@ function SubTabs({
           active={sub === 'vrienden'}
           badge={inboxCount}
           onPress={() => onChange('vrienden')}
+        />
+        <SwitchBtn
+          label={t('Feed', 'Feed')}
+          active={sub === 'feed'}
+          onPress={() => onChange('feed')}
         />
         <SwitchBtn
           label={t('Planning', 'Planning')}
@@ -847,6 +867,114 @@ function SavedRow({ event, dim = false }: { event: ApiEvent; dim?: boolean }) {
         onPress={() => router.push(`/event/${event.id}`)}
       />
     </View>
+  );
+}
+
+/**
+ * Compacte "X geleden"-label voor de feed-rij — past in de
+ * geroteerde tijd-kolom (max ~4 chars). "net" = < 5 min, "Xu" =
+ * binnen 24u, "Xd" = binnen 30 dagen, "Xw" daarna.
+ */
+function relativeAgo(iso: string, locale: 'nl' | 'en'): string {
+  const diffMs = Date.now() - new Date(iso).getTime();
+  if (diffMs < 5 * 60_000) return locale === 'nl' ? 'net' : 'now';
+  const minutes = Math.floor(diffMs / 60_000);
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return locale === 'nl' ? `${hours}u` : `${hours}h`;
+  const days = Math.floor(hours / 24);
+  if (days < 30) return `${days}d`;
+  const weeks = Math.floor(days / 7);
+  return locale === 'nl' ? `${weeks}w` : `${weeks}w`;
+}
+
+function FeedRow({ entry }: { entry: ApiFeedEvent }) {
+  const locale = useLocale();
+  const friends = entry.friendsSaved.map((f) => ({
+    name: f.name,
+    avatar: f.avatarUrl,
+  }));
+  const venueType = entry.venue.type;
+  const venueTone = venueType ? VENUE_TYPE_TICK[venueType] : undefined;
+  const tone = CATEGORY_TICK[entry.category];
+  return (
+    <EventListRow
+      thumb={eventImageUrl({
+        imageUrl: entry.imageUrl,
+        venue: { imageUrl: entry.venue.imageUrl ?? null },
+      }) ?? ''}
+      title={entry.title}
+      venue={entry.venue.name}
+      venueTone={venueTone}
+      time={relativeAgo(entry.lastSavedAt, locale)}
+      tags={[{ label: translateCategory(entry.category, locale), tone }]}
+      seriesLabel={undefined}
+      genreLabel={entry.genres[0]}
+      friends={friends.length > 0 ? friends : undefined}
+      tick={tone}
+      onPress={() => router.push(`/event/${entry.eventId}`)}
+    />
+  );
+}
+
+function FeedPanel({
+  authed,
+  feed,
+  isLoading,
+  error,
+}: {
+  authed: boolean;
+  feed: ApiFeedEvent[] | undefined;
+  isLoading: boolean;
+  error: unknown;
+}) {
+  const roles = useRoles();
+  const t = useT();
+
+  const noFeed =
+    (!authed && !isLoading) ||
+    (authed && !isLoading && !error && (feed?.length ?? 0) === 0);
+
+  if (noFeed) {
+    return (
+      <View style={styles.emptyCenter}>
+        <Ionicons name="people-outline" size={48} color={roles.fgMuted} />
+        <Text style={[styles.emptyTitle, { color: roles.fg }]}>
+          {t('Nog geen activiteit.', 'No activity yet.')}
+        </Text>
+        <Text style={[styles.emptySub, { color: roles.fgMuted }]}>
+          {t(
+            'Hier zie je wat je vrienden hebben gered — geen algoritme, geen aanbevelingen, alleen de events waar zij naartoe gaan.',
+            'See what your friends are saving — no algorithm, no recommendations, just the events they’re going to.'
+          )}
+        </Text>
+      </View>
+    );
+  }
+
+  if (isLoading) {
+    return (
+      <View style={styles.loadingWrap}>
+        <SpinningCross size={28} color={roles.fgPlaceholder} />
+      </View>
+    );
+  }
+  if (error) {
+    return (
+      <View style={styles.listState}>
+        <Text style={[styles.listStateText, { color: '#c9453a' }]}>
+          {t('Kon de feed niet laden.', 'Couldn’t load the feed.')}
+        </Text>
+      </View>
+    );
+  }
+
+  return (
+    <Animated.View entering={FadeIn.duration(180)}>
+      {feed!.map((e) => (
+        <FeedRow key={e.eventId} entry={e} />
+      ))}
+    </Animated.View>
   );
 }
 

@@ -679,4 +679,50 @@ export async function uploadAvatar(input: {
   return user;
 }
 
+/**
+ * Sociale activity-feed: events die ≥1 vriend(in) heeft gered. Eén
+ * rij per event (gededupeerd), gesorteerd op meest-recente save-tijd.
+ */
+export type ApiFeedEvent = {
+  eventId: string;
+  title: string;
+  description: string | null;
+  kind: EventKind;
+  imageUrl: string | null;
+  category: 'Muziek' | 'Theater' | 'Literatuur' | 'Film' | 'Kunst';
+  featured: boolean;
+  genres: string[];
+  venue: {
+    id: string;
+    slug: string;
+    name: string;
+    address: string;
+    lat: number;
+    lng: number;
+    type?: VenueType | null;
+    imageUrl?: string | null;
+    priceNote?: string | null;
+  };
+  occurrence: {
+    id: string;
+    startsAt: string;
+    endsAt: string | null;
+    priceCents: number | null;
+    priceNote: string | null;
+    ticketUrl: string | null;
+  };
+  friendsSaved: ApiFriendBadge[];
+  friendsSavedCount: number;
+  /** ISO-string — wanneer de meest-recente vriend dit event reed.
+      Drijft de "X dagen geleden"-label op de feed-rij aan. */
+  lastSavedAt: string;
+};
+
+export async function getSocialFeed(): Promise<ApiFeedEvent[]> {
+  const { events } = await authedRequest<{ events: ApiFeedEvent[] }>(
+    '/social/feed'
+  );
+  return events;
+}
+
 export { ApiError, BASE_URL };

@@ -20,6 +20,7 @@ import {
   getMySaves,
   getSeries,
   getSeriesList,
+  getSocialFeed,
   getVenue,
   getVenueSubtypes,
   getVenues,
@@ -53,6 +54,7 @@ export const queryKeys = {
   friend: (id: string) => ['friend', id] as const,
   userSearch: (q: string) => ['user-search', q] as const,
   invites: () => ['invites'] as const,
+  socialFeed: () => ['social-feed'] as const,
 };
 
 export function useEvents(filter: EventsFilter = {}) {
@@ -202,6 +204,18 @@ export function useFriends(opts: { enabled?: boolean } = {}) {
     queryKey: queryKeys.friends(),
     queryFn: () => getFriends(),
     enabled: opts.enabled ?? true,
+  });
+}
+
+export function useSocialFeed(opts: { enabled?: boolean } = {}) {
+  return useQuery({
+    queryKey: queryKeys.socialFeed(),
+    queryFn: () => getSocialFeed(),
+    enabled: opts.enabled ?? true,
+    // 5 min — feed mag rustig cachen tussen tab-bezoeken; nieuwe
+    // saves van vrienden druppelen vanzelf binnen bij volgende fetch.
+    staleTime: 5 * 60_000,
+    refetchOnWindowFocus: true,
   });
 }
 
