@@ -32,12 +32,11 @@ export function RunningStrip({
       zonder zelf te filteren. */
   exhibitionEvents: ApiEvent[];
 }) {
+  const roles = useRoles();
+  const t = useT();
   const exhibitions = exhibitionEvents.filter((e) => e.kind === 'exhibition');
   const total = series.length + exhibitions.length;
   if (total === 0) return null;
-
-  const roles = useRoles();
-  const t = useT();
 
   return (
     <View style={styles.section}>
