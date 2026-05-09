@@ -11,6 +11,8 @@ import {
   Pressable,
   RefreshControl,
   ScrollView,
+  SectionList,
+  type SectionListData,
   StyleSheet,
   Text,
   TextInput,
@@ -132,7 +134,9 @@ export default function Venues() {
   const insets = useSafeAreaInsets();
   const isNacht = mode === 'nacht';
   const tx = useT();
-  const scrollRef = useRef<ScrollView>(null);
+  const scrollRef = useRef<
+    SectionList<ApiVenueListItem, { type: VenueType | null; items: ApiVenueListItem[] }>
+  >(null);
   useScrollToTop(scrollRef);
 
   // Filter-state komt nu uit de persistente Zustand-store ipv URL-params
@@ -238,8 +242,23 @@ export default function Venues() {
         visible={refreshing}
         topOffset={insets.top + HEADER_HEIGHT + 8}
       />
-      <ScrollView
+      <SectionList
         ref={scrollRef}
+        sections={
+          isLoading
+            ? []
+            : groupedVenues.map((g) => ({ ...g, data: g.items }))
+        }
+        keyExtractor={(item) => item.id}
+        renderItem={({ item }) => <VenueRow venue={item} />}
+        renderSectionHeader={({ section }) => {
+          const s = section as SectionListData<
+            ApiVenueListItem,
+            { type: VenueType | null; items: ApiVenueListItem[] }
+          >;
+          return <VenueGroupTitle type={s.type} count={s.items.length} />;
+        }}
+        stickySectionHeadersEnabled={false}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{
@@ -255,29 +274,35 @@ export default function Venues() {
             progressViewOffset={insets.top + HEADER_HEIGHT}
           />
         }
-      >
-        <ChipRow
-          query={q}
-          onQuery={setQ}
-          activeDn={activeDn}
-          activeType={activeType}
-          activeScene={activeScene}
-          activeSubtypes={activeSubtypes}
-          onlyVolgend={onlyVolgend}
-          onDn={setActiveDn}
-          onType={setActiveType}
-          onScene={setActiveScene}
-          onSubtypes={setActiveSubtypes}
-          onVolgend={setOnlyVolgend}
-        />
-
-        {isLoading ? (
-          <View style={styles.loadingWrap}>
-            <SpinningCross size={28} color={roles.fgPlaceholder} />
-          </View>
-        ) : (
-          <Animated.View entering={FadeIn.duration(220)}>
-            {venues.length === 0 ? (
+        windowSize={11}
+        initialNumToRender={12}
+        removeClippedSubviews
+        ListHeaderComponent={
+          <>
+            <ChipRow
+              query={q}
+              onQuery={setQ}
+              activeDn={activeDn}
+              activeType={activeType}
+              activeScene={activeScene}
+              activeSubtypes={activeSubtypes}
+              onlyVolgend={onlyVolgend}
+              onDn={setActiveDn}
+              onType={setActiveType}
+              onScene={setActiveScene}
+              onSubtypes={setActiveSubtypes}
+              onVolgend={setOnlyVolgend}
+            />
+            {isLoading && (
+              <View style={styles.loadingWrap}>
+                <SpinningCross size={28} color={roles.fgPlaceholder} />
+              </View>
+            )}
+          </>
+        }
+        ListEmptyComponent={
+          isLoading ? null : (
+            <Animated.View entering={FadeIn.duration(220)}>
               <Text style={[styles.hint, { color: roles.fgMuted }]}>
                 {debouncedQ.length > 0
                   ? tx(
@@ -300,22 +325,10 @@ export default function Venues() {
                         )
                       : tx('Geen venues om te tonen.', 'No venues to show.')}
               </Text>
-            ) : (
-              groupedVenues.map((group) => (
-                <View key={group.type ?? 'overig'}>
-                  <VenueGroupTitle
-                    type={group.type}
-                    count={group.items.length}
-                  />
-                  {group.items.map((v) => (
-                    <VenueRow key={v.id} venue={v} />
-                  ))}
-                </View>
-              ))
-            )}
-          </Animated.View>
-        )}
-      </ScrollView>
+            </Animated.View>
+          )
+        }
+      />
       <AppHeader title={tx('Venues', 'Venues')} />
     </KeyboardAvoidingView>
   );

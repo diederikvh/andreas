@@ -13,6 +13,8 @@ import {
   Pressable,
   RefreshControl,
   ScrollView,
+  SectionList,
+  type SectionListData,
   StyleSheet,
   Text,
   TextInput,
@@ -128,19 +130,22 @@ export default function Avond() {
   const insets = useSafeAreaInsets();
   const t = useT();
   const locale = useLocale();
-  const scrollRef = useRef<ScrollView>(null);
+  const scrollRef = useRef<
+    SectionList<OccurrenceRow, { category: ApiEvent['category']; items: OccurrenceRow[] }>
+  >(null);
   useScrollToTop(scrollRef);
-  // Y-offset van de chip-row binnen de ScrollView-content; gevuld via
-  // onLayout op de wrapper rond <AvondChipRow/>. Wordt bij dubbel-tap
-  // op de tab gebruikt om de zoek-pill onder de AppHeader te scrollen,
-  // zodat 'ie boven het keyboard valt zodra de input focus krijgt.
+  // Y-offset van de chip-row binnen de ListHeaderComponent (relatief
+  // aan ListHeader top, dus = cumulatieve hoogte van Featured/KaartCTA/
+  // RunningStrip/hero erboven). Bij dubbel-tap scrollen we daarheen via
+  // getScrollResponder().scrollTo({ y: chipRowYRef.current }) — dan
+  // valt de chipRow net onder de AppHeader.
   const chipRowYRef = useRef(0);
   const scrollToChipRow = useCallback(() => {
-    scrollRef.current?.scrollTo({
-      y: Math.max(0, chipRowYRef.current - (insets.top + HEADER_HEIGHT)),
+    scrollRef.current?.getScrollResponder()?.scrollTo({
+      y: Math.max(0, chipRowYRef.current),
       animated: true,
     });
-  }, [insets.top]);
+  }, []);
 
   // Twee tijd-tikkers met verschillende doelen:
   //
@@ -393,14 +398,53 @@ export default function Avond() {
     };
   }, [todayWindow.refDate, locale]);
 
+  // Sections voor de SectionList — restByCategory met `data: items`.
+  const sections = useMemo(
+    () => restByCategory.map((g) => ({ ...g, data: g.items })),
+    [restByCategory]
+  );
+
+  const hasFilterActive =
+    activeBlocks.length > 0 ||
+    activeCats.length > 0 ||
+    activeGenres.length > 0 ||
+    onlyFriends ||
+    onlyFavorites ||
+    query.trim().length > 0;
+
   return (
     <View style={[styles.root, { backgroundColor: roles.bg }]}>
       <RefreshBanner
         visible={refreshing}
         topOffset={insets.top + HEADER_HEIGHT + 8}
       />
-      <ScrollView
+      <SectionList
         ref={scrollRef}
+        sections={isLoading || error ? [] : sections}
+        keyExtractor={(row) => row.id}
+        renderItem={({ item }) => <ApiEventRow row={item} />}
+        renderSectionHeader={({ section }) => {
+          const cat = (
+            section as SectionListData<
+              OccurrenceRow,
+              { category: ApiEvent['category']; items: OccurrenceRow[] }
+            >
+          ).category;
+          return (
+            <SectionTitle
+              title={translateCategory(cat, locale)}
+              titleColor={TONE[mode][CATEGORY_TICK[cat]]}
+              meta={t('Meer →', 'More →')}
+              onMetaPress={() =>
+                router.push({
+                  pathname: '/agenda',
+                  params: { cat: cat as string },
+                })
+              }
+            />
+          );
+        }}
+        stickySectionHeadersEnabled={false}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{
           paddingTop: insets.top + HEADER_HEIGHT,
@@ -423,124 +467,98 @@ export default function Avond() {
             progressViewOffset={insets.top + HEADER_HEIGHT}
           />
         }
-      >
-        {/* Hoofd-artikelen: alle featured events uit vandaag-events.
-            NIET filter-afhankelijk — staan bovenaan onafhankelijk van
-            wat je beneden filtert. Bij meerdere featured: horizontale
-            page-snap carousel met dots-indicator. Bij één: gewone kaart. */}
-        {leads.length > 0 && (
-          <FeaturedCarousel
-            leads={leads}
-            kicker={t('Onze keuze', 'Our pick')}
-            locale={locale}
-          />
-        )}
-
-        {/* Kaart-CTA — onafhankelijk van de filter. */}
-        <KaartBanner />
-
-        {/* "Loopt nu" — actieve series eerst, doorlopende tentoon-
-            stellingen daarna. Altijd zichtbaar als losse strook, niet
-            beïnvloed door de tijd-blok filter. */}
-        <RunningStrip
-          series={seriesList ?? []}
-          exhibitionEvents={runningExhibitions}
-        />
-
-        {/* Hero — divider + "{dag} {datum}" met datum in primair
-            (accent). Eén regel, kort. Niet filter-afhankelijk. */}
-        <View style={[styles.heroDivider, { backgroundColor: roles.bgChip }]} />
-        <View style={styles.hero}>
-          <Text
-            numberOfLines={1}
-            style={[styles.heroLine, { color: roles.fg }]}
-          >
-            {heroParts.day}{' '}
-            <Text style={{ color: roles.accent }}>{heroParts.date}</Text>
-          </Text>
-        </View>
-
-        {/* Filter-rij zit direct boven de cat-secties — zelfde patroon
-            als op Agenda voor consistente leercurve. Search + filter-
-            knop + vrienden + favorieten + saved-search chips. Wrapper
-            captureert Y-positie zodat dubbel-tap op de Vandaag-tab de
-            chip-row onder de AppHeader scrollt (zie scrollToChipRow). */}
-        <View
-          onLayout={(e) => {
-            chipRowYRef.current = e.nativeEvent.layout.y;
-          }}
-        >
-          <AvondChipRow
-            query={query}
-            onQuery={setQuery}
-            onlyFriends={onlyFriends}
-            onToggleFriends={onToggleFriends}
-            showFriendsChip={showFriendsChip}
-            onlyFavorites={onlyFavorites}
-            onToggleFavorites={onToggleFavorites}
-            showFavoritesChip={showFavoritesChip}
-            activeBlocks={activeBlocks}
-            onToggleBlock={onToggleBlock}
-            activeCats={activeCats}
-            activeTypes={activeTypes}
-            activeGenres={activeGenres}
-            onSetBlocks={setActiveBlocks}
-            onSetFriends={setOnlyFriends}
-            onSetFavorites={setOnlyFavorites}
-            onSetCats={setActiveCats}
-            onSetTypes={setActiveTypes}
-            onSetGenres={setActiveGenres}
-            onDoubleTapScroll={scrollToChipRow}
-          />
-        </View>
-
-        {isLoading && (
-          <View style={styles.loadingWrap}>
-            <SpinningCross size={28} color={roles.fgPlaceholder} />
-          </View>
-        )}
-        {error && (
-          <ListState
-            text={t('Kon events niet laden.', 'Couldn’t load events.')}
-            tone="error"
-          />
-        )}
-        {!isLoading && !error && (
-          <Animated.View entering={FadeIn.duration(220)}>
-            {filtered.length === 0 && events && (
-              <EmptyResults
-                hasFilter={
-                  activeBlocks.length > 0 ||
-                  activeCats.length > 0 ||
-                  activeGenres.length > 0 ||
-                  onlyFriends ||
-                  onlyFavorites ||
-                  query.trim().length > 0
-                }
-                minHeight={240}
+        windowSize={11}
+        initialNumToRender={12}
+        removeClippedSubviews
+        ListHeaderComponent={
+          <>
+            {/* Hoofd-artikelen: alle featured events uit vandaag-events.
+                NIET filter-afhankelijk — staan bovenaan onafhankelijk van
+                wat je beneden filtert. */}
+            {leads.length > 0 && (
+              <FeaturedCarousel
+                leads={leads}
+                kicker={t('Onze keuze', 'Our pick')}
+                locale={locale}
               />
             )}
-            {restByCategory.map(({ category, items }) => (
-              <View key={category}>
-                <SectionTitle
-                  title={translateCategory(category, locale)}
-                  titleColor={TONE[mode][CATEGORY_TICK[category]]}
-                  meta={t('Meer →', 'More →')}
-                  onMetaPress={() =>
-                    router.push({
-                      pathname: '/agenda',
-                      params: { cat: category as string },
-                    })
-                  }
-                />
-                {items.map((row) => (
-                  <ApiEventRow key={row.id} row={row} />
-                ))}
+
+            {/* Kaart-CTA — onafhankelijk van de filter. */}
+            <KaartBanner />
+
+            {/* "Loopt nu" — actieve series eerst, doorlopende tentoon-
+                stellingen daarna. Altijd zichtbaar als losse strook,
+                niet beïnvloed door de tijd-blok filter. */}
+            <RunningStrip
+              series={seriesList ?? []}
+              exhibitionEvents={runningExhibitions}
+            />
+
+            {/* Hero — divider + "{dag} {datum}" met datum in primair
+                (accent). Eén regel, kort. Niet filter-afhankelijk. */}
+            <View
+              style={[styles.heroDivider, { backgroundColor: roles.bgChip }]}
+            />
+            <View style={styles.hero}>
+              <Text
+                numberOfLines={1}
+                style={[styles.heroLine, { color: roles.fg }]}
+              >
+                {heroParts.day}{' '}
+                <Text style={{ color: roles.accent }}>{heroParts.date}</Text>
+              </Text>
+            </View>
+
+            {/* Filter-rij. Wrapper captureert Y-positie binnen de
+                ListHeader voor de scrollToChipRow van de tab-double-tap. */}
+            <View
+              onLayout={(e) => {
+                chipRowYRef.current = e.nativeEvent.layout.y;
+              }}
+            >
+              <AvondChipRow
+                query={query}
+                onQuery={setQuery}
+                onlyFriends={onlyFriends}
+                onToggleFriends={onToggleFriends}
+                showFriendsChip={showFriendsChip}
+                onlyFavorites={onlyFavorites}
+                onToggleFavorites={onToggleFavorites}
+                showFavoritesChip={showFavoritesChip}
+                activeBlocks={activeBlocks}
+                onToggleBlock={onToggleBlock}
+                activeCats={activeCats}
+                activeTypes={activeTypes}
+                activeGenres={activeGenres}
+                onSetBlocks={setActiveBlocks}
+                onSetFriends={setOnlyFriends}
+                onSetFavorites={setOnlyFavorites}
+                onSetCats={setActiveCats}
+                onSetTypes={setActiveTypes}
+                onSetGenres={setActiveGenres}
+                onDoubleTapScroll={scrollToChipRow}
+              />
+            </View>
+
+            {isLoading && (
+              <View style={styles.loadingWrap}>
+                <SpinningCross size={28} color={roles.fgPlaceholder} />
               </View>
-            ))}
-          </Animated.View>
-        )}
-      </ScrollView>
+            )}
+            {error && (
+              <ListState
+                text={t('Kon events niet laden.', 'Couldn’t load events.')}
+                tone="error"
+              />
+            )}
+            {!isLoading && !error && filtered.length === 0 && events && (
+              <Animated.View entering={FadeIn.duration(220)}>
+                <EmptyResults hasFilter={hasFilterActive} minHeight={240} />
+              </Animated.View>
+            )}
+          </>
+        }
+      />
       <AppHeader title={t('Vandaag', 'Today')} />
     </View>
   );
