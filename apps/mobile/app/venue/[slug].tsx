@@ -5,13 +5,15 @@ import * as Haptics from 'expo-haptics';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  type LayoutChangeEvent,
   Linking,
   Modal,
   Platform,
   Pressable,
   RefreshControl,
+  ScrollView,
   Share,
   StyleSheet,
   Text,
@@ -21,9 +23,12 @@ import { useQueryClient } from '@tanstack/react-query';
 import Animated, {
   Extrapolation,
   interpolate,
+  runOnJS,
+  useAnimatedReaction,
   useAnimatedRef,
   useAnimatedStyle,
   useScrollViewOffset,
+  useSharedValue,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -55,6 +60,7 @@ import { useMode, useRoles } from '@/store/mode';
 import { fontFamily, palette } from '@/theme/tokens';
 
 const HERO_HEIGHT = 380;
+const PILL_BAR_HEIGHT = 44;
 
 export default function VenueDetail() {
   const { slug: rawSlug } = useLocalSearchParams<{ slug: string }>();
@@ -109,6 +115,98 @@ export default function VenueDetail() {
       setRefreshing(false);
     }
   }, [qc, slug]);
+
+  // Maand-groepering voor de scroll-to maand-pills. Werkt op
+  // `data?.events ?? []` zodat de hook altijd draait, ook in de
+  // loading/error-fase (Rules of Hooks).
+  const monthGroups = useMemo<MonthGroup[]>(
+    () => groupEventsByMonth(data?.events ?? [], locale),
+    [data?.events, locale]
+  );
+  const showMonthPills = monthGroups.length > 1;
+  const [activeMonthKey, setActiveMonthKey] = useState<string | null>(null);
+  const [stickyVisible, setStickyVisible] = useState(false);
+  // Y-offset van de progSection in scroll-content + relatieve y van de
+  // inline pill-bar binnen progSection. SharedValues zodat de animated
+  // style ze direct kan lezen voor de fade-in threshold; JS-handlers
+  // lezen via .value.
+  const progSectionY = useSharedValue(0);
+  const inlinePillsY = useSharedValue(0);
+  const monthYsRef = useRef<Record<string, number>>({});
+
+  // Sticky topBar-pills fade pas in zodra de inline pill-bar voorbij
+  // de onderkant van de topBar is gescrold — voorkomt dubbele pills
+  // wanneer beide tegelijk in beeld zouden staan. Threshold is
+  // `progSectionY + inlinePillsY + PILL_BAR_HEIGHT - topBarBottom`;
+  // fade-window van 60px erboven naar 20px eronder voor een zachte
+  // overgang.
+  const topBarBottom = insets.top + 50;
+  const pillsStickyStyle = useAnimatedStyle(() => {
+    const threshold =
+      progSectionY.value + inlinePillsY.value + PILL_BAR_HEIGHT - topBarBottom;
+    return {
+      opacity: interpolate(
+        scrollY.value,
+        [threshold - 60, threshold + 20],
+        [0, 1],
+        Extrapolation.CLAMP
+      ),
+    };
+  });
+
+  // useCallback met monthGroups als dep — anders blijft de
+  // worklet hieronder de eerste-render-versie van deze functie
+  // aanroepen (toen monthGroups nog leeg was, vóór data fetch).
+  const updateActiveFromScroll = useCallback(
+    (y: number) => {
+      const sectionY = progSectionY.value;
+      if (sectionY === 0) return;
+      let best: string | null = null;
+      let bestY = -Infinity;
+      for (const g of monthGroups) {
+        const ry = monthYsRef.current[g.key];
+        if (ry === undefined) continue;
+        const absY = sectionY + ry;
+        if (absY <= y + 120 && absY > bestY) {
+          best = g.key;
+          bestY = absY;
+        }
+      }
+      setActiveMonthKey((prev) => (prev === best ? prev : best));
+    },
+    [monthGroups, progSectionY]
+  );
+
+  // Bij scroll: bepaal welke maand "in beeld" is en update de actieve
+  // pill. Daarnaast: stickyVisible-state syncen met pills-threshold —
+  // pointerEvents van de top-pills mag pas aan als ze ook zichtbaar
+  // zijn (anders vangen ze taps op terwijl ze opacity 0 hebben).
+  useAnimatedReaction(
+    () => scrollY.value,
+    (val, prev) => {
+      const threshold =
+        progSectionY.value +
+        inlinePillsY.value +
+        PILL_BAR_HEIGHT -
+        topBarBottom;
+      const visible = val > threshold - 20;
+      if (prev === null || (prev !== null && Math.abs(val - prev) > 4)) {
+        runOnJS(updateActiveFromScroll)(val);
+      }
+      runOnJS(setStickyVisible)(visible);
+    },
+    [topBarBottom, updateActiveFromScroll]
+  );
+
+  const handleMonthPress = useCallback((key: string) => {
+    const ry = monthYsRef.current[key];
+    const sectionY = progSectionY.value;
+    if (ry === undefined || sectionY === 0) return;
+    scrollRef.current?.scrollTo({
+      y: sectionY + ry - 80,
+      animated: true,
+    });
+  }, [scrollRef, progSectionY]);
 
   if (isLoading || (!data && !error)) {
     return <VenueFallback>{undefined}</VenueFallback>;
@@ -379,7 +477,12 @@ export default function VenueDetail() {
         </View>
 
         {(events.length > 0 || (data.series && data.series.length > 0)) && (
-          <View style={[styles.progSection, { backgroundColor: roles.bg }]}>
+          <View
+            style={[styles.progSection, { backgroundColor: roles.bg }]}
+            onLayout={(e: LayoutChangeEvent) => {
+              progSectionY.value = e.nativeEvent.layout.y;
+            }}
+          >
             <View style={styles.progHead}>
               <Text style={[styles.progLabel, { color: roles.fg }]}>
                 {t('Programma', 'Programme')}
@@ -414,12 +517,40 @@ export default function VenueDetail() {
               </View>
             )}
 
-            {events.map((e) => (
-              <ProgramRow
-                key={e.id}
-                event={e}
-                venueImageUrl={venue.imageUrl ?? null}
-              />
+            {showMonthPills && (
+              <View
+                onLayout={(e: LayoutChangeEvent) => {
+                  inlinePillsY.value = e.nativeEvent.layout.y;
+                }}
+              >
+                <MonthPills
+                  groups={monthGroups}
+                  activeKey={activeMonthKey}
+                  onPress={handleMonthPress}
+                />
+              </View>
+            )}
+
+            {monthGroups.map((g) => (
+              <View
+                key={g.key}
+                onLayout={(e: LayoutChangeEvent) => {
+                  monthYsRef.current[g.key] = e.nativeEvent.layout.y;
+                }}
+              >
+                {showMonthPills && (
+                  <Text style={[styles.monthHeader, { color: roles.fgMuted }]}>
+                    {g.label}
+                  </Text>
+                )}
+                {g.events.map((e) => (
+                  <ProgramRow
+                    key={e.id}
+                    event={e}
+                    venueImageUrl={venue.imageUrl ?? null}
+                  />
+                ))}
+              </View>
             ))}
           </View>
         )}
@@ -429,7 +560,11 @@ export default function VenueDetail() {
       <View
         style={[
           styles.topBar,
-          { height: insets.top + 50, paddingTop: insets.top + 2 },
+          {
+            height:
+              insets.top + 50 + (showMonthPills ? PILL_BAR_HEIGHT : 0),
+            paddingTop: insets.top + 2,
+          },
         ]}
       >
         <Animated.View
@@ -473,6 +608,18 @@ export default function VenueDetail() {
             <ShareVenueButton slug={venue.slug} name={venue.name} />
           </View>
         </View>
+        {showMonthPills && (
+          <Animated.View
+            style={[styles.topBarPillsRow, pillsStickyStyle]}
+            pointerEvents={stickyVisible ? 'auto' : 'none'}
+          >
+            <MonthPills
+              groups={monthGroups}
+              activeKey={activeMonthKey}
+              onPress={handleMonthPress}
+            />
+          </Animated.View>
+        )}
       </View>
     </View>
   );
@@ -826,6 +973,123 @@ function VenueFallback({
   );
 }
 
+type MonthGroup = {
+  key: string; // e.g. '2026-04'
+  label: string; // 'apr' of 'apr 2027' wanneer jaar afwijkt van vandaag
+  monthIdx: number; // 0-11 — voor tone-kleur cycling
+  events: ApiVenueProgramItem[];
+};
+
+function groupEventsByMonth(
+  events: ApiVenueProgramItem[],
+  locale: Locale
+): MonthGroup[] {
+  const currentYear = new Date().getFullYear();
+  const groups = new Map<string, MonthGroup>();
+  for (const e of events) {
+    const d = new Date(e.startsAt);
+    const y = d.getFullYear();
+    const m = d.getMonth();
+    const key = `${y}-${String(m).padStart(2, '0')}`;
+    if (!groups.has(key)) {
+      const monthLbl = monthShort(m, locale).toLowerCase();
+      const label = y !== currentYear ? `${monthLbl} ${y}` : monthLbl;
+      groups.set(key, { key, label, monthIdx: m, events: [] });
+    }
+    groups.get(key)!.events.push(e);
+  }
+  return Array.from(groups.values());
+}
+
+// Cycle van vier brand-accenten (acid/flare/plum/azure) per maand —
+// als je verticaal door het programma scrolt zie je het kleurtje van
+// de actieve pill langs de palette springen. Stabiel per maand, zodat
+// "april" altijd dezelfde kleur heeft.
+function toneForMonth(monthIdx: number, isNacht: boolean): string {
+  const tones = isNacht
+    ? [palette.acid, palette.flare, palette.plum, palette.azure]
+    : [palette.red, palette.forest, palette.cobalt, '#8a5b00'];
+  return tones[monthIdx % 4];
+}
+
+// Mengt hex-kleur met wit voor leesbaarheid op donkere bg in nacht-mode.
+function lightenHex(hex: string, amount: number): string {
+  const h = hex.replace('#', '');
+  if (h.length !== 6) return hex;
+  const r = parseInt(h.slice(0, 2), 16);
+  const g = parseInt(h.slice(2, 4), 16);
+  const b = parseInt(h.slice(4, 6), 16);
+  const blend = (c: number) =>
+    Math.round(c + (255 - c) * amount).toString(16).padStart(2, '0');
+  return `#${blend(r)}${blend(g)}${blend(b)}`;
+}
+
+/**
+ * Horizontale scroll-to maand-pill bar. Eén component dient zowel de
+ * inline plek (boven de eerste maand-sectie) als de duplicaat in de
+ * sticky topBar. Auto-scrollt naar de actieve pill zodat 'ie zichtbaar
+ * blijft tijdens verticaal scrollen.
+ */
+function MonthPills({
+  groups,
+  activeKey,
+  onPress,
+}: {
+  groups: MonthGroup[];
+  activeKey: string | null;
+  onPress: (key: string) => void;
+}) {
+  const mode = useMode();
+  const roles = useRoles();
+  const isNacht = mode === 'nacht';
+  const scrollRef = useRef<ScrollView>(null);
+  const xsRef = useRef<Record<string, number>>({});
+  useEffect(() => {
+    if (!activeKey) return;
+    const x = xsRef.current[activeKey];
+    if (x !== undefined) {
+      scrollRef.current?.scrollTo({
+        x: Math.max(0, x - 60),
+        animated: true,
+      });
+    }
+  }, [activeKey]);
+  return (
+    <ScrollView
+      ref={scrollRef}
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      contentContainerStyle={styles.pillBarContent}
+      style={styles.pillBar}
+    >
+      {groups.map((g) => {
+        const active = g.key === activeKey;
+        const tone = toneForMonth(g.monthIdx, isNacht);
+        const labelColor = active
+          ? isNacht
+            ? lightenHex(tone, 0.35)
+            : tone
+          : roles.fgMuted;
+        const bg = active ? `${tone}26` : roles.bgTag;
+        return (
+          <Pressable
+            key={g.key}
+            onPress={() => onPress(g.key)}
+            onLayout={(e: LayoutChangeEvent) => {
+              xsRef.current[g.key] = e.nativeEvent.layout.x;
+            }}
+            style={[styles.monthPill, { backgroundColor: bg }]}
+          >
+            <Text style={[styles.monthPillText, { color: labelColor }]}>
+              {g.label}
+            </Text>
+          </Pressable>
+        );
+      })}
+    </ScrollView>
+  );
+}
+
 function openWebsite(url: string) {
   const finalUrl = url.startsWith('http') ? url : `https://${url}`;
   Haptics.selectionAsync();
@@ -1127,6 +1391,52 @@ const styles = StyleSheet.create({
     lineHeight: 20.8,
     paddingHorizontal: 22,
     paddingVertical: 12,
+  },
+
+  // Maand-pills boven het programma + sticky duplicaat in de topBar.
+  // Horizontale scroller met scroll-to navigatie. Actieve pill heeft
+  // een geïnverteerde fg/bg (donker op licht); inactieve gebruikt de
+  // bgChip-tint zodat 'ie subtiel los staat van de venue-bg.
+  pillBar: {
+    flexGrow: 0,
+  },
+  pillBarContent: {
+    paddingHorizontal: 22,
+    paddingVertical: 6,
+    gap: 6,
+    alignItems: 'center',
+  },
+  monthPill: {
+    height: 30,
+    paddingHorizontal: 14,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  monthPillText: {
+    fontFamily: fontFamily.mono,
+    fontSize: 11,
+    letterSpacing: 1.0,
+    textTransform: 'uppercase',
+  },
+  // Maand-divider boven elke maand-sectie in de programma-lijst.
+  // Klein, mono uppercase, dempt — geeft visuele hint zonder met de
+  // event-rijen om aandacht te concurreren.
+  monthHeader: {
+    fontFamily: fontFamily.mono,
+    fontSize: 11,
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
+    paddingHorizontal: 22,
+    paddingTop: 18,
+    paddingBottom: 8,
+  },
+  // Tweede rij in de sticky topBar onder de venue-titel; alleen
+  // zichtbaar wanneer er meerdere maanden zijn én de page voorbij de
+  // hero is gescrold (via stickyStyle + pointerEvents).
+  topBarPillsRow: {
+    height: PILL_BAR_HEIGHT,
+    justifyContent: 'center',
   },
 
   // Fallback
