@@ -523,13 +523,18 @@ export default function Avond() {
           <>
             {/* Hoofd-artikelen: alle featured events uit vandaag-events.
                 NIET filter-afhankelijk — staan bovenaan onafhankelijk van
-                wat je beneden filtert. */}
+                wat je beneden filtert. Negative marginTop trekt de hero
+                onder het chip-row gereserveerde band van de AppHeader
+                — door de blur fade-to-transparent ziet 't 'r mooi
+                bleed-onder-de-header uit. */}
             {leads.length > 0 && (
-              <FeaturedCarousel
-                leads={leads}
-                kicker={t('Onze keuze', 'Our pick')}
-                locale={locale}
-              />
+              <View style={{ marginTop: -STICKY_CHIPROW_HEIGHT }}>
+                <FeaturedCarousel
+                  leads={leads}
+                  kicker={t('Onze keuze', 'Our pick')}
+                  locale={locale}
+                />
+              </View>
             )}
 
             {/* Kaart-CTA — onafhankelijk van de filter. */}
