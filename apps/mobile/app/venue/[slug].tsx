@@ -491,6 +491,9 @@ function ProgramRow({
   const num = String(d.getDate()).padStart(2, '0');
   const month = monthShort(d.getMonth(), locale).toLowerCase();
   const allDay = isAllDayRange(event.startsAt, event.endsAt);
+  // Jaar alleen tonen als het event in een ander jaar valt dan vandaag.
+  const currentYear = new Date().getFullYear();
+  const yearSuffix = d.getFullYear() !== currentYear ? ` ${d.getFullYear()}` : '';
   const friends = event.friendsSaved?.map((f) => ({
     name: f.name,
     avatar: f.avatarUrl,
@@ -504,8 +507,8 @@ function ProgramRow({
       }
       duration={
         allDay
-          ? formatDateRange(event.startsAt, event.endsAt, locale)
-          : `${dow} ${num} ${month}`
+          ? `${formatDateRange(event.startsAt, event.endsAt, locale)}${yearSuffix}`
+          : `${dow} ${num} ${month}${yearSuffix}`
       }
       thumb={event.imageUrl ?? venueImageUrl ?? ''}
       title={event.title}
@@ -521,6 +524,7 @@ function ProgramRow({
       friends={friends && friends.length > 0 ? friends : undefined}
       featured={event.featured}
       tick={CATEGORY_TICK[event.category]}
+      dateAbove
       onPress={() => router.push(`/event/${event.id}`)}
     />
   );

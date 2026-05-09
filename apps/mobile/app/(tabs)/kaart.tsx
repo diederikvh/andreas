@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
 import { Image } from 'expo-image';
 import { router, useFocusEffect } from 'expo-router';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Modal,
   Pressable,
@@ -336,63 +336,16 @@ export default function Kaart() {
             </Marker>
 
             {/* Events as markers — friend-overlay komt terug zodra
-                friendships in de DB staan. */}
-            {mapEvents.map((m) => {
-              const isActive = activeId === m.event.id;
-              const tone: BadgeTone = CATEGORY_TICK[m.event.category];
-              return (
-                <Marker
-                  // Key bevat minutes + active-state zodat de marker remount
-                  // bij wijziging — anders cached react-native-maps de
-                  // custom-view en tonen ze leeg tot je de kaart aantikt.
-                  key={`${m.event.id}-${m.minutes}-${isActive ? '1' : '0'}`}
-                  coordinate={{
-                    latitude: m.event.venue.lat,
-                    longitude: m.event.venue.lng,
-                  }}
-                  anchor={{ x: 0.5, y: 0.5 }}
-                  tracksViewChanges={false}
-                  onPress={() => selectEvent(m.event.id)}
-                >
-                  <View
-                    style={[
-                      styles.marker,
-                      {
-                        backgroundColor: isActive
-                          ? roles.accent
-                          : mode === 'nacht'
-                            ? palette.noir2
-                            : palette.paper3,
-                      },
-                    ]}
-                  >
-                    <View
-                      style={[styles.dot, { backgroundColor: TONE[mode][tone] }]}
-                    >
-                      <Text
-                        style={[
-                          styles.dotText,
-                          {
-                            color:
-                              mode === 'nacht' ? palette.noir : palette.paper3,
-                          },
-                        ]}
-                      >
-                        {CATEGORY_DOT[m.event.category]}
-                      </Text>
-                    </View>
-                    <Text
-                      style={[
-                        styles.minutes,
-                        { color: isActive ? roles.onAccent : roles.fg },
-                      ]}
-                    >
-                      {m.minutes}m
-                    </Text>
-                  </View>
-                </Marker>
-              );
-            })}
+                friendships in de DB staan. Stabiele key per event-id
+                (instabiele keys ↔ AIRMap insertReactSubview crash). */}
+            {mapEvents.map((m) => (
+              <EventMarker
+                key={m.event.id}
+                m={m}
+                isActive={activeId === m.event.id}
+                onPress={selectEvent}
+              />
+            ))}
           </MapView>
 
           <Animated.View
@@ -703,6 +656,85 @@ function SwitchBtn({
   );
 }
 
+/**
+ * Event-marker met stabiele identiteit. Eerdere implementatie remountte
+ * via een instabiele key (`id-minutes-active`); dat triggerde een
+ * `AIRMap insertReactSubview:atIndex:` out-of-range crash op iOS bij
+ * filter/transport-wisselingen waar tientallen markers tegelijk
+ * remounten.
+ *
+ * tracksViewChanges staat default op false (pixel-snapshot, performant).
+ * Bij visuele veranderingen (`isActive` of `minutes`) flippen we 'm
+ * kort op true zodat de snapshot wordt vernieuwd, daarna direct weer
+ * uit. Geen remount → geen crash.
+ */
+const EventMarker = memo(function EventMarker({
+  m,
+  isActive,
+  onPress,
+}: {
+  m: MapEvent;
+  isActive: boolean;
+  onPress: (id: string) => void;
+}) {
+  const mode = useMode();
+  const roles = useRoles();
+  const tone: BadgeTone = CATEGORY_TICK[m.event.category];
+  const [tracks, setTracks] = useState(true);
+  // Eerste paint → snapshot maken → tracks uit. Daarna bij elke
+  // verandering van isActive/minutes opnieuw kort tracks aan.
+  useEffect(() => {
+    setTracks(true);
+    const t = setTimeout(() => setTracks(false), 250);
+    return () => clearTimeout(t);
+  }, [isActive, m.minutes]);
+  return (
+    <Marker
+      coordinate={{
+        latitude: m.event.venue.lat,
+        longitude: m.event.venue.lng,
+      }}
+      anchor={{ x: 0.5, y: 0.5 }}
+      tracksViewChanges={tracks}
+      onPress={() => onPress(m.event.id)}
+    >
+      <View
+        style={[
+          styles.marker,
+          {
+            backgroundColor: isActive
+              ? roles.accent
+              : mode === 'nacht'
+                ? palette.noir2
+                : palette.paper3,
+          },
+        ]}
+      >
+        <View style={[styles.dot, { backgroundColor: TONE[mode][tone] }]}>
+          <Text
+            style={[
+              styles.dotText,
+              {
+                color: mode === 'nacht' ? palette.noir : palette.paper3,
+              },
+            ]}
+          >
+            {CATEGORY_DOT[m.event.category]}
+          </Text>
+        </View>
+        <Text
+          style={[
+            styles.minutes,
+            { color: isActive ? roles.onAccent : roles.fg },
+          ]}
+        >
+          {m.minutes}m
+        </Text>
+      </View>
+    </Marker>
+  );
+});
+
 function SheetRow({ mapEvent }: { mapEvent: MapEvent }) {
   const mode = useMode();
   const roles = useRoles();
@@ -807,6 +839,18 @@ function DrawerCard({
           ) : null;
         })()}
         <View style={styles.cardBody}>
+          <View style={styles.cardTimeRow}>
+            <Ionicons
+              name={transportIcon}
+              size={16}
+              color={roles.fgMuted}
+            />
+            <Text style={[styles.cardTime, { color: roles.fgMuted }]}>
+              {mapEvent.minutes} min ·{' '}
+              {rowTimeLabel(mapEvent.event.startsAt, mapEvent.event.endsAt)}
+              {!venueTone ? ` · ${mapEvent.event.venue.name}` : ''}
+            </Text>
+          </View>
           <Text
             numberOfLines={2}
             style={[styles.cardTitle, { color: roles.fg }]}
@@ -828,18 +872,6 @@ function DrawerCard({
                 {translateCategory(mapEvent.event.category, locale)}
               </Text>
             </View>
-          </View>
-          <View style={styles.cardTimeRow}>
-            <Ionicons
-              name={transportIcon}
-              size={16}
-              color={roles.fgMuted}
-            />
-            <Text style={[styles.cardTime, { color: roles.fgMuted }]}>
-              {mapEvent.minutes} min ·{' '}
-              {rowTimeLabel(mapEvent.event.startsAt, mapEvent.event.endsAt)}
-              {!venueTone ? ` · ${mapEvent.event.venue.name}` : ''}
-            </Text>
           </View>
           {mapEvent.event.description && (
             <Text
@@ -1190,14 +1222,13 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
     textTransform: 'uppercase',
   },
-  // "X min · 20:00" onder de pills, boven de beschrijving — bold
-  // sans + transport-icoon (walk/bike). Iets meer ruimte erboven
-  // zodat 'ie zichtbaar los staat van de pills.
+  // "X min · 20:00" bóven de titel — bold sans + transport-icoon
+  // (walk/bike). Zelfde plek als de datum-regel op de venue-pagina:
+  // klein, gedempt, leidt het oog naar de titel.
   cardTimeRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    marginTop: 4,
   },
   cardTime: {
     fontFamily: fontFamily.bold,

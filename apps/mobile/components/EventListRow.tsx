@@ -57,6 +57,11 @@ type Props = {
   featured?: boolean;
   /** Side accent stripe colour. */
   tick: BadgeTone;
+  /** Wanneer aan: tijd + datum verschijnen als kleine bold-regel
+      bóven de titel, in een iets lichtere kleur dan de titel.
+      Vervangt de mono-uppercase subline boven de tags. Gebruikt op de
+      venue-pagina waar volgorde datum → titel → labels gewenst is. */
+  dateAbove?: boolean;
   onPress?: () => void;
 };
 
@@ -81,6 +86,7 @@ export function EventListRow({
   friends,
   featured = false,
   tick,
+  dateAbove = false,
   onPress,
 }: Props) {
   const mode = useMode();
@@ -91,9 +97,14 @@ export function EventListRow({
   // een eigen kolom rechts; subline wordt dan compact (alleen
   // duration als die meekomt). Anders: oude subline-layout.
   const showTimeRight = venueAsPill && Boolean(time);
-  const subline = venueAsPill
-    ? [duration].filter(Boolean).join(' · ')
-    : [time, duration, venue].filter(Boolean).join(' · ');
+  const dateAboveText = dateAbove
+    ? [time, duration].filter(Boolean).join(' · ')
+    : '';
+  const subline = dateAbove
+    ? [venue].filter(Boolean).join(' · ')
+    : venueAsPill
+      ? [duration].filter(Boolean).join(' · ')
+      : [time, duration, venue].filter(Boolean).join(' · ');
   const venuePillColor = venueAsPill ? TONE[mode][venueTone] : null;
   const hasTagsRow =
     venueAsPill ||
@@ -116,6 +127,14 @@ export function EventListRow({
           contentFit="cover"
         />
         <View style={styles.rowBody}>
+          {dateAbove && dateAboveText.length > 0 && (
+            <Text
+              numberOfLines={1}
+              style={[styles.rowDateAbove, { color: roles.fgMuted }]}
+            >
+              {dateAboveText}
+            </Text>
+          )}
           <Text
             numberOfLines={2}
             style={[styles.rowTitle, { color: roles.fg }]}
@@ -344,6 +363,16 @@ const styles = StyleSheet.create({
     fontSize: 10,
     letterSpacing: 0.8,
     textTransform: 'uppercase',
+  },
+  // Datum/tijd boven de titel — normaal bold font, geen mono, geen
+  // uppercase, in een iets gedempte kleur (`fgMuted`) zodat de titel
+  // visueel dominant blijft. Gebruikt op de venue-pagina
+  // (`dateAbove`) waar volgorde datum → titel → labels gewenst is.
+  rowDateAbove: {
+    fontFamily: fontFamily.bold,
+    fontSize: 12,
+    letterSpacing: -0.1,
+    marginBottom: 2,
   },
   // Rechter tijd-kolom — vertikaal gecentreerd, smal. De tekst zit in
   // een wrapper-View die -90° wordt gedraaid (transforms direct op
