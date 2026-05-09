@@ -485,8 +485,11 @@ export function formatDateRange(
 }
 
 export function formatPrice(cents: number | null, locale?: Locale): string {
-  if (cents == null) return '—';
   const l = locale ?? useLocaleStore.getState().locale;
+  // Geen prijs bekend → wijzen naar de ticket-site ipv een lege em-dash
+  // tonen. Het event-detail heeft sowieso een Tickets-knop dus de
+  // gebruiker weet waar 'ie heen moet.
+  if (cents == null) return l === 'nl' ? 'Zie tickets' : 'See tickets';
   if (cents === 0) return l === 'nl' ? 'Gratis' : 'Free';
   return l === 'nl'
     ? `€${(cents / 100).toFixed(2).replace('.', ',')}`
