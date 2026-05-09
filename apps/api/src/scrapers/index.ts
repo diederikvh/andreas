@@ -1,6 +1,7 @@
 import { scrapeBimhuis, type BimhuisResult } from './bimhuis.js';
 import { scrapeBoomChicago, type BoomChicagoResult } from './boomchicago.js';
 import { scrapeBrakkeGrond, type BrakkeGrondResult } from './brakkegrond.js';
+import { scrapeCelebratix, type CelebratixVenueResult } from './celebratix.js';
 import { scrapeConcertgemaal, type ConcertgemaalResult } from './concertgemaal.js';
 import { scrapeIta, type ItaResult } from './ita.js';
 import { scrapeOperaballet, type OperaballetResult } from './operaballet.js';
@@ -49,6 +50,7 @@ export const scrapers = {
   brakkegrond: scrapeBrakkeGrond,
   qfactory: scrapeQFactory,
   thuishaven: scrapeThuishaven,
+  celebratix: scrapeCelebratix,
 } as const;
 
 export type ScraperName = keyof typeof scrapers;
@@ -75,4 +77,5 @@ export type ScraperResult =
   | PodiumMozaiekResult
   | BrakkeGrondResult
   | QFactoryResult
-  | ThuishavenResult;
+  | ThuishavenResult
+  | CelebratixVenueResult;

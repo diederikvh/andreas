@@ -192,6 +192,10 @@ export const venues = pgTable('venues', {
     jsonld?: { url: string };
     wpTheatre?: { agendaUrl: string };
     ticketmaster?: { venueIds: string[]; keyword?: string };
+    /** Celebratix is een ticket-platform met een publieke API per
+        channel. Gebruikt door BRET (channel `fuef7`) en mogelijk
+        andere clubs. Eén channel-ID is alles wat we nodig hebben. */
+    celebratix?: { channel: string };
     /** Generic theater-scraper: pakt show-URLs uit een sitemap, fetcht
         elke show-page en parseert JSON-LD `Event`-blokken óf
         `data-date` attributes. Gebruikt voor Carré, Meervaart, DeLaMar. */

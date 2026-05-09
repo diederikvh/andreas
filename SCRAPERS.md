@@ -2,7 +2,7 @@
 
 Prioriteit-volgorde voor scraper-implementaties, op volgorde van impact (events × belang). Vink af zodra een venue events oplevert in DB.
 
-**Stand**: 35/50 done — ~2.425 events live. Phase 1 volledig + Phase 2 dekkende ronde + start clubs (Thuishaven 24, Doka 2, Lofi 16, Radion 22 = 64 club-events).
+**Stand**: 36/50 done — ~2.440 events live. Phase 1 volledig + Phase 2 dekkende ronde + clubs (Thuishaven 24, BRET 15, Doka 2, Lofi 16, Radion 22 = 79 club-events).
 
 ---
 
@@ -108,7 +108,7 @@ Andreas-night-modus targeted. 3 al gescrape'd (Doka 2, Lofi 16, Radion 22 = 40 e
 - ⬜ **Warehouse Elementenstraat** [groot/mainstream] — geen eigen URL; vermoedelijk via RA / Eventbrite
 - ⬜ **Garage Noord** [middel/alt] — gebruikt Resident Advisor als ticketing → mogelijk via RA-scraper
 - ⬜ **Shelter** [middel/mainstream] — Eventix shop UUID `74cd4017-...` lijkt leeg; opnieuw checken
-- ⬜ **BRET** [klein/alt] — echte URL `bret.bar/ticketshop` (Wix), maar Wix Events widget rendert geen events na probe (mogelijk seizoens-pauze)
+- ✅ **BRET** [klein/alt] — Celebratix-channel `fuef7` (in widget op `bret.bar/ticketshop` → filesusr.com iframe). Pure HTTP-API: `api.celebratix.io/v2/consumers/Events?channel=fuef7&pageSize=100`. 15 events / 15 mirrored. Patroon herbruikbaar voor andere clubs (`scraperConfig.celebratix = { channel }`).
 
 **Kleinere alt-clubs:**
 - ⬜ Tilla Tec, Radio Radio, nachbar — `tillatec.com`, `radioradio.radio`, `nachbar.amsterdam`
