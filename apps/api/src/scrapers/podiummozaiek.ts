@@ -82,9 +82,16 @@ function stripHtml(s: string): string {
 }
 
 function resolveImageUrl(raw: string): string {
-  if (raw.startsWith('http')) return raw;
-  if (raw.startsWith('/')) return `${BASE}${raw}`;
-  return `${BASE}/${raw}`;
+  // PM's custom_images veld bevat CDN-URLs (saits.online) die soms
+  // 404 geven; de werkende URL gebruikt het eigen domein voor dezelfde
+  // filename. Voor relatieve URLs prefixen we het base-domein.
+  let img = raw;
+  if (img.startsWith('http')) {
+    img = img.replace(/^https:\/\/static-podiummozaiek-nl\.saits\.online/, BASE);
+    return img;
+  }
+  if (img.startsWith('/')) return `${BASE}${img}`;
+  return `${BASE}/${img}`;
 }
 
 async function fetchAllEvents(): Promise<ApiEvent[]> {

@@ -226,7 +226,10 @@ export async function scrapeIta(options?: {
           result.errors.push(`enrich ${show.title}: ${(e as Error).message}`);
         }
 
-        const sourceImg = show.headerImage?.[0]?.url ?? null;
+        // ITA's image-server geeft "cache resources exhausted" voor
+        // originele files maar werkt met `?w=1200` transform-trigger.
+        const rawImg = show.headerImage?.[0]?.url ?? null;
+        const sourceImg = rawImg && !rawImg.includes('?') ? `${rawImg}?w=1200` : rawImg;
         if (sourceImg) {
           imageUrl = (await mirrorImage(sourceImg, `${show.slug ?? showId}`)) ?? sourceImg;
         }
