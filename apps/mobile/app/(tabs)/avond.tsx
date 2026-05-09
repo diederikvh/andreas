@@ -493,7 +493,10 @@ export default function Avond() {
         stickySectionHeadersEnabled={false}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{
-          paddingTop: insets.top + HEADER_HEIGHT,
+          // Header reserveert ruimte voor de sticky chip-row (ook
+          // wanneer 'ie nog niet zichtbaar is) zodat content niet
+          // omhoog springt op het moment dat hij verschijnt.
+          paddingTop: insets.top + HEADER_HEIGHT + STICKY_CHIPROW_HEIGHT,
           paddingBottom: insets.bottom + 96,
         }}
         refreshControl={
@@ -510,7 +513,7 @@ export default function Avond() {
                 : t('Trek om te vernieuwen', 'Pull to refresh')
             }
             titleColor={roles.fgMuted}
-            progressViewOffset={insets.top + HEADER_HEIGHT}
+            progressViewOffset={insets.top + HEADER_HEIGHT + STICKY_CHIPROW_HEIGHT}
           />
         }
         windowSize={11}
@@ -606,46 +609,41 @@ export default function Avond() {
           </>
         }
       />
-      <AppHeader title={t('Vandaag', 'Today')} />
-      {/* Sticky chip-row overlay — verschijnt zodra de inline chip-row
-          achter de AppHeader scrolt, fade-out wanneer 'ie weer in beeld
-          komt. Tweede AvondChipRow-instance met eigen lokale state;
-          interactie alleen mogelijk wanneer 'ie pointer-events accepteert
-          (= zichtbaar). */}
-      <Animated.View
-        pointerEvents={stickyChipRowVisible ? 'auto' : 'none'}
-        style={[
-          styles.stickyChipRowWrap,
-          {
-            top: insets.top + HEADER_HEIGHT,
-            backgroundColor: roles.bg,
-          },
-          stickyChipRowStyle,
-        ]}
-      >
-        <AvondChipRow
-          query={query}
-          onQuery={setQuery}
-          onlyFriends={onlyFriends}
-          onToggleFriends={onToggleFriends}
-          showFriendsChip={showFriendsChip}
-          onlyFavorites={onlyFavorites}
-          onToggleFavorites={onToggleFavorites}
-          showFavoritesChip={showFavoritesChip}
-          activeBlocks={activeBlocks}
-          onToggleBlock={onToggleBlock}
-          activeCats={activeCats}
-          activeTypes={activeTypes}
-          activeGenres={activeGenres}
-          onSetBlocks={setActiveBlocks}
-          onSetFriends={setOnlyFriends}
-          onSetFavorites={setOnlyFavorites}
-          onSetCats={setActiveCats}
-          onSetTypes={setActiveTypes}
-          onSetGenres={setActiveGenres}
-          onDoubleTapScroll={scrollToChipRow}
-        />
-      </Animated.View>
+      <AppHeader title={t('Vandaag', 'Today')}>
+        {/* Sticky chip-row als AppHeader-children — deelt de fade-
+            to-transparent BlurView van de non-solid header. Opacity-
+            animatie fadet 'm in zodra de inline chip-row achter de
+            AppHeader is gescrolld. Pointer-events alleen open
+            wanneer zichtbaar zodat taps door de invisible kopie
+            naar de inline kopie gaan. */}
+        <Animated.View
+          pointerEvents={stickyChipRowVisible ? 'auto' : 'none'}
+          style={stickyChipRowStyle}
+        >
+          <AvondChipRow
+            query={query}
+            onQuery={setQuery}
+            onlyFriends={onlyFriends}
+            onToggleFriends={onToggleFriends}
+            showFriendsChip={showFriendsChip}
+            onlyFavorites={onlyFavorites}
+            onToggleFavorites={onToggleFavorites}
+            showFavoritesChip={showFavoritesChip}
+            activeBlocks={activeBlocks}
+            onToggleBlock={onToggleBlock}
+            activeCats={activeCats}
+            activeTypes={activeTypes}
+            activeGenres={activeGenres}
+            onSetBlocks={setActiveBlocks}
+            onSetFriends={setOnlyFriends}
+            onSetFavorites={setOnlyFavorites}
+            onSetCats={setActiveCats}
+            onSetTypes={setActiveTypes}
+            onSetGenres={setActiveGenres}
+            onDoubleTapScroll={scrollToChipRow}
+          />
+        </Animated.View>
+      </AppHeader>
     </View>
   );
 }
@@ -2284,12 +2282,4 @@ const styles = StyleSheet.create({
     letterSpacing: -0.14,
   },
 
-  // Sticky chip-row overlay — absoluut net onder de AppHeader, vult
-  // de breedte. Opacity en pointer-events zijn dynamisch; bg dekt de
-  // inline chip-row die eronder achter de AppHeader staat.
-  stickyChipRowWrap: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-  },
 });

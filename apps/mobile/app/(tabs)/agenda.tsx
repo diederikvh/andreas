@@ -421,7 +421,7 @@ export default function Agenda() {
         removeClippedSubviews
         initialNumToRender={12}
       />
-      <AppHeader solid title={t('Agenda', 'Agenda')}>
+      <AppHeader title={t('Agenda', 'Agenda')}>
         <View style={{ height: DAYSTRIP_HEIGHT }}>
           {days.length > 0 && selected && (
             <DayStrip

@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import MaskedView from '@react-native-masked-view/masked-view';
 import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
 import { Image } from 'expo-image';
@@ -652,20 +653,29 @@ export default function VenueDetail() {
           },
         ]}
       >
-        {/* MaskedView verwijderd — gaf op grote venues (Paradiso e.d.)
-            een NSInvalidArgumentException tijdens de mount-transactie
-            (legacy paper-view-manager interop met nil child). Subtiele
-            alpha-fade is opgeofferd; in de praktijk staat de blur altijd
-            boven solid bg dus de harde edge is amper zichtbaar. */}
+        {/* Blur fadet aan de onderkant naar transparant zodat scroll-
+            content er onderdoor netjes vervaagt — zelfde behandeling
+            als AppHeader's non-solid mode. */}
         <Animated.View
           pointerEvents="none"
           style={[StyleSheet.absoluteFill, stickyStyle]}
         >
-          <BlurView
-            intensity={40}
-            tint={isNacht ? 'dark' : 'light'}
+          <MaskedView
             style={StyleSheet.absoluteFill}
-          />
+            maskElement={
+              <LinearGradient
+                colors={['#000', '#000', 'transparent']}
+                locations={[0, 0.7, 1]}
+                style={StyleSheet.absoluteFill}
+              />
+            }
+          >
+            <BlurView
+              intensity={40}
+              tint={isNacht ? 'dark' : 'light'}
+              style={StyleSheet.absoluteFill}
+            />
+          </MaskedView>
         </Animated.View>
 
         <View style={styles.topBarRow}>
