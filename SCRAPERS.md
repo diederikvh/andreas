@@ -2,7 +2,7 @@
 
 Prioriteit-volgorde voor scraper-implementaties, op volgorde van impact (events × belang). Vink af zodra een venue events oplevert in DB.
 
-**Stand**: 28/50 done — ~2.247 events live. Phase 1 (XL/L impact) volledig afgerond.
+**Stand**: 30/50 done — ~2.325 events live. Phase 1 volledig + start Phase 2.
 
 ---
 
@@ -45,6 +45,8 @@ Prioriteit-volgorde voor scraper-implementaties, op volgorde van impact (events 
 | ✅ | Bimhuis | 18 / 20 occ | Playwright `/en/calendar/` tiles + og-meta (lokaal-only, Playwright niet in Fly Dockerfile) |
 | ✅ | Internationaal Theater Amsterdam | 116 / 425 occ | Publieke JSON API `/nl/api/v1/channel/events/`, paginated, filter `itaOnTour=true` |
 | ✅ | Nationale Opera & Ballet (Stopera) | 33 / 270 occ | Sitemap (4 pages) + Drupal `/api/1.0/activities/{nodeId}/nl` voor speeldatums |
+| ✅ | Frascati | 46 / 130 occ | Theater-scraper (Peppered SaaS, juiste URL is `frascatitheater.nl`) |
+| ✅ | OT301 | 32 / 66 occ | Playwright `/nl/agenda` `.event-item` parser (lokaal-only) |
 | ✅ | RAI Theater | 7 / 12 occ | Ticketmaster Discovery API |
 | ✅ | Theater Amsterdam | 3 / 4 occ | Ticketmaster Discovery API |
 | ✅ | Carré | 48 / 235 occ | Theater-scraper (sitemap + JSON-LD `Event`, Googlebot UA) |
@@ -59,18 +61,18 @@ Prioriteit-volgorde voor scraper-implementaties, op volgorde van impact (events 
 ✓ Volledig afgerond (Concertgebouw, Bimhuis, ITA, Stopera).
 
 ### Phase 2 — M impact
-- ⬜ **Frascati** — onafhankelijk theater
-- ⬜ **Theater Bellevue**
-- ⬜ **Meervaart**
-- ⬜ **Compagnietheater**
-- ⬜ **Sugarfactory** — late-night, mogelijk Eventix
-- ⬜ **Bijlmer Parktheater**
-- ⬜ **Q-Factory** — multi-program (3 zalen)
-- ⬜ **NDSM Loods**
-- ⬜ **Podium Mozaïek**
-- ⬜ **De Brakke Grond** — Vlaams cultuurhuis (verplaatst omhoog)
-- ⬜ **OT301** — alt-circuit (verplaatst omhoog)
-- ⬜ **Jazz Café Alto** — RSS-feed in inventory
+- ✅ **Frascati** — Peppered SaaS (juiste URL `frascatitheater.nl`, niet `theaterfrascati.nl`)
+- ✅ **Theater Bellevue** — Peppered SaaS
+- ✅ **Meervaart** — theater-scraper Phoenix LiveView
+- ✅ **Bijlmer Parktheater** — Peppered SaaS
+- ✅ **OT301** — Playwright `/nl/agenda`
+- ❌ **Compagnietheater** — gehackt (gokken-spam)
+- ❌ **NDSM Loods** — DNS dood
+- ❌ **Q-Factory** — site offline
+- ❌ **Podium Mozaïek** — SSL alert (mogelijk te lossen later)
+- ⚠️ **Sugarfactory** — homepage 384KB maar `/agenda/` 404, geen events vindbaar
+- ⚠️ **De Brakke Grond** — sitemap slechts 5 shows, geen JSON-LD
+- ⚠️ **Jazz Café Alto** — WP zonder custom event post-type
 
 ### Phase 3 — S impact
 - ⬜ Pakhuis Wilhelmina
