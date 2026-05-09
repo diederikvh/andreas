@@ -7,6 +7,7 @@ import { scrapeOperaballet, type OperaballetResult } from './operaballet.js';
 import { scrapeOt301, type Ot301Result } from './ot301.js';
 import { scrapePodiumMozaiek, type PodiumMozaiekResult } from './podiummozaiek.js';
 import { scrapeQFactory, type QFactoryResult } from './qfactory.js';
+import { scrapeThuishaven, type ThuishavenResult } from './thuishaven.js';
 import { scrapeIcal, type IcalVenueResult } from './ical.js';
 import { scrapeJsonLd, type JsonLdVenueResult } from './jsonld.js';
 import { scrapeMelkweg, type MelkwegResult } from './melkweg.js';
@@ -47,6 +48,7 @@ export const scrapers = {
   podiummozaiek: scrapePodiumMozaiek,
   brakkegrond: scrapeBrakkeGrond,
   qfactory: scrapeQFactory,
+  thuishaven: scrapeThuishaven,
 } as const;
 
 export type ScraperName = keyof typeof scrapers;
@@ -72,4 +74,5 @@ export type ScraperResult =
   | Ot301Result
   | PodiumMozaiekResult
   | BrakkeGrondResult
-  | QFactoryResult;
+  | QFactoryResult
+  | ThuishavenResult;

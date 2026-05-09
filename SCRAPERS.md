@@ -2,7 +2,7 @@
 
 Prioriteit-volgorde voor scraper-implementaties, op volgorde van impact (events × belang). Vink af zodra een venue events oplevert in DB.
 
-**Stand**: 34/50 done — ~2.400 events live. Phase 1 volledig + Phase 2 dekkende ronde + quality-passes voor OT301/Q-Factory/PM.
+**Stand**: 35/50 done — ~2.425 events live. Phase 1 volledig + Phase 2 dekkende ronde + start clubs (Thuishaven 24, Doka 2, Lofi 16, Radion 22 = 64 club-events).
 
 ---
 
@@ -98,6 +98,25 @@ Prioriteit-volgorde voor scraper-implementaties, op volgorde van impact (events 
 - ⬜ Zaal 100 — RSS in inventory
 - ⬜ Perdu — Ticketkantoor
 - ⬜ Salon de IJzerstaven
+
+### Clubs (`type=club`) — 19 venues, top 5 op grootte/scene
+
+Andreas-night-modus targeted. 3 al gescrape'd (Doka 2, Lofi 16, Radion 22 = 40 events totaal).
+
+**Top 5 grote clubs:**
+- ✅ **Thuishaven** [groot/mainstream] — `thuishaven.nl` (WordPress) — Playwright homepage harvest event-URLs `/{DD}-{maand}-{slug}/`, server-rendered detail-page heeft `<title>`/img/`.agenda-line-up__line-up` met DJ-lineup per area (Loods/Secret). 24 events, 24/24 lineup, 23/24 mirrored.
+- ⬜ **Warehouse Elementenstraat** [groot/mainstream] — geen eigen URL; vermoedelijk via RA / Eventbrite
+- ⬜ **Garage Noord** [middel/alt] — gebruikt Resident Advisor als ticketing → mogelijk via RA-scraper
+- ⬜ **Shelter** [middel/mainstream] — Eventix shop UUID `74cd4017-...` lijkt leeg; opnieuw checken
+- ⬜ **BRET** [klein/alt] — echte URL `bret.bar/ticketshop` (Wix), maar Wix Events widget rendert geen events na probe (mogelijk seizoens-pauze)
+
+**Kleinere alt-clubs:**
+- ⬜ Tilla Tec, Radio Radio, nachbar — `tillatec.com`, `radioradio.radio`, `nachbar.amsterdam`
+- ⬜ Garage Noord (zie boven), iNN Amsterdam, Claire, CONTACT — kleinere venues, vermoedelijk RA
+
+**Mainstream clubs (8 unpublished):** Marktkantine, Madam, Club NL, Club Home, Het Sieraad — staan op `published=false`. Eerst onderzoek welke nog actief zijn (sommige zijn permanent gesloten of verhuisd).
+
+**Mogelijke bulk-aanpak**: Resident Advisor (`ra.co/clubs/amsterdam`) heeft venue-pages voor de meeste underground clubs (Garage Noord, Lofi, Doka, Radion, BRET, Radio Radio, Tilla Tec, Shelter). Eén RA-scraper zou ~10 venues in één keer dekken. Worth investigating als per-club aanpak meer custom werk vereist.
 
 ---
 
