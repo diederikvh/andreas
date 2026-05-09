@@ -2,7 +2,7 @@
 
 Prioriteit-volgorde voor scraper-implementaties, op volgorde van impact (events × belang). Vink af zodra een venue events oplevert in DB.
 
-**Stand**: 30/50 done — ~2.325 events live. Phase 1 volledig + start Phase 2.
+**Stand**: 32/50 done — ~2.380 events live. Phase 1 volledig + Phase 2 dekkende ronde.
 
 ---
 
@@ -47,6 +47,8 @@ Prioriteit-volgorde voor scraper-implementaties, op volgorde van impact (events 
 | ✅ | Nationale Opera & Ballet (Stopera) | 33 / 270 occ | Sitemap (4 pages) + Drupal `/api/1.0/activities/{nodeId}/nl` voor speeldatums |
 | ✅ | Frascati | 46 / 130 occ | Theater-scraper (Peppered SaaS, juiste URL is `frascatitheater.nl`) |
 | ✅ | OT301 | 32 / 66 occ | Playwright `/nl/agenda` `.event-item` parser (lokaal-only) |
+| ✅ | NDSM Loods | 5 / 5 occ | Theater-scraper (WP `event_listing-sitemap.xml` + JSON-LD per detail-page) |
+| ✅ | Podium Mozaïek | 50 / 61 occ | Ticketmatic shop inline AngularJS `SHOP` constant parser (`ticketshop.ticketmatic.com/podium_mozaiek/shop`) |
 | ✅ | RAI Theater | 7 / 12 occ | Ticketmaster Discovery API |
 | ✅ | Theater Amsterdam | 3 / 4 occ | Ticketmaster Discovery API |
 | ✅ | Carré | 48 / 235 occ | Theater-scraper (sitemap + JSON-LD `Event`, Googlebot UA) |
@@ -66,12 +68,12 @@ Prioriteit-volgorde voor scraper-implementaties, op volgorde van impact (events 
 - ✅ **Meervaart** — theater-scraper Phoenix LiveView
 - ✅ **Bijlmer Parktheater** — Peppered SaaS
 - ✅ **OT301** — Playwright `/nl/agenda`
+- ✅ **NDSM Loods** — `ndsmloods.nl/event_listing-sitemap.xml` (echte URL is met www, niet ndsm-loods.nl)
+- ✅ **Podium Mozaïek** — Ticketmatic shop `ticketshop.ticketmatic.com/podium_mozaiek/shop` (eigen site is SSL-broken)
 - ❌ **Compagnietheater** — gehackt (gokken-spam)
-- ❌ **NDSM Loods** — DNS dood
-- ❌ **Q-Factory** — site offline
-- ❌ **Podium Mozaïek** — SSL alert (mogelijk te lossen later)
-- ⚠️ **Sugarfactory** — homepage 384KB maar `/agenda/` 404, geen events vindbaar
-- ⚠️ **De Brakke Grond** — sitemap slechts 5 shows, geen JSON-LD
+- ❌ **Q-Factory** — eigen site = statische sitemap zonder shows; TM venue-id `Z598xZbpZ7FAk` heeft 0 events op moment
+- ⚠️ **Sugarfactory** — `/agenda/` 404, geen events publiek bereikbaar
+- ⚠️ **De Brakke Grond** — agenda is JS-rendered (Playwright haalt 20 show-URLs op `/agenda/{id}/{slug}`), maar detail-pages óók CSR — vereist Playwright per show
 - ⚠️ **Jazz Café Alto** — WP zonder custom event post-type
 
 ### Phase 3 — S impact
