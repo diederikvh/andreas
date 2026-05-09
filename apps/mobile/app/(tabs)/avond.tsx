@@ -22,7 +22,13 @@ import {
   View,
 } from 'react-native';
 import { useQueryClient } from '@tanstack/react-query';
-import Animated, { FadeIn } from 'react-native-reanimated';
+import Animated, {
+  Extrapolation,
+  FadeIn,
+  interpolate,
+  useAnimatedStyle,
+  useSharedValue,
+} from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppHeader, HEADER_HEIGHT } from '@/components/AppHeader';
@@ -94,6 +100,11 @@ function formatMetaForRow(row: OccurrenceRow, locale: Locale): string {
 }
 
 
+// Hoogte van de chip-row — gebruikt door de sticky-overlay om de
+// fade-in threshold te bepalen (= scrollY waar de inline chip-row
+// achter de AppHeader is verdwenen).
+const STICKY_CHIPROW_HEIGHT = 60;
+
 // Volgorde van de cat-secties op Vandaag — zelfde als de Agenda-
 // filter chips. Categorieën zonder events vandaag worden geskipt.
 const CATEGORIES_ORDER: ApiEvent['category'][] = [
@@ -137,18 +148,18 @@ export default function Avond() {
     SectionList<OccurrenceRow, { category: ApiEvent['category']; items: OccurrenceRow[] }>
   >(null);
   useScrollToTop(scrollRef);
-  // Y-offset van de chip-row binnen de ListHeaderComponent (relatief
-  // aan ListHeader top, dus = cumulatieve hoogte van Featured/KaartCTA/
-  // RunningStrip/hero erboven). Bij dubbel-tap scrollen we daarheen via
-  // getScrollResponder().scrollTo({ y: chipRowYRef.current }) — dan
-  // valt de chipRow net onder de AppHeader.
-  const chipRowYRef = useRef(0);
+  // Y-offset van de chip-row binnen de ListHeaderComponent. SharedValue
+  // zodat de sticky-overlay-animation z'n threshold direct kan lezen
+  // en JS-thread onScroll werkt. Bij dubbel-tap scrollen we hier
+  // naartoe — landt net onder de AppHeader.
+  const chipRowY = useSharedValue(0);
+  const scrollY = useSharedValue(0);
   const scrollToChipRow = useCallback(() => {
     scrollRef.current?.getScrollResponder()?.scrollTo({
-      y: Math.max(0, chipRowYRef.current),
+      y: Math.max(0, chipRowY.value),
       animated: true,
     });
-  }, []);
+  }, [chipRowY]);
 
   // Twee tijd-tikkers met verschillende doelen:
   //
@@ -415,6 +426,36 @@ export default function Avond() {
     onlyFavorites ||
     query.trim().length > 0;
 
+  // Sticky-on-scroll voor de chip-row: zodra je naar beneden scrollt
+  // en de inline chip-row achter de AppHeader gaat verdwijnen, fade
+  // er een copy in net onder de AppHeader. Bij terug-scrollen detacht-
+  // ie weer. Zelfde pattern als de month-pills op venue-detail.
+  const [stickyChipRowVisible, setStickyChipRowVisible] = useState(false);
+  const lastStickyRef = useRef(false);
+  const onScroll = useCallback(
+    (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+      const y = e.nativeEvent.contentOffset.y;
+      scrollY.value = y;
+      const newVisible = y > chipRowY.value + STICKY_CHIPROW_HEIGHT - 30;
+      if (newVisible !== lastStickyRef.current) {
+        lastStickyRef.current = newVisible;
+        setStickyChipRowVisible(newVisible);
+      }
+    },
+    [chipRowY, scrollY]
+  );
+  const stickyChipRowStyle = useAnimatedStyle(() => {
+    const threshold = chipRowY.value + STICKY_CHIPROW_HEIGHT;
+    return {
+      opacity: interpolate(
+        scrollY.value,
+        [threshold - 60, threshold + 20],
+        [0, 1],
+        Extrapolation.CLAMP
+      ),
+    };
+  });
+
   return (
     <View style={[styles.root, { backgroundColor: roles.bg }]}>
       <RefreshBanner
@@ -423,6 +464,8 @@ export default function Avond() {
       />
       <SectionList
         ref={scrollRef}
+        onScroll={onScroll}
+        scrollEventThrottle={16}
         sections={isLoading || error ? [] : sections}
         keyExtractor={(row) => row.id}
         renderItem={({ item }) => <ApiEventRow row={item} />}
@@ -513,10 +556,11 @@ export default function Avond() {
             </View>
 
             {/* Filter-rij. Wrapper captureert Y-positie binnen de
-                ListHeader voor de scrollToChipRow van de tab-double-tap. */}
+                ListHeader — gebruikt door de tab-double-tap scroll én
+                door de sticky-overlay opacity-animation. */}
             <View
               onLayout={(e) => {
-                chipRowYRef.current = e.nativeEvent.layout.y;
+                chipRowY.value = e.nativeEvent.layout.y;
               }}
             >
               <AvondChipRow
@@ -563,6 +607,45 @@ export default function Avond() {
         }
       />
       <AppHeader title={t('Vandaag', 'Today')} />
+      {/* Sticky chip-row overlay — verschijnt zodra de inline chip-row
+          achter de AppHeader scrolt, fade-out wanneer 'ie weer in beeld
+          komt. Tweede AvondChipRow-instance met eigen lokale state;
+          interactie alleen mogelijk wanneer 'ie pointer-events accepteert
+          (= zichtbaar). */}
+      <Animated.View
+        pointerEvents={stickyChipRowVisible ? 'auto' : 'none'}
+        style={[
+          styles.stickyChipRowWrap,
+          {
+            top: insets.top + HEADER_HEIGHT,
+            backgroundColor: roles.bg,
+          },
+          stickyChipRowStyle,
+        ]}
+      >
+        <AvondChipRow
+          query={query}
+          onQuery={setQuery}
+          onlyFriends={onlyFriends}
+          onToggleFriends={onToggleFriends}
+          showFriendsChip={showFriendsChip}
+          onlyFavorites={onlyFavorites}
+          onToggleFavorites={onToggleFavorites}
+          showFavoritesChip={showFavoritesChip}
+          activeBlocks={activeBlocks}
+          onToggleBlock={onToggleBlock}
+          activeCats={activeCats}
+          activeTypes={activeTypes}
+          activeGenres={activeGenres}
+          onSetBlocks={setActiveBlocks}
+          onSetFriends={setOnlyFriends}
+          onSetFavorites={setOnlyFavorites}
+          onSetCats={setActiveCats}
+          onSetTypes={setActiveTypes}
+          onSetGenres={setActiveGenres}
+          onDoubleTapScroll={scrollToChipRow}
+        />
+      </Animated.View>
     </View>
   );
 }
@@ -2199,5 +2282,14 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 18,
     letterSpacing: -0.14,
+  },
+
+  // Sticky chip-row overlay — absoluut net onder de AppHeader, vult
+  // de breedte. Opacity en pointer-events zijn dynamisch; bg dekt de
+  // inline chip-row die eronder achter de AppHeader staat.
+  stickyChipRowWrap: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
   },
 });
