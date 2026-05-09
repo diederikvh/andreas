@@ -326,16 +326,24 @@ export default function VenueDetail() {
         sections={sections}
         keyExtractor={(item) => (item as ApiVenueProgramItem).id}
         renderItem={({ item }) => (
-          <ProgramRow
-            event={item as ApiVenueProgramItem}
-            venueImageUrl={venue.imageUrl ?? null}
-          />
+          // Wrapper met bg-color zodat de events de absolute-pinned hero
+          // niet doorheen laten zien (in de oude ScrollView-versie zat
+          // dat op de progSection-wrapper, die nu in ListHeaderComponent
+          // alleen het kop-deel dekt).
+          <View style={{ backgroundColor: roles.bg }}>
+            <ProgramRow
+              event={item as ApiVenueProgramItem}
+              venueImageUrl={venue.imageUrl ?? null}
+            />
+          </View>
         )}
         renderSectionHeader={({ section }) =>
           showMonthPills ? (
-            <Text style={[styles.monthHeader, { color: roles.fgMuted }]}>
-              {(section as SectionListData<ApiVenueProgramItem, MonthGroup>).label}
-            </Text>
+            <View style={{ backgroundColor: roles.bg }}>
+              <Text style={[styles.monthHeader, { color: roles.fgMuted }]}>
+                {(section as SectionListData<ApiVenueProgramItem, MonthGroup>).label}
+              </Text>
+            </View>
           ) : null
         }
         stickySectionHeadersEnabled={false}
@@ -349,6 +357,12 @@ export default function VenueDetail() {
         windowSize={11}
         initialNumToRender={12}
         removeClippedSubviews
+        ListFooterComponent={
+          // Vult de ruimte onder de laatste event-row + de bottom-
+          // padding met de bg-kleur, anders schemert de heroPinned
+          // erdoorheen voor venues met weinig events.
+          <View style={{ backgroundColor: roles.bg, minHeight: 400 }} />
+        }
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
