@@ -67,8 +67,11 @@ type StagerTicketsOverview = {
   }[];
 };
 
-async function getJwt(host: string): Promise<string> {
-  const r = await fetch(`https://${host}/shop/v1/session/new`, {
+async function getJwt(host: string, shopId: number): Promise<string> {
+  // De session POST vereist een `?shopId=...` query-param. Zonder krijg
+  // je een default-shop in de JWT (bv. nachbar gaf shop=5088 i.p.v. de
+  // gewenste 5352), waarna de events-listing leeg terugkomt.
+  const r = await fetch(`https://${host}/shop/v1/session/new?shopId=${shopId}&locale=EN&hasOrderToken=false`, {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
@@ -197,7 +200,7 @@ async function scrapeOneVenue(
 
   let jwt: string;
   try {
-    jwt = await getJwt(cfg.host);
+    jwt = await getJwt(cfg.host, cfg.shopId);
   } catch (e) {
     result.errors.push(`session: ${(e as Error).message}`);
     return result;

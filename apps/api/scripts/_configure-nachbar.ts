@@ -9,7 +9,7 @@ const [v] = await db
 if (!v) { console.log('nachbar niet gevonden'); process.exit(1); }
 const next = {
   ...(v.scraperConfig ?? {}),
-  stager: { host: 'nachbar.stager.co', shopId: 5088 },
+  stager: { host: 'nachbar.stager.co', shopId: 5352 },
 };
 await db.update(schema.venues).set({ scraperConfig: next }).where(eq(schema.venues.id, 'nachbar'));
 console.log('+ nachbar → stager(host=nachbar.stager.co, shopId=5352) gezet');
