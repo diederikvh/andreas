@@ -8,18 +8,18 @@ import { useQueryClient } from '@tanstack/react-query';
 import {
   Alert,
   KeyboardAvoidingView,
-  type LayoutChangeEvent,
   Modal,
-  type NativeScrollEvent,
-  type NativeSyntheticEvent,
   Platform,
   Pressable,
   RefreshControl,
   ScrollView,
+  SectionList,
+  type SectionListData,
   StyleSheet,
   Text,
   TextInput,
   View,
+  type ViewToken,
 } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -89,8 +89,10 @@ export default function Agenda() {
   const t = useT();
   const locale = useLocale();
   const timeBlocks = useTimeBlocks();
-  const scrollRef = useRef<ScrollView>(null);
-  useScrollToTop(scrollRef);
+  const sectionListRef = useRef<SectionList<OccurrenceRow, OccurrenceGroup>>(null);
+  // useScrollToTop accepteert ook een ref met scrollToLocation — past
+  // 'm zonder fuss op SectionList.
+  useScrollToTop(sectionListRef);
 
   // Filter-state komt nu uit de persistente Zustand-store ipv URL-params
   // — zo blijft je keuze actief bij tab-wissels en app-restart.
@@ -216,7 +218,6 @@ export default function Agenda() {
     return groupOccurrenceRowsByDay(rows);
   }, [filteredEvents, activeBlocks, now]);
 
-  const [positions, setPositions] = useState<Record<string, number>>({});
   const [selected, setSelected] = useState<string | null>(null);
 
   // Pull-to-refresh: invalideert events-cache zodat de query opnieuw
@@ -255,44 +256,103 @@ export default function Agenda() {
   const stickyOffset =
     insets.top + HEADER_HEIGHT + DAYSTRIP_HEIGHT + CHIPROW_HEIGHT;
 
+  // Sections voor de SectionList — `data` is wat 'r in de items komt,
+  // de OccurrenceGroup-velden (id/dow/num/month) blijven beschikbaar
+  // voor renderSectionHeader.
+  const sections = useMemo(
+    () => days.map((d) => ({ ...d, data: d.rows })),
+    [days]
+  );
+
   const selectDay = (id: string) => {
     setSelected(id);
-    const y = positions[id];
-    if (y !== undefined && scrollRef.current) {
-      scrollRef.current.scrollTo({
-        y: Math.max(0, y - stickyOffset + 1),
-        animated: true,
-      });
-    }
+    const sectionIndex = sections.findIndex((s) => s.id === id);
+    if (sectionIndex < 0) return;
+    sectionListRef.current?.scrollToLocation({
+      sectionIndex,
+      itemIndex: 0,
+      // viewOffset ≈ stickyOffset zorgt dat de DateAnchor net onder
+      // de gefixeerde DayStrip valt ipv erachter te verdwijnen.
+      viewOffset: stickyOffset,
+      animated: true,
+    });
   };
 
-  const captureSectionY = (id: string) => (e: LayoutChangeEvent) => {
-    const y = e.nativeEvent.layout.y;
-    setPositions((prev) => (prev[id] === y ? prev : { ...prev, [id]: y }));
-  };
-
-  // Sync the active chip with the section currently below the day-strip.
-  const onScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
-    if (days.length === 0) return;
-    const scrollY = e.nativeEvent.contentOffset.y;
-    const threshold = scrollY + stickyOffset + 30;
-    let active = days[0].id;
-    for (const day of days) {
-      const y = positions[day.id];
-      if (y === undefined) continue;
-      if (y <= threshold) active = day.id;
+  // Sync de active chip met de huidige zichtbare sectie. In een
+  // virtualized SectionList zijn niet-zichtbare items niet gemount,
+  // dus onScroll + Y-positie meten werkt niet meer — gebruik
+  // onViewableItemsChanged. Stable ref zodat SectionList niet warned
+  // op identity-changes. Functional setSelected vermijdt closure-stale.
+  const onViewableItemsChanged = useRef(
+    ({ viewableItems }: { viewableItems: ViewToken[] }) => {
+      if (viewableItems.length === 0) return;
+      const first = viewableItems[0];
+      const sectionId = (first.section as OccurrenceGroup | undefined)?.id;
+      if (sectionId) {
+        setSelected((cur) => (cur === sectionId ? cur : sectionId));
+      }
     }
-    if (active !== selected) setSelected(active);
-  };
+  ).current;
+  const viewabilityConfig = useRef({
+    itemVisiblePercentThreshold: 0,
+  }).current;
 
   return (
     <View style={[styles.root, { backgroundColor: roles.bg }]}>
       <RefreshBanner visible={refreshing} topOffset={stickyOffset + 8} />
-      <ScrollView
-        ref={scrollRef}
+      {/* SectionList virtualiseert de event-rijen — alleen wat in de
+          viewport (+ overscan) zit wordt gemount. Schaalt naar 2k+ rows
+          zonder dat de UI gaat trekken. ScrollView-cousin behoudt het
+          scroll-gedrag (refreshControl, scroll-to-top, etc.). */}
+      <SectionList
+        ref={sectionListRef}
+        sections={isLoading || error ? [] : sections}
+        keyExtractor={(row) => row.id}
+        renderItem={({ item }) => <AgendaRow row={item} />}
+        renderSectionHeader={({ section }) => (
+          <DateAnchor
+            day={section as SectionListData<OccurrenceRow, OccurrenceGroup>}
+          />
+        )}
+        stickySectionHeadersEnabled={false}
+        ListHeaderComponent={
+          <Animated.View entering={FadeIn.duration(220)}>
+            {isLoading && (
+              <View style={styles.loadingWrap}>
+                <SpinningCross size={28} color={roles.fgPlaceholder} />
+              </View>
+            )}
+            {error && (
+              <ListState
+                text={t('Kon agenda niet laden.', 'Couldn’t load agenda.')}
+                tone="error"
+              />
+            )}
+            {!isLoading && !error && (
+              <RunningStrip
+                series={seriesList ?? []}
+                exhibitionEvents={filteredEvents}
+              />
+            )}
+            {!isLoading && !error && days.length === 0 && (
+              <ListState
+                text={
+                  activeCats.length > 0 ||
+                  activeTypes.length > 0 ||
+                  activeBlocks.length > 0 ||
+                  activeGenres.length > 0 ||
+                  query
+                    ? t(
+                        'Geen events voor deze filter.',
+                        'No events for this filter.'
+                      )
+                    : t('Nog geen events.', 'No events yet.')
+                }
+              />
+            )}
+          </Animated.View>
+        }
         showsVerticalScrollIndicator={false}
-        onScroll={onScroll}
-        scrollEventThrottle={16}
         contentContainerStyle={{
           paddingTop: stickyOffset,
           paddingBottom: insets.bottom + 96,
@@ -312,51 +372,16 @@ export default function Agenda() {
             progressViewOffset={stickyOffset}
           />
         }
-      >
-        {isLoading && (
-          <View style={styles.loadingWrap}>
-            <SpinningCross size={28} color={roles.fgPlaceholder} />
-          </View>
-        )}
-        {error && (
-          <ListState
-            text={t('Kon agenda niet laden.', 'Couldn’t load agenda.')}
-            tone="error"
-          />
-        )}
-        {!isLoading && !error && (
-          <Animated.View entering={FadeIn.duration(220)}>
-            <RunningStrip
-              series={seriesList ?? []}
-              exhibitionEvents={filteredEvents}
-            />
-            {days.length === 0 && (
-              <ListState
-                text={
-                  activeCats.length > 0 ||
-                  activeTypes.length > 0 ||
-                  activeBlocks.length > 0 ||
-                  activeGenres.length > 0 ||
-                  query
-                    ? t(
-                        'Geen events voor deze filter.',
-                        'No events for this filter.'
-                      )
-                    : t('Nog geen events.', 'No events yet.')
-                }
-              />
-            )}
-            {days.map((day) => (
-              <View key={day.id} onLayout={captureSectionY(day.id)}>
-                <DateAnchor day={day} />
-                {day.rows.map((row) => (
-                  <AgendaRow key={row.id} row={row} />
-                ))}
-              </View>
-            ))}
-          </Animated.View>
-        )}
-      </ScrollView>
+        onViewableItemsChanged={onViewableItemsChanged}
+        viewabilityConfig={viewabilityConfig}
+        // Render-window: standaard 21 (10 rows above + 10 below + 1
+        // visible). Voor variable-height rows met images is dat aan
+        // de hoge kant — verlagen tot 11 (5/5/1) houdt scroll
+        // butter-smooth en bespaart geheugen.
+        windowSize={11}
+        removeClippedSubviews
+        initialNumToRender={12}
+      />
       <AppHeader solid title={t('Agenda', 'Agenda')}>
         <View style={{ height: DAYSTRIP_HEIGHT }}>
           {days.length > 0 && selected && (
