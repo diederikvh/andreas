@@ -15,16 +15,18 @@ import {
   Pressable,
   RefreshControl,
   ScrollView,
+  SectionList,
+  type SectionListData,
   Share,
   StyleSheet,
   Text,
   View,
+  type ViewToken,
 } from 'react-native';
 import { useQueryClient } from '@tanstack/react-query';
 import Animated, {
   Extrapolation,
   interpolate,
-  useAnimatedRef,
   useAnimatedStyle,
   useSharedValue,
 } from 'react-native-reanimated';
@@ -60,6 +62,16 @@ import { fontFamily, palette } from '@/theme/tokens';
 const HERO_HEIGHT = 380;
 const PILL_BAR_HEIGHT = 44;
 
+// Animated wrapper rond SectionList — werkt identiek als Animated.View
+// voor onScroll, maar geeft ons SectionList's virtualization. Pure JS-
+// thread onScroll houden we zoals bij de oude Animated.ScrollView.
+// `as typeof SectionList` herstelt de generic typing die Animated's
+// wrapper anders weggooit (anders krijg je `SectionList<unknown,
+// unknown>` op de ref).
+const AnimatedSectionList = Animated.createAnimatedComponent(
+  SectionList
+) as unknown as typeof SectionList;
+
 export default function VenueDetail() {
   const { slug: rawSlug } = useLocalSearchParams<{ slug: string }>();
   const slug = rawSlug ?? '';
@@ -70,7 +82,7 @@ export default function VenueDetail() {
   const t = useT();
   const locale = useLocale();
 
-  const scrollRef = useAnimatedRef<Animated.ScrollView>();
+  const scrollRef = useRef<SectionList<ApiVenueProgramItem, MonthGroup>>(null);
   // scrollY wordt via JS-thread onScroll geüpdatet (zie verderop).
   // Animated styles lezen 'm via .value op de UI-thread — werkt
   // identiek als bij useScrollViewOffset, maar geeft ons één plek
@@ -137,7 +149,14 @@ export default function VenueDetail() {
   // lezen via .value.
   const progSectionY = useSharedValue(0);
   const inlinePillsY = useSharedValue(0);
-  const monthYsRef = useRef<Record<string, number>>({});
+
+  // Sections voor SectionList — month-groups met `data: events` zoals
+  // SectionList verwacht. Behoudt de andere MonthGroup-velden (key,
+  // label, monthIdx) voor renderSectionHeader.
+  const sections = useMemo(
+    () => monthGroups.map((g) => ({ ...g, data: g.events })),
+    [monthGroups]
+  );
 
   // Sticky topBar-pills fade pas in zodra de inline pill-bar voorbij
   // de onderkant van de topBar is gescrold — voorkomt dubbele pills
@@ -159,43 +178,12 @@ export default function VenueDetail() {
     };
   });
 
-  // monthGroups via ref ipv direct in closure — zo blijft de
-  // updateActiveFromScroll-callback stabiel (lege deps) en hoeft de
-  // worklet hieronder niet opnieuw te binden bij elke data-update.
-  // Eerste-visit-bug: zonder dit klemt de worklet zich vast aan de
-  // initiële (lege) versie van de functie.
-  const monthGroupsRef = useRef<MonthGroup[]>([]);
-  useEffect(() => {
-    monthGroupsRef.current = monthGroups;
-  }, [monthGroups]);
-
-  const updateActiveFromScroll = useCallback((y: number) => {
-    const sectionY = progSectionY.value;
-    if (sectionY === 0) return;
-    const groups = monthGroupsRef.current;
-    if (groups.length === 0) return;
-    let best: string | null = null;
-    let bestY = -Infinity;
-    for (const g of groups) {
-      const ry = monthYsRef.current[g.key];
-      if (ry === undefined) continue;
-      const absY = sectionY + ry;
-      if (absY <= y + 120 && absY > bestY) {
-        best = g.key;
-        bestY = absY;
-      }
-    }
-    setActiveMonthKey((prev) => (prev === best ? prev : best));
-  }, [progSectionY]);
-
-  // JS-thread onScroll: updatet scrollY (voor animated styles) en
-  // beheert tegelijk de active-month + sticky-visible state. Geen
-  // worklet, geen runOnJS — voorkomt de race tijdens venue-switching
-  // waar een UI-thread reaction kan vuren terwijl de component al
-  // half-unmount is. Throttled op delta > 8px voor active-month en
-  // alleen bij echte transities voor sticky-visible.
+  // JS-thread onScroll: updatet scrollY (voor animated styles) en de
+  // sticky-visible state. Active-month detectie gebeurt via
+  // onViewableItemsChanged op de SectionList — Y-meten op individuele
+  // maand-secties werkt niet meer in een virtualized lijst (off-screen
+  // sections zijn niet gemount).
   const lastStickyRef = useRef(false);
-  const lastUpdateYRef = useRef(-9999);
   const onScroll = useCallback(
     (e: NativeSyntheticEvent<NativeScrollEvent>) => {
       const y = e.nativeEvent.contentOffset.y;
@@ -211,29 +199,80 @@ export default function VenueDetail() {
         lastStickyRef.current = newVisible;
         setStickyVisible(newVisible);
       }
-      if (Math.abs(y - lastUpdateYRef.current) > 8) {
-        lastUpdateYRef.current = y;
-        updateActiveFromScroll(y);
-      }
     },
-    [
-      scrollY,
-      progSectionY,
-      inlinePillsY,
-      topBarBottom,
-      updateActiveFromScroll,
-    ]
+    [scrollY, progSectionY, inlinePillsY, topBarBottom]
   );
 
-  const handleMonthPress = useCallback((key: string) => {
-    const ry = monthYsRef.current[key];
-    const sectionY = progSectionY.value;
-    if (ry === undefined || sectionY === 0) return;
-    scrollRef.current?.scrollTo({
-      y: sectionY + ry - 80,
-      animated: true,
-    });
-  }, [scrollRef, progSectionY]);
+  // Active-month-detectie via viewableItems — pak de eerste zichtbare
+  // item, z'n section.key is de actieve maand. Stable ref zodat
+  // SectionList niet warned op identity-changes; functional setter
+  // voorkomt closure-stale.
+  const onViewableItemsChanged = useRef(
+    ({ viewableItems }: { viewableItems: ViewToken[] }) => {
+      if (viewableItems.length === 0) return;
+      const first = viewableItems[0];
+      const sectionKey = (first.section as MonthGroup | undefined)?.key;
+      if (sectionKey) {
+        setActiveMonthKey((prev) =>
+          prev === sectionKey ? prev : sectionKey
+        );
+      }
+    }
+  ).current;
+  const viewabilityConfig = useRef({
+    itemVisiblePercentThreshold: 0,
+  }).current;
+
+  // Onthoudt de target-section voor de retry-fallback van
+  // onScrollToIndexFailed (zelfde patroon als Agenda).
+  const pendingSectionRef = useRef<number | null>(null);
+
+  const handleMonthPress = useCallback(
+    (key: string) => {
+      const sectionIndex = monthGroups.findIndex((g) => g.key === key);
+      if (sectionIndex < 0) return;
+      pendingSectionRef.current = sectionIndex;
+      scrollRef.current?.scrollToLocation({
+        sectionIndex,
+        itemIndex: 0,
+        // Offset zodat de month-header net onder de top-bar valt ipv
+        // erachter te verdwijnen.
+        viewOffset: topBarBottom + (showMonthPills ? PILL_BAR_HEIGHT : 0),
+        animated: true,
+      });
+    },
+    [monthGroups, topBarBottom, showMonthPills]
+  );
+
+  // Fallback wanneer scrollToLocation faalt door variable-height items
+  // of nog niet gemounted sections — voorkomt EXC_BAD_ACCESS-crashes
+  // op iOS Fabric. Twee-staps: eerst grof scrollen op basis van avg
+  // item length, dan opnieuw scrollToLocation.
+  const onScrollToIndexFailed = useCallback(
+    (info: {
+      index: number;
+      highestMeasuredFrameIndex: number;
+      averageItemLength: number;
+    }) => {
+      const offset = topBarBottom + (showMonthPills ? PILL_BAR_HEIGHT : 0);
+      scrollRef.current?.getScrollResponder()?.scrollTo({
+        y: Math.max(0, info.averageItemLength * info.index - offset),
+        animated: true,
+      });
+      setTimeout(() => {
+        const target = pendingSectionRef.current;
+        if (target !== null) {
+          scrollRef.current?.scrollToLocation({
+            sectionIndex: target,
+            itemIndex: 0,
+            viewOffset: offset,
+            animated: true,
+          });
+        }
+      }, 200);
+    },
+    [topBarBottom, showMonthPills]
+  );
 
   if (isLoading || (!data && !error)) {
     return <VenueFallback>{undefined}</VenueFallback>;
@@ -282,12 +321,34 @@ export default function VenueDetail() {
         visible={refreshing}
         topOffset={insets.top + 60}
       />
-      <Animated.ScrollView
+      <AnimatedSectionList
         ref={scrollRef}
+        sections={sections}
+        keyExtractor={(item) => (item as ApiVenueProgramItem).id}
+        renderItem={({ item }) => (
+          <ProgramRow
+            event={item as ApiVenueProgramItem}
+            venueImageUrl={venue.imageUrl ?? null}
+          />
+        )}
+        renderSectionHeader={({ section }) =>
+          showMonthPills ? (
+            <Text style={[styles.monthHeader, { color: roles.fgMuted }]}>
+              {(section as SectionListData<ApiVenueProgramItem, MonthGroup>).label}
+            </Text>
+          ) : null
+        }
+        stickySectionHeadersEnabled={false}
         onScroll={onScroll}
         scrollEventThrottle={16}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: insets.bottom + 40 }}
+        onViewableItemsChanged={onViewableItemsChanged}
+        viewabilityConfig={viewabilityConfig}
+        onScrollToIndexFailed={onScrollToIndexFailed}
+        windowSize={11}
+        initialNumToRender={12}
+        removeClippedSubviews
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -296,7 +357,8 @@ export default function VenueDetail() {
             colors={[roles.accent]}
           />
         }
-      >
+        ListHeaderComponent={
+          <>
         <View style={styles.heroSpacer}>
           <View style={styles.heroBottom}>
             <View
@@ -559,31 +621,11 @@ export default function VenueDetail() {
                 />
               </View>
             )}
-
-            {monthGroups.map((g) => (
-              <View
-                key={g.key}
-                onLayout={(e: LayoutChangeEvent) => {
-                  monthYsRef.current[g.key] = e.nativeEvent.layout.y;
-                }}
-              >
-                {showMonthPills && (
-                  <Text style={[styles.monthHeader, { color: roles.fgMuted }]}>
-                    {g.label}
-                  </Text>
-                )}
-                {g.events.map((e) => (
-                  <ProgramRow
-                    key={e.id}
-                    event={e}
-                    venueImageUrl={venue.imageUrl ?? null}
-                  />
-                ))}
-              </View>
-            ))}
           </View>
         )}
-      </Animated.ScrollView>
+          </>
+        }
+      />
 
       {/* Top bar */}
       <View
