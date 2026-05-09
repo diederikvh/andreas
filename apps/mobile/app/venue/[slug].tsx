@@ -10,6 +10,8 @@ import {
   type LayoutChangeEvent,
   Linking,
   Modal,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
   Platform,
   Pressable,
   RefreshControl,
@@ -23,11 +25,8 @@ import { useQueryClient } from '@tanstack/react-query';
 import Animated, {
   Extrapolation,
   interpolate,
-  runOnJS,
-  useAnimatedReaction,
   useAnimatedRef,
   useAnimatedStyle,
-  useScrollViewOffset,
   useSharedValue,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -73,7 +72,14 @@ export default function VenueDetail() {
   const locale = useLocale();
 
   const scrollRef = useAnimatedRef<Animated.ScrollView>();
-  const scrollY = useScrollViewOffset(scrollRef);
+  // scrollY wordt via JS-thread onScroll geüpdatet (zie verderop).
+  // Animated styles lezen 'm via .value op de UI-thread — werkt
+  // identiek als bij useScrollViewOffset, maar geeft ons één plek
+  // (de onScroll-callback) waar zowel de SharedValue als alle
+  // afhankelijke React-state worden bijgewerkt. Geen worklet +
+  // runOnJS-keten meer, die was te broos op fysieke devices bij
+  // venue-switching.
+  const scrollY = useSharedValue(0);
   const stickyStyle = useAnimatedStyle(() => ({
     opacity: interpolate(
       scrollY.value,
@@ -183,32 +189,41 @@ export default function VenueDetail() {
     setActiveMonthKey((prev) => (prev === best ? prev : best));
   }, [progSectionY]);
 
-  // Bij scroll: actieve maand updaten + stickyVisible syncen.
-  // SharedValue-gates voorkomen dat we elke frame een runOnJS naar de
-  // JS-thread doen — alleen bij échte transities (visible flip) of
-  // bij meer dan 8px scroll-delta sinds laatste update. Cold-start op
-  // fysieke devices is anders snel overbelast.
-  const lastStickyVisible = useSharedValue(false);
-  const lastUpdateY = useSharedValue(-9999);
-  useAnimatedReaction(
-    () => scrollY.value,
-    (val) => {
+  // JS-thread onScroll: updatet scrollY (voor animated styles) en
+  // beheert tegelijk de active-month + sticky-visible state. Geen
+  // worklet, geen runOnJS — voorkomt de race tijdens venue-switching
+  // waar een UI-thread reaction kan vuren terwijl de component al
+  // half-unmount is. Throttled op delta > 8px voor active-month en
+  // alleen bij echte transities voor sticky-visible.
+  const lastStickyRef = useRef(false);
+  const lastUpdateYRef = useRef(-9999);
+  const onScroll = useCallback(
+    (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+      const y = e.nativeEvent.contentOffset.y;
+      scrollY.value = y;
+
       const threshold =
         progSectionY.value +
         inlinePillsY.value +
         PILL_BAR_HEIGHT -
         topBarBottom;
-      const newVisible = val > threshold - 20;
-      if (newVisible !== lastStickyVisible.value) {
-        lastStickyVisible.value = newVisible;
-        runOnJS(setStickyVisible)(newVisible);
+      const newVisible = y > threshold - 20;
+      if (newVisible !== lastStickyRef.current) {
+        lastStickyRef.current = newVisible;
+        setStickyVisible(newVisible);
       }
-      if (Math.abs(val - lastUpdateY.value) > 8) {
-        lastUpdateY.value = val;
-        runOnJS(updateActiveFromScroll)(val);
+      if (Math.abs(y - lastUpdateYRef.current) > 8) {
+        lastUpdateYRef.current = y;
+        updateActiveFromScroll(y);
       }
     },
-    []
+    [
+      scrollY,
+      progSectionY,
+      inlinePillsY,
+      topBarBottom,
+      updateActiveFromScroll,
+    ]
   );
 
   const handleMonthPress = useCallback((key: string) => {
@@ -270,6 +285,8 @@ export default function VenueDetail() {
       />
       <Animated.ScrollView
         ref={scrollRef}
+        onScroll={onScroll}
+        scrollEventThrottle={16}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: insets.bottom + 40 }}
         refreshControl={
