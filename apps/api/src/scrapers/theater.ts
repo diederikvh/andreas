@@ -180,6 +180,9 @@ export async function scrapeTheater(options?: {
 
     const venueCategory = venue.categories?.[0] ?? 'Theater';
     const showRe = new RegExp(cfg.showUrlPattern);
+    const stripRe = cfg.showSlugStripPattern
+      ? new RegExp(cfg.showSlugStripPattern)
+      : null;
 
     const allUrls = await fetchSitemap(cfg.sitemapUrl);
     const showUrls = Array.from(new Set(allUrls.filter((u) => showRe.test(u))));
@@ -195,14 +198,24 @@ export async function scrapeTheater(options?: {
 
         // Title komt uit het eerste Event blok. Slug uit de URL voor
         // stable IDs (titel kan kleine wijzigingen hebben tussen runs).
+        // Als JSON-LD een eigen `url` heeft (= de canonieke event-URL,
+        // bv. Concertgebouw waar `babyconcert-0-t-m-18-maanden` een
+        // alias is voor `loes-luca-the-ramblers`), gebruiken we die
+        // voor de slug zodat alle alias-pages naar één event mergen.
         const head = evs[0];
         const title = head.name?.trim();
         if (!title) { result.skipped++; continue; }
-        const showSlug = url
+        const canonicalUrl =
+          typeof head.url === 'string' && head.url.length > 0 ? head.url : url;
+        let showSlug = canonicalUrl
           .replace(/\/$/, '')
           .split('/')
           .pop()!
           .toLowerCase();
+        // Strip optioneel een venue-specifiek prefix (bv. Concert-
+        // gebouw geeft elke voorstelling een eigen `{numericId}-`
+        // prefix — zonder strip wordt elke avond een eigen event).
+        if (stripRe) showSlug = showSlug.replace(stripRe, '');
         const titleSlug = slugify(showSlug || title);
         if (!titleSlug) { result.skipped++; continue; }
 

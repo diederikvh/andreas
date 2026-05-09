@@ -206,6 +206,12 @@ export const venues = pgTable('venues', {
       /** Fallback voor sites waar JSON-LD alleen 1 Event-range geeft maar
           de specifieke datums in `data-date="YYYY-MM-DD"` attrs staan. */
       useDataDateAttrs?: boolean;
+      /** Regex om uit het laatste URL-segment een prefix te strippen
+          vóór het tot eventId-slug wordt. Bv. `^\\d+-` voor Concert-
+          gebouw waar elke avond een eigen `45471300-lumi-basement-
+          sessions` URL krijgt — zonder strip wordt elke avond een
+          eigen event. */
+      showSlugStripPattern?: string;
     };
   }>(),
   /** Admin-toggle: false = verbergen uit publieke endpoints zonder
