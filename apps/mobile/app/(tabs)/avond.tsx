@@ -983,7 +983,10 @@ function AvondChipRow({
           return (
             <Pressable
               key={s.id}
-              onPress={() => applySaved(s)}
+              onPress={() => {
+                tinyTap();
+                applySaved(s);
+              }}
               onLongPress={() => onLongPressSaved(s)}
               delayLongPress={400}
               style={[
@@ -1413,7 +1416,10 @@ export function AvondFilterSheet({
           </View>
           <Pressable
             accessibilityLabel={t('Opslaan', 'Save')}
-            onPress={onSave}
+            onPress={() => {
+              softTap();
+              onSave();
+            }}
             disabled={saveName.trim().length === 0}
             style={[
               styles.sheetIconBtn,
@@ -1466,7 +1472,10 @@ export function AvondFilterSheet({
           </Pressable>
           <Pressable
             accessibilityLabel={t('Bewaar filter', 'Save filter')}
-            onPress={() => setSaveOpen(true)}
+            onPress={() => {
+              softTap();
+              setSaveOpen(true);
+            }}
             disabled={filterCount === 0}
             style={[
               styles.sheetIconBtn,

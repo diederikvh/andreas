@@ -755,7 +755,10 @@ function ChipRow({
           return (
             <Pressable
               key={s.id}
-              onPress={() => applySaved(s)}
+              onPress={() => {
+                tinyTap();
+                applySaved(s);
+              }}
               onLongPress={() => onLongPressSaved(s)}
               delayLongPress={400}
               style={[
@@ -1176,7 +1179,10 @@ function FilterSheet({
           </View>
           <Pressable
             accessibilityLabel={t('Opslaan', 'Save')}
-            onPress={onSave}
+            onPress={() => {
+              softTap();
+              onSave();
+            }}
             disabled={saveName.trim().length === 0}
             style={[
               styles.sheetIconBtn,
@@ -1229,7 +1235,10 @@ function FilterSheet({
           </Pressable>
           <Pressable
             accessibilityLabel={t('Bewaar filter', 'Save filter')}
-            onPress={() => setSaveOpen(true)}
+            onPress={() => {
+              softTap();
+              setSaveOpen(true);
+            }}
             disabled={filterCount === 0}
             style={[
               styles.sheetIconBtn,
