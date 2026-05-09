@@ -264,10 +264,16 @@ export default function Agenda() {
     [days]
   );
 
+  // Onthoudt waar we naartoe willen, voor de retry vanuit
+  // onScrollToIndexFailed wanneer de target-sectie nog niet
+  // gemount is in de virtualized lijst.
+  const pendingSectionRef = useRef<number | null>(null);
+
   const selectDay = (id: string) => {
     setSelected(id);
     const sectionIndex = sections.findIndex((s) => s.id === id);
     if (sectionIndex < 0) return;
+    pendingSectionRef.current = sectionIndex;
     sectionListRef.current?.scrollToLocation({
       sectionIndex,
       itemIndex: 0,
@@ -277,6 +283,37 @@ export default function Agenda() {
       animated: true,
     });
   };
+
+  // Wanneer de target-sectie buiten de render-window valt kan
+  // scrollToLocation niet exact berekenen waar te landen — op iOS
+  // Fabric crasht 't dan zelfs in de native ShadowNode-tree
+  // (EXC_BAD_ACCESS in ModalHostViewShadowNode dealloc). Standaard
+  // RN-fallback: grof scrollen naar de averageItemLength × index,
+  // wachten tot rendering bijgekomen is, dan opnieuw scrollToLocation.
+  const onScrollToIndexFailed = useCallback(
+    (info: {
+      index: number;
+      highestMeasuredFrameIndex: number;
+      averageItemLength: number;
+    }) => {
+      sectionListRef.current?.getScrollResponder()?.scrollTo({
+        y: Math.max(0, info.averageItemLength * info.index - stickyOffset),
+        animated: true,
+      });
+      setTimeout(() => {
+        const target = pendingSectionRef.current;
+        if (target !== null) {
+          sectionListRef.current?.scrollToLocation({
+            sectionIndex: target,
+            itemIndex: 0,
+            viewOffset: stickyOffset,
+            animated: true,
+          });
+        }
+      }, 200);
+    },
+    [stickyOffset]
+  );
 
   // Sync de active chip met de huidige zichtbare sectie. In een
   // virtualized SectionList zijn niet-zichtbare items niet gemount,
@@ -374,6 +411,7 @@ export default function Agenda() {
         }
         onViewableItemsChanged={onViewableItemsChanged}
         viewabilityConfig={viewabilityConfig}
+        onScrollToIndexFailed={onScrollToIndexFailed}
         // Render-window: standaard 21 (10 rows above + 10 below + 1
         // visible). Voor variable-height rows met images is dat aan
         // de hoge kant — verlagen tot 11 (5/5/1) houdt scroll
