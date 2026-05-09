@@ -12,17 +12,17 @@ import {
   JetBrainsMono_400Regular,
   JetBrainsMono_500Medium,
 } from '@expo-google-fonts/jetbrains-mono';
-import { QueryClientProvider } from '@tanstack/react-query';
+import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { ModeCurtain } from '@/components/ModeCurtain';
 import { PushManager } from '@/components/PushManager';
-import { queryClient } from '@/lib/queryClient';
+import { queryClient, queryPersister } from '@/lib/queryClient';
 import { useHasHydrated, useMode } from '@/store/mode';
 
 SplashScreen.preventAutoHideAsync();
@@ -39,8 +39,10 @@ export default function RootLayout() {
   });
   const hasHydrated = useHasHydrated();
   const mode = useMode();
+  const [queryCacheRestored, setQueryCacheRestored] = useState(false);
 
-  const ready = (fontsLoaded || fontError !== null) && hasHydrated;
+  const ready =
+    (fontsLoaded || fontError !== null) && hasHydrated && queryCacheRestored;
 
   useEffect(() => {
     if (ready) {
@@ -48,26 +50,45 @@ export default function RootLayout() {
     }
   }, [ready]);
 
-  if (!ready) {
-    return null;
-  }
-
+  // Provider moet altijd gemount zijn zodat z'n hydration kan starten
+  // (en de onSuccess `queryCacheRestored` flippen). Pas wanneer alle
+  // ready-bronnen binnen zijn renderen we de Stack — anders blijft de
+  // SplashScreen staan.
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <QueryClientProvider client={queryClient}>
-        <SafeAreaProvider>
-          <Stack screenOptions={{ headerShown: false }}>
-            <Stack.Screen name="welkom" options={{ presentation: 'modal' }} />
-            <Stack.Screen
-              name="event/[id]/invite"
-              options={{ presentation: 'modal' }}
-            />
-          </Stack>
-          <ModeCurtain />
-          <PushManager />
-          <StatusBar style={mode === 'nacht' ? 'light' : 'dark'} />
-        </SafeAreaProvider>
-      </QueryClientProvider>
+      <PersistQueryClientProvider
+        client={queryClient}
+        onSuccess={() => setQueryCacheRestored(true)}
+        persistOptions={{
+          persister: queryPersister,
+          // Bump deze key wanneer de query-shape kapot-changed (bv.
+          // ApiEvent.venue.type added) — zo gooi je oude cache weg
+          // bij upgrade en voorkom je client-side parse-fouten.
+          buster: 'v2-venue-type',
+          // Persist alleen succesvolle queries (geen error-states).
+          dehydrateOptions: {
+            shouldDehydrateQuery: (q) => q.state.status === 'success',
+          },
+        }}
+      >
+        {ready && (
+          <SafeAreaProvider>
+            <Stack screenOptions={{ headerShown: false }}>
+              <Stack.Screen
+                name="welkom"
+                options={{ presentation: 'modal' }}
+              />
+              <Stack.Screen
+                name="event/[id]/invite"
+                options={{ presentation: 'modal' }}
+              />
+            </Stack>
+            <ModeCurtain />
+            <PushManager />
+            <StatusBar style={mode === 'nacht' ? 'light' : 'dark'} />
+          </SafeAreaProvider>
+        )}
+      </PersistQueryClientProvider>
     </GestureHandlerRootView>
   );
 }
