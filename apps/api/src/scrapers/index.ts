@@ -2,6 +2,7 @@ import { scrapeBimhuis, type BimhuisResult } from './bimhuis.js';
 import { scrapeBoomChicago, type BoomChicagoResult } from './boomchicago.js';
 import { scrapeConcertgemaal, type ConcertgemaalResult } from './concertgemaal.js';
 import { scrapeIta, type ItaResult } from './ita.js';
+import { scrapeOperaballet, type OperaballetResult } from './operaballet.js';
 import { scrapeIcal, type IcalVenueResult } from './ical.js';
 import { scrapeJsonLd, type JsonLdVenueResult } from './jsonld.js';
 import { scrapeMelkweg, type MelkwegResult } from './melkweg.js';
@@ -37,6 +38,7 @@ export const scrapers = {
   boomchicago: scrapeBoomChicago,
   bimhuis: scrapeBimhuis,
   ita: scrapeIta,
+  operaballet: scrapeOperaballet,
 } as const;
 
 export type ScraperName = keyof typeof scrapers;
@@ -57,4 +59,5 @@ export type ScraperResult =
   | TheaterVenueResult
   | BoomChicagoResult
   | BimhuisResult
-  | ItaResult;
+  | ItaResult
+  | OperaballetResult;

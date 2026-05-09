@@ -2,7 +2,7 @@
 
 Prioriteit-volgorde voor scraper-implementaties, op volgorde van impact (events × belang). Vink af zodra een venue events oplevert in DB.
 
-**Stand**: 25/50 done — ~2.080 events live.
+**Stand**: 28/50 done — ~2.247 events live. Phase 1 (XL/L impact) volledig afgerond.
 
 ---
 
@@ -42,6 +42,9 @@ Prioriteit-volgorde voor scraper-implementaties, op volgorde van impact (events 
 | ✅ | Theater Bellevue | 65 / 146 occ | Theater-scraper (Peppered SaaS) |
 | ✅ | Bijlmer Parktheater | 23 / 54 occ | Theater-scraper (Peppered SaaS) |
 | ✅ | Het Concertgebouw | 490 / 490 occ | Theater-scraper (sitemap-index + JSON-LD, future-slot filter) |
+| ✅ | Bimhuis | 18 / 20 occ | Playwright `/en/calendar/` tiles + og-meta (lokaal-only, Playwright niet in Fly Dockerfile) |
+| ✅ | Internationaal Theater Amsterdam | 116 / 425 occ | Publieke JSON API `/nl/api/v1/channel/events/`, paginated, filter `itaOnTour=true` |
+| ✅ | Nationale Opera & Ballet (Stopera) | 33 / 270 occ | Sitemap (4 pages) + Drupal `/api/1.0/activities/{nodeId}/nl` voor speeldatums |
 | ✅ | RAI Theater | 7 / 12 occ | Ticketmaster Discovery API |
 | ✅ | Theater Amsterdam | 3 / 4 occ | Ticketmaster Discovery API |
 | ✅ | Carré | 48 / 235 occ | Theater-scraper (sitemap + JSON-LD `Event`, Googlebot UA) |
@@ -52,10 +55,8 @@ Prioriteit-volgorde voor scraper-implementaties, op volgorde van impact (events 
 
 ## ⬜ TODO (volgorde aangepast — Bimhuis & Concertgebouw omhoog)
 
-### Phase 1 — XL/L impact (volgende-aan-de-beurt)
-- ⬜ **Bimhuis** — wereldberoemd, dagelijks programma. Calendar = client-side load-more, vereist Playwright-scraper
-- ⬜ **Internationaal Theater Amsterdam (ITA)** — agenda is volledig CSR, vereist Playwright of API-discovery
-- ⬜ **Nationale Opera & Ballet (Stopera)** — Drupal, URL-harvest via `/programma/24` (opera) + `/programma/25` (ballet)
+### Phase 1 — XL/L impact
+✓ Volledig afgerond (Concertgebouw, Bimhuis, ITA, Stopera).
 
 ### Phase 2 — M impact
 - ⬜ **Frascati** — onafhankelijk theater
