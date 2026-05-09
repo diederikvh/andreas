@@ -175,7 +175,11 @@ export async function scrapeCelebratix(options?: {
 
         try {
           const occurrenceId = `occ-cel-${venue.id}-${ev.sqid}`;
-          const ticketUrl = `${SHOP_BASE}/${ev.sqid}`;
+          // Venue-specifieke widget-URL als geconfigureerd (zoals
+          // BRET's filesusr.com host), anders generic Celebratix-shop.
+          const ticketUrl = cfg.ticketUrlBase
+            ? `${cfg.ticketUrlBase}${cfg.ticketUrlBase.includes('?') ? '&' : '?'}eventId=${ev.sqid}`
+            : `${SHOP_BASE}/${ev.sqid}`;
           await db
             .insert(schema.occurrences)
             .values({

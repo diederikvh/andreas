@@ -195,7 +195,15 @@ export const venues = pgTable('venues', {
     /** Celebratix is een ticket-platform met een publieke API per
         channel. Gebruikt door BRET (channel `fuef7`) en mogelijk
         andere clubs. Eén channel-ID is alles wat we nodig hebben. */
-    celebratix?: { channel: string };
+    celebratix?: {
+      channel: string;
+      /** Optionele venue-specifieke widget-URL voor tickets. De
+          scraper appendt `?eventId={sqid}`. Bv. voor BRET:
+          `https://www-bret-bar.filesusr.com/html/327b25_3df...html`.
+          Default fallback (zonder deze) is generic
+          `shop.celebratix.io/event/{sqid}`. */
+      ticketUrlBase?: string;
+    };
     /** Weeztix is een ticket-platform (Eventix / OpenTicket). Per
         venue is de shop-UUID (uit `shop.weeztix.com/{uuid}/events`) de
         enige config. Image-augmentatie kan optioneel via een eigen
