@@ -203,7 +203,10 @@ export async function scrapeWeeztix(options?: {
 
         try {
           const occurrenceId = `occ-wz-${venue.id}-${ev.guid}`;
-          const ticketUrl = `${SHOP_BASE}/${cfg.shopUuid}/events/${ev.guid}`;
+          // Weeztix-shop: `/tickets?event={guid}` opent direct het
+          // juiste event in de shop. Het `events/{guid}` pad is een
+          // dood pad — return SPA-shell maar geen tickets-flow.
+          const ticketUrl = `${SHOP_BASE}/${cfg.shopUuid}/tickets?event=${ev.guid}`;
           await db
             .insert(schema.occurrences)
             .values({
