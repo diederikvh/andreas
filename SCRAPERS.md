@@ -120,6 +120,7 @@ Andreas-night-modus targeted. 3 al gescrape'd (Doka 2, Lofi 16, Radion 22 = 40 e
 - ⬜ iNN Amsterdam, Claire, CONTACT — separate research
 
 - ✅ **Madam** — Fourvenues iframe (`site.fourvenues.com/en/iframe/madam@g:pwsbn` — slug URL-encoded). Tile-DOM is `<app-event-card>` met date+title+12u-tijden in tekst en image-src in nested `<img src="…/imagedelivery/…/width=534">`. 8 events, 8/8 mirrored.
+- ✅ **Skatecafe Karin & Yvonne** [middel/alt] — Playwright op `skatecafe.weticket.io/` (Vercel-challenge passable via headed Chromium). De listing rendert SSR met `<script id="__NEXT_DATA__">.props.pageProps.organisationWithShops.upcoming_events` — een complete array met `slug`/`name`/`cover_photo.path_url`/`first_date`/`last_date`/`location_name`. Filter op `location_name === venue.name` om externe shows (bv. Stuzzi @ Melkweg) te skippen. Lokaal-only (Playwright). 21 events, 21/21 mirrored.
 
 **Mainstream clubs (resterend):** Marktkantine, Club NL, Club Home — staan op `published=false`. Eerst onderzoek welke nog actief zijn (sommige zijn permanent gesloten of verhuisd).
 

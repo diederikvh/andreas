@@ -22,6 +22,7 @@ import { scrapeParadiso, type ParadisoResult } from './paradiso.js';
 import { scrapeRadioRadio, type RadioRadioResult } from './radioradio.js';
 import { scrapeShelter, type ShelterResult } from './shelter.js';
 import { scrapeSieraad, type SieraadResult } from './sieraad.js';
+import { scrapeSkatecafe, type SkatecafeResult } from './skatecafe.js';
 import { scrapeStager, type StagerVenueResult } from './stager.js';
 import { scrapeTheater, type TheaterVenueResult } from './theater.js';
 import { scrapeTicketmaster, type TicketmasterVenueResult } from './ticketmaster.js';
@@ -63,6 +64,7 @@ export const scrapers = {
   radioradio: scrapeRadioRadio,
   sieraad: scrapeSieraad,
   garagenoord: scrapeGarageNoord,
+  skatecafe: scrapeSkatecafe,
 } as const;
 
 export type ScraperName = keyof typeof scrapers;
@@ -96,4 +98,5 @@ export type ScraperResult =
   | ShelterResult
   | RadioRadioResult
   | SieraadResult
-  | GarageNoordResult;
+  | GarageNoordResult
+  | SkatecafeResult;
