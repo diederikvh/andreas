@@ -134,14 +134,41 @@ async function fetchTiles(): Promise<RawTile[]> {
   }
 }
 
+/**
+ * OT301 detail-page parser. URL is `https://www.ot301.nl/nl/agenda/{id}`.
+ * Geen og-meta of JSON-LD, maar wel een `<div class="selected event">`
+ * met body-content, en de image staat als `amsterdamalternative.nl/
+ * media/content/{id}_large.jpg`.
+ */
 async function fetchDetailMeta(href: string): Promise<{ image: string | null; description: string | null }> {
   try {
     const r = await fetch(href, { headers: { 'user-agent': UA } });
     if (!r.ok) return { image: null, description: null };
     const html = await r.text();
-    const img = html.match(/<meta property="og:image" content="([^"]+)"/)?.[1] ?? null;
-    const desc = html.match(/<meta property="og:description" content="([^"]+)"/)?.[1] ?? null;
-    return { image: img, description: desc ? desc.replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;/g, "'") : null };
+    // Pak de eerste amsterdamalternative-image (= event-foto, meestal `_large.jpg`)
+    const imgMatch = html.match(
+      /(https?:\/\/(?:www\.)?amsterdamalternative\.nl\/media\/content\/[^"'\s>]+\.(?:jpg|jpeg|png|webp))/i
+    );
+    const image = imgMatch?.[1] ?? null;
+    // Body content: alles binnen `<div class="info">` is event-text
+    // (subtitle, title, lineup, beschrijving). Strip HTML.
+    const bodyMatch = html.match(/<div[^>]+class="[^"]*\binfo\b[^"]*"[^>]*>([\s\S]+?)<\/div>\s*<\/div>/);
+    let description: string | null = null;
+    if (bodyMatch) {
+      const text = bodyMatch[1]
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&nbsp;/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+      // Strip de subtitle-prefix "Café Gilde // 13:00 // € 0" + "Koop tickets" /
+      // "buy now" zodat alleen de echte beschrijving overblijft.
+      const cleaned = text
+        .replace(/^.*?(?:Koop tickets|buy now)\s*/i, '')
+        .replace(/^[A-Z][^/]+\/\/\s*\d{1,2}:\d{2}\s*\/\/\s*[^A-Z]+/i, '')
+        .trim();
+      description = cleaned.length > 30 ? cleaned : (text.length > 30 ? text : null);
+    }
+    return { image, description };
   } catch { return { image: null, description: null }; }
 }
 
