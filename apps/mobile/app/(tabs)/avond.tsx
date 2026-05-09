@@ -528,7 +528,7 @@ export default function Avond() {
                 — door de blur fade-to-transparent ziet 't 'r mooi
                 bleed-onder-de-header uit. */}
             {leads.length > 0 && (
-              <View style={{ marginTop: -STICKY_CHIPROW_HEIGHT }}>
+              <View style={{ marginTop: -STICKY_CHIPROW_HEIGHT + 8 }}>
                 <FeaturedCarousel
                   leads={leads}
                   kicker={t('Onze keuze', 'Our pick')}
