@@ -262,7 +262,7 @@ export default function Venues() {
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{
-          paddingTop: insets.top + HEADER_HEIGHT,
+          paddingTop: insets.top + HEADER_HEIGHT + CHIPROW_HEIGHT,
           paddingBottom: insets.bottom + 96,
         }}
         refreshControl={
@@ -271,34 +271,18 @@ export default function Venues() {
             onRefresh={onRefresh}
             tintColor={roles.accent}
             colors={[roles.accent]}
-            progressViewOffset={insets.top + HEADER_HEIGHT}
+            progressViewOffset={insets.top + HEADER_HEIGHT + CHIPROW_HEIGHT}
           />
         }
         windowSize={11}
         initialNumToRender={12}
         removeClippedSubviews
         ListHeaderComponent={
-          <>
-            <ChipRow
-              query={q}
-              onQuery={setQ}
-              activeDn={activeDn}
-              activeType={activeType}
-              activeScene={activeScene}
-              activeSubtypes={activeSubtypes}
-              onlyVolgend={onlyVolgend}
-              onDn={setActiveDn}
-              onType={setActiveType}
-              onScene={setActiveScene}
-              onSubtypes={setActiveSubtypes}
-              onVolgend={setOnlyVolgend}
-            />
-            {isLoading && (
-              <View style={styles.loadingWrap}>
-                <SpinningCross size={28} color={roles.fgPlaceholder} />
-              </View>
-            )}
-          </>
+          isLoading ? (
+            <View style={styles.loadingWrap}>
+              <SpinningCross size={28} color={roles.fgPlaceholder} />
+            </View>
+          ) : null
         }
         ListEmptyComponent={
           isLoading ? null : (
@@ -329,7 +313,22 @@ export default function Venues() {
           )
         }
       />
-      <AppHeader title={tx('Venues', 'Venues')} />
+      <AppHeader solid title={tx('Venues', 'Venues')}>
+        <ChipRow
+          query={q}
+          onQuery={setQ}
+          activeDn={activeDn}
+          activeType={activeType}
+          activeScene={activeScene}
+          activeSubtypes={activeSubtypes}
+          onlyVolgend={onlyVolgend}
+          onDn={setActiveDn}
+          onType={setActiveType}
+          onScene={setActiveScene}
+          onSubtypes={setActiveSubtypes}
+          onVolgend={setOnlyVolgend}
+        />
+      </AppHeader>
     </KeyboardAvoidingView>
   );
 }
