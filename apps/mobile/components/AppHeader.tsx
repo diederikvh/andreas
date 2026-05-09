@@ -11,7 +11,7 @@ import { useModeSwitch } from '@/components/ModeCurtain';
 import { useMode, useRoles } from '@/store/mode';
 import { fontFamily, palette } from '@/theme/tokens';
 
-export const HEADER_HEIGHT = 46;
+export const HEADER_HEIGHT = 36;
 
 type AppHeaderProps = {
   /**

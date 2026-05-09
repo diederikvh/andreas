@@ -2001,13 +2001,17 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
   },
 
-  // Chip-row — zelfde patroon als Agenda's ChipRow.
+  // Chip-row — zelfde patroon als Agenda's ChipRow. Expliciete height
+  // zodat de afstand tussen logo en chipRow exact matcht met
+  // Agenda/Venues (zonder dit waren er 4px verschil door content-
+  // sized layout).
   chipRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
     paddingHorizontal: 22,
     paddingVertical: 6,
+    height: STICKY_CHIPROW_HEIGHT,
   },
   searchChip: {
     flexDirection: 'row',
