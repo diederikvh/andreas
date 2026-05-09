@@ -112,12 +112,14 @@ Andreas-night-modus targeted. 3 al gescrape'd (Doka 2, Lofi 16, Radion 22 = 40 e
 
 **Kleinere alt-clubs:**
 - ✅ **Tilla Tec** — Weeztix (OpenTicket) shop UUID `0e536f93-...` → publieke `data` API. 14 events.
-- ✅ **Radio Radio** — Weeztix idem (UUID `c5059b47-...`). 13 events.
+- ✅ **Radio Radio** — directe scraper op `radioradio.radio/club` (Nuxt-site met DatoCMS-payload inline in `window.__NUXT__.data.{key}.data.allEvents`). Per event: `id`/`title`/`description`/`date`/`startTime`/`endTime`/`ticket`/`image.responsiveImage.src`. 12 events, 7/12 mirrored (alleen events met "Info"-knop hebben een image in DatoCMS).
 - ✅ **nachbar** — Stager-host `nachbar.stager.co`, shopId 5088. 0 events op moment (config klaar).
 - ⏳ **Warehouse Elementenstraat** — Weeztix UUID `448146f6-...` (van `elementenstraat.nl/events`), shop momenteel leeg.
 - ⬜ Garage Noord, iNN Amsterdam, Claire, CONTACT, Het Sieraad — separate research
 
-**Mainstream clubs (8 unpublished):** Marktkantine, Madam, Club NL, Club Home, Het Sieraad — staan op `published=false`. Eerst onderzoek welke nog actief zijn (sommige zijn permanent gesloten of verhuisd).
+- ✅ **Madam** — Fourvenues iframe (`site.fourvenues.com/en/iframe/madam@g:pwsbn` — slug URL-encoded). Tile-DOM is `<app-event-card>` met date+title+12u-tijden in tekst en image-src in nested `<img src="…/imagedelivery/…/width=534">`. 8 events, 8/8 mirrored.
+
+**Mainstream clubs (resterend):** Marktkantine, Club NL, Club Home, Het Sieraad — staan op `published=false`. Eerst onderzoek welke nog actief zijn (sommige zijn permanent gesloten of verhuisd).
 
 **Mogelijke bulk-aanpak**: Resident Advisor (`ra.co/clubs/amsterdam`) heeft venue-pages voor de meeste underground clubs (Garage Noord, Lofi, Doka, Radion, BRET, Radio Radio, Tilla Tec, Shelter). Eén RA-scraper zou ~10 venues in één keer dekken. Worth investigating als per-club aanpak meer custom werk vereist.
 
