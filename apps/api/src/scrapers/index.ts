@@ -1,10 +1,12 @@
 import { scrapeBimhuis, type BimhuisResult } from './bimhuis.js';
 import { scrapeBoomChicago, type BoomChicagoResult } from './boomchicago.js';
+import { scrapeBrakkeGrond, type BrakkeGrondResult } from './brakkegrond.js';
 import { scrapeConcertgemaal, type ConcertgemaalResult } from './concertgemaal.js';
 import { scrapeIta, type ItaResult } from './ita.js';
 import { scrapeOperaballet, type OperaballetResult } from './operaballet.js';
 import { scrapeOt301, type Ot301Result } from './ot301.js';
 import { scrapePodiumMozaiek, type PodiumMozaiekResult } from './podiummozaiek.js';
+import { scrapeQFactory, type QFactoryResult } from './qfactory.js';
 import { scrapeIcal, type IcalVenueResult } from './ical.js';
 import { scrapeJsonLd, type JsonLdVenueResult } from './jsonld.js';
 import { scrapeMelkweg, type MelkwegResult } from './melkweg.js';
@@ -43,6 +45,8 @@ export const scrapers = {
   operaballet: scrapeOperaballet,
   ot301: scrapeOt301,
   podiummozaiek: scrapePodiumMozaiek,
+  brakkegrond: scrapeBrakkeGrond,
+  qfactory: scrapeQFactory,
 } as const;
 
 export type ScraperName = keyof typeof scrapers;
@@ -66,4 +70,6 @@ export type ScraperResult =
   | ItaResult
   | OperaballetResult
   | Ot301Result
-  | PodiumMozaiekResult;
+  | PodiumMozaiekResult
+  | BrakkeGrondResult
+  | QFactoryResult;

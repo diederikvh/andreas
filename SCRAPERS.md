@@ -2,7 +2,7 @@
 
 Prioriteit-volgorde voor scraper-implementaties, op volgorde van impact (events × belang). Vink af zodra een venue events oplevert in DB.
 
-**Stand**: 33/50 done — ~2.400 events live. Phase 1 volledig + Phase 2 dekkende ronde.
+**Stand**: 34/50 done — ~2.400 events live. Phase 1 volledig + Phase 2 dekkende ronde + quality-passes voor OT301/Q-Factory/PM.
 
 ---
 
@@ -49,7 +49,8 @@ Prioriteit-volgorde voor scraper-implementaties, op volgorde van impact (events 
 | ✅ | OT301 | 32 / 66 occ | Playwright `/nl/agenda` `.event-item` parser (lokaal-only) |
 | ✅ | NDSM Loods | 5 / 5 occ | Theater-scraper (WP `event_listing-sitemap.xml` + JSON-LD per detail-page) |
 | ✅ | Podium Mozaïek | 21 / 27 occ | `/data/events/all.json` met custom_description + custom_images (rijker dan Ticketmatic shop) |
-| ✅ | Q-Factory | 17 / 17 occ | JSON-LD scraper op TM venue-page `ticketmaster.nl/venue/.../qfactory/108` (Discovery API gaf 0; SSR-page heeft alle 17 events JSON-LD) |
+| ✅ | Q-Factory | 10 / 10 occ | Playwright op `q-factory.com/nl#all-events-section` — eigen site heeft images (Storyblok) + echte descriptions; lokaal-only (TM venue-page bron had fake descriptions + lege images) |
+| ✅ | De Brakke Grond | 7 / 12 occ | Playwright per show op `/agenda/{id}/{slug}` — h1 + `.text-block.block` + `figure.gallery-block__image` voor image, body parsed voor multi-night Dutch dates |
 | ✅ | RAI Theater | 7 / 12 occ | Ticketmaster Discovery API |
 | ✅ | Theater Amsterdam | 3 / 4 occ | Ticketmaster Discovery API |
 | ✅ | Carré | 48 / 235 occ | Theater-scraper (sitemap + JSON-LD `Event`, Googlebot UA) |
@@ -72,9 +73,9 @@ Prioriteit-volgorde voor scraper-implementaties, op volgorde van impact (events 
 - ✅ **NDSM Loods** — `ndsmloods.nl/event_listing-sitemap.xml` (echte URL is met www, niet ndsm-loods.nl)
 - ✅ **Podium Mozaïek** — Ticketmatic shop `ticketshop.ticketmatic.com/podium_mozaiek/shop` (eigen site is SSL-broken)
 - ❌ **Compagnietheater** — gehackt (gokken-spam)
-- ✅ **Q-Factory** — TM Discovery API geeft 0 maar de TM-website venue-page `ticketmaster.nl/venue/.../qfactory/108` heeft 17 JSON-LD events server-side; jsonld-scraper pakt die direct.
+- ✅ **Q-Factory** — eigen site `q-factory.com/nl#all-events-section` Playwright (rijker dan TM venue-page; eerst geprobeerd met `jsonld.ts` op TM SSR maar fake descriptions zonder image)
+- ✅ **De Brakke Grond** — Playwright per show op `/agenda/{id}/{slug}`, multi-night Dutch dates uit body
 - ⚠️ **Sugarfactory** — `/agenda/` 404, geen events publiek bereikbaar
-- ⚠️ **De Brakke Grond** — agenda is JS-rendered (Playwright haalt 20 show-URLs op `/agenda/{id}/{slug}`), maar detail-pages óók CSR — vereist Playwright per show
 - ⚠️ **Jazz Café Alto** — WP zonder custom event post-type
 
 ### Phase 3 — S impact
