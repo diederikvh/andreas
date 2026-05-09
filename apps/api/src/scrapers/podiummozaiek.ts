@@ -5,42 +5,51 @@ import { uploadToBunny } from '../storage/bunny.js';
 import { enrichEvent, refineKindByDuration } from './enrich.js';
 
 /**
- * Podium Mozaïek (Bos en Lommer) gebruikt **Ticketmatic** als ticketshop.
- * Hun eigen site (`podiummozaiek.nl`) is SSL-broken op moment van
- * schrijven, maar de Ticketmatic shop heeft alle data:
+ * Podium Mozaïek (Bos en Lommer). Hun eigen site is een SPA, maar
+ * exposeert publieke JSON-data:
  *
- *   GET https://ticketshop.ticketmatic.com/podium_mozaiek/shop
+ *   GET https://www.podiummozaiek.nl/data/events/all.json
  *
- * Response heeft inline AngularJS:
- *   angular.module("tm.shop").constant("SHOP", {
- *     account: "podium_mozaiek",
- *     events: [
- *       { code, name, description, subtitle, location, start, end },
- *       ...
- *     ]
- *   })
+ * Returns array van ~195 events. Per event:
+ *  - id (bv. `tm-11869-915fb9d5` voor Ticketmatic-gekoppelde shows,
+ *    of een UUID voor eigen producties)
+ *  - name (titel)
+ *  - custom_description (HTML — uitgebreide beschrijving)
+ *  - custom_short (HTML — korte intro)
+ *  - custom_labels (Comedy / Theater / Expositie / series:RRREURING)
+ *  - custom_images (absolute URL of relatief `/images/{slug}.jpg`)
+ *  - startts / endts (ISO timestamps)
+ *  - ticket_url, custom_ticket_url
+ *  - locationname (zaal)
  *
- * Per event = 1 occurrence (geen performances-array). Voor multi-night
- * shows (bv. "404 CONNECTION (NOT) FOUND" 16:00 + 19:00 op zelfde dag)
- * staan ze als aparte events in de array — title-grouping merge ze
- * (strip "(uitverkocht)" suffix).
+ * Title-grouping: events met dezelfde clean-title (na strip
+ * "(uitverkocht)" e.d.) worden naar één event-row gemerged met N
+ * occurrences (matinee+avond op zelfde dag, multi-night).
  *
  * Idempotency: eventId = `evt-pm-{slugify(cleanTitle)}`,
- *              occurrenceId = `occ-pm-{eventCode}`.
+ *              occurrenceId = `occ-pm-{event.id}`.
  */
 
 const VENUE_ID = 'podium-mozaiek';
 const UA = 'Andreas-Scraper/1.0 (+https://andreas.amsterdam)';
-const SHOP_URL = 'https://ticketshop.ticketmatic.com/podium_mozaiek/shop';
+const ALL_EVENTS_URL = 'https://www.podiummozaiek.nl/data/events/all.json';
+const BASE = 'https://www.podiummozaiek.nl';
 
-type ShopEvent = {
-  code: string;
-  name: string;
-  description?: string;
-  subtitle?: string;
-  location?: string;
-  start?: string;        // "2026-03-20T20:30:00"
-  end?: string;
+type ApiEvent = {
+  id: string;
+  name?: string;
+  custom_description?: string | null;
+  custom_short?: string | null;
+  custom_titel?: string | null;
+  custom_labels?: string | null;
+  custom_images?: string | null;
+  custom_ticket_url?: string | null;
+  ticket_url?: string | null;
+  locationname?: string | null;
+  startts?: string | null;
+  endts?: string | null;
+  _status?: string;
+  currentstatus?: number;
 };
 
 function slugify(s: string): string {
@@ -53,7 +62,6 @@ function slugify(s: string): string {
     .slice(0, 80);
 }
 
-/** Strip status-suffixen die niet de echte titel zijn. */
 function cleanTitle(name: string): string {
   return name
     .replace(/\s*\((?:uitverkocht|sold out|wachtlijst|aflasting|geannuleerd|verplaatst)[^)]*\)\s*/gi, '')
@@ -61,40 +69,28 @@ function cleanTitle(name: string): string {
     .trim();
 }
 
-async function fetchShopEvents(): Promise<ShopEvent[]> {
-  const r = await fetch(SHOP_URL, { headers: { 'user-agent': UA } });
-  if (!r.ok) return [];
-  const html = await r.text();
-  const inline = html.match(/<script(?![^>]*src)[^>]*>([\s\S]+?)<\/script>/g) ?? [];
-  for (const block of inline) {
-    if (!block.includes('"events"')) continue;
-    // Find SHOP constant
-    const m = block.match(/\.constant\("SHOP",\s*(\{[\s\S]+?\})\s*\)/);
-    if (!m) continue;
-    try {
-      const d = JSON.parse(m[1]) as { events?: ShopEvent[] };
-      return d.events ?? [];
-    } catch {
-      continue;
-    }
-  }
-  return [];
+function decodeEntities(s: string): string {
+  return s
+    .replace(/&#(\d+);/g, (_, c) => String.fromCodePoint(parseInt(c, 10)))
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, c) => String.fromCodePoint(parseInt(c, 16)))
+    .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&nbsp;/g, ' ');
 }
 
-async function fetchDetailMeta(code: string): Promise<{ description: string | null; image: string | null }> {
-  try {
-    const r = await fetch(`${SHOP_URL}/event/${code}`, { headers: { 'user-agent': UA } });
-    if (!r.ok) return { description: null, image: null };
-    const html = await r.text();
-    const desc = html.match(/<meta property="og:description" content="([^"]+)"/)?.[1] ?? null;
-    const img = html.match(/<meta property="og:image" content="([^"]+)"/)?.[1] ?? null;
-    return {
-      description: desc ? desc.replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;/g, "'") : null,
-      image: img,
-    };
-  } catch {
-    return { description: null, image: null };
-  }
+function stripHtml(s: string): string {
+  return decodeEntities(s.replace(/<[^>]+>/g, ' ')).replace(/\s+/g, ' ').trim();
+}
+
+function resolveImageUrl(raw: string): string {
+  if (raw.startsWith('http')) return raw;
+  if (raw.startsWith('/')) return `${BASE}${raw}`;
+  return `${BASE}/${raw}`;
+}
+
+async function fetchAllEvents(): Promise<ApiEvent[]> {
+  const r = await fetch(ALL_EVENTS_URL, { headers: { 'user-agent': UA, accept: 'application/json' } });
+  if (!r.ok) return [];
+  return (await r.json()) as ApiEvent[];
 }
 
 async function mirrorImage(sourceUrl: string, slug: string): Promise<string | null> {
@@ -138,29 +134,29 @@ export async function scrapePodiumMozaiek(options?: {
   }
   const venueCategory = venue.categories?.[0] ?? 'Theater';
 
-  const events = await fetchShopEvents();
+  const events = (await fetchAllEvents()).filter(
+    (e) => e._status === 'published' && e.name && e.startts
+  );
   result.fetched = events.length;
   if (events.length === 0) {
-    result.errors.push('geen events in Ticketmatic SHOP');
+    result.errors.push('geen events in all.json');
     return [result];
   }
 
-  // Title-grouping: strip "(uitverkocht)" e.d., merge events met
-  // dezelfde clean title naar één event-row (multi-occurrence).
-  type Group = { titleSlug: string; head: ShopEvent; cleanName: string; events: ShopEvent[] };
+  // Title-grouping
+  type Group = { titleSlug: string; cleanName: string; head: ApiEvent; events: ApiEvent[] };
   const groups = new Map<string, Group>();
   for (const e of events) {
-    if (!e.code || !e.name || !e.start) continue;
-    const cleanName = cleanTitle(e.name);
-    const titleSlug = slugify(cleanName);
-    if (!titleSlug) continue;
-    const g = groups.get(titleSlug);
+    const cn = cleanTitle(e.name!);
+    const ts = slugify(cn);
+    if (!ts) continue;
+    const g = groups.get(ts);
     if (g) g.events.push(e);
-    else groups.set(titleSlug, { titleSlug, cleanName, head: e, events: [e] });
+    else groups.set(ts, { titleSlug: ts, cleanName: cn, head: e, events: [e] });
   }
-  // Sort events per group on start date; head = earliest
+  // Sort each on startts; head = earliest
   for (const g of groups.values()) {
-    g.events.sort((a, b) => (a.start ?? '').localeCompare(b.start ?? ''));
+    g.events.sort((a, b) => (a.startts ?? '').localeCompare(b.startts ?? ''));
     g.head = g.events[0];
   }
 
@@ -175,9 +171,8 @@ export async function scrapePodiumMozaiek(options?: {
         .where(eq(schema.events.id, eventId))
         .limit(1);
 
-      // Filter future slots
       const futureEvents = group.events.filter((e) => {
-        const t = new Date(`${e.start!.replace(' ', 'T')}+02:00`).getTime();
+        const t = new Date(e.startts!).getTime();
         return !isNaN(t) && t > cutoff;
       });
       if (futureEvents.length === 0) { result.skipped++; continue; }
@@ -185,16 +180,19 @@ export async function scrapePodiumMozaiek(options?: {
       let enriched: Awaited<ReturnType<typeof enrichEvent>> | null = null;
 
       if (!existing) {
-        // SHOP description is vaak leeg — gebruik subtitle als bron
-        // en haal og-meta van detail-page indien nodig.
-        let description = group.head.description?.trim() || group.head.subtitle?.trim() || null;
+        const head = group.head;
+        // Description: prefer custom_description (lang), fallback custom_short
+        const rawDesc =
+          head.custom_description?.trim() ||
+          head.custom_short?.trim() ||
+          null;
+        const description = rawDesc ? stripHtml(rawDesc) : null;
+
+        // Image
         let imageUrl: string | null = null;
-        if (!description || description.length < 30) {
-          const detail = await fetchDetailMeta(group.head.code);
-          if (detail.description) description = detail.description;
-          if (detail.image) {
-            imageUrl = (await mirrorImage(detail.image, group.titleSlug)) ?? detail.image;
-          }
+        if (head.custom_images) {
+          const src = resolveImageUrl(head.custom_images);
+          imageUrl = (await mirrorImage(src, group.titleSlug)) ?? src;
         }
 
         try {
@@ -208,8 +206,18 @@ export async function scrapePodiumMozaiek(options?: {
           result.errors.push(`enrich ${group.cleanName}: ${(e as Error).message}`);
         }
 
-        const headStart = new Date(`${futureEvents[0]!.start!.replace(' ', 'T')}+02:00`);
+        const headStart = new Date(futureEvents[0]!.startts!);
         const eventKind = refineKindByDuration(enriched?.kind ?? 'show', headStart, null);
+
+        // Genres uit custom_labels (bv. "Comedy", "Theater", "Expositie",
+        // "series:RRREURING") als fallback voor Claude-genres
+        const labelGenres = head.custom_labels
+          ? head.custom_labels
+              .split(/[,;|]/)
+              .map((s) => s.trim().replace(/^series:/, ''))
+              .filter((s) => s && s.length < 30)
+          : [];
+        const finalGenres = (enriched?.genres?.length ?? 0) > 0 ? enriched!.genres : labelGenres;
 
         try {
           await db.insert(schema.events).values({
@@ -221,7 +229,7 @@ export async function scrapePodiumMozaiek(options?: {
             imageUrl,
             category: enriched?.category ?? venueCategory,
             featured: false,
-            genres: enriched?.genres ?? [],
+            genres: finalGenres,
             published: true,
           });
           result.inserted++;
@@ -233,12 +241,12 @@ export async function scrapePodiumMozaiek(options?: {
 
       for (const e of futureEvents) {
         try {
-          const startsAt = new Date(`${e.start!.replace(' ', 'T')}+02:00`);
-          const endsAt = e.end ? new Date(`${e.end.replace(' ', 'T')}+02:00`) : null;
+          const startsAt = new Date(e.startts!);
+          const endsAt = e.endts ? new Date(e.endts.replace(' ', 'T')) : null;
           if (isNaN(startsAt.getTime())) { result.skipped++; continue; }
-          const occurrenceId = `occ-pm-${e.code}`;
-          const status: 'scheduled' | 'sold_out' = /uitverkocht|sold out/i.test(e.name) ? 'sold_out' : 'scheduled';
-          const ticketUrl = `${SHOP_URL}/event/${e.code}`;
+          const occurrenceId = `occ-pm-${e.id}`;
+          const status: 'scheduled' | 'sold_out' = /uitverkocht|sold out/i.test(e.name ?? '') ? 'sold_out' : 'scheduled';
+          const ticketUrl = e.custom_ticket_url ?? e.ticket_url ?? null;
           await db
             .insert(schema.occurrences)
             .values({
@@ -249,17 +257,17 @@ export async function scrapePodiumMozaiek(options?: {
               priceCents: null,
               priceNote: existing ? null : (enriched?.priceNote ?? null),
               ticketUrl,
-              room: e.location ?? null,
+              room: e.locationname ?? null,
               lineup: existing ? null : (enriched?.lineup ?? null),
               status,
             })
             .onConflictDoUpdate({
               target: schema.occurrences.id,
-              set: { startsAt, endsAt, ticketUrl, room: e.location ?? null, status },
+              set: { startsAt, endsAt, ticketUrl, room: e.locationname ?? null, status },
             });
           result.occurrencesUpserted++;
         } catch (err) {
-          result.errors.push(`occurrence ${e.code}: ${(err as Error).message}`);
+          result.errors.push(`occurrence ${e.id}: ${(err as Error).message}`);
           result.skipped++;
         }
       }
