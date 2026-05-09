@@ -19,6 +19,7 @@ import {
   TabIconVenues,
 } from '@/components/icons/TabIcons';
 import { useSession } from '@/lib/authClient';
+import { tinyTap } from '@/lib/haptics';
 import { useFriendRequests, useInvites } from '@/lib/queries';
 import { useMode, useRoles } from '@/store/mode';
 import { fontFamily, palette } from '@/theme/tokens';
@@ -120,6 +121,7 @@ export function TabBar({ state, navigation }: BottomTabBarProps) {
         // Op verborgen routes (kaart) markeren we niemand als actief.
         const focused = !onHiddenRoute && state.index === index;
         const onPress = () => {
+          tinyTap();
           const event = navigation.emit({
             type: 'tabPress',
             target: route.key,

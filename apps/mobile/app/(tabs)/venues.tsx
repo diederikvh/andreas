@@ -40,6 +40,7 @@ import {
   VENUE_TYPE_TICK,
   VENUE_TYPE_VALUES,
 } from '@/lib/eventDisplay';
+import { softTap, tinyTap } from '@/lib/haptics';
 import { useLocale, useT, type Locale } from '@/lib/i18n';
 import { useVenues, useVenueSubtypes } from '@/lib/queries';
 import { useTabDoubleTap } from '@/lib/useTabDoubleTap';
@@ -679,7 +680,10 @@ function ChipRow({
           />
         </View>
         <Pressable
-          onPress={() => setFilterOpen(true)}
+          onPress={() => {
+            softTap();
+            setFilterOpen(true);
+          }}
           style={[
             styles.catChip,
             {
@@ -1096,7 +1100,10 @@ function FilterSheet({
                   return (
                     <Pressable
                       key={`${section.type}-${b.subtype}`}
-                      onPress={() => toggleSubtype(b.subtype)}
+                      onPress={() => {
+                        tinyTap();
+                        toggleSubtype(b.subtype);
+                      }}
                       style={[
                         styles.subtypeFilterChip,
                         {
@@ -1264,7 +1271,10 @@ function FilterChip({
   const isNacht = mode === 'nacht';
   return (
     <Pressable
-      onPress={onPress}
+      onPress={() => {
+        tinyTap();
+        onPress();
+      }}
       style={[
         styles.filterChip,
         {

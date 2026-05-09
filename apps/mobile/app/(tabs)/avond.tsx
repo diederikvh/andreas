@@ -59,6 +59,7 @@ import {
   useNowMinute,
   useTimeBlocks,
 } from '@/lib/eventDisplay';
+import { softTap, tinyTap } from '@/lib/haptics';
 import { useLocale, useT, type Locale } from '@/lib/i18n';
 import {
   useEventGenres,
@@ -876,7 +877,10 @@ function AvondChipRow({
           />
         </View>
         <Pressable
-          onPress={() => setFilterOpen(true)}
+          onPress={() => {
+            softTap();
+            setFilterOpen(true);
+          }}
           style={[
             styles.catChip,
             {
@@ -1331,7 +1335,10 @@ export function AvondFilterSheet({
                   return (
                     <Pressable
                       key={`${section.category}-${b.genre}`}
-                      onPress={() => toggleGenre(b.genre)}
+                      onPress={() => {
+                        tinyTap();
+                        toggleGenre(b.genre);
+                      }}
                       style={[
                         styles.genreChip,
                         {
@@ -1503,7 +1510,10 @@ function SheetChip({
   const isNacht = mode === 'nacht';
   return (
     <Pressable
-      onPress={onPress}
+      onPress={() => {
+        tinyTap();
+        onPress();
+      }}
       style={[
         styles.sheetChip,
         {
