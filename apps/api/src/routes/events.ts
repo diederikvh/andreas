@@ -19,7 +19,11 @@ const VALID_CATEGORIES = new Set(['Muziek', 'Theater', 'Literatuur', 'Film', 'Ku
 export const eventsRoute = new Hono();
 
 eventsRoute.get('/', async (c) => {
-  const limit = Math.min(Number(c.req.query('limit') ?? 50), 200);
+  // Cap omhoog van 50/200 naar 200/5000: Agenda toont alle toekomstige
+  // events (~2k op dit moment), niet alleen de eerstvolgende 50. Voor
+  // Vandaag/Kaart die met `from + to` een dag-window opvragen blijven
+  // de queries klein. Server-payload bij ~2k events is rond ~500KB JSON.
+  const limit = Math.min(Number(c.req.query('limit') ?? 200), 5000);
 
   const featured = c.req.query('featured');
   const from = c.req.query('from');

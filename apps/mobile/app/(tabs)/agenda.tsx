@@ -142,7 +142,13 @@ export default function Agenda() {
     return d.toISOString();
   }, [focusedNow]);
 
-  const { data: events, isLoading, error } = useEvents({ from: todayStartIso });
+  // Agenda toont alles vanaf vandaag tot ver in de toekomst — vraag een
+  // ruime limit zodat we niet gecapped worden op de server-default. ~2k
+  // toekomstige events past in ~500KB JSON, prima fetchbaar.
+  const { data: events, isLoading, error } = useEvents({
+    from: todayStartIso,
+    limit: 5000,
+  });
   // Series + exhibitions delen één "Loopt nu"-strook bovenaan op de
   // Agenda — zelfde patroon als Vandaag voor visuele rust.
   const { data: seriesList } = useSeriesList();
