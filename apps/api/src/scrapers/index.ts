@@ -9,6 +9,7 @@ import { scrapeOt301, type Ot301Result } from './ot301.js';
 import { scrapePodiumMozaiek, type PodiumMozaiekResult } from './podiummozaiek.js';
 import { scrapeQFactory, type QFactoryResult } from './qfactory.js';
 import { scrapeThuishaven, type ThuishavenResult } from './thuishaven.js';
+import { scrapeWeeztix, type WeeztixVenueResult } from './weeztix.js';
 import { scrapeIcal, type IcalVenueResult } from './ical.js';
 import { scrapeJsonLd, type JsonLdVenueResult } from './jsonld.js';
 import { scrapeMelkweg, type MelkwegResult } from './melkweg.js';
@@ -51,6 +52,7 @@ export const scrapers = {
   qfactory: scrapeQFactory,
   thuishaven: scrapeThuishaven,
   celebratix: scrapeCelebratix,
+  weeztix: scrapeWeeztix,
 } as const;
 
 export type ScraperName = keyof typeof scrapers;
@@ -78,4 +80,5 @@ export type ScraperResult =
   | BrakkeGrondResult
   | QFactoryResult
   | ThuishavenResult
-  | CelebratixVenueResult;
+  | CelebratixVenueResult
+  | WeeztixVenueResult;

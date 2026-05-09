@@ -2,7 +2,7 @@
 
 Prioriteit-volgorde voor scraper-implementaties, op volgorde van impact (events × belang). Vink af zodra een venue events oplevert in DB.
 
-**Stand**: 36/50 done — ~2.440 events live. Phase 1 volledig + Phase 2 dekkende ronde + clubs (Thuishaven 24, BRET 15, Doka 2, Lofi 16, Radion 22 = 79 club-events).
+**Stand**: 38/50 done — ~2.467 events live. Phase 1 volledig + Phase 2 dekkende ronde + clubs (Thuishaven 24, BRET 15, Tilla Tec 14, Radio Radio 13, Doka 2, Lofi 16, Radion 22 = 106 club-events).
 
 ---
 
@@ -111,8 +111,11 @@ Andreas-night-modus targeted. 3 al gescrape'd (Doka 2, Lofi 16, Radion 22 = 40 e
 - ✅ **BRET** [klein/alt] — Celebratix-channel `fuef7` (in widget op `bret.bar/ticketshop` → filesusr.com iframe). Pure HTTP-API: `api.celebratix.io/v2/consumers/Events?channel=fuef7&pageSize=100`. 15 events / 15 mirrored. Patroon herbruikbaar voor andere clubs (`scraperConfig.celebratix = { channel }`).
 
 **Kleinere alt-clubs:**
-- ⬜ Tilla Tec, Radio Radio, nachbar — `tillatec.com`, `radioradio.radio`, `nachbar.amsterdam`
-- ⬜ Garage Noord (zie boven), iNN Amsterdam, Claire, CONTACT — kleinere venues, vermoedelijk RA
+- ✅ **Tilla Tec** — Weeztix (OpenTicket) shop UUID `0e536f93-...` → publieke `data` API. 14 events.
+- ✅ **Radio Radio** — Weeztix idem (UUID `c5059b47-...`). 13 events.
+- ✅ **nachbar** — Stager-host `nachbar.stager.co`, shopId 5088. 0 events op moment (config klaar).
+- ⏳ **Warehouse Elementenstraat** — Weeztix UUID `448146f6-...` (van `elementenstraat.nl/events`), shop momenteel leeg.
+- ⬜ Garage Noord, iNN Amsterdam, Claire, CONTACT, Het Sieraad — separate research
 
 **Mainstream clubs (8 unpublished):** Marktkantine, Madam, Club NL, Club Home, Het Sieraad — staan op `published=false`. Eerst onderzoek welke nog actief zijn (sommige zijn permanent gesloten of verhuisd).
 

@@ -196,6 +196,11 @@ export const venues = pgTable('venues', {
         channel. Gebruikt door BRET (channel `fuef7`) en mogelijk
         andere clubs. Eén channel-ID is alles wat we nodig hebben. */
     celebratix?: { channel: string };
+    /** Weeztix is een ticket-platform (Eventix / OpenTicket). Per
+        venue is de shop-UUID (uit `shop.weeztix.com/{uuid}/events`) de
+        enige config. Image-augmentatie kan optioneel via een eigen
+        agenda-page met JSON-LD of og-meta. */
+    weeztix?: { shopUuid: string; imageAgendaUrl?: string };
     /** Generic theater-scraper: pakt show-URLs uit een sitemap, fetcht
         elke show-page en parseert JSON-LD `Event`-blokken óf
         `data-date` attributes. Gebruikt voor Carré, Meervaart, DeLaMar. */
