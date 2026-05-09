@@ -55,12 +55,14 @@ const TONE = {
     flare: palette.flare,
     plum: palette.plum,
     azure: palette.azure,
+    saffron: palette.saffron,
   },
   dag: {
     acid: palette.red,
     flare: palette.forest,
     plum: palette.cobalt,
     azure: '#8a5b00',
+    saffron: '#9d6008',
   },
 } as const;
 

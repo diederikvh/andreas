@@ -72,7 +72,7 @@ export function monthFull(monthIndex: number, locale?: Locale): string {
 export const CATEGORY_TICK: Record<ApiEvent['category'], BadgeTone> = {
   Muziek: 'acid',
   Theater: 'flare',
-  Literatuur: 'plum',
+  Literatuur: 'saffron',
   Film: 'azure',
   // Kunst deelt `plum` met galleries/musea — zelfde curatorial-vibe.
   Kunst: 'plum',

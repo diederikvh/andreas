@@ -108,19 +108,21 @@ const CATEGORIES_ORDER: ApiEvent['category'][] = [
 // rijen eronder.
 const TONE: Record<
   'nacht' | 'dag',
-  Record<'acid' | 'flare' | 'plum' | 'azure', string>
+  Record<'acid' | 'flare' | 'plum' | 'azure' | 'saffron', string>
 > = {
   nacht: {
     acid: palette.acid,
     flare: palette.flare,
     plum: palette.plum,
     azure: palette.azure,
+    saffron: palette.saffron,
   },
   dag: {
     acid: palette.red,
     flare: palette.forest,
     plum: palette.cobalt,
     azure: '#8a5b00',
+    saffron: '#9d6008',
   },
 };
 
