@@ -4,6 +4,7 @@ import { scrapeBrakkeGrond, type BrakkeGrondResult } from './brakkegrond.js';
 import { scrapeCelebratix, type CelebratixVenueResult } from './celebratix.js';
 import { scrapeConcertgemaal, type ConcertgemaalResult } from './concertgemaal.js';
 import { scrapeFourvenues, type FourvenuesResult } from './fourvenues.js';
+import { scrapeGarageNoord, type GarageNoordResult } from './garagenoord.js';
 import { scrapeIta, type ItaResult } from './ita.js';
 import { scrapeOperaballet, type OperaballetResult } from './operaballet.js';
 import { scrapeOt301, type Ot301Result } from './ot301.js';
@@ -20,6 +21,7 @@ import { scrapeP60, type P60Result } from './p60.js';
 import { scrapeParadiso, type ParadisoResult } from './paradiso.js';
 import { scrapeRadioRadio, type RadioRadioResult } from './radioradio.js';
 import { scrapeShelter, type ShelterResult } from './shelter.js';
+import { scrapeSieraad, type SieraadResult } from './sieraad.js';
 import { scrapeStager, type StagerVenueResult } from './stager.js';
 import { scrapeTheater, type TheaterVenueResult } from './theater.js';
 import { scrapeTicketmaster, type TicketmasterVenueResult } from './ticketmaster.js';
@@ -59,6 +61,8 @@ export const scrapers = {
   fourvenues: scrapeFourvenues,
   shelter: scrapeShelter,
   radioradio: scrapeRadioRadio,
+  sieraad: scrapeSieraad,
+  garagenoord: scrapeGarageNoord,
 } as const;
 
 export type ScraperName = keyof typeof scrapers;
@@ -90,4 +94,6 @@ export type ScraperResult =
   | WeeztixVenueResult
   | FourvenuesResult
   | ShelterResult
-  | RadioRadioResult;
+  | RadioRadioResult
+  | SieraadResult
+  | GarageNoordResult;

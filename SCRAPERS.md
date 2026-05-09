@@ -103,23 +103,25 @@ Prioriteit-volgorde voor scraper-implementaties, op volgorde van impact (events 
 
 Andreas-night-modus targeted. 3 al gescrape'd (Doka 2, Lofi 16, Radion 22 = 40 events totaal).
 
-**Top 5 grote clubs:**
+**Top grote clubs:**
 - ✅ **Thuishaven** [groot/mainstream] — `thuishaven.nl` (WordPress) — Playwright homepage harvest event-URLs `/{DD}-{maand}-{slug}/`, server-rendered detail-page heeft `<title>`/img/`.agenda-line-up__line-up` met DJ-lineup per area (Loods/Secret). 24 events, 24/24 lineup, 23/24 mirrored.
 - ⬜ **Warehouse Elementenstraat** [groot/mainstream] — geen eigen URL; vermoedelijk via RA / Eventbrite
-- ⬜ **Garage Noord** [middel/alt] — gebruikt Resident Advisor als ticketing → mogelijk via RA-scraper
+- ✅ **Garage Noord** [middel/alt] — pure-HTTP scraper op `garagenoord.com/`. Per event: tile-link `garagenoord.com/club/{slug}` + WeTicket-link `garagenoord.weticket.io/{slug}/shop` (of `ra.co/events/N` voor festivals). Image via og:image op detail-page (gehost op garagenoord.com). 7 events, 7/7 mirrored.
 - ✅ **Shelter** [middel/mainstream] — directe WP REST API op `shelteramsterdam.nl/wp-json/wp/v2/dt_portfolio` (Fourvenues-iframe staat op de site, content komt uit WP). Per event: `featured_media` (1080×1080 PNG), `yoast_head_json.og_description` (1-2 zinnen lineup-summary), `date` als startsAt, default end = +7u. 16 events, 16/16 mirrored, 16/16 description.
 - ✅ **BRET** [klein/alt] — Celebratix-channel `fuef7` (in widget op `bret.bar/ticketshop` → filesusr.com iframe). Pure HTTP-API: `api.celebratix.io/v2/consumers/Events?channel=fuef7&pageSize=100`. 15 events / 15 mirrored. Patroon herbruikbaar voor andere clubs (`scraperConfig.celebratix = { channel }`).
+- ⏳ **Escape** [groot/mainstream] — venue toegevoegd (Rembrandtplein 11), géén scraper. Tickets via **Fairtix** (`tickets.escape.nl`) — nieuw platform, vereist dedicated `fairtix.ts` module. Agenda-overzicht op `escape.nl/en/agenda/` is custom HTML zonder JSON-LD/sitemap; events-URLs zijn `/en/{YYYY-MM-DD}_{slug}/` met og:image per event. Twee mogelijke bronnen: (a) Fairtix-API reverse engineeren (rijker, met tickets/prijs), of (b) escape.nl agenda-page parser (basisdata + image, géén tickets).
 
 **Kleinere alt-clubs:**
 - ✅ **Tilla Tec** — Weeztix (OpenTicket) shop UUID `0e536f93-...` → publieke `data` API. 14 events.
 - ✅ **Radio Radio** — directe scraper op `radioradio.radio/club` (Nuxt-site met DatoCMS-payload inline in `window.__NUXT__.data.{key}.data.allEvents`). Per event: `id`/`title`/`description`/`date`/`startTime`/`endTime`/`ticket`/`image.responsiveImage.src`. 12 events, 7/12 mirrored (alleen events met "Info"-knop hebben een image in DatoCMS).
 - ✅ **nachbar** — Stager-host `nachbar.stager.co`, shopId 5088. 0 events op moment (config klaar).
 - ⏳ **Warehouse Elementenstraat** — Weeztix UUID `448146f6-...` (van `elementenstraat.nl/events`), shop momenteel leeg.
-- ⬜ Garage Noord, iNN Amsterdam, Claire, CONTACT, Het Sieraad — separate research
+- ✅ **Het Sieraad** — pure-HTTP scraper op `het-sieraad.nl/` server-rendered tabel met `.event-row`s (date+time+lineup+sound+ticket-URL). Tickets via Paylogic short-IDs. Geen images op de site (Het Sieraad voert geen tile-art per event). 5 events.
+- ⬜ iNN Amsterdam, Claire, CONTACT — separate research
 
 - ✅ **Madam** — Fourvenues iframe (`site.fourvenues.com/en/iframe/madam@g:pwsbn` — slug URL-encoded). Tile-DOM is `<app-event-card>` met date+title+12u-tijden in tekst en image-src in nested `<img src="…/imagedelivery/…/width=534">`. 8 events, 8/8 mirrored.
 
-**Mainstream clubs (resterend):** Marktkantine, Club NL, Club Home, Het Sieraad — staan op `published=false`. Eerst onderzoek welke nog actief zijn (sommige zijn permanent gesloten of verhuisd).
+**Mainstream clubs (resterend):** Marktkantine, Club NL, Club Home — staan op `published=false`. Eerst onderzoek welke nog actief zijn (sommige zijn permanent gesloten of verhuisd).
 
 **Mogelijke bulk-aanpak**: Resident Advisor (`ra.co/clubs/amsterdam`) heeft venue-pages voor de meeste underground clubs (Garage Noord, Lofi, Doka, Radion, BRET, Radio Radio, Tilla Tec, Shelter). Eén RA-scraper zou ~10 venues in één keer dekken. Worth investigating als per-club aanpak meer custom werk vereist.
 
