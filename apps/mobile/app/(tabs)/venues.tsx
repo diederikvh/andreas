@@ -35,6 +35,7 @@ import type {
 import {
   getVenueTypeChips,
   monthShort,
+  translateVenueScene,
   translateVenueType,
   VENUE_TYPE_TICK,
   VENUE_TYPE_VALUES,
@@ -516,6 +517,7 @@ function ChipRow({
   const roles = useRoles();
   const isNacht = mode === 'nacht';
   const t = useT();
+  const locale = useLocale();
   const [focused, setFocused] = useState(false);
   const [filterOpen, setFilterOpen] = useState(false);
   const inputRef = useRef<TextInput>(null);
@@ -562,6 +564,24 @@ function ChipRow({
     activeScene.length +
     activeSubtypes.length;
   const filterActive = filterCount > 0;
+  // Eerste belangrijke filter als label: venue-type > scene >
+  // subtype. Render: "Podium + 1" voor primair + extra; geen
+  // primair? terug naar "Filter · N".
+  const filterLabel = filterActive
+    ? (() => {
+        let primary: string | null = null;
+        if (activeType.length > 0) {
+          primary = translateVenueType(activeType[0], locale);
+        } else if (activeScene.length > 0) {
+          primary = translateVenueScene(activeScene[0], locale);
+        } else if (activeSubtypes.length > 0) {
+          primary = activeSubtypes[0];
+        }
+        if (primary === null) return `${t('Filter', 'Filter')} · ${filterCount}`;
+        const others = filterCount - 1;
+        return others > 0 ? `${primary} + ${others}` : primary;
+      })()
+    : t('Filter', 'Filter');
 
   const current = {
     dn: activeDn,
@@ -689,9 +709,7 @@ function ChipRow({
               { color: filterActive ? roles.bg : roles.fgMuted },
             ]}
           >
-            {filterActive
-              ? `${t('Filter', 'Filter')} · ${filterCount}`
-              : t('Filter', 'Filter')}
+            {filterLabel}
           </Text>
         </Pressable>
         {showVolgendChip && (

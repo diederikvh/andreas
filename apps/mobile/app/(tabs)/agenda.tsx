@@ -36,6 +36,7 @@ import {
   CATEGORY_TICK,
   VENUE_TYPE_TICK,
   getVenueTypeChips,
+  translateVenueType,
   dowMixed,
   effectiveEndsAtMs,
   expandToOccurrenceRows,
@@ -492,6 +493,7 @@ function ChipRow({
   const roles = useRoles();
   const isNacht = mode === 'nacht';
   const t = useT();
+  const locale = useLocale();
   const [focused, setFocused] = useState(false);
   const [filterOpen, setFilterOpen] = useState(false);
   const inputRef = useRef<TextInput>(null);
@@ -535,6 +537,24 @@ function ChipRow({
     activeTypes.length +
     activeGenres.length;
   const filterActive = filterCount > 0;
+  // Eerste belangrijke filter als label: categorie > venue-type >
+  // genre. Render: "Cinema + 2" voor primair + extra; geen primair?
+  // terug naar "Filter · N" zoals voorheen.
+  const filterLabel = filterActive
+    ? (() => {
+        let primary: string | null = null;
+        if (activeCats.length > 0) {
+          primary = translateCategory(activeCats[0], locale);
+        } else if (activeTypes.length > 0) {
+          primary = translateVenueType(activeTypes[0], locale);
+        } else if (activeGenres.length > 0) {
+          primary = activeGenres[0];
+        }
+        if (primary === null) return `${t('Filter', 'Filter')} · ${filterCount}`;
+        const others = filterCount - 1;
+        return others > 0 ? `${primary} + ${others}` : primary;
+      })()
+    : t('Filter', 'Filter');
 
   const applySaved = (s: SavedSearch) => {
     const active = isSavedSearchActive(s, {
@@ -667,9 +687,7 @@ function ChipRow({
               { color: filterActive ? roles.bg : roles.fgMuted },
             ]}
           >
-            {filterActive
-              ? `${t('Filter', 'Filter')} · ${filterCount}`
-              : t('Filter', 'Filter')}
+            {filterLabel}
           </Text>
         </Pressable>
         {showFriendsChip && (
