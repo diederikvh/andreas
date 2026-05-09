@@ -187,6 +187,13 @@ export default function Venues() {
     });
   }, [venuesAll, onlyVolgend, activeDn, activeType, activeScene, activeSubtypes]);
 
+  // Toon de Volgen-quick-toggle in de chip-row alleen als de gebruiker
+  // ook daadwerkelijk venues volgt — anders heeft 'ie geen functie.
+  const showVolgendChip = useMemo(
+    () => Boolean(venuesAll?.some((v) => v.myFollowState === 'volgen')),
+    [venuesAll]
+  );
+
   // Groepeer per venue-type — volgorde van VENUE_TYPE_VALUES (podium,
   // club, galerie, museum, film, ruimte, boekhandel-cafe), binnen elke
   // groep alfabetisch. Venues zonder type komen onderaan in een aparte
@@ -322,6 +329,7 @@ export default function Venues() {
           activeScene={activeScene}
           activeSubtypes={activeSubtypes}
           onlyVolgend={onlyVolgend}
+          showVolgendChip={showVolgendChip}
           onDn={setActiveDn}
           onType={setActiveType}
           onScene={setActiveScene}
@@ -481,6 +489,7 @@ function ChipRow({
   activeScene,
   activeSubtypes,
   onlyVolgend,
+  showVolgendChip,
   onDn,
   onType,
   onScene,
@@ -494,6 +503,7 @@ function ChipRow({
   activeScene: VenueScene[];
   activeSubtypes: string[];
   onlyVolgend: boolean;
+  showVolgendChip: boolean;
   onDn: (next: VenueDayNight[]) => void;
   onType: (next: VenueType[]) => void;
   onScene: (next: VenueScene[]) => void;
@@ -540,12 +550,15 @@ function ChipRow({
     }
   };
 
+  // Volgen-toggle telt niet mee in de filter-count omdat 'ie nu een
+  // quick-chip is buiten het filter-sheet (zelfde patroon als Vrienden/
+  // Favorieten op Vandaag/Agenda — die badge geeft alleen sheet-filters
+  // weer).
   const filterCount =
     activeDn.length +
     activeType.length +
     activeScene.length +
-    activeSubtypes.length +
-    (onlyVolgend ? 1 : 0);
+    activeSubtypes.length;
   const filterActive = filterCount > 0;
 
   const current = {
@@ -679,6 +692,40 @@ function ChipRow({
               : t('Filter', 'Filter')}
           </Text>
         </Pressable>
+        {showVolgendChip && (
+          <Pressable
+            accessibilityLabel={
+              onlyVolgend
+                ? t('Toon alle venues', 'Show all venues')
+                : t(
+                    'Alleen venues die ik volg',
+                    'Only venues I follow'
+                  )
+            }
+            onPress={() => onVolgend(!onlyVolgend)}
+            style={[
+              styles.volgendToggle,
+              {
+                borderColor: onlyVolgend
+                  ? roles.fg
+                  : isNacht
+                    ? '#2a2a2d'
+                    : palette.paper,
+                backgroundColor: onlyVolgend
+                  ? roles.fg
+                  : isNacht
+                    ? palette.noir2
+                    : palette.paper2,
+              },
+            ]}
+          >
+            <Ionicons
+              name={onlyVolgend ? 'heart' : 'heart-outline'}
+              size={14}
+              color={onlyVolgend ? roles.bg : roles.fgMuted}
+            />
+          </Pressable>
+        )}
         {saved.map((s) => {
           const active = isSavedVenueSearchActive(s, current);
           return (
@@ -844,12 +891,13 @@ function FilterSheet({
     else onSubtypes([...activeSubtypes, s]);
   };
 
+  // Volgen-toggle telt niet mee in de sheet-filterCount (z'n quick-chip
+  // staat buiten dit sheet) maar wordt wel meegereset bij "Wis alles".
   const filterCount =
     activeDn.length +
     activeType.length +
     activeScene.length +
-    activeSubtypes.length +
-    (onlyVolgend ? 1 : 0);
+    activeSubtypes.length;
 
   const onClearAll = () => {
     onDn([]);
@@ -972,25 +1020,14 @@ function FilterSheet({
           ))}
         </View>
 
-        <Text
-          style={[
-            styles.sheetSectionHead,
-            { color: roles.fgMuted, marginTop: 22 },
-          ]}
-        >
-          {t('Volg-status', 'Following')}
-        </Text>
-        <View style={styles.sheetWrap}>
-          <FilterChip
-            label={t('Alleen wat ik volg', 'Only what I follow')}
-            active={onlyVolgend}
-            onPress={() => onVolgend(!onlyVolgend)}
-          />
-        </View>
+        {/* "Volg-status" sectie verwijderd — toggle staat in de
+            chip-row buiten dit sheet. onlyVolgend + onVolgend blijven
+            als FilterSheet-prop voor "Wis alles" en saved-search-
+            round-trip. */}
 
         {/* Sub-types onderaan: het kunnen er veel zijn, dus eerst de
-            korte label-secties (dag/nacht, type, scene, volg-status)
-            en dan pas de lange sub-type-lijst. */}
+            korte label-secties (dag/nacht, type, scene) en dan pas
+            de lange sub-type-lijst. */}
         <Text
           style={[
             styles.sheetSectionHead,
@@ -1324,6 +1361,16 @@ const styles = StyleSheet.create({
   catChip: {
     height: 44,
     paddingHorizontal: 18,
+    borderRadius: 999,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  // Compact rond toggle-chipje voor "alleen wat ik volg" — zelfde
+  // patroon als de friends/favorites-toggles op Vandaag/Agenda.
+  volgendToggle: {
+    width: 44,
+    height: 44,
     borderRadius: 999,
     borderWidth: 1,
     alignItems: 'center',
