@@ -107,7 +107,7 @@ Andreas-night-modus targeted. 3 al gescrape'd (Doka 2, Lofi 16, Radion 22 = 40 e
 - ✅ **Thuishaven** [groot/mainstream] — `thuishaven.nl` (WordPress) — Playwright homepage harvest event-URLs `/{DD}-{maand}-{slug}/`, server-rendered detail-page heeft `<title>`/img/`.agenda-line-up__line-up` met DJ-lineup per area (Loods/Secret). 24 events, 24/24 lineup, 23/24 mirrored.
 - ⬜ **Warehouse Elementenstraat** [groot/mainstream] — geen eigen URL; vermoedelijk via RA / Eventbrite
 - ⬜ **Garage Noord** [middel/alt] — gebruikt Resident Advisor als ticketing → mogelijk via RA-scraper
-- ⬜ **Shelter** [middel/mainstream] — Eventix shop UUID `74cd4017-...` lijkt leeg; opnieuw checken
+- ✅ **Shelter** [middel/mainstream] — directe WP REST API op `shelteramsterdam.nl/wp-json/wp/v2/dt_portfolio` (Fourvenues-iframe staat op de site, content komt uit WP). Per event: `featured_media` (1080×1080 PNG), `yoast_head_json.og_description` (1-2 zinnen lineup-summary), `date` als startsAt, default end = +7u. 16 events, 16/16 mirrored, 16/16 description.
 - ✅ **BRET** [klein/alt] — Celebratix-channel `fuef7` (in widget op `bret.bar/ticketshop` → filesusr.com iframe). Pure HTTP-API: `api.celebratix.io/v2/consumers/Events?channel=fuef7&pageSize=100`. 15 events / 15 mirrored. Patroon herbruikbaar voor andere clubs (`scraperConfig.celebratix = { channel }`).
 
 **Kleinere alt-clubs:**

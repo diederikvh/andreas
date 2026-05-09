@@ -209,6 +209,11 @@ export const venues = pgTable('venues', {
         enige config. Image-augmentatie kan optioneel via een eigen
         agenda-page met JSON-LD of og-meta. */
     weeztix?: { shopUuid: string; imageAgendaUrl?: string };
+    /** Fourvenues is een ticket-platform met iframe-widget per venue.
+        URL-vorm: `web.fourvenues.com/en/iframe/{slug}/events?date=YYYY-MM`.
+        We scrapen via Playwright omdat events client-side gerenderd
+        worden. `slug` is het venue-handle in de URL. */
+    fourvenues?: { slug: string };
     /** Generic theater-scraper: pakt show-URLs uit een sitemap, fetcht
         elke show-page en parseert JSON-LD `Event`-blokken óf
         `data-date` attributes. Gebruikt voor Carré, Meervaart, DeLaMar. */

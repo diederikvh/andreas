@@ -26,8 +26,8 @@ jobs:
       # die zitten niet in de Dockerfile op Fly.
       fail-fast: false
       matrix:
-        scraper: [stager, ical, jsonld, ticketmaster, theater, boomchicago, concertgemaal, wptheatre, p60, ziggodome, ita, operaballet, podiummozaiek, celebratix, weeztix]
-        # Niet in cron: bimhuis, ot301 (Playwright, niet in Fly Dockerfile)
+        scraper: [stager, ical, jsonld, ticketmaster, theater, boomchicago, concertgemaal, wptheatre, p60, ziggodome, ita, operaballet, podiummozaiek, celebratix, weeztix, shelter]
+        # Niet in cron: bimhuis, ot301, fourvenues (Playwright, niet in Fly Dockerfile)
     steps:
       - name: POST /admin/api/scrapers/run/${{ matrix.scraper }}
         run: |

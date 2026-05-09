@@ -3,6 +3,7 @@ import { scrapeBoomChicago, type BoomChicagoResult } from './boomchicago.js';
 import { scrapeBrakkeGrond, type BrakkeGrondResult } from './brakkegrond.js';
 import { scrapeCelebratix, type CelebratixVenueResult } from './celebratix.js';
 import { scrapeConcertgemaal, type ConcertgemaalResult } from './concertgemaal.js';
+import { scrapeFourvenues, type FourvenuesResult } from './fourvenues.js';
 import { scrapeIta, type ItaResult } from './ita.js';
 import { scrapeOperaballet, type OperaballetResult } from './operaballet.js';
 import { scrapeOt301, type Ot301Result } from './ot301.js';
@@ -17,6 +18,7 @@ import { scrapeMuziekgebouw, type MuziekgebouwResult } from './muziekgebouw.js';
 import { scrapeOnTheRoof, type OnTheRoofResult } from './ontheroof.js';
 import { scrapeP60, type P60Result } from './p60.js';
 import { scrapeParadiso, type ParadisoResult } from './paradiso.js';
+import { scrapeShelter, type ShelterResult } from './shelter.js';
 import { scrapeStager, type StagerVenueResult } from './stager.js';
 import { scrapeTheater, type TheaterVenueResult } from './theater.js';
 import { scrapeTicketmaster, type TicketmasterVenueResult } from './ticketmaster.js';
@@ -53,6 +55,8 @@ export const scrapers = {
   thuishaven: scrapeThuishaven,
   celebratix: scrapeCelebratix,
   weeztix: scrapeWeeztix,
+  fourvenues: scrapeFourvenues,
+  shelter: scrapeShelter,
 } as const;
 
 export type ScraperName = keyof typeof scrapers;
@@ -81,4 +85,6 @@ export type ScraperResult =
   | QFactoryResult
   | ThuishavenResult
   | CelebratixVenueResult
-  | WeeztixVenueResult;
+  | WeeztixVenueResult
+  | FourvenuesResult
+  | ShelterResult;
