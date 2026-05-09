@@ -154,48 +154,61 @@ export default function VenueDetail() {
     };
   });
 
-  // useCallback met monthGroups als dep — anders blijft de
-  // worklet hieronder de eerste-render-versie van deze functie
-  // aanroepen (toen monthGroups nog leeg was, vóór data fetch).
-  const updateActiveFromScroll = useCallback(
-    (y: number) => {
-      const sectionY = progSectionY.value;
-      if (sectionY === 0) return;
-      let best: string | null = null;
-      let bestY = -Infinity;
-      for (const g of monthGroups) {
-        const ry = monthYsRef.current[g.key];
-        if (ry === undefined) continue;
-        const absY = sectionY + ry;
-        if (absY <= y + 120 && absY > bestY) {
-          best = g.key;
-          bestY = absY;
-        }
-      }
-      setActiveMonthKey((prev) => (prev === best ? prev : best));
-    },
-    [monthGroups, progSectionY]
-  );
+  // monthGroups via ref ipv direct in closure — zo blijft de
+  // updateActiveFromScroll-callback stabiel (lege deps) en hoeft de
+  // worklet hieronder niet opnieuw te binden bij elke data-update.
+  // Eerste-visit-bug: zonder dit klemt de worklet zich vast aan de
+  // initiële (lege) versie van de functie.
+  const monthGroupsRef = useRef<MonthGroup[]>([]);
+  useEffect(() => {
+    monthGroupsRef.current = monthGroups;
+  }, [monthGroups]);
 
-  // Bij scroll: bepaal welke maand "in beeld" is en update de actieve
-  // pill. Daarnaast: stickyVisible-state syncen met pills-threshold —
-  // pointerEvents van de top-pills mag pas aan als ze ook zichtbaar
-  // zijn (anders vangen ze taps op terwijl ze opacity 0 hebben).
+  const updateActiveFromScroll = useCallback((y: number) => {
+    const sectionY = progSectionY.value;
+    if (sectionY === 0) return;
+    const groups = monthGroupsRef.current;
+    if (groups.length === 0) return;
+    let best: string | null = null;
+    let bestY = -Infinity;
+    for (const g of groups) {
+      const ry = monthYsRef.current[g.key];
+      if (ry === undefined) continue;
+      const absY = sectionY + ry;
+      if (absY <= y + 120 && absY > bestY) {
+        best = g.key;
+        bestY = absY;
+      }
+    }
+    setActiveMonthKey((prev) => (prev === best ? prev : best));
+  }, [progSectionY]);
+
+  // Bij scroll: actieve maand updaten + stickyVisible syncen.
+  // SharedValue-gates voorkomen dat we elke frame een runOnJS naar de
+  // JS-thread doen — alleen bij échte transities (visible flip) of
+  // bij meer dan 8px scroll-delta sinds laatste update. Cold-start op
+  // fysieke devices is anders snel overbelast.
+  const lastStickyVisible = useSharedValue(false);
+  const lastUpdateY = useSharedValue(-9999);
   useAnimatedReaction(
     () => scrollY.value,
-    (val, prev) => {
+    (val) => {
       const threshold =
         progSectionY.value +
         inlinePillsY.value +
         PILL_BAR_HEIGHT -
         topBarBottom;
-      const visible = val > threshold - 20;
-      if (prev === null || (prev !== null && Math.abs(val - prev) > 4)) {
+      const newVisible = val > threshold - 20;
+      if (newVisible !== lastStickyVisible.value) {
+        lastStickyVisible.value = newVisible;
+        runOnJS(setStickyVisible)(newVisible);
+      }
+      if (Math.abs(val - lastUpdateY.value) > 8) {
+        lastUpdateY.value = val;
         runOnJS(updateActiveFromScroll)(val);
       }
-      runOnJS(setStickyVisible)(visible);
     },
-    [topBarBottom, updateActiveFromScroll]
+    []
   );
 
   const handleMonthPress = useCallback((key: string) => {
