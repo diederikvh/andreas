@@ -1,12 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useFocusEffect, useScrollToTop } from '@react-navigation/native';
+import { useScrollToTop } from '@react-navigation/native';
 import { Image } from 'expo-image';
 import { router } from 'expo-router';
 import { useCallback, useMemo, useRef, useState } from 'react';
 import {
-  Alert,
   KeyboardAvoidingView,
-  Modal,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
   Platform,
@@ -20,19 +18,14 @@ import {
   View,
 } from 'react-native';
 import { useQueryClient } from '@tanstack/react-query';
-import Animated, {
-  Extrapolation,
-  FadeIn,
-  interpolate,
-  useAnimatedStyle,
-  useSharedValue,
-} from 'react-native-reanimated';
+import Animated, { FadeIn } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppHeader, HEADER_HEIGHT } from '@/components/AppHeader';
 import { Cross } from '@/components/Cross';
 import { Rail } from '@/components/Rail';
 import { RailEventCard } from '@/components/RailEventCard';
+import { VenueRailCard } from '@/components/VenueRailCard';
 import { RefreshBanner } from '@/components/RefreshBanner';
 import { RunningStrip } from '@/components/RunningStrip';
 import { SpinningCross } from '@/components/SpinningCross';
@@ -42,7 +35,6 @@ import {
   CATEGORY_TICK,
   eventBelongsToMode,
   getVenueTypeChips,
-  translateVenueType,
   dowFull,
   dowUpper,
   effectiveEndsAtMs,
@@ -67,16 +59,9 @@ import {
   useSeriesList,
 } from '@/lib/queries';
 import { useSession } from '@/lib/authClient';
-import { useTabDoubleTap } from '@/lib/useTabDoubleTap';
 import { useContentMode } from '@/store/contentMode';
 import { useMode, useRoles } from '@/store/mode';
-import {
-  isSavedVandaagSearchActive,
-  type SavedVandaagSearch,
-  useAddSavedVandaagSearch,
-  useRemoveSavedVandaagSearch,
-  useSavedVandaagSearches,
-} from '@/store/savedVandaagSearches';
+import { useAddSavedVandaagSearch } from '@/store/savedVandaagSearches';
 import { useVandaagFilters } from '@/store/vandaagFilters';
 import { fontFamily, palette } from '@/theme/tokens';
 
@@ -147,18 +132,6 @@ export default function Avond() {
   const cmode = useContentMode();
   const scrollRef = useRef<ScrollView>(null);
   useScrollToTop(scrollRef);
-  // Y-offset van de chip-row binnen de ListHeaderComponent. SharedValue
-  // zodat de sticky-overlay-animation z'n threshold direct kan lezen
-  // en JS-thread onScroll werkt. Bij dubbel-tap scrollen we hier
-  // naartoe — landt net onder de AppHeader.
-  const chipRowY = useSharedValue(0);
-  const scrollY = useSharedValue(0);
-  const scrollToChipRow = useCallback(() => {
-    scrollRef.current?.scrollTo({
-      y: Math.max(0, chipRowY.value),
-      animated: true,
-    });
-  }, [chipRowY]);
 
   // Twee tijd-tikkers met verschillende doelen:
   //
@@ -197,9 +170,10 @@ export default function Avond() {
   // komen uit /series (apart endpoint), exhibitions zitten in `events`.
   const { data: seriesList } = useSeriesList();
 
-  // Filter-keuze (zoek + vrienden + favorieten + tijd-blokken) wordt
-  // persistent bewaard tussen sessies via een Zustand-store. URL-state
-  // was onnodig — de Vandaag-tab is geen deeplink-target voor filters.
+  // Filter-state — leeft persistent in een Zustand-store. Het zoek+
+  // filter-paneel is verhuisd naar Agenda; op Vandaag respecteren we
+  // de waarden alleen passief in de rail-filters (geen UI om ze te
+  // zetten). De setters worden niet meer aangeroepen vanaf Vandaag.
   const query = useVandaagFilters((s) => s.query);
   const onlyFriends = useVandaagFilters((s) => s.onlyFriends);
   const onlyFavorites = useVandaagFilters((s) => s.onlyFavorites);
@@ -207,22 +181,11 @@ export default function Avond() {
   const activeCats = useVandaagFilters((s) => s.activeCats);
   const activeTypes = useVandaagFilters((s) => s.activeTypes);
   const activeGenres = useVandaagFilters((s) => s.activeGenres);
-  const setQuery = useVandaagFilters((s) => s.setQuery);
-  const setOnlyFriends = useVandaagFilters((s) => s.setOnlyFriends);
-  const setOnlyFavorites = useVandaagFilters((s) => s.setOnlyFavorites);
-  const setActiveBlocks = useVandaagFilters((s) => s.setActiveBlocks);
-  const setActiveCats = useVandaagFilters((s) => s.setActiveCats);
-  const setActiveTypes = useVandaagFilters((s) => s.setActiveTypes);
-  const setActiveGenres = useVandaagFilters((s) => s.setActiveGenres);
-  const toggleBlock = useVandaagFilters((s) => s.toggleBlock);
   const { data: session } = useSession();
-  const { data: friends } = useFriends({
-    enabled: Boolean(session?.user?.id),
-  });
-  const showFriendsChip = (friends?.length ?? 0) > 0;
-  const onToggleFriends = () => setOnlyFriends(!onlyFriends);
-  const onToggleFavorites = () => setOnlyFavorites(!onlyFavorites);
-  const onToggleBlock = (b: TimeBlock) => toggleBlock(b);
+  // Friends data wordt nog gebruikt door rail-filters (friendsSaved op
+  // events). Geen friends-chip meer in de header — die zat in de oude
+  // chip-row.
+  useFriends({ enabled: Boolean(session?.user?.id) });
 
   // Pull-to-refresh: invalideert events-cache zodat de huidige
   // window-query opnieuw fetched. Voor wanneer de gebruiker denkt
@@ -318,13 +281,6 @@ export default function Avond() {
     query,
     cmode,
   ]);
-
-  // Toon de favorieten-chip alleen als de gebruiker minstens één venue
-  // volgt — anders filter je naar 0 events en is 't onbegrijpelijk.
-  const showFavoritesChip = useMemo(
-    () => Boolean(events?.some((e) => e.venueFollowed)),
-    [events]
-  );
 
   // Lopende tentoonstellingen — altijd zichtbaar als losse strook.
   // Bestaat uit alle exhibitions die nu lopen of binnenkort openen
@@ -439,10 +395,22 @@ export default function Avond() {
       filtered.filter((r) => (r.event.friendsSaved?.length ?? 0) > 0),
     [filtered]
   );
-  const railFollowedUit = useMemo(
-    () => filtered.filter((r) => r.event.venueFollowed === true),
-    [filtered]
-  );
+  // Venues die je volgt (dedupe op venue.id) — kaartjes leiden naar
+  // /venue/[slug] waar je het volledige programma ziet. Bron is de
+  // mode-pool zodat 'uit' alleen uit-venues toont en 'expo' alleen
+  // cultuur-venues.
+  const railFollowedVenuesUit = useMemo(() => {
+    const seen = new Set<string>();
+    const out: ApiEvent['venue'][] = [];
+    for (const r of filtered) {
+      if (!r.event.venueFollowed) continue;
+      const v = r.event.venue;
+      if (seen.has(v.id)) continue;
+      seen.add(v.id);
+      out.push(v);
+    }
+    return out;
+  }, [filtered]);
 
   // Rails voor 'expo'-mode — gebaseerd op `expoEvents` (ApiEvent[]).
   // 'Nieuw geopend': exhibitions die in de afgelopen 14 dagen zijn
@@ -478,10 +446,17 @@ export default function Avond() {
       );
   }, [expoEvents]);
 
-  const railFollowedExpo = useMemo<ApiEvent[]>(
-    () => expoEvents.filter((e) => e.venueFollowed === true),
-    [expoEvents]
-  );
+  const railFollowedVenuesExpo = useMemo(() => {
+    const seen = new Set<string>();
+    const out: ApiEvent['venue'][] = [];
+    for (const e of expoEvents) {
+      if (!e.venueFollowed) continue;
+      if (seen.has(e.venue.id)) continue;
+      seen.add(e.venue.id);
+      out.push(e.venue);
+    }
+    return out;
+  }, [expoEvents]);
 
   const railLit = useMemo<ApiEvent[]>(
     () =>
@@ -508,36 +483,6 @@ export default function Avond() {
     onlyFavorites ||
     query.trim().length > 0;
 
-  // Sticky-on-scroll voor de chip-row: zodra je naar beneden scrollt
-  // en de inline chip-row achter de AppHeader gaat verdwijnen, fade
-  // er een copy in net onder de AppHeader. Bij terug-scrollen detacht-
-  // ie weer. Zelfde pattern als de month-pills op venue-detail.
-  const [stickyChipRowVisible, setStickyChipRowVisible] = useState(false);
-  const lastStickyRef = useRef(false);
-  const onScroll = useCallback(
-    (e: NativeSyntheticEvent<NativeScrollEvent>) => {
-      const y = e.nativeEvent.contentOffset.y;
-      scrollY.value = y;
-      const newVisible = y > chipRowY.value + STICKY_CHIPROW_HEIGHT - 30;
-      if (newVisible !== lastStickyRef.current) {
-        lastStickyRef.current = newVisible;
-        setStickyChipRowVisible(newVisible);
-      }
-    },
-    [chipRowY, scrollY]
-  );
-  const stickyChipRowStyle = useAnimatedStyle(() => {
-    const threshold = chipRowY.value + STICKY_CHIPROW_HEIGHT;
-    return {
-      opacity: interpolate(
-        scrollY.value,
-        [threshold - 60, threshold + 20],
-        [0, 1],
-        Extrapolation.CLAMP
-      ),
-    };
-  });
-
   return (
     <View style={[styles.root, { backgroundColor: roles.bg }]}>
       <RefreshBanner
@@ -546,14 +491,9 @@ export default function Avond() {
       />
       <ScrollView
         ref={scrollRef}
-        onScroll={onScroll}
-        scrollEventThrottle={16}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{
-          // Header reserveert ruimte voor de sticky chip-row (ook
-          // wanneer 'ie nog niet zichtbaar is) zodat content niet
-          // omhoog springt op het moment dat hij verschijnt.
-          paddingTop: insets.top + HEADER_HEIGHT + STICKY_CHIPROW_HEIGHT,
+          paddingTop: insets.top + HEADER_HEIGHT,
           paddingBottom: insets.bottom + 96,
         }}
         refreshControl={
@@ -568,18 +508,15 @@ export default function Avond() {
                 : t('Trek om te vernieuwen', 'Pull to refresh')
             }
             titleColor={roles.fgMuted}
-            progressViewOffset={insets.top + HEADER_HEIGHT + STICKY_CHIPROW_HEIGHT}
+            progressViewOffset={insets.top + HEADER_HEIGHT}
           />
         }
       >
         {/* Hoofd-artikelen: alle featured events uit vandaag-events.
-            NIET filter-afhankelijk — staan bovenaan onafhankelijk van
-            wat je beneden filtert. Negative marginTop trekt de hero
-            onder het chip-row gereserveerde band van de AppHeader
-            — door de blur fade-to-transparent ziet 't 'r mooi
-            bleed-onder-de-header uit. */}
+            Lichte negative marginTop zodat de top van de hero onder
+            de fade-to-transparent header doorloopt. */}
         {leads.length > 0 && (
-          <View style={{ marginTop: -STICKY_CHIPROW_HEIGHT + 8 }}>
+          <View style={{ marginTop: -8 }}>
             <FeaturedCarousel
               leads={leads}
               kicker={t('Onze keuze', 'Our pick')}
@@ -607,38 +544,6 @@ export default function Avond() {
             {heroParts.day}{' '}
             <Text style={{ color: roles.accent }}>{heroParts.date}</Text>
           </Text>
-        </View>
-
-        {/* Filter-rij. Wrapper captureert Y-positie binnen de scroll
-            content — gebruikt door de tab-double-tap scroll én door de
-            sticky-overlay opacity-animation. */}
-        <View
-          onLayout={(e) => {
-            chipRowY.value = e.nativeEvent.layout.y;
-          }}
-        >
-          <AvondChipRow
-            query={query}
-            onQuery={setQuery}
-            onlyFriends={onlyFriends}
-            onToggleFriends={onToggleFriends}
-            showFriendsChip={showFriendsChip}
-            onlyFavorites={onlyFavorites}
-            onToggleFavorites={onToggleFavorites}
-            showFavoritesChip={showFavoritesChip}
-            activeBlocks={activeBlocks}
-            onToggleBlock={onToggleBlock}
-            activeCats={activeCats}
-            activeTypes={activeTypes}
-            activeGenres={activeGenres}
-            onSetBlocks={setActiveBlocks}
-            onSetFriends={setOnlyFriends}
-            onSetFavorites={setOnlyFavorites}
-            onSetCats={setActiveCats}
-            onSetTypes={setActiveTypes}
-            onSetGenres={setActiveGenres}
-            onDoubleTapScroll={scrollToChipRow}
-          />
         </View>
 
         {isLoading && (
@@ -735,16 +640,14 @@ export default function Avond() {
                 />
               ))}
             </Rail>
-            <Rail kicker={t('Bij venues die je volgt', 'At venues you follow')}>
-              {railFollowedUit.map((r) => (
-                <RailEventCard
-                  key={r.id}
-                  event={r.event}
-                  occurrenceId={
-                    r.occurrence.id.endsWith('::next') ? undefined : r.occurrence.id
-                  }
-                  occurrenceStartsAt={r.occurrence.startsAt}
-                  occurrenceEndsAt={r.occurrence.endsAt}
+            <Rail kicker={t('Venues die je volgt', 'Venues you follow')}>
+              {railFollowedVenuesUit.map((v) => (
+                <VenueRailCard
+                  key={v.id}
+                  slug={v.slug}
+                  name={v.name}
+                  imageUrl={v.imageUrl}
+                  type={v.type}
                 />
               ))}
             </Rail>
@@ -763,9 +666,15 @@ export default function Avond() {
                 <RailEventCard key={e.id} event={e} />
               ))}
             </Rail>
-            <Rail kicker={t('Bij musea die je volgt', 'At museums you follow')}>
-              {railFollowedExpo.map((e) => (
-                <RailEventCard key={e.id} event={e} />
+            <Rail kicker={t('Musea die je volgt', 'Museums you follow')}>
+              {railFollowedVenuesExpo.map((v) => (
+                <VenueRailCard
+                  key={v.id}
+                  slug={v.slug}
+                  name={v.name}
+                  imageUrl={v.imageUrl}
+                  type={v.type}
+                />
               ))}
             </Rail>
             <Rail
@@ -799,441 +708,295 @@ export default function Avond() {
           </Animated.View>
         )}
       </ScrollView>
-      <AppHeader title={t('Vandaag', 'Today')} showContentMode>
-        {/* Sticky chip-row als AppHeader-children — deelt de fade-
-            to-transparent BlurView van de non-solid header. Opacity-
-            animatie fadet 'm in zodra de inline chip-row achter de
-            AppHeader is gescrolld. Pointer-events alleen open
-            wanneer zichtbaar zodat taps door de invisible kopie
-            naar de inline kopie gaan. */}
-        <Animated.View
-          pointerEvents={stickyChipRowVisible ? 'auto' : 'none'}
-          style={stickyChipRowStyle}
-        >
-          <AvondChipRow
-            query={query}
-            onQuery={setQuery}
-            onlyFriends={onlyFriends}
-            onToggleFriends={onToggleFriends}
-            showFriendsChip={showFriendsChip}
-            onlyFavorites={onlyFavorites}
-            onToggleFavorites={onToggleFavorites}
-            showFavoritesChip={showFavoritesChip}
-            activeBlocks={activeBlocks}
-            onToggleBlock={onToggleBlock}
-            activeCats={activeCats}
-            activeTypes={activeTypes}
-            activeGenres={activeGenres}
-            onSetBlocks={setActiveBlocks}
-            onSetFriends={setOnlyFriends}
-            onSetFavorites={setOnlyFavorites}
-            onSetCats={setActiveCats}
-            onSetTypes={setActiveTypes}
-            onSetGenres={setActiveGenres}
-            onDoubleTapScroll={scrollToChipRow}
-          />
-        </Animated.View>
-      </AppHeader>
+      <AppHeader title={t('Vandaag', 'Today')} showContentMode />
     </View>
   );
 }
 
-function AvondChipRow({
-  query,
-  onQuery,
-  onlyFriends,
-  onToggleFriends,
-  showFriendsChip,
-  onlyFavorites,
-  onToggleFavorites,
-  showFavoritesChip,
-  activeBlocks,
-  onToggleBlock,
-  activeCats,
-  activeTypes,
-  activeGenres,
-  onSetBlocks,
-  onSetFriends,
-  onSetFavorites,
-  onSetCats,
-  onSetTypes,
-  onSetGenres,
-  onDoubleTapScroll,
+
+/**
+ * Pad naar event-detail. Voor occurrences die uit de API komen (echte
+ * id) hangen we `?o=` aan zodat de detail-page weet welk specifiek
+ * moment was aangetapt; voor synthetische rijen (`evt::next`) blijft
+ * het pad puur op event-id.
+ */
+function eventPathFor(row: OccurrenceRow): string {
+  if (row.occurrence.id.endsWith('::next')) {
+    return `/event/${row.event.id}`;
+  }
+  return `/event/${row.event.id}?o=${row.occurrence.id}`;
+}
+
+function ListState({
+  text,
+  tone = 'muted',
 }: {
-  query: string;
-  onQuery: (q: string) => void;
-  onlyFriends: boolean;
-  onToggleFriends: () => void;
-  showFriendsChip: boolean;
-  onlyFavorites: boolean;
-  onToggleFavorites: () => void;
-  showFavoritesChip: boolean;
-  activeBlocks: TimeBlock[];
-  onToggleBlock: (b: TimeBlock) => void;
-  activeCats: ApiEvent['category'][];
-  activeTypes: VenueType[];
-  activeGenres: string[];
-  onSetBlocks: (next: TimeBlock[]) => void;
-  onSetFriends: (next: boolean) => void;
-  onSetFavorites: (next: boolean) => void;
-  onSetCats: (next: ApiEvent['category'][]) => void;
-  onSetTypes: (next: VenueType[]) => void;
-  onSetGenres: (next: string[]) => void;
-  /** Optioneel — bij dubbel-tap op de Vandaag-tab eerst scrollen
-      naar de chip-row, vóór focus + clear. Zo valt de zoek-pill
-      onder de AppHeader in plaats van achter het keyboard. */
-  onDoubleTapScroll?: () => void;
+  text: string;
+  tone?: 'muted' | 'error';
 }) {
-  const mode = useMode();
   const roles = useRoles();
-  const isNacht = mode === 'nacht';
-  const t = useT();
-  const locale = useLocale();
-  const [focused, setFocused] = useState(false);
-  const [filterOpen, setFilterOpen] = useState(false);
-  const inputRef = useRef<TextInput>(null);
-  const saved = useSavedVandaagSearches();
-  const removeSaved = useRemoveSavedVandaagSearch();
-  // Dubbele tap op de Vandaag-tab = scroll naar de chip-row (onder
-  // de AppHeader, dus boven het keyboard) + zoekveld leegmaken +
-  // focussen. Single tap (re-tap) = scroll naar boven via
-  // useScrollToTop op schermniveau; die laten we ongemoeid.
-  useTabDoubleTap(() => {
-    onDoubleTapScroll?.();
-    onQuery('');
-    inputRef.current?.focus();
-  });
-  // Blur het zoekveld zodra het scherm de focus verliest (tab-wissel,
-  // navigatie naar detail). Anders blijft het keyboard open boven een
-  // andere tab.
-  useFocusEffect(
-    useCallback(() => {
-      return () => inputRef.current?.blur();
-    }, [])
+  return (
+    <View style={styles.listState}>
+      <Text
+        style={[
+          styles.listStateText,
+          { color: tone === 'error' ? '#c9453a' : roles.fgMuted },
+        ]}
+      >
+        {text}
+      </Text>
+    </View>
   );
+}
 
-  // Search-pill: collapsable. Open zodra hij focus heeft of er tekst in
-  // staat. Width animeert van klein-icoon naar input-wide.
-  const open = focused || query.length > 0;
-  const COLLAPSED_W = 44;
-  const MIN_OPEN_W = 130;
-  const MAX_OPEN_W = 260;
-  const textWidthEstimate = 44 + query.length * 8 + 18;
-  const width = !open
-    ? COLLAPSED_W
-    : Math.min(MAX_OPEN_W, Math.max(MIN_OPEN_W, textWidthEstimate));
+function EmptyResults({
+  hasFilter,
+  minHeight,
+}: {
+  hasFilter: boolean;
+  minHeight: number;
+}) {
+  const roles = useRoles();
+  const t = useT();
+  const title = hasFilter
+    ? t('Niets gevonden met deze filters.', 'Nothing found with these filters.')
+    : t('Vandaag niets op de agenda.', 'Nothing on today’s agenda.');
+  const body = hasFilter
+    ? t(
+        'Pas je filter of zoekterm aan om meer events te zien.',
+        'Adjust your filter or search to see more events.'
+      )
+    : t(
+        'Kijk morgen weer, of bekijk de hele week op Agenda.',
+        'Check back tomorrow, or browse the whole week on Agenda.'
+      );
+  return (
+    <View style={[styles.emptyResults, { minHeight }]}>
+      <Ionicons
+        name={hasFilter ? 'search-outline' : 'sparkles-outline'}
+        size={44}
+        color={roles.fgMuted}
+      />
+      <Text style={[styles.emptyResultsTitle, { color: roles.fg }]}>
+        {title}
+      </Text>
+      <Text style={[styles.emptyResultsBody, { color: roles.fgMuted }]}>
+        {body}
+      </Text>
+    </View>
+  );
+}
 
-  const onIconPress = () => {
-    if (open) {
-      onQuery('');
-      inputRef.current?.blur();
-    } else {
-      inputRef.current?.focus();
-    }
-  };
+/**
+ * Page-snap carousel voor de hero-cards bovenaan Vandaag. Bij één lead
+ * vervalt 't naar een gewone Pressable+FeaturedCard zonder dots.
+ */
+function FeaturedCarousel({
+  leads,
+  kicker,
+  locale,
+}: {
+  leads: OccurrenceRow[];
+  kicker: string;
+  locale: Locale;
+}) {
+  const { width } = useWindowDimensions();
+  const roles = useRoles();
+  const [page, setPage] = useState(0);
 
-  const filterCount =
-    activeBlocks.length +
-    activeCats.length +
-    activeTypes.length +
-    activeGenres.length;
-  const filterActive = filterCount > 0;
-  // Eerste belangrijke filter als label: categorie > venue-type >
-  // genre. Tijd-blokken vallen buiten de prioriteit (geen "ZICHT-
-  // BARE" naam, gewoon middag/avond/nacht — meer een UX-toggle).
-  // Render: "Cinema + 2" voor primair + extra. Geen primair? terug
-  // naar "Filter · N" zoals voorheen.
-  const filterLabel = filterActive
-    ? (() => {
-        let primary: string | null = null;
-        if (activeCats.length > 0) {
-          primary = translateCategory(activeCats[0], locale);
-        } else if (activeTypes.length > 0) {
-          primary = translateVenueType(activeTypes[0], locale);
-        } else if (activeGenres.length > 0) {
-          primary = activeGenres[0];
-        }
-        if (primary === null) return `${t('Filter', 'Filter')} · ${filterCount}`;
-        const others = filterCount - 1;
-        return others > 0 ? `${primary} + ${others}` : primary;
-      })()
-    : t('Filter', 'Filter');
-  const current = {
-    q: query,
-    vr: onlyFriends,
-    fv: onlyFavorites,
-    tb: activeBlocks,
-    cats: activeCats,
-    vt: activeTypes,
-    gn: activeGenres,
-  };
-
-  const applySaved = (s: SavedVandaagSearch) => {
-    const active = isSavedVandaagSearchActive(s, current);
-    if (active) {
-      onQuery('');
-      onSetFriends(false);
-      onSetFavorites(false);
-      onSetBlocks([]);
-      onSetCats([]);
-      onSetTypes([]);
-      onSetGenres([]);
-      return;
-    }
-    onQuery(s.q);
-    onSetFriends(s.vr);
-    onSetFavorites(s.fv);
-    onSetBlocks(s.tb);
-    onSetCats(s.cats ?? []);
-    onSetTypes(s.vt ?? []);
-    onSetGenres(s.gn ?? []);
-  };
-
-  const onLongPressSaved = (s: SavedVandaagSearch) => {
-    Alert.alert(
-      t('Verwijderen', 'Remove'),
-      t(
-        `"${s.name}" verwijderen uit je opgeslagen filters?`,
-        `Remove "${s.name}" from your saved filters?`
-      ),
-      [
-        { text: t('Annuleren', 'Cancel'), style: 'cancel' },
-        {
-          text: t('Verwijder', 'Remove'),
-          style: 'destructive',
-          onPress: () => removeSaved(s.id),
-        },
-      ]
+  if (leads.length === 1) {
+    const lead = leads[0];
+    return (
+      <Pressable onPress={() => router.push(eventPathFor(lead) as never)}>
+        <FeaturedCard
+          kicker={kicker}
+          title={lead.event.title}
+          meta={formatMetaForRow(lead, locale)}
+          photo={eventImageUrl(lead.event) ?? undefined}
+          category={lead.event.category}
+        />
+      </Pressable>
     );
+  }
+
+  const onScrollEnd = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const idx = Math.round(e.nativeEvent.contentOffset.x / width);
+    setPage(Math.min(Math.max(idx, 0), leads.length - 1));
   };
 
   return (
-    <>
+    <View>
       <ScrollView
         horizontal
+        pagingEnabled
         showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.chipRow}
-        keyboardShouldPersistTaps="handled"
+        onMomentumScrollEnd={onScrollEnd}
       >
+        {leads.map((lead) => (
+          <View key={lead.id} style={{ width }}>
+            <Pressable
+              onPress={() => router.push(eventPathFor(lead) as never)}
+            >
+              <FeaturedCard
+                kicker={kicker}
+                title={lead.event.title}
+                meta={formatMetaForRow(lead, locale)}
+                photo={eventImageUrl(lead.event) ?? undefined}
+                category={lead.event.category}
+              />
+            </Pressable>
+          </View>
+        ))}
+      </ScrollView>
+      <View style={styles.featuredDots}>
+        {leads.map((_, i) => (
+          <View
+            key={i}
+            style={[
+              styles.featuredDot,
+              {
+                backgroundColor: i === page ? roles.fg : roles.fgPlaceholder,
+                width: i === page ? 18 : 6,
+              },
+            ]}
+          />
+        ))}
+      </View>
+    </View>
+  );
+}
+
+function FeaturedCard({
+  kicker,
+  title,
+  meta,
+  photo,
+  category,
+}: {
+  kicker: string;
+  title: string;
+  meta: string;
+  photo?: string;
+  category?: ApiEvent['category'];
+}) {
+  const mode = useMode();
+  const roles = useRoles();
+  const locale = useLocale();
+  const isNacht = mode === 'nacht';
+  const titleColor = isNacht ? palette.ink : palette.paper3;
+  const metaColor = isNacht
+    ? 'rgba(242,242,239,0.85)'
+    : 'rgba(245,241,232,0.95)';
+  const categoryTone = category
+    ? TONE[mode][CATEGORY_TICK[category]]
+    : undefined;
+
+  return (
+    <View style={styles.featuredWrap}>
+      <View
+        style={[
+          styles.featured,
+          { backgroundColor: isNacht ? palette.noir2 : roles.accent },
+        ]}
+      >
+        {photo && (
+          <Image
+            source={{ uri: photo }}
+            style={StyleSheet.absoluteFill}
+            contentFit="cover"
+          />
+        )}
         <View
           style={[
-            styles.searchChip,
+            StyleSheet.absoluteFill,
             {
-              backgroundColor: isNacht ? palette.noir2 : palette.paper2,
-              borderColor: isNacht ? '#2a2a2d' : palette.paper,
-              width,
-              // Collapsed = perfect rondje met icoon gecentreerd; expanded
-              // = pill met padding voor de input ernaast.
-              paddingHorizontal: open ? 14 : 0,
-              gap: open ? 8 : 0,
-              justifyContent: open ? 'flex-start' : 'center',
+              // Subtiele tint over de foto — donker op nacht voor
+              // contrast, een hint accent op dag (veel zachter dan
+              // voorheen, foto blijft duidelijk de hero).
+              backgroundColor: isNacht
+                ? 'rgba(10,10,11,0.45)'
+                : 'rgba(201,69,58,0.18)',
             },
           ]}
-        >
-          <Pressable onPress={onIconPress} hitSlop={6} style={styles.searchIcon}>
-            <Ionicons
-              name={open ? 'close' : 'search'}
-              size={18}
-              color={roles.fgMuted}
-            />
-          </Pressable>
-          <TextInput
-            ref={inputRef}
-            value={query}
-            onChangeText={onQuery}
-            onFocus={() => setFocused(true)}
-            onBlur={() => setFocused(false)}
-            placeholder={open ? t('ZOEK', 'SEARCH') : ''}
-            placeholderTextColor={roles.fgPlaceholder}
-            autoCapitalize="characters"
-            autoCorrect={false}
-            returnKeyType="search"
-            style={[
-              styles.searchInput,
-              {
-                color: roles.fg,
-                // Collapsed: input neemt geen ruimte → icoon blijft
-                // gecentreerd. Open: pakt z'n flex-ruimte naast het icoon.
-                flex: open ? 1 : 0,
-                width: open ? undefined : 0,
-              },
-            ]}
-          />
-        </View>
-        <Pressable
-          onPress={() => {
-            softTap();
-            setFilterOpen(true);
-          }}
-          style={[
-            styles.catChip,
-            {
-              borderColor: filterActive
-                ? roles.fg
-                : isNacht
-                  ? '#2a2a2d'
-                  : palette.paper,
-              backgroundColor: filterActive
-                ? roles.fg
-                : isNacht
-                  ? palette.noir2
-                  : palette.paper2,
-              flexDirection: 'row',
-              gap: 4,
-            },
-          ]}
-        >
-          <Ionicons
-            name="options-outline"
-            size={12}
-            color={filterActive ? roles.bg : roles.fgMuted}
-          />
-          <Text
-            style={[
-              styles.catChipText,
-              { color: filterActive ? roles.bg : roles.fgMuted },
-            ]}
-          >
-            {filterLabel}
-          </Text>
-        </Pressable>
-        {showFriendsChip && (
-          <Pressable
-            accessibilityLabel={
-              onlyFriends
-                ? t('Toon alle events', 'Show all events')
-                : t('Alleen events met vrienden', 'Only events with friends')
-            }
-            onPress={onToggleFriends}
-            style={[
-              styles.iconToggle,
-              {
-                borderColor: onlyFriends
-                  ? roles.fg
-                  : isNacht
-                    ? '#2a2a2d'
-                    : palette.paper,
-                backgroundColor: onlyFriends
-                  ? roles.fg
-                  : isNacht
-                    ? palette.noir2
-                    : palette.paper2,
-              },
-            ]}
-          >
-            <Ionicons
-              name="people"
-              size={14}
-              color={onlyFriends ? roles.bg : roles.fgMuted}
-            />
-          </Pressable>
-        )}
-        {showFavoritesChip && (
-          <Pressable
-            accessibilityLabel={
-              onlyFavorites
-                ? t('Toon alle events', 'Show all events')
-                : t(
-                    'Alleen events bij favoriete venues',
-                    'Only events at favourite venues'
-                  )
-            }
-            onPress={onToggleFavorites}
-            style={[
-              styles.iconToggle,
-              {
-                borderColor: onlyFavorites
-                  ? roles.fg
-                  : isNacht
-                    ? '#2a2a2d'
-                    : palette.paper,
-                backgroundColor: onlyFavorites
-                  ? roles.fg
-                  : isNacht
-                    ? palette.noir2
-                    : palette.paper2,
-              },
-            ]}
-          >
-            <Ionicons
-              name={onlyFavorites ? 'heart' : 'heart-outline'}
-              size={14}
-              color={onlyFavorites ? roles.bg : roles.fgMuted}
-            />
-          </Pressable>
-        )}
-        {saved.map((s) => {
-          const active = isSavedVandaagSearchActive(s, current);
-          return (
-            <Pressable
-              key={s.id}
-              onPress={() => {
-                tinyTap();
-                applySaved(s);
-              }}
-              onLongPress={() => onLongPressSaved(s)}
-              delayLongPress={400}
-              style={[
-                styles.catChip,
-                {
-                  borderColor: active
-                    ? roles.accent
-                    : isNacht
-                      ? '#2a2a2d'
-                      : palette.paper,
-                  backgroundColor: active
-                    ? `${isNacht ? palette.acid : palette.red}1f`
-                    : isNacht
-                      ? palette.noir2
-                      : palette.paper2,
-                  flexDirection: 'row',
-                  gap: 4,
-                },
-              ]}
-            >
-              <Ionicons
-                name="bookmark"
-                size={11}
-                color={active ? roles.accent : roles.fgMuted}
-              />
-              <Text
+        />
+        <View style={styles.featuredInner}>
+          <View style={styles.featuredBottom}>
+            <View style={styles.featuredLabels}>
+              <View
                 style={[
-                  styles.catChipText,
-                  { color: active ? roles.accent : roles.fgMuted },
+                  styles.featuredLabel,
+                  { backgroundColor: roles.accent },
                 ]}
               >
-                {s.name}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </ScrollView>
-      <Modal
-        visible={filterOpen}
-        animationType="slide"
-        presentationStyle="pageSheet"
-        onRequestClose={() => setFilterOpen(false)}
-      >
-        <AvondFilterSheet
-          query={query}
-          onlyFriends={onlyFriends}
-          onlyFavorites={onlyFavorites}
-          activeBlocks={activeBlocks}
-          activeCats={activeCats}
-          activeTypes={activeTypes}
-          activeGenres={activeGenres}
-          showFavoritesChip={showFavoritesChip}
-          onSetFriends={onSetFriends}
-          onSetFavorites={onSetFavorites}
-          onToggleBlock={onToggleBlock}
-          onSetBlocks={onSetBlocks}
-          onSetCats={onSetCats}
-          onSetTypes={onSetTypes}
-          onSetGenres={onSetGenres}
-          onClose={() => setFilterOpen(false)}
-        />
-      </Modal>
-    </>
+                <Text
+                  style={[styles.featuredLabelText, { color: roles.onAccent }]}
+                >
+                  {kicker}
+                </Text>
+              </View>
+              {category && categoryTone && (
+                <View
+                  style={[
+                    styles.featuredLabel,
+                    { backgroundColor: categoryTone },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.featuredLabelText,
+                      { color: roles.onAccent },
+                    ]}
+                  >
+                    {translateCategory(category, locale)}
+                  </Text>
+                </View>
+              )}
+            </View>
+            <Text style={[styles.featuredTitle, { color: titleColor }]}>
+              {title}
+            </Text>
+            <Text style={[styles.featuredMeta, { color: metaColor }]}>
+              {meta}
+            </Text>
+          </View>
+        </View>
+      </View>
+    </View>
+  );
+}
+
+function KaartBanner() {
+  const roles = useRoles();
+  const t = useT();
+  return (
+    <Pressable
+      onPress={() => router.push('/kaart' as never)}
+      style={[
+        styles.kaartBanner,
+        {
+          backgroundColor: roles.bgLift,
+          borderColor: roles.bgChip,
+        },
+      ]}
+    >
+      <Ionicons name="map-outline" size={22} color={roles.fgMuted} />
+      <View style={styles.kaartBody}>
+        <Text style={[styles.kaartKicker, { color: roles.fgMuted }]}>
+          {t('Op de kaart', 'On the map')}
+        </Text>
+        <Text style={[styles.kaartTitle, { color: roles.fg }]}>
+          {t(
+            'Zie wat er nu speelt in de buurt.',
+            'See what’s on around you right now.'
+          )}
+        </Text>
+      </View>
+      <Ionicons
+        name="chevron-forward"
+        size={18}
+        color={roles.fgPlaceholder}
+      />
+    </Pressable>
   );
 }
 
@@ -1737,292 +1500,6 @@ function SheetChip({
           {sub}
         </Text>
       )}
-    </Pressable>
-  );
-}
-
-/**
- * Pad naar event-detail. Voor occurrences die uit de API komen (echte
- * id) hangen we `?o=` aan zodat de detail-page weet welk specifiek
- * moment was aangetapt; voor synthetische rijen (`evt::next`) blijft
- * het pad puur op event-id.
- */
-function eventPathFor(row: OccurrenceRow): string {
-  if (row.occurrence.id.endsWith('::next')) {
-    return `/event/${row.event.id}`;
-  }
-  return `/event/${row.event.id}?o=${row.occurrence.id}`;
-}
-
-function ListState({
-  text,
-  tone = 'muted',
-}: {
-  text: string;
-  tone?: 'muted' | 'error';
-}) {
-  const roles = useRoles();
-  return (
-    <View style={styles.listState}>
-      <Text
-        style={[
-          styles.listStateText,
-          { color: tone === 'error' ? '#c9453a' : roles.fgMuted },
-        ]}
-      >
-        {text}
-      </Text>
-    </View>
-  );
-}
-
-function EmptyResults({
-  hasFilter,
-  minHeight,
-}: {
-  hasFilter: boolean;
-  minHeight: number;
-}) {
-  const roles = useRoles();
-  const t = useT();
-  const title = hasFilter
-    ? t('Niets gevonden met deze filters.', 'Nothing found with these filters.')
-    : t('Vandaag niets op de agenda.', 'Nothing on today’s agenda.');
-  const body = hasFilter
-    ? t(
-        'Pas je filter of zoekterm aan om meer events te zien.',
-        'Adjust your filter or search to see more events.'
-      )
-    : t(
-        'Kijk morgen weer, of bekijk de hele week op Agenda.',
-        'Check back tomorrow, or browse the whole week on Agenda.'
-      );
-  return (
-    <View style={[styles.emptyResults, { minHeight }]}>
-      <Ionicons
-        name={hasFilter ? 'search-outline' : 'sparkles-outline'}
-        size={44}
-        color={roles.fgMuted}
-      />
-      <Text style={[styles.emptyResultsTitle, { color: roles.fg }]}>
-        {title}
-      </Text>
-      <Text style={[styles.emptyResultsBody, { color: roles.fgMuted }]}>
-        {body}
-      </Text>
-    </View>
-  );
-}
-
-/**
- * Page-snap carousel voor de hero-cards bovenaan Vandaag. Bij één lead
- * vervalt 't naar een gewone Pressable+FeaturedCard zonder dots.
- */
-function FeaturedCarousel({
-  leads,
-  kicker,
-  locale,
-}: {
-  leads: OccurrenceRow[];
-  kicker: string;
-  locale: Locale;
-}) {
-  const { width } = useWindowDimensions();
-  const roles = useRoles();
-  const [page, setPage] = useState(0);
-
-  if (leads.length === 1) {
-    const lead = leads[0];
-    return (
-      <Pressable onPress={() => router.push(eventPathFor(lead) as never)}>
-        <FeaturedCard
-          kicker={kicker}
-          title={lead.event.title}
-          meta={formatMetaForRow(lead, locale)}
-          photo={eventImageUrl(lead.event) ?? undefined}
-          category={lead.event.category}
-        />
-      </Pressable>
-    );
-  }
-
-  const onScrollEnd = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
-    const idx = Math.round(e.nativeEvent.contentOffset.x / width);
-    setPage(Math.min(Math.max(idx, 0), leads.length - 1));
-  };
-
-  return (
-    <View>
-      <ScrollView
-        horizontal
-        pagingEnabled
-        showsHorizontalScrollIndicator={false}
-        onMomentumScrollEnd={onScrollEnd}
-      >
-        {leads.map((lead) => (
-          <View key={lead.id} style={{ width }}>
-            <Pressable
-              onPress={() => router.push(eventPathFor(lead) as never)}
-            >
-              <FeaturedCard
-                kicker={kicker}
-                title={lead.event.title}
-                meta={formatMetaForRow(lead, locale)}
-                photo={eventImageUrl(lead.event) ?? undefined}
-                category={lead.event.category}
-              />
-            </Pressable>
-          </View>
-        ))}
-      </ScrollView>
-      <View style={styles.featuredDots}>
-        {leads.map((_, i) => (
-          <View
-            key={i}
-            style={[
-              styles.featuredDot,
-              {
-                backgroundColor: i === page ? roles.fg : roles.fgPlaceholder,
-                width: i === page ? 18 : 6,
-              },
-            ]}
-          />
-        ))}
-      </View>
-    </View>
-  );
-}
-
-function FeaturedCard({
-  kicker,
-  title,
-  meta,
-  photo,
-  category,
-}: {
-  kicker: string;
-  title: string;
-  meta: string;
-  photo?: string;
-  category?: ApiEvent['category'];
-}) {
-  const mode = useMode();
-  const roles = useRoles();
-  const locale = useLocale();
-  const isNacht = mode === 'nacht';
-  const titleColor = isNacht ? palette.ink : palette.paper3;
-  const metaColor = isNacht
-    ? 'rgba(242,242,239,0.85)'
-    : 'rgba(245,241,232,0.95)';
-  const categoryTone = category
-    ? TONE[mode][CATEGORY_TICK[category]]
-    : undefined;
-
-  return (
-    <View style={styles.featuredWrap}>
-      <View
-        style={[
-          styles.featured,
-          { backgroundColor: isNacht ? palette.noir2 : roles.accent },
-        ]}
-      >
-        {photo && (
-          <Image
-            source={{ uri: photo }}
-            style={StyleSheet.absoluteFill}
-            contentFit="cover"
-          />
-        )}
-        <View
-          style={[
-            StyleSheet.absoluteFill,
-            {
-              // Subtiele tint over de foto — donker op nacht voor
-              // contrast, een hint accent op dag (veel zachter dan
-              // voorheen, foto blijft duidelijk de hero).
-              backgroundColor: isNacht
-                ? 'rgba(10,10,11,0.45)'
-                : 'rgba(201,69,58,0.18)',
-            },
-          ]}
-        />
-        <View style={styles.featuredInner}>
-          <View style={styles.featuredBottom}>
-            <View style={styles.featuredLabels}>
-              <View
-                style={[
-                  styles.featuredLabel,
-                  { backgroundColor: roles.accent },
-                ]}
-              >
-                <Text
-                  style={[styles.featuredLabelText, { color: roles.onAccent }]}
-                >
-                  {kicker}
-                </Text>
-              </View>
-              {category && categoryTone && (
-                <View
-                  style={[
-                    styles.featuredLabel,
-                    { backgroundColor: categoryTone },
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.featuredLabelText,
-                      { color: roles.onAccent },
-                    ]}
-                  >
-                    {translateCategory(category, locale)}
-                  </Text>
-                </View>
-              )}
-            </View>
-            <Text style={[styles.featuredTitle, { color: titleColor }]}>
-              {title}
-            </Text>
-            <Text style={[styles.featuredMeta, { color: metaColor }]}>
-              {meta}
-            </Text>
-          </View>
-        </View>
-      </View>
-    </View>
-  );
-}
-
-function KaartBanner() {
-  const roles = useRoles();
-  const t = useT();
-  return (
-    <Pressable
-      onPress={() => router.push('/kaart' as never)}
-      style={[
-        styles.kaartBanner,
-        {
-          backgroundColor: roles.bgLift,
-          borderColor: roles.bgChip,
-        },
-      ]}
-    >
-      <Ionicons name="map-outline" size={22} color={roles.fgMuted} />
-      <View style={styles.kaartBody}>
-        <Text style={[styles.kaartKicker, { color: roles.fgMuted }]}>
-          {t('Op de kaart', 'On the map')}
-        </Text>
-        <Text style={[styles.kaartTitle, { color: roles.fg }]}>
-          {t(
-            'Zie wat er nu speelt in de buurt.',
-            'See what’s on around you right now.'
-          )}
-        </Text>
-      </View>
-      <Ionicons
-        name="chevron-forward"
-        size={18}
-        color={roles.fgPlaceholder}
-      />
     </Pressable>
   );
 }
