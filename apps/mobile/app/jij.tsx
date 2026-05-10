@@ -725,6 +725,31 @@ export default function Jij() {
             </Text>
           </Pressable>
         </View>
+
+        {__DEV__ && (
+          <View style={styles.logoutWrap}>
+            <Pressable
+              onPress={async () => {
+                // Dev-shortcut: log uit + reset onboarding-vlag + ga
+                // naar /index zodat je de hele flow opnieuw doorloopt.
+                // Alleen zichtbaar in __DEV__-builds.
+                try {
+                  await authClient.signOut();
+                } catch {
+                  // signOut faalt als 'r geen sessie is — geen probleem
+                }
+                useModeStore.setState({ hasOnboarded: false });
+                queryClient.removeQueries();
+                router.replace('/');
+              }}
+              style={[styles.editBtn, { borderColor: roles.bgChip }]}
+            >
+              <Text style={[styles.editBtnText, { color: roles.fgMuted }]}>
+                {t('[DEV] Reset onboarding', '[DEV] Reset onboarding')}
+              </Text>
+            </Pressable>
+          </View>
+        )}
       </ScrollView>
       <AppHeader title={t('Profiel', 'Profile')} />
       <Modal
