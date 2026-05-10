@@ -22,6 +22,7 @@ import Animated, { FadeIn } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppHeader, HEADER_HEIGHT } from '@/components/AppHeader';
+import { ContentSwitchHint } from '@/components/ContentSwitchHint';
 import { Cross } from '@/components/Cross';
 import { Rail } from '@/components/Rail';
 import { RailEventCard } from '@/components/RailEventCard';
@@ -763,6 +764,7 @@ export default function Avond() {
         {!isLoading && !error && <AgendaBanner />}
       </ScrollView>
       <AppHeader title={t('Vandaag', 'Today')} showContentMode />
+      <ContentSwitchHint />
     </View>
   );
 }
