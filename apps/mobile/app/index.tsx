@@ -12,14 +12,18 @@ const SPLASH_HOLD_MS = 1600;
 type Stage = 'splash' | 'mode';
 
 /**
- * Start flow: splash → mode-keuze → home. The Welkom (naam + telefoon)
- * step is no longer part of this flow — it's deferred to the first
- * action that needs an account (save, add-friend) and lives at
- * /welkom as a modal route.
+ * Start flow: splash → mode-keuze → phone-OTP onboarding → home.
+ * Na de mode-pick gaat de gebruiker direct naar /jij?onboarding=1
+ * waar de bestaande phone+code+profile-flow het account aanmaakt.
+ * Zodra de gebruiker een handle heeft (= profile compleet), markeert
+ * /jij `hasOnboarded` en replace't naar /avond.
+ *
+ * Returning users met `hasOnboarded === true` slaan alles over en
+ * landen direct op /avond — ook als 'r geen sessie meer is (logout).
+ * Ze kunnen via de avatar-stip terug naar /jij om in te loggen.
  */
 export default function StartScreen() {
   const roles = useRoles();
-  const completeOnboarding = useModeStore((s) => s.completeOnboarding);
   const [stage, setStage] = useState<Stage>('splash');
 
   useEffect(() => {
@@ -36,8 +40,10 @@ export default function StartScreen() {
   }, [stage]);
 
   const handlePicked = () => {
-    completeOnboarding();
-    router.replace('/avond');
+    // hasOnboarded zetten we NIET hier — pas zodra /jij de phone-OTP-
+    // flow heeft afgerond. Zo komt iemand die de app sluit tijdens
+    // de phone-step bij volgende start netjes terug bij mode-pick.
+    router.replace('/jij?onboarding=1');
   };
 
   return (

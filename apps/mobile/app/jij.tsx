@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import * as Haptics from 'expo-haptics';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import {
   Alert,
@@ -41,7 +41,7 @@ import {
   Notifications,
   registerForPushNotificationsAsync,
 } from '@/lib/push';
-import { useMode, useRoles } from '@/store/mode';
+import { useMode, useModeStore, useRoles } from '@/store/mode';
 import { fontFamily, palette } from '@/theme/tokens';
 
 type Stage = 'phone' | 'code' | 'profile' | 'authed';
@@ -86,6 +86,19 @@ export default function Jij() {
       setStageOverride(null);
     }
   }, [stageOverride, sessionStage]);
+
+  // Onboarding-flow: index.tsx pusht ons naar /jij?onboarding=1 ná de
+  // nacht/dag-keuze. Zodra de phone-OTP-profile-flow heeft geleid tot
+  // een handle, markeren we onboarding compleet en sturen naar /avond.
+  const params = useLocalSearchParams<{ onboarding?: string }>();
+  const isOnboarding = params.onboarding === '1';
+  useEffect(() => {
+    if (!isOnboarding) return;
+    if (sessionStage === 'authed') {
+      useModeStore.getState().completeOnboarding();
+      router.replace('/avond');
+    }
+  }, [isOnboarding, sessionStage]);
 
   // Auth-form state. `phoneInput` is wat de gebruiker typt of plakt
   // — vrij formaat (+31 6, 06, 0031, +1 555, etc). Bij submit
