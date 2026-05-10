@@ -56,10 +56,7 @@ export function ContentSwitchHint() {
           zonder SVG nodig — past bij Andreas-style view-primitives. */}
       <View style={styles.arrowWrap}>
         <View
-          style={[
-            styles.arrow,
-            { backgroundColor: isNacht ? palette.noir2 : palette.paper2 },
-          ]}
+          style={[styles.arrow, { backgroundColor: roles.accent }]}
         />
       </View>
       <Pressable
@@ -70,7 +67,7 @@ export function ContentSwitchHint() {
           styles.card,
           {
             backgroundColor: isNacht ? palette.noir2 : palette.paper2,
-            borderColor: isNacht ? '#2a2a2d' : palette.paper,
+            borderColor: roles.accent,
           },
         ]}
       >
@@ -115,7 +112,9 @@ const styles = StyleSheet.create({
     height: 8,
     overflow: 'hidden',
     alignItems: 'flex-end',
-    paddingRight: 30,
+    // Arrow rechts-uitgelijnd; paddingRight schuift 'm naar links zodat
+    // de tip onder de Uit/Expo-switch valt (niet onder de avatar).
+    paddingRight: 56,
     alignSelf: 'stretch',
   },
   arrow: {
