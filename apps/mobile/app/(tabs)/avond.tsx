@@ -516,11 +516,13 @@ export default function Avond() {
             Lichte negative marginTop zodat de top van de hero onder
             de fade-to-transparent header doorloopt. */}
         {leads.length > 0 && (
-          <FeaturedCarousel
-            leads={leads}
-            kicker={t('Onze keuze', 'Our pick')}
-            locale={locale}
-          />
+          <View style={{ marginTop: 8 }}>
+            <FeaturedCarousel
+              leads={leads}
+              kicker={t('Onze keuze', 'Our pick')}
+              locale={locale}
+            />
+          </View>
         )}
 
         {/* Kaart-CTA — alleen in 'uit'-modus. */}
@@ -571,7 +573,6 @@ export default function Avond() {
           <>
             <Rail
               kicker={t('Vannacht in de clubs', 'Tonight in the clubs')}
-              count={railClubs.length}
             >
               {railClubs.map((r) => (
                 <RailEventCard
@@ -587,7 +588,6 @@ export default function Avond() {
             </Rail>
             <Rail
               kicker={t('Live op de podia', 'Live on stage')}
-              count={railLivePodium.length}
             >
               {railLivePodium.map((r) => (
                 <RailEventCard
@@ -603,7 +603,6 @@ export default function Avond() {
             </Rail>
             <Rail
               kicker={t('Theater & dans', 'Theatre & dance')}
-              count={railTheater.length}
               moreLabel={t('Meer →', 'More →')}
               onMore={() =>
                 router.push({ pathname: '/agenda', params: { cat: 'Theater' } })
@@ -623,7 +622,6 @@ export default function Avond() {
             </Rail>
             <Rail
               kicker={t('Film vanavond', 'Film tonight')}
-              count={railFilm.length}
               moreLabel={t('Meer →', 'More →')}
               onMore={() =>
                 router.push({ pathname: '/agenda', params: { cat: 'Film' } })
@@ -643,7 +641,6 @@ export default function Avond() {
             </Rail>
             <Rail
               kicker={t('Vrienden gaan', 'Friends going')}
-              count={railFriendsUit.length}
             >
               {railFriendsUit.map((r) => (
                 <RailEventCard
@@ -659,7 +656,6 @@ export default function Avond() {
             </Rail>
             <Rail
               kicker={t('Venues die je volgt', 'Venues you follow')}
-              count={railFollowedVenuesUit.length}
             >
               {railFollowedVenuesUit.map((v) => (
                 <VenueRailCard
@@ -678,7 +674,6 @@ export default function Avond() {
           <>
             <Rail
               kicker={t('Nieuw geopend', 'Newly opened')}
-              count={railNewlyOpened.length}
             >
               {railNewlyOpened.map((e) => (
                 <RailEventCard key={e.id} event={e} />
@@ -686,7 +681,6 @@ export default function Avond() {
             </Rail>
             <Rail
               kicker={t('Sluit deze maand', 'Closing this month')}
-              count={railClosingSoon.length}
             >
               {railClosingSoon.map((e) => (
                 <RailEventCard key={e.id} event={e} />
@@ -694,7 +688,6 @@ export default function Avond() {
             </Rail>
             <Rail
               kicker={t('Musea die je volgt', 'Museums you follow')}
-              count={railFollowedVenuesExpo.length}
             >
               {railFollowedVenuesExpo.map((v) => (
                 <VenueRailCard
@@ -708,7 +701,6 @@ export default function Avond() {
             </Rail>
             <Rail
               kicker={t('Literatuur', 'Literature')}
-              count={railLit.length}
               moreLabel={t('Meer →', 'More →')}
               onMore={() =>
                 router.push({
@@ -723,7 +715,6 @@ export default function Avond() {
             </Rail>
             <Rail
               kicker={t('Vrienden gaan', 'Friends going')}
-              count={railFriendsExpo.length}
             >
               {railFriendsExpo.map((e) => (
                 <RailEventCard key={e.id} event={e} />
@@ -740,6 +731,11 @@ export default function Avond() {
             <EmptyResults hasFilter={hasFilterActive} minHeight={240} />
           </Animated.View>
         )}
+
+        {/* Bottom-banner: na alle rails een uitnodiging om door te
+            klikken naar de volledige Agenda. Spiegelt visueel de
+            KaartBanner bovenaan. */}
+        {!isLoading && !error && <AgendaBanner />}
       </ScrollView>
       <AppHeader title={t('Vandaag', 'Today')} showContentMode />
     </View>
@@ -1021,6 +1017,41 @@ function KaartBanner() {
           {t(
             'Zie wat er nu speelt in de buurt.',
             'See what’s on around you right now.'
+          )}
+        </Text>
+      </View>
+      <Ionicons
+        name="chevron-forward"
+        size={18}
+        color={roles.fgPlaceholder}
+      />
+    </Pressable>
+  );
+}
+
+function AgendaBanner() {
+  const roles = useRoles();
+  const t = useT();
+  return (
+    <Pressable
+      onPress={() => router.push('/agenda' as never)}
+      style={[
+        styles.kaartBanner,
+        {
+          backgroundColor: roles.bgLift,
+          borderColor: roles.bgChip,
+        },
+      ]}
+    >
+      <Ionicons name="calendar-outline" size={22} color={roles.fgMuted} />
+      <View style={styles.kaartBody}>
+        <Text style={[styles.kaartKicker, { color: roles.fgMuted }]}>
+          {t('Vooruit plannen', 'Plan ahead')}
+        </Text>
+        <Text style={[styles.kaartTitle, { color: roles.fg }]}>
+          {t(
+            'Bekijk de hele agenda.',
+            'Browse the full agenda.'
           )}
         </Text>
       </View>

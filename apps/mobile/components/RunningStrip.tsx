@@ -41,34 +41,52 @@ export function RunningStrip({
   const total = series.length + exhibitions.length;
   if (total === 0) return null;
 
+  // Bij precies één item: ipv een horizontale scroller een vol-brede
+  // card. Geen scroll-affordance is dan onnodig en de single hero
+  // krijgt zo z'n eigen ademruimte.
+  const single = total === 1;
+
   return (
     <View style={styles.section}>
       <View style={styles.head}>
         <Text style={[styles.headLabel, { color: roles.fg }]}>
           {kicker ?? t('Loopt nu', 'Running now')}
         </Text>
-        <Text style={[styles.headCount, { color: roles.fgMuted }]}>
-          {total}
-          {total === 1 ? t(' serie/expo', ' series/expo') : t(' lopend', ' running')}
-        </Text>
       </View>
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.scroller}
-      >
-        {series.map((s) => (
-          <SeriesCard key={`s-${s.id}`} series={s} />
-        ))}
-        {exhibitions.map((e) => (
-          <ExhibitionCard key={`e-${e.id}`} event={e} />
-        ))}
-      </ScrollView>
+      {single ? (
+        <View style={styles.singleWrap}>
+          {series.map((s) => (
+            <SeriesCard key={`s-${s.id}`} series={s} wide />
+          ))}
+          {exhibitions.map((e) => (
+            <ExhibitionCard key={`e-${e.id}`} event={e} wide />
+          ))}
+        </View>
+      ) : (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.scroller}
+        >
+          {series.map((s) => (
+            <SeriesCard key={`s-${s.id}`} series={s} />
+          ))}
+          {exhibitions.map((e) => (
+            <ExhibitionCard key={`e-${e.id}`} event={e} />
+          ))}
+        </ScrollView>
+      )}
     </View>
   );
 }
 
-function SeriesCard({ series }: { series: ApiSeriesListItem }) {
+function SeriesCard({
+  series,
+  wide,
+}: {
+  series: ApiSeriesListItem;
+  wide?: boolean;
+}) {
   const mode = useMode();
   const roles = useRoles();
   const isNacht = mode === 'nacht';
@@ -80,6 +98,7 @@ function SeriesCard({ series }: { series: ApiSeriesListItem }) {
       onPress={() => router.push(`/series/${series.slug}` as never)}
       style={[
         styles.card,
+        wide && styles.cardWide,
         {
           backgroundColor: isNacht ? palette.noir2 : palette.paper2,
           borderColor: isNacht ? '#2a2a2d' : palette.paper,
@@ -123,7 +142,13 @@ function SeriesCard({ series }: { series: ApiSeriesListItem }) {
   );
 }
 
-function ExhibitionCard({ event }: { event: ApiEvent }) {
+function ExhibitionCard({
+  event,
+  wide,
+}: {
+  event: ApiEvent;
+  wide?: boolean;
+}) {
   const mode = useMode();
   const roles = useRoles();
   const isNacht = mode === 'nacht';
@@ -143,6 +168,7 @@ function ExhibitionCard({ event }: { event: ApiEvent }) {
       onPress={() => router.push(`/event/${event.id}` as never)}
       style={[
         styles.card,
+        wide && styles.cardWide,
         {
           backgroundColor: isNacht ? palette.noir2 : palette.paper2,
           borderColor: isNacht ? '#2a2a2d' : palette.paper,
@@ -233,14 +259,15 @@ const styles = StyleSheet.create({
     letterSpacing: -0.36,
     flexShrink: 1,
   },
-  headCount: {
-    fontFamily: fontFamily.mono,
-    fontSize: 10,
-    letterSpacing: 1,
-    textTransform: 'uppercase',
-  },
   scroller: {
     gap: 10,
+    paddingHorizontal: 22,
+    paddingBottom: 8,
+  },
+  // Wrapper voor de single-card-mode: zelfde inset als de scroller
+  // zodat de card visueel op dezelfde plek begint als 'ie tussen
+  // andere cards zou staan.
+  singleWrap: {
     paddingHorizontal: 22,
     paddingBottom: 8,
   },
@@ -249,6 +276,10 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     borderWidth: 1,
     overflow: 'hidden',
+  },
+  // Override voor single-card-mode: vol-breed binnen de wrapper.
+  cardWide: {
+    width: '100%',
   },
   cardImg: {
     width: '100%',
