@@ -25,6 +25,7 @@ import Animated, { FadeIn } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppHeader, HEADER_HEIGHT } from '@/components/AppHeader';
+import { ContentModeSwitch } from '@/components/ContentModeSwitch';
 import { Cross } from '@/components/Cross';
 import { EventListRow } from '@/components/EventListRow';
 import { RefreshBanner } from '@/components/RefreshBanner';
@@ -35,6 +36,7 @@ import {
   eventImageUrl,
   CATEGORY_TICK,
   VENUE_TYPE_TICK,
+  eventBelongsToMode,
   getVenueTypeChips,
   translateVenueType,
   dowMixed,
@@ -63,6 +65,7 @@ import {
 } from '@/lib/queries';
 import { useTabDoubleTap } from '@/lib/useTabDoubleTap';
 import { useAgendaFilters } from '@/store/agendaFilters';
+import { useContentMode } from '@/store/contentMode';
 import { useMode, useRoles } from '@/store/mode';
 import {
   isSavedSearchActive,
@@ -75,6 +78,8 @@ import { fontFamily, palette } from '@/theme/tokens';
 
 const DAYSTRIP_HEIGHT = 76;
 const CHIPROW_HEIGHT = 60;
+// Pill (38) + paddingTop (6) + paddingBottom (2) — past bij modeSwitchWrap.
+const MODE_SWITCH_HEIGHT = 46;
 
 const CATEGORIES: ApiEvent['category'][] = [
   'Muziek',
@@ -125,6 +130,7 @@ export default function Agenda() {
   const t = useT();
   const locale = useLocale();
   const timeBlocks = useTimeBlocks();
+  const cmode = useContentMode();
   const sectionListRef = useRef<SectionList<AgendaItem, OccurrenceGroup>>(null);
   // useScrollToTop accepteert ook een ref met scrollToLocation — past
   // 'm zonder fuss op SectionList.
@@ -199,6 +205,16 @@ export default function Agenda() {
     if (!events) return [];
     const needle = query.trim().toLowerCase();
     return events.filter((e) => {
+      // Content-mode-filter: beperken tot 'uit' of 'expo' cats wanneer
+      // geen expliciete categorie-keuze gemaakt is. Expliciete cat-
+      // filter blijft leidend zodat 'Kunst' filter werkt ongeacht
+      // de mode-keuze.
+      if (
+        activeCats.length === 0 &&
+        !eventBelongsToMode(e, cmode)
+      ) {
+        return false;
+      }
       if (activeCats.length > 0 && !activeCats.includes(e.category)) return false;
       if (activeTypes.length > 0) {
         if (!e.venue.type || !activeTypes.includes(e.venue.type)) return false;
@@ -225,6 +241,7 @@ export default function Agenda() {
     query,
     onlyFriends,
     onlyFavorites,
+    cmode,
   ]);
 
   const showFavoritesChip = useMemo(
@@ -290,7 +307,11 @@ export default function Agenda() {
   }, [days, selected]);
 
   const stickyOffset =
-    insets.top + HEADER_HEIGHT + DAYSTRIP_HEIGHT + CHIPROW_HEIGHT;
+    insets.top +
+    HEADER_HEIGHT +
+    MODE_SWITCH_HEIGHT +
+    DAYSTRIP_HEIGHT +
+    CHIPROW_HEIGHT;
 
   // Sections voor de SectionList — `data` is een gemengde lijst van
   // cat-headers + rows: binnen elke dag groeperen we events op
@@ -487,6 +508,9 @@ export default function Agenda() {
         initialNumToRender={12}
       />
       <AppHeader title={t('Agenda', 'Agenda')}>
+        <View style={styles.modeSwitchWrap}>
+          <ContentModeSwitch />
+        </View>
         <View style={{ height: DAYSTRIP_HEIGHT }}>
           {days.length > 0 && selected && (
             <DayStrip
@@ -1577,6 +1601,14 @@ function ListState({
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
+
+  // Content-mode-switch wrap — past tussen logo-rij en day-strip.
+  modeSwitchWrap: {
+    paddingHorizontal: 22,
+    paddingTop: 6,
+    paddingBottom: 2,
+    height: MODE_SWITCH_HEIGHT,
+  },
 
   dayStrip: {
     gap: 6,

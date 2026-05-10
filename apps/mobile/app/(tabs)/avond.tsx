@@ -32,6 +32,7 @@ import Animated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppHeader, HEADER_HEIGHT } from '@/components/AppHeader';
+import { ContentModeSwitch } from '@/components/ContentModeSwitch';
 import { Cross } from '@/components/Cross';
 import { EventListRow } from '@/components/EventListRow';
 import { RefreshBanner } from '@/components/RefreshBanner';
@@ -41,7 +42,9 @@ import type { ApiEvent, VenueType } from '@/lib/api';
 import {
   eventImageUrl,
   CATEGORY_TICK,
+  CONTENT_MODE_CATS,
   VENUE_TYPE_TICK,
+  eventBelongsToMode,
   getVenueTypeChips,
   translateVenueType,
   dowFull,
@@ -69,6 +72,7 @@ import {
 } from '@/lib/queries';
 import { useSession } from '@/lib/authClient';
 import { useTabDoubleTap } from '@/lib/useTabDoubleTap';
+import { useContentMode } from '@/store/contentMode';
 import { useMode, useRoles } from '@/store/mode';
 import {
   isSavedVandaagSearchActive,
@@ -145,6 +149,7 @@ export default function Avond() {
   const insets = useSafeAreaInsets();
   const t = useT();
   const locale = useLocale();
+  const cmode = useContentMode();
   const scrollRef = useRef<
     SectionList<OccurrenceRow, { category: ApiEvent['category']; items: OccurrenceRow[] }>
   >(null);
@@ -269,6 +274,13 @@ export default function Avond() {
       ) {
         return false;
       }
+      // Content-mode-filter overschrijft de cat-filter níet: een
+      // expliciete categorie-keuze blijft leidend, ook als 'ie buiten
+      // de huidige mode valt. Geen expliciete cat? Dan beperken we
+      // tot de mode-categorieën.
+      if (activeCats.length === 0) {
+        if (!eventBelongsToMode(e, cmode)) return false;
+      }
       if (activeCats.length > 0 && !activeCats.includes(e.category)) {
         return false;
       }
@@ -311,6 +323,7 @@ export default function Avond() {
     onlyFriends,
     onlyFavorites,
     query,
+    cmode,
   ]);
 
   // Toon de favorieten-chip alleen als de gebruiker minstens één venue
@@ -332,7 +345,8 @@ export default function Avond() {
 
   // Alle events vandaag (zonder filter) — gebruikt voor de feature en
   // voor de totaal-telling in de hero. Filter werkt alleen op de
-  // cat-secties eronder.
+  // cat-secties eronder. Wel content-mode-aware: hero/featured tonen
+  // alleen events van de actieve mode.
   const allToday = useMemo<OccurrenceRow[]>(() => {
     if (!events) return [];
     return expandToOccurrenceRows(events).filter((row) => {
@@ -341,9 +355,10 @@ export default function Avond() {
       if (new Date(row.occurrence.startsAt).getTime() >= todayWindow.toMs) {
         return false;
       }
+      if (!eventBelongsToMode(row.event, cmode)) return false;
       return true;
     });
-  }, [events, now, todayWindow.toMs]);
+  }, [events, now, todayWindow.toMs, cmode]);
 
   // Hoofd-artikelen: alle featured events uit vandaag-events (NIET
   // filter-afhankelijk). Geen featured? Eerste rij als enige hero.
@@ -397,10 +412,19 @@ export default function Avond() {
       // Wanneer er een categorie-filter actief is, alleen die secties
       // tonen — anders filter-keuze niet zichtbaar.
       if (activeCats.length > 0 && !activeCats.includes(category)) return [];
+      // Geen expliciete cat-filter? Dan beperken we tot de mode-cats —
+      // zodat 'uit' geen Kunst/Lit secties krijgt en 'expo' geen
+      // Muziek/Theater/Film.
+      if (
+        activeCats.length === 0 &&
+        !CONTENT_MODE_CATS[cmode].includes(category)
+      ) {
+        return [];
+      }
       const items = map.get(category);
       return items && items.length > 0 ? [{ category, items }] : [];
     });
-  }, [filtered, activeCats]);
+  }, [filtered, activeCats, cmode]);
 
   // Hero-tekst: "{dag} {datum} op de agenda" met de datum in
   // accent-kleur. Niet filter-afhankelijk; geen count meer in deze
@@ -538,15 +562,19 @@ export default function Avond() {
               </View>
             )}
 
-            {/* Kaart-CTA — onafhankelijk van de filter. */}
-            <KaartBanner />
+            {/* Kaart-CTA — alleen in 'uit'-modus (ruimtelijk verkennen
+                past bij avond-uitgaan, niet bij planning-modus). */}
+            {cmode === 'uit' && <KaartBanner />}
 
-            {/* "Loopt nu" — actieve series eerst, doorlopende tentoon-
-                stellingen daarna. Altijd zichtbaar als losse strook,
-                niet beïnvloed door de tijd-blok filter. */}
+            {/* "Loopt nu" — in 'uit'-modus actieve series (festivals,
+                tour-weeks). In 'expo'-modus doorlopende tentoon-
+                stellingen. Beide strooken hebben een ander ritme dan
+                de dag-events en horen daarom apart bovenaan. */}
             <RunningStrip
-              series={seriesList ?? []}
-              exhibitionEvents={runningExhibitions}
+              series={cmode === 'uit' ? (seriesList ?? []) : []}
+              exhibitionEvents={
+                cmode === 'expo' ? runningExhibitions : []
+              }
             />
 
             {/* Hero — divider + "{dag} {datum}" met datum in primair
@@ -564,6 +592,12 @@ export default function Avond() {
               </Text>
             </View>
 
+            {/* Content-mode-switch — top-level keuze tussen 'Uit' en
+                'Expo' content. Boven de chipRow, met dezelfde padding
+                zodat de visuele kolom doorloopt. */}
+            <View style={styles.modeSwitchWrap}>
+              <ContentModeSwitch />
+            </View>
             {/* Filter-rij. Wrapper captureert Y-positie binnen de
                 ListHeader — gebruikt door de tab-double-tap scroll én
                 door de sticky-overlay opacity-animation. */}
@@ -2018,6 +2052,14 @@ const styles = StyleSheet.create({
     fontSize: 10,
     letterSpacing: 1,
     textTransform: 'uppercase',
+  },
+
+  // Content-mode-switch wrap — dezelfde horizontale padding als de
+  // chipRow eronder zodat de visuele kolom doorloopt.
+  modeSwitchWrap: {
+    paddingHorizontal: 22,
+    paddingTop: 6,
+    paddingBottom: 2,
   },
 
   // Chip-row — zelfde patroon als Agenda's ChipRow. Expliciete height
