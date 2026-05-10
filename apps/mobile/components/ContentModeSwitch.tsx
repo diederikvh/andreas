@@ -7,15 +7,15 @@ import { useContentMode, useSetContentMode } from '@/store/contentMode';
 import { useMode, useRoles } from '@/store/mode';
 import { palette } from '@/theme/tokens';
 
-// Twee-staat segmented control met iconen — muziek = 'uit' (going out),
-// palette = 'expo' (cultuur). Tap flipt zowel de content-as als de
-// visuele mode (nacht ⇄ dag) via de curtain-animatie. De koppeling is
-// bewust 1-op-1: nacht is de going-out-vibe (donker, acid-yellow),
-// dag is de planning-vibe (cream, karmijn).
+// Twee-staat toggle met iconen — maan = 'uit' (going out, nacht), zon
+// = 'expo' (cultuur, dag). De héle pill is tappable: een tap (waar dan
+// ook) flipt naar de andere stand. Iconen zijn puur visuele
+// indicatoren van de huidige staat. Flipt zowel de content-as als de
+// visuele mode (nacht ⇄ dag) via de curtain-animatie. Koppeling is
+// 1-op-1: nacht is de going-out-vibe (donker, acid-yellow), dag de
+// planning-vibe (cream, karmijn).
 //
-// Vervangt de oude dn-switch op de rechter-rij van AppHeader. De
-// dn-switch bestaat nog als component voor debug/storybook gevallen,
-// maar wordt niet meer gerenderd in de hoofd-UI.
+// Vervangt de oude dn-switch op de rechter-rij van AppHeader.
 export function ContentModeSwitch() {
   const mode = useMode();
   const roles = useRoles();
@@ -26,17 +26,20 @@ export function ContentModeSwitch() {
 
   // Combined-toggle: flipt content-mode synchronously en triggert de
   // curtain animation die mid-sweep ook de visuele mode flipt. Beide
-  // stores eindigen consistent. We doen geen separate visual-mode-set
-  // hier — useModeSwitch handelt dat zelf af binnen de curtain.
-  const onTap = (next: 'uit' | 'expo') => {
-    if (next === cmode) return;
+  // stores eindigen consistent.
+  const onToggle = () => {
     tinyTap();
-    setCmode(next);
+    setCmode(cmode === 'uit' ? 'expo' : 'uit');
     switchVisualMode();
   };
 
   return (
-    <View
+    <Pressable
+      accessibilityRole="switch"
+      accessibilityState={{ checked: cmode === 'expo' }}
+      accessibilityLabel={cmode === 'uit' ? 'Uit' : 'Expo'}
+      onPress={onToggle}
+      hitSlop={6}
       style={[
         styles.wrap,
         {
@@ -45,55 +48,47 @@ export function ContentModeSwitch() {
         },
       ]}
     >
-      <IconPill
-        icon="musical-notes"
+      <IconSlot
+        icon="moon"
         active={cmode === 'uit'}
-        onPress={() => onTap('uit')}
         activeBg={roles.fg}
         activeFg={roles.bg}
         inactiveFg={roles.fgPlaceholder}
       />
-      <IconPill
-        icon="color-palette"
+      <IconSlot
+        icon="sunny"
         active={cmode === 'expo'}
-        onPress={() => onTap('expo')}
         activeBg={roles.fg}
         activeFg={roles.bg}
         inactiveFg={roles.fgPlaceholder}
       />
-    </View>
+    </Pressable>
   );
 }
 
-function IconPill({
+function IconSlot({
   icon,
   active,
-  onPress,
   activeBg,
   activeFg,
   inactiveFg,
 }: {
-  icon: 'musical-notes' | 'color-palette';
+  icon: 'moon' | 'sunny';
   active: boolean;
-  onPress: () => void;
   activeBg: string;
   activeFg: string;
   inactiveFg: string;
 }) {
   return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityState={{ selected: active }}
-      accessibilityLabel={icon === 'musical-notes' ? 'Uit' : 'Expo'}
-      onPress={onPress}
-      style={[styles.pill, active && { backgroundColor: activeBg }]}
+    <View
+      style={[styles.slot, active && { backgroundColor: activeBg }]}
     >
       <Ionicons
         name={icon}
         size={14}
         color={active ? activeFg : inactiveFg}
       />
-    </Pressable>
+    </View>
   );
 }
 
@@ -109,7 +104,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     gap: 2,
   },
-  pill: {
+  slot: {
     width: 28,
     height: 22,
     borderRadius: 999,
