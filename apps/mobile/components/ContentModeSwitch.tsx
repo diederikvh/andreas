@@ -7,6 +7,11 @@ import { useContentMode, useSetContentMode } from '@/store/contentMode';
 import { useMode, useRoles } from '@/store/mode';
 import { palette } from '@/theme/tokens';
 
+// Symbool-type voor de twee slots:
+// - 'moon': Ionicons-maan voor 'uit' (nacht-vibe).
+// - 'sun': een rustige cirkel zonder stralen voor 'expo' (dag-vibe).
+type SlotSymbol = 'moon' | 'sun';
+
 // Twee-staat toggle met iconen — maan = 'uit' (going out, nacht), zon
 // = 'expo' (cultuur, dag). De héle pill is tappable: een tap (waar dan
 // ook) flipt naar de andere stand. Iconen zijn puur visuele
@@ -51,15 +56,15 @@ export function ContentModeSwitch() {
       <IconSlot
         icon="moon"
         active={cmode === 'uit'}
-        activeBg={roles.fg}
-        activeFg={roles.bg}
+        activeBg={roles.accent}
+        activeFg={roles.onAccent}
         inactiveFg={roles.fgPlaceholder}
       />
       <IconSlot
-        icon="sunny"
+        icon="sun"
         active={cmode === 'expo'}
-        activeBg={roles.fg}
-        activeFg={roles.bg}
+        activeBg={roles.accent}
+        activeFg={roles.onAccent}
         inactiveFg={roles.fgPlaceholder}
       />
     </Pressable>
@@ -73,21 +78,25 @@ function IconSlot({
   activeFg,
   inactiveFg,
 }: {
-  icon: 'moon' | 'sunny';
+  icon: SlotSymbol;
   active: boolean;
   activeBg: string;
   activeFg: string;
   inactiveFg: string;
 }) {
+  const fg = active ? activeFg : inactiveFg;
   return (
     <View
       style={[styles.slot, active && { backgroundColor: activeBg }]}
     >
-      <Ionicons
-        name={icon}
-        size={14}
-        color={active ? activeFg : inactiveFg}
-      />
+      {icon === 'moon' ? (
+        <Ionicons name="moon" size={14} color={fg} />
+      ) : (
+        // Bewust géén Ionicons.sunny met stralen — een platte cirkel
+        // is rustiger en past beter bij de minimalistische dn-switch
+        // estetiek.
+        <View style={[styles.sunDot, { backgroundColor: fg }]} />
+      )}
     </View>
   );
 }
@@ -110,5 +119,12 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  // Plat cirkeltje voor de zon — visueel iets kleiner dan het maan-
+  // glyph zodat ze optisch even zwaar lezen.
+  sunDot: {
+    width: 11,
+    height: 11,
+    borderRadius: 999,
   },
 });
