@@ -85,15 +85,15 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
   },
   arrowWrap: {
-    height: 8,
+    height: 11,
     overflow: 'hidden',
     alignItems: 'flex-end',
     alignSelf: 'stretch',
   },
   arrow: {
-    width: 14,
-    height: 14,
-    transform: [{ rotate: '45deg' }, { translateY: 8 }],
+    width: 18,
+    height: 18,
+    transform: [{ rotate: '45deg' }, { translateY: 11 }],
   },
   card: {
     flexDirection: 'row',

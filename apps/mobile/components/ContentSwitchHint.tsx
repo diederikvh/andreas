@@ -22,7 +22,11 @@ export function ContentSwitchHint() {
 
   return (
     <Coachmark
-      top={insets.top + HEADER_HEIGHT + 4}
+      // Card-top is `top + arrowWrap.height (11)`. Featured-card-top
+      // staat op `paddingTop + marginTop = insets.top + HEADER_HEIGHT
+      // + 8`. Voor strakke uitlijning: top = insets.top + HEADER_HEIGHT
+      // - 3, dan landt de hint-card op precies dezelfde Y als Featured.
+      top={insets.top + HEADER_HEIGHT - 3}
       // Switch in de header: 28px avatar + 8px gap + ~70px switch.
       // Arrow-tip ~56px van rechter rand valt onder de switch.
       arrowFromRight={56}

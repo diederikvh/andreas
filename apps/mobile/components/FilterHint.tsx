@@ -27,8 +27,10 @@ export function FilterHint() {
   return (
     <Coachmark
       // Y: net onder de chipRow (header + day-strip + chip-row).
+      // Compenseert ook voor de arrowWrap-hoogte van Coachmark (11px)
+      // zodat de card net onder de chip-row begint.
       top={
-        insets.top + HEADER_HEIGHT + DAYSTRIP_HEIGHT + CHIPROW_HEIGHT - 4
+        insets.top + HEADER_HEIGHT + DAYSTRIP_HEIGHT + CHIPROW_HEIGHT - 7
       }
       // X: filter-knop staat links in de chipRow, tweede element na de
       // search-chip. Vanaf rechts gemeten ligt 'ie ongeveer ~250px van
