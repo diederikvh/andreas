@@ -718,14 +718,21 @@ export default function Avond() {
           </>
         )}
 
-        {/* Empty-state komt onder de rails — als alle rails leeg zijn
-            betekent 't dat er niets te tonen valt voor deze mode +
-            filter combinatie. */}
-        {!isLoading && !error && filtered.length === 0 && events && (
-          <Animated.View entering={FadeIn.duration(220)}>
-            <EmptyResults hasFilter={hasFilterActive} minHeight={240} />
-          </Animated.View>
-        )}
+        {/* Empty-state alleen in 'uit'-modus — daar is "vandaag" het
+            uitgangspunt en zegt geen-events-vandaag iets. In 'expo'-
+            modus draaien de rails op expoEvents (geen vandaag-filter)
+            dus filtered=0 betekent niets — de rails kunnen alsnog vol
+            staan met exhibitions/lit-events. Een "vandaag niets op de
+            agenda"-melding zou dan tegenstrijdig zijn. */}
+        {cmode === 'uit' &&
+          !isLoading &&
+          !error &&
+          filtered.length === 0 &&
+          events && (
+            <Animated.View entering={FadeIn.duration(220)}>
+              <EmptyResults hasFilter={hasFilterActive} minHeight={240} />
+            </Animated.View>
+          )}
 
         {/* Bottom-banner: na alle rails een uitnodiging om door te
             klikken naar de volledige Agenda. Spiegelt visueel de
