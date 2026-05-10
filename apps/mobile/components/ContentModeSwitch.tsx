@@ -85,17 +85,26 @@ function IconSlot({
   inactiveFg: string;
 }) {
   const fg = active ? activeFg : inactiveFg;
+  // Op de actieve, brand-gekleurde achtergrond zakken de glyphs naar
+  // 30% opacity — laat de accent-kleur dominant zijn als 'jij staat
+  // hier'-signaal, glyph wordt een rustige hint.
+  const glyphOpacity = active ? 0.3 : 1;
   return (
     <View
       style={[styles.slot, active && { backgroundColor: activeBg }]}
     >
       {icon === 'moon' ? (
-        <Ionicons name="moon" size={14} color={fg} />
+        <Ionicons name="moon" size={14} color={fg} style={{ opacity: glyphOpacity }} />
       ) : (
         // Bewust géén Ionicons.sunny met stralen — een platte cirkel
         // is rustiger en past beter bij de minimalistische dn-switch
         // estetiek.
-        <View style={[styles.sunDot, { backgroundColor: fg }]} />
+        <View
+          style={[
+            styles.sunDot,
+            { backgroundColor: fg, opacity: glyphOpacity },
+          ]}
+        />
       )}
     </View>
   );
@@ -120,11 +129,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  // Plat cirkeltje voor de zon — visueel iets kleiner dan het maan-
-  // glyph zodat ze optisch even zwaar lezen.
+  // Plat cirkeltje voor de zon — bewust klein en strak, geen stralen.
   sunDot: {
-    width: 11,
-    height: 11,
+    width: 8,
+    height: 8,
     borderRadius: 999,
   },
 });
