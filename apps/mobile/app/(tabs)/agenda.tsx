@@ -1528,7 +1528,6 @@ function AgendaRow({
 }) {
   const { event, occurrence } = row;
   const locale = useLocale();
-  const toggleType = useAgendaFilters((s) => s.toggleType);
   // Friend-pill is occurrence-specific: alleen vrienden die díe avond
   // gesaved hebben, niet alle die de film "in het algemeen" volgen.
   // Server zet ze op occurrence.friendsSaved; fallback op event-level
@@ -1548,10 +1547,11 @@ function AgendaRow({
   // Venue krijgt een tone-pill (eerste in tag-row) op basis van
   // venue.type — categorie-tag komt erna. Voor venues zonder type
   // valt de pill weg en blijft venue in de subline staan. Pill is
-  // tappable: toggelt het venue-type-filter.
+  // bewust NIET tappable — eerder toggelde 'ie het venue-type-filter
+  // wat verwarrend was: je tikt "Paradiso" maar krijgt een filter op
+  // alle podia. Type-filteren gaat via de filter-sheet.
   const venueType = event.venue.type;
   const venueTone = venueType ? VENUE_TYPE_TICK[venueType] : undefined;
-  const onVenuePress = venueType ? () => toggleType(venueType) : undefined;
   return (
     <EventListRow
       time={rowTimeLabel(occurrence.startsAt, occurrence.endsAt, locale)}
@@ -1559,7 +1559,6 @@ function AgendaRow({
       title={event.title}
       venue={event.venue.name}
       venueTone={venueTone}
-      onVenuePress={onVenuePress}
       tags={[
         {
           label: translateCategory(event.category, locale),
