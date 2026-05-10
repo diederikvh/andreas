@@ -102,7 +102,7 @@ const styles = StyleSheet.create({
     padding: 14,
     borderRadius: 14,
     borderWidth: 2,
-    width: 280,
+    width: 320,
     // Subtiele drop-shadow zodat de hint los van de content lijkt te
     // zweven. Cross-platform: iOS gebruikt shadow*-props, Android
     // elevation.
