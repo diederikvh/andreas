@@ -1,4 +1,4 @@
-import { eq, like } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { chromium } from 'playwright';
 
 import { db, schema } from '../db/index.js';
@@ -190,13 +190,6 @@ export async function scrapeQFactory(options?: {
   }
   const venueCategory = venue.categories?.[0] ?? 'Muziek';
 
-  // Verwijder oude TM-jsonld events voor Q-Factory (lege images,
-  // fake descriptions) zodat onze nieuwe scraper schoon begint.
-  // Eenmalige cleanup — daarna draaien onze evt-qf-* idempotent.
-  await db.delete(schema.events).where(
-    eq(schema.events.venueId, VENUE_ID),
-  );
-
   let tiles: Tile[];
   try {
     tiles = await fetchTiles();
@@ -232,50 +225,59 @@ export async function scrapeQFactory(options?: {
     try {
       const eventId = `evt-qf-${group.titleSlug}`;
       const head = group.head;
-      const realImageUrl = head.imageUrl ? unwrapNextImage(head.imageUrl) : null;
 
-      let imageUrl: string | null = null;
-      if (realImageUrl) {
-        imageUrl = (await mirrorImage(realImageUrl, group.titleSlug)) ?? realImageUrl;
-      }
+      const [existing] = await db
+        .select({ id: schema.events.id })
+        .from(schema.events)
+        .where(eq(schema.events.id, eventId))
+        .limit(1);
 
       let enriched: Awaited<ReturnType<typeof enrichEvent>> | null = null;
-      try {
-        enriched = await enrichEvent({
-          title: head.title,
-          description: head.description || null,
-          venueName: venue.name,
-          venueCategory,
-        });
-      } catch (e) {
-        result.errors.push(`enrich ${head.title}: ${(e as Error).message}`);
-      }
 
-      // Genres: Q-Factory site-tags (Latin, Wereldmuziek, Concert, Tribute)
-      // hebben prioriteit boven enrich, maar enrich vult aan.
-      const tagGenres = head.tags.filter((t) => !/^Concert$/i.test(t) && t.length < 30);
-      const enrichGenres = enriched?.genres ?? [];
-      const finalGenres = [...new Set([...tagGenres, ...enrichGenres])].slice(0, 6);
+      if (!existing) {
+        const realImageUrl = head.imageUrl ? unwrapNextImage(head.imageUrl) : null;
+        let imageUrl: string | null = null;
+        if (realImageUrl) {
+          imageUrl = (await mirrorImage(realImageUrl, group.titleSlug)) ?? realImageUrl;
+        }
 
-      const eventKind = refineKindByDuration(enriched?.kind ?? 'show', group.slots[0], null);
+        try {
+          enriched = await enrichEvent({
+            title: head.title,
+            description: head.description || null,
+            venueName: venue.name,
+            venueCategory,
+          });
+        } catch (e) {
+          result.errors.push(`enrich ${head.title}: ${(e as Error).message}`);
+        }
 
-      try {
-        await db.insert(schema.events).values({
-          id: eventId,
-          venueId: venue.id,
-          title: head.title,
-          description: enriched?.cleanedDescription ?? (head.description || null),
-          kind: eventKind,
-          imageUrl,
-          category: enriched?.category ?? venueCategory,
-          featured: false,
-          genres: finalGenres,
-          published: true,
-        });
-        result.inserted++;
-      } catch (e) {
-        result.errors.push(`insert event ${eventId}: ${(e as Error).message}`);
-        continue;
+        // Genres: Q-Factory site-tags (Latin, Wereldmuziek, Concert, Tribute)
+        // hebben prioriteit boven enrich, maar enrich vult aan.
+        const tagGenres = head.tags.filter((t) => !/^Concert$/i.test(t) && t.length < 30);
+        const enrichGenres = enriched?.genres ?? [];
+        const finalGenres = [...new Set([...tagGenres, ...enrichGenres])].slice(0, 6);
+
+        const eventKind = refineKindByDuration(enriched?.kind ?? 'show', group.slots[0], null);
+
+        try {
+          await db.insert(schema.events).values({
+            id: eventId,
+            venueId: venue.id,
+            title: head.title,
+            description: enriched?.cleanedDescription ?? (head.description || null),
+            kind: eventKind,
+            imageUrl,
+            category: enriched?.category ?? venueCategory,
+            featured: false,
+            genres: finalGenres,
+            published: true,
+          });
+          result.inserted++;
+        } catch (e) {
+          result.errors.push(`insert event ${eventId}: ${(e as Error).message}`);
+          continue;
+        }
       }
 
       for (const startsAt of group.slots) {
