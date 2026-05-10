@@ -292,38 +292,59 @@ export default function Avond() {
     return events.filter((e) => e.kind === 'exhibition');
   }, [events]);
 
-  // Alle events vandaag (zonder filter) — gebruikt voor de feature en
-  // voor de totaal-telling in de hero. Filter werkt alleen op de
-  // cat-secties eronder. Wel content-mode-aware: hero/featured tonen
-  // alleen events van de actieve mode.
-  const allToday = useMemo<OccurrenceRow[]>(() => {
+  // Pool voor de Featured-carousel: events die nu nog komen, mode-aware,
+  // exhibitions weg. Vandaag's events eerst (gesorteerd op startsAt),
+  // daarna upcoming dagen — zodat 't Feature ook laat op de avond niet
+  // leeg slaat als 'r vandaag niets meer staat. De caller filtert dan
+  // featured-eerst en pakt de juiste subset.
+  const leadsPool = useMemo<OccurrenceRow[]>(() => {
     if (!events) return [];
-    return expandToOccurrenceRows(events).filter((row) => {
-      if (row.event.kind === 'exhibition') return false;
-      if (effectiveEndsAtMs(row.occurrence) < now) return false;
-      if (new Date(row.occurrence.startsAt).getTime() >= todayWindow.toMs) {
-        return false;
-      }
-      if (!eventBelongsToMode(row.event, cmode)) return false;
-      return true;
-    });
-  }, [events, now, todayWindow.toMs, cmode]);
+    return expandToOccurrenceRows(events)
+      .filter((row) => {
+        if (row.event.kind === 'exhibition') return false;
+        if (effectiveEndsAtMs(row.occurrence) < now) return false;
+        if (!eventBelongsToMode(row.event, cmode)) return false;
+        return true;
+      })
+      .sort(
+        (a, b) =>
+          new Date(a.occurrence.startsAt).getTime() -
+          new Date(b.occurrence.startsAt).getTime()
+      );
+  }, [events, now, cmode]);
 
-  // Hoofd-artikelen: alle featured events uit vandaag-events (NIET
-  // filter-afhankelijk). Geen featured? Eerste rij als enige hero.
-  // Dedupe op event-id zodat een featured event met meerdere
-  // occurrences vandaag maar één hero-card krijgt.
+  // Featured leads: probeer eerst vandaag's featured-events. Geen
+  // featured vandaag? Pak vandaag's eerste rij. Geen events vandaag
+  // überhaupt (laat-op-de-avond / rustige cultuur-mode)? Val terug op
+  // de eerstkomende featured-events; en als laatste op gewoon het
+  // eerste komende event. Zo is er altijd iets te tonen zolang er
+  // ergens in de toekomst events binnen de mode bestaan.
   const leads = useMemo<OccurrenceRow[]>(() => {
-    if (allToday.length === 0) return [];
-    const featuredRows = allToday.filter((r) => r.event.featured);
-    if (featuredRows.length === 0) return [allToday[0]];
-    const seen = new Set<string>();
-    return featuredRows.filter((r) => {
-      if (seen.has(r.event.id)) return false;
-      seen.add(r.event.id);
-      return true;
-    });
-  }, [allToday]);
+    if (leadsPool.length === 0) return [];
+    const todayMs = todayWindow.toMs;
+    const todayRows = leadsPool.filter(
+      (r) => new Date(r.occurrence.startsAt).getTime() < todayMs
+    );
+    const dedupe = (rows: OccurrenceRow[]) => {
+      const seen = new Set<string>();
+      return rows.filter((r) => {
+        if (seen.has(r.event.id)) return false;
+        seen.add(r.event.id);
+        return true;
+      });
+    };
+    if (todayRows.length > 0) {
+      const todayFeatured = todayRows.filter((r) => r.event.featured);
+      return todayFeatured.length > 0 ? dedupe(todayFeatured) : [todayRows[0]];
+    }
+    // Vandaag is leeg — kijk vooruit. Featured eerst, anders gewoon
+    // de nearest upcoming.
+    const upcomingFeatured = leadsPool.filter((r) => r.event.featured);
+    if (upcomingFeatured.length > 0) {
+      return dedupe(upcomingFeatured).slice(0, 5);
+    }
+    return [leadsPool[0]];
+  }, [leadsPool, todayWindow.toMs]);
 
   // Hero-tekst: "{dag} {datum} op de agenda" met de datum in
   // accent-kleur. Niet filter-afhankelijk.
@@ -525,8 +546,10 @@ export default function Avond() {
           </View>
         )}
 
-        {/* Kaart-CTA — alleen in 'uit'-modus. */}
-        {cmode === 'uit' && <KaartBanner />}
+        {/* Kaart-CTA — in beide modes. Voor 'uit' zie je clubs/podia
+            in de buurt; voor 'expo' lopende musea/galleries in de
+            buurt — beide zijn ruimtelijke verkenning waard. */}
+        <KaartBanner />
 
         {/* Hero — divider + "{dag} {datum}" met datum in accent. */}
         <View style={[styles.heroDivider, { backgroundColor: roles.bgChip }]} />
