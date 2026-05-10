@@ -4,7 +4,7 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import { useModeSwitch } from '@/components/ModeCurtain';
 import { tinyTap } from '@/lib/haptics';
 import { useContentMode, useSetContentMode } from '@/store/contentMode';
-import { useMode, useRoles } from '@/store/mode';
+import { useMode, useModeStore, useRoles } from '@/store/mode';
 import { palette } from '@/theme/tokens';
 
 // Symbool-type voor de twee slots:
@@ -31,9 +31,12 @@ export function ContentModeSwitch() {
 
   // Combined-toggle: flipt content-mode synchronously en triggert de
   // curtain animation die mid-sweep ook de visuele mode flipt. Beide
-  // stores eindigen consistent.
+  // stores eindigen consistent. Eerste keer dat 'r gewisseld wordt
+  // dismissen we óók de coachmark-hint — de gebruiker heeft de switch
+  // gevonden, geen uitleg meer nodig.
   const onToggle = () => {
     tinyTap();
+    useModeStore.getState().dismissContentSwitchHint();
     setCmode(cmode === 'uit' ? 'expo' : 'uit');
     switchVisualMode();
   };
