@@ -25,6 +25,7 @@ import Animated, { FadeIn } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppHeader, HEADER_HEIGHT } from '@/components/AppHeader';
+import { FilterHint } from '@/components/FilterHint';
 import { Cross } from '@/components/Cross';
 import { EventListRow } from '@/components/EventListRow';
 import { RefreshBanner } from '@/components/RefreshBanner';
@@ -64,7 +65,7 @@ import { useResetFiltersOnTabBlur } from '@/lib/useResetFiltersOnTabBlur';
 import { useTabDoubleTap } from '@/lib/useTabDoubleTap';
 import { useAgendaFilters } from '@/store/agendaFilters';
 import { useContentMode } from '@/store/contentMode';
-import { useMode, useRoles } from '@/store/mode';
+import { useMode, useModeStore, useRoles } from '@/store/mode';
 import {
   isSavedSearchActive,
   type SavedSearch,
@@ -531,6 +532,7 @@ export default function Agenda() {
           onToggleFavorites={() => setOnlyFavorites(!onlyFavorites)}
         />
       </AppHeader>
+      <FilterHint />
     </View>
   );
 }
@@ -740,6 +742,9 @@ function ChipRow({
         <Pressable
           onPress={() => {
             softTap();
+            // Eerste keer dat de filter geopend wordt: dismiss de
+            // hint-coachmark zodat-ie niet meer terugkomt.
+            useModeStore.getState().dismissFilterHint();
             setFilterOpen(true);
           }}
           style={[

@@ -738,7 +738,11 @@ export default function Jij() {
                 } catch {
                   // signOut faalt als 'r geen sessie is — geen probleem
                 }
-                useModeStore.setState({ hasOnboarded: false });
+                useModeStore.setState({
+                  hasOnboarded: false,
+                  hasSeenContentSwitchHint: false,
+                  hasSeenFilterHint: false,
+                });
                 queryClient.removeQueries();
                 router.replace('/');
               }}

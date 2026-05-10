@@ -14,10 +14,13 @@ type ModeState = {
   /** True once de gebruiker de eerste-bezoek hint over de Uit/Expo
       content-switch heeft weggeklikt. */
   hasSeenContentSwitchHint: boolean;
+  /** True once de hint bij de filter-knop op Agenda is weggeklikt. */
+  hasSeenFilterHint: boolean;
   setMode: (mode: Mode) => void;
   toggle: () => void;
   completeOnboarding: () => void;
   dismissContentSwitchHint: () => void;
+  dismissFilterHint: () => void;
 };
 
 export const useModeStore = create<ModeState>()(
@@ -27,12 +30,14 @@ export const useModeStore = create<ModeState>()(
       hasHydrated: false,
       hasOnboarded: false,
       hasSeenContentSwitchHint: false,
+      hasSeenFilterHint: false,
       setMode: (mode) => set({ mode }),
       toggle: () =>
         set((s) => ({ mode: s.mode === 'nacht' ? 'dag' : 'nacht' })),
       completeOnboarding: () => set({ hasOnboarded: true }),
       dismissContentSwitchHint: () =>
         set({ hasSeenContentSwitchHint: true }),
+      dismissFilterHint: () => set({ hasSeenFilterHint: true }),
     }),
     {
       name: 'andreas:mode',
@@ -41,6 +46,7 @@ export const useModeStore = create<ModeState>()(
         mode: s.mode,
         hasOnboarded: s.hasOnboarded,
         hasSeenContentSwitchHint: s.hasSeenContentSwitchHint,
+        hasSeenFilterHint: s.hasSeenFilterHint,
       }),
     }
   )
@@ -62,3 +68,7 @@ export const useHasSeenContentSwitchHint = () =>
   useModeStore((s) => s.hasSeenContentSwitchHint);
 export const useDismissContentSwitchHint = () =>
   useModeStore((s) => s.dismissContentSwitchHint);
+export const useHasSeenFilterHint = () =>
+  useModeStore((s) => s.hasSeenFilterHint);
+export const useDismissFilterHint = () =>
+  useModeStore((s) => s.dismissFilterHint);
