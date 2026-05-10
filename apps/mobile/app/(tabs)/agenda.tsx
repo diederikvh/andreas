@@ -34,6 +34,8 @@ import type { ApiEvent, VenueType } from '@/lib/api';
 import {
   eventImageUrl,
   CATEGORY_TICK,
+  CONTENT_MODE_CATS,
+  CONTENT_MODE_VENUE_TYPES,
   VENUE_TYPE_TICK,
   eventBelongsToMode,
   getVenueTypeChips,
@@ -179,6 +181,26 @@ export default function Agenda() {
     router.setParams({ cat: undefined });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params.cat]);
+
+  // Bij content-mode-flip: wis activeCats / activeTypes die buiten de
+  // nieuwe mode vallen. Anders zou de Filter-knop "Filter · 1" laten
+  // zien terwijl 't actieve filter niet meer in de filter-sheet
+  // voorkomt (chip is uitgefilterd op mode).
+  useEffect(() => {
+    const validCats = activeCats.filter((c) =>
+      CONTENT_MODE_CATS[cmode].includes(c)
+    );
+    if (validCats.length !== activeCats.length) {
+      setActiveCats(validCats);
+    }
+    const validTypes = activeTypes.filter((tt) =>
+      CONTENT_MODE_VENUE_TYPES[cmode].includes(tt)
+    );
+    if (validTypes.length !== activeTypes.length) {
+      setActiveTypes(validTypes);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cmode]);
   const { data: session } = useSession();
   const { data: friends } = useFriends({
     enabled: Boolean(session?.user?.id),
@@ -944,7 +966,25 @@ function FilterSheet({
   const t = useT();
   const locale = useLocale();
   const timeBlocks = useTimeBlocks();
-  const typeChips = useMemo(() => getVenueTypeChips(locale), [locale]);
+  const cmode = useContentMode();
+  // Filter de chips op de actieve content-mode: alleen cats/venue-
+  // types die binnen de huidige mode events kunnen opleveren. Zo
+  // voorkomen we lege-resultaat-filters (bv. 'Literatuur' in
+  // 'uit'-mode → 0 events).
+  const modeCats = useMemo(
+    () =>
+      CATEGORIES.filter((c) =>
+        CONTENT_MODE_CATS[cmode].includes(c)
+      ),
+    [cmode]
+  );
+  const typeChips = useMemo(
+    () =>
+      getVenueTypeChips(locale).filter((c) =>
+        CONTENT_MODE_VENUE_TYPES[cmode].includes(c.value)
+      ),
+    [locale, cmode]
+  );
   const { data: genreData, isLoading, error } = useEventGenres();
   const addSaved = useAddSavedSearch();
   const [saveOpen, setSaveOpen] = useState(false);
@@ -1063,7 +1103,7 @@ function FilterSheet({
           {t('Categorie', 'Category')}
         </Text>
         <View style={styles.genreWrap}>
-          {CATEGORIES.map((cat) => (
+          {modeCats.map((cat) => (
             <FilterChip
               key={cat}
               label={translateCategory(cat, locale)}

@@ -73,12 +73,12 @@ export function Splash() {
           <Cross size={96} thickness={24} color={roles.accent} />
         </Animated.View>
         <Animated.Text style={[styles.word, { color: roles.fg }, wordStyle]}>
-          Andreas X
+          Andreas
         </Animated.Text>
       </View>
       <Animated.View style={[styles.tagWrap, tagStyle]}>
         <Text style={[styles.tag, { color: roles.fgMuted }]}>
-          Niet alles. Iets goeds.
+          Amsterdam Culture App
         </Text>
       </Animated.View>
     </View>

@@ -99,6 +99,14 @@ export const CONTENT_MODE_CATS: Record<
   expo: ['Kunst', 'Literatuur'],
 };
 
+/** Mapping van content-mode → venue-types die binnen die mode vallen.
+ *  Wordt gebruikt om filter-chips te filteren zodat een gebruiker niet
+ *  per ongeluk op een museum filtert in 'uit'-mode (lege resultaat). */
+export const CONTENT_MODE_VENUE_TYPES: Record<'uit' | 'expo', VenueType[]> = {
+  uit: ['podium', 'club', 'film', 'ruimte'],
+  expo: ['museum', 'galerie', 'boekhandel-cafe'],
+};
+
 export function eventBelongsToMode(
   event: { category: ApiEvent['category'] },
   mode: 'uit' | 'expo'

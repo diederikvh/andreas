@@ -67,8 +67,8 @@ export function Welkom({ onSubmit }: Props) {
 
       <Text style={[styles.sub, { color: roles.fgRead }]}>
         {t(
-          'Zo kunnen vrienden je later vinden in Andreas X.',
-          'So friends can find you later in Andreas X.'
+          'Zo kunnen vrienden je later vinden in Andreas.',
+          'So friends can find you later in Andreas.'
         )}
       </Text>
 
