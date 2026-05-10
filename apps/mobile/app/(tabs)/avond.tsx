@@ -540,18 +540,13 @@ export default function Avond() {
           </Text>
         </View>
 
-        {/* "Loopt deze week" — meerdaagse festivals/series in 'uit',
-            doorlopende tentoonstellingen in 'expo'. Tussen Hero en
-            cat-rails — eerst datum-anker, dan periodieke context, dan
-            specifieke vanavond-rails. */}
+        {/* Festivals/series in 'uit', doorlopende tentoonstellingen in
+            'expo'. Tussen Hero en cat-rails. Geen kop-label —
+            visueel onderscheidt de strook zich genoeg door image-format
+            en datum-range subline. */}
         <RunningStrip
           series={cmode === 'uit' ? (seriesList ?? []) : []}
           exhibitionEvents={cmode === 'expo' ? runningExhibitions : []}
-          kicker={
-            cmode === 'uit'
-              ? t('Festivals & series', 'Festivals & series')
-              : t('Doorlopend te zien', 'Currently on view')
-          }
         />
 
         {isLoading && (

@@ -46,13 +46,20 @@ export function RunningStrip({
   // krijgt zo z'n eigen ademruimte.
   const single = total === 1;
 
+  // Kicker als lege string of undefined → geen kop. Vandaag laat 'm
+  // bewust weg omdat de ene rij festivals/exhibitions visueel
+  // duidelijk genoeg is zonder label.
+  const showHead = Boolean(kicker && kicker.length > 0);
+
   return (
     <View style={styles.section}>
-      <View style={styles.head}>
-        <Text style={[styles.headLabel, { color: roles.fg }]}>
-          {kicker ?? t('Loopt nu', 'Running now')}
-        </Text>
-      </View>
+      {showHead && (
+        <View style={styles.head}>
+          <Text style={[styles.headLabel, { color: roles.fg }]}>
+            {kicker}
+          </Text>
+        </View>
+      )}
       {single ? (
         <View style={styles.singleWrap}>
           {series.map((s) => (
@@ -283,7 +290,7 @@ const styles = StyleSheet.create({
   },
   cardImg: {
     width: '100%',
-    height: 100,
+    height: 130,
   },
   cardBody: {
     padding: 12,

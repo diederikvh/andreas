@@ -147,7 +147,7 @@ const styles = StyleSheet.create({
 /** Standaard kaart-afmetingen — gedeeld door alle rail-item-componenten
  *  zodat de scroller een gelijkmatige flow houdt. */
 export const RAIL_CARD_WIDTH = 220;
-export const RAIL_CARD_IMG_HEIGHT = 100;
+export const RAIL_CARD_IMG_HEIGHT = 130;
 
 export const railCardSurface = {
   nacht: {
