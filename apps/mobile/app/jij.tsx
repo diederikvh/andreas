@@ -26,7 +26,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppHeader, HEADER_HEIGHT } from '@/components/AppHeader';
 import { Cross } from '@/components/Cross';
-import { DnSwitch } from '@/components/DnSwitch';
 import { ProfileAvatar } from '@/components/ProfileAvatar';
 import { SpinningCross } from '@/components/SpinningCross';
 import type { ApiMe } from '@/lib/api';
@@ -699,7 +698,6 @@ export default function Jij() {
           {error && <Text style={styles.error}>{error}</Text>}
         </View>
 
-        <AppearanceSection />
         {me && <NotificationsSection />}
         {me && <PrivacySection me={me} onUpdated={refetchMe} />}
         <LanguageSection />
@@ -885,38 +883,6 @@ function MyQrSheet({
         </Text>
       </View>
     </View>
-  );
-}
-
-function AppearanceSection() {
-  const roles = useRoles();
-  const mode = useMode();
-  const t = useT();
-  return (
-    <>
-      <SectionHead label={t('Weergave', 'Appearance')} />
-      <View style={styles.privacyWrap}>
-        <View style={styles.privacyRow}>
-          <View style={styles.privacyBody}>
-            <Text style={[styles.privacyLabel, { color: roles.fg }]}>
-              {t('Nacht of dag', 'Night or day')}
-            </Text>
-            <Text style={[styles.privacySub, { color: roles.fgMuted }]}>
-              {mode === 'nacht'
-                ? t(
-                    'Donkere modus — noir met acid-geel accent.',
-                    'Dark mode — noir with acid-yellow accent.'
-                  )
-                : t(
-                    'Lichte modus — papier-cream met karmijn accent.',
-                    'Light mode — paper-cream with crimson accent.'
-                  )}
-            </Text>
-          </View>
-          <DnSwitch />
-        </View>
-      </View>
-    </>
   );
 }
 

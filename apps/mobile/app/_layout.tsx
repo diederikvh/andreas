@@ -23,7 +23,8 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { ModeCurtain } from '@/components/ModeCurtain';
 import { PushManager } from '@/components/PushManager';
 import { queryClient, queryPersister } from '@/lib/queryClient';
-import { useHasHydrated, useMode } from '@/store/mode';
+import { useContentModeStore } from '@/store/contentMode';
+import { useHasHydrated, useMode, useModeStore } from '@/store/mode';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -47,6 +48,20 @@ export default function RootLayout() {
   useEffect(() => {
     if (ready) {
       SplashScreen.hideAsync();
+    }
+  }, [ready]);
+
+  // Content-mode en visuele mode zijn 1-op-1 gekoppeld: 'uit'⇄'nacht',
+  // 'expo'⇄'dag'. Bij oude installs kunnen ze uit-sync zijn (de
+  // dn-switch was eerder onafhankelijk). Reconcile bij hydratie:
+  // visual-mode volgt content-mode (geen curtain animation, silent).
+  useEffect(() => {
+    if (!ready) return;
+    const cmode = useContentModeStore.getState().mode;
+    const visual = useModeStore.getState().mode;
+    const expected = cmode === 'uit' ? 'nacht' : 'dag';
+    if (visual !== expected) {
+      useModeStore.getState().setMode(expected);
     }
   }, [ready]);
 

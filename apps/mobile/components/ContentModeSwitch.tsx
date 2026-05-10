@@ -1,30 +1,38 @@
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { Pressable, StyleSheet, View } from 'react-native';
 
+import { useModeSwitch } from '@/components/ModeCurtain';
 import { tinyTap } from '@/lib/haptics';
-import { useT } from '@/lib/i18n';
 import { useContentMode, useSetContentMode } from '@/store/contentMode';
 import { useMode, useRoles } from '@/store/mode';
-import { fontFamily, palette } from '@/theme/tokens';
+import { palette } from '@/theme/tokens';
 
-// Twee-staat segmented control voor de top-level content-as: 'uit' óf
-// 'expo'. Visueel zwaarder dan de filter-chips eronder zodat duidelijk
-// is dat dit een hoofd-keuze is, niet een filter. Active pill is filled
-// met brand-accent; inactive pill is outline.
+// Twee-staat segmented control met iconen — muziek = 'uit' (going out),
+// palette = 'expo' (cultuur). Tap flipt zowel de content-as als de
+// visuele mode (nacht ⇄ dag) via de curtain-animatie. De koppeling is
+// bewust 1-op-1: nacht is de going-out-vibe (donker, acid-yellow),
+// dag is de planning-vibe (cream, karmijn).
 //
-// Bewust zonder eigen sticky-positioning — ouder layout (avond.tsx /
-// agenda.tsx) zet 'm in de AppHeader-children boven de chipRow.
+// Vervangt de oude dn-switch op de rechter-rij van AppHeader. De
+// dn-switch bestaat nog als component voor debug/storybook gevallen,
+// maar wordt niet meer gerenderd in de hoofd-UI.
 export function ContentModeSwitch() {
   const mode = useMode();
   const roles = useRoles();
   const isNacht = mode === 'nacht';
-  const t = useT();
   const cmode = useContentMode();
-  const setMode = useSetContentMode();
+  const setCmode = useSetContentMode();
+  const switchVisualMode = useModeSwitch();
 
+  // Combined-toggle: flipt content-mode synchronously en triggert de
+  // curtain animation die mid-sweep ook de visuele mode flipt. Beide
+  // stores eindigen consistent. We doen geen separate visual-mode-set
+  // hier — useModeSwitch handelt dat zelf af binnen de curtain.
   const onTap = (next: 'uit' | 'expo') => {
     if (next === cmode) return;
     tinyTap();
-    setMode(next);
+    setCmode(next);
+    switchVisualMode();
   };
 
   return (
@@ -37,35 +45,35 @@ export function ContentModeSwitch() {
         },
       ]}
     >
-      <Pill
-        label={t('Uit', 'Going out')}
+      <IconPill
+        icon="musical-notes"
         active={cmode === 'uit'}
         onPress={() => onTap('uit')}
         activeBg={roles.fg}
         activeFg={roles.bg}
-        inactiveFg={roles.fgMuted}
+        inactiveFg={roles.fgPlaceholder}
       />
-      <Pill
-        label={t('Expo', 'Expo')}
+      <IconPill
+        icon="color-palette"
         active={cmode === 'expo'}
         onPress={() => onTap('expo')}
         activeBg={roles.fg}
         activeFg={roles.bg}
-        inactiveFg={roles.fgMuted}
+        inactiveFg={roles.fgPlaceholder}
       />
     </View>
   );
 }
 
-function Pill({
-  label,
+function IconPill({
+  icon,
   active,
   onPress,
   activeBg,
   activeFg,
   inactiveFg,
 }: {
-  label: string;
+  icon: 'musical-notes' | 'color-palette';
   active: boolean;
   onPress: () => void;
   activeBg: string;
@@ -76,20 +84,15 @@ function Pill({
     <Pressable
       accessibilityRole="button"
       accessibilityState={{ selected: active }}
+      accessibilityLabel={icon === 'musical-notes' ? 'Uit' : 'Expo'}
       onPress={onPress}
-      style={[
-        styles.pill,
-        active && { backgroundColor: activeBg },
-      ]}
+      style={[styles.pill, active && { backgroundColor: activeBg }]}
     >
-      <Text
-        style={[
-          styles.pillText,
-          { color: active ? activeFg : inactiveFg },
-        ]}
-      >
-        {label}
-      </Text>
+      <Ionicons
+        name={icon}
+        size={14}
+        color={active ? activeFg : inactiveFg}
+      />
     </Pressable>
   );
 }
@@ -107,15 +110,10 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   pill: {
+    width: 28,
     height: 22,
-    paddingHorizontal: 12,
     borderRadius: 999,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  pillText: {
-    fontFamily: fontFamily.medium,
-    fontSize: 11,
-    letterSpacing: 0,
   },
 });
