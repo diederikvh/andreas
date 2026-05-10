@@ -29,7 +29,7 @@ import { enrichEvent, refineKindByDuration } from './enrich.js';
 const UA = 'Mozilla/5.0 (Andreas/1.0)';
 const VENUE_ID = 'shelter';
 const WP_BASE = 'https://www.shelteramsterdam.nl/wp-json/wp/v2/dt_portfolio';
-const TICKET_URL = 'https://web.fourvenues.com/en/iframe/shelter-amsterdam';
+const FALLBACK_TICKET_URL = 'https://web.fourvenues.com/en/iframe/shelter-amsterdam';
 const PER_PAGE = 100;
 
 type WpPortfolioItem = {
@@ -209,6 +209,11 @@ export async function scrapeShelter(options?: { venueIds?: string[] }): Promise<
         }
       }
 
+      // Per-event detail-page op de venue-site (bevat embedded
+      // Fourvenues-ticketshop). Fallback naar generieke iframe als
+      // de WP REST om wat voor reden geen `link` levert.
+      const ticketUrl = item.link || FALLBACK_TICKET_URL;
+
       try {
         await db
           .insert(schema.occurrences)
@@ -219,14 +224,14 @@ export async function scrapeShelter(options?: { venueIds?: string[] }): Promise<
             endsAt,
             priceCents: null,
             priceNote: existing ? null : (enriched?.priceNote ?? null),
-            ticketUrl: TICKET_URL,
+            ticketUrl,
             room: null,
             lineup: existing ? null : (enriched?.lineup ?? null),
             status: 'scheduled',
           })
           .onConflictDoUpdate({
             target: schema.occurrences.id,
-            set: { startsAt, endsAt, ticketUrl: TICKET_URL },
+            set: { startsAt, endsAt, ticketUrl },
           });
         result.occurrencesUpserted++;
       } catch (e) {
