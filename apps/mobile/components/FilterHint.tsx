@@ -31,9 +31,9 @@ export function FilterHint() {
         insets.top + HEADER_HEIGHT + DAYSTRIP_HEIGHT + CHIPROW_HEIGHT - 4
       }
       // X: filter-knop staat links in de chipRow, tweede element na de
-      // search-chip. Vanaf rechts gemeten ligt 'ie ongeveer halverwege
-      // het scherm — ~220px van de rechterrand op een 390px-scherm.
-      arrowFromRight={220}
+      // search-chip. Vanaf rechts gemeten ligt 'ie ongeveer ~250px van
+      // de rechterrand op een 390px-scherm.
+      arrowFromRight={250}
       title={t('Filter & bewaar', 'Filter & save')}
       body={t(
         'Tik op de filter-knop om te filteren op categorie, genre, tijd of venue. Tip: je kunt een combinatie opslaan zodat-ie als chip naast de filter-knop verschijnt — handig voor je vaste smaak.',

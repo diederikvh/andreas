@@ -101,8 +101,16 @@ const styles = StyleSheet.create({
     gap: 10,
     padding: 14,
     borderRadius: 14,
-    borderWidth: 1,
+    borderWidth: 2,
     width: 280,
+    // Subtiele drop-shadow zodat de hint los van de content lijkt te
+    // zweven. Cross-platform: iOS gebruikt shadow*-props, Android
+    // elevation.
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.18,
+    shadowRadius: 10,
+    elevation: 4,
   },
   cardBody: {
     flex: 1,
