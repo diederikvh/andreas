@@ -215,21 +215,23 @@ function formatSeriesRange(
 }
 
 const styles = StyleSheet.create({
-  // Zelfde stijl als de oude Series-strook in Venues voor visuele rust.
+  // Visueel gematcht aan de Rail-component zodat de strook dezelfde
+  // kop-typografie heeft als de andere rails op Vandaag.
   section: { paddingTop: 4, paddingBottom: 4 },
   head: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'baseline',
     paddingHorizontal: 22,
-    paddingTop: 6,
+    paddingTop: 8,
     paddingBottom: 8,
+    gap: 10,
   },
   headLabel: {
-    fontFamily: fontFamily.bold,
-    fontSize: 12,
-    letterSpacing: 0.5,
-    textTransform: 'uppercase',
+    fontFamily: fontFamily.display,
+    fontSize: 18,
+    letterSpacing: -0.36,
+    flexShrink: 1,
   },
   headCount: {
     fontFamily: fontFamily.mono,

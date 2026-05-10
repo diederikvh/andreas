@@ -516,13 +516,11 @@ export default function Avond() {
             Lichte negative marginTop zodat de top van de hero onder
             de fade-to-transparent header doorloopt. */}
         {leads.length > 0 && (
-          <View style={{ marginTop: -8 }}>
-            <FeaturedCarousel
-              leads={leads}
-              kicker={t('Onze keuze', 'Our pick')}
-              locale={locale}
-            />
-          </View>
+          <FeaturedCarousel
+            leads={leads}
+            kicker={t('Onze keuze', 'Our pick')}
+            locale={locale}
+          />
         )}
 
         {/* Kaart-CTA — alleen in 'uit'-modus. */}
@@ -571,7 +569,10 @@ export default function Avond() {
             occurrence-rij ('uit') of event ('expo' — exhibitions). */}
         {!isLoading && !error && cmode === 'uit' && (
           <>
-            <Rail kicker={t('Vannacht in de clubs', 'Tonight in the clubs')}>
+            <Rail
+              kicker={t('Vannacht in de clubs', 'Tonight in the clubs')}
+              count={railClubs.length}
+            >
               {railClubs.map((r) => (
                 <RailEventCard
                   key={r.id}
@@ -584,7 +585,10 @@ export default function Avond() {
                 />
               ))}
             </Rail>
-            <Rail kicker={t('Live op de podia', 'Live on stage')}>
+            <Rail
+              kicker={t('Live op de podia', 'Live on stage')}
+              count={railLivePodium.length}
+            >
               {railLivePodium.map((r) => (
                 <RailEventCard
                   key={r.id}
@@ -599,6 +603,7 @@ export default function Avond() {
             </Rail>
             <Rail
               kicker={t('Theater & dans', 'Theatre & dance')}
+              count={railTheater.length}
               moreLabel={t('Meer →', 'More →')}
               onMore={() =>
                 router.push({ pathname: '/agenda', params: { cat: 'Theater' } })
@@ -618,6 +623,7 @@ export default function Avond() {
             </Rail>
             <Rail
               kicker={t('Film vanavond', 'Film tonight')}
+              count={railFilm.length}
               moreLabel={t('Meer →', 'More →')}
               onMore={() =>
                 router.push({ pathname: '/agenda', params: { cat: 'Film' } })
@@ -635,7 +641,10 @@ export default function Avond() {
                 />
               ))}
             </Rail>
-            <Rail kicker={t('Vrienden gaan', 'Friends going')}>
+            <Rail
+              kicker={t('Vrienden gaan', 'Friends going')}
+              count={railFriendsUit.length}
+            >
               {railFriendsUit.map((r) => (
                 <RailEventCard
                   key={r.id}
@@ -648,7 +657,10 @@ export default function Avond() {
                 />
               ))}
             </Rail>
-            <Rail kicker={t('Venues die je volgt', 'Venues you follow')}>
+            <Rail
+              kicker={t('Venues die je volgt', 'Venues you follow')}
+              count={railFollowedVenuesUit.length}
+            >
               {railFollowedVenuesUit.map((v) => (
                 <VenueRailCard
                   key={v.id}
@@ -664,17 +676,26 @@ export default function Avond() {
 
         {!isLoading && !error && cmode === 'expo' && (
           <>
-            <Rail kicker={t('Nieuw geopend', 'Newly opened')}>
+            <Rail
+              kicker={t('Nieuw geopend', 'Newly opened')}
+              count={railNewlyOpened.length}
+            >
               {railNewlyOpened.map((e) => (
                 <RailEventCard key={e.id} event={e} />
               ))}
             </Rail>
-            <Rail kicker={t('Sluit deze maand', 'Closing this month')}>
+            <Rail
+              kicker={t('Sluit deze maand', 'Closing this month')}
+              count={railClosingSoon.length}
+            >
               {railClosingSoon.map((e) => (
                 <RailEventCard key={e.id} event={e} />
               ))}
             </Rail>
-            <Rail kicker={t('Musea die je volgt', 'Museums you follow')}>
+            <Rail
+              kicker={t('Musea die je volgt', 'Museums you follow')}
+              count={railFollowedVenuesExpo.length}
+            >
               {railFollowedVenuesExpo.map((v) => (
                 <VenueRailCard
                   key={v.id}
@@ -687,6 +708,7 @@ export default function Avond() {
             </Rail>
             <Rail
               kicker={t('Literatuur', 'Literature')}
+              count={railLit.length}
               moreLabel={t('Meer →', 'More →')}
               onMore={() =>
                 router.push({
@@ -699,7 +721,10 @@ export default function Avond() {
                 <RailEventCard key={e.id} event={e} />
               ))}
             </Rail>
-            <Rail kicker={t('Vrienden gaan', 'Friends going')}>
+            <Rail
+              kicker={t('Vrienden gaan', 'Friends going')}
+              count={railFriendsExpo.length}
+            >
               {railFriendsExpo.map((e) => (
                 <RailEventCard key={e.id} event={e} />
               ))}
@@ -1520,7 +1545,7 @@ const styles = StyleSheet.create({
   // exhibitions-strook erboven.
   heroDivider: {
     marginHorizontal: 22,
-    marginTop: 8,
+    marginTop: 0,
     marginBottom: 14,
     height: StyleSheet.hairlineWidth,
   },
@@ -1861,7 +1886,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 12,
     marginHorizontal: 22,
-    marginBottom: 20,
+    marginBottom: 8,
     paddingHorizontal: 16,
     paddingVertical: 14,
     borderRadius: 14,
