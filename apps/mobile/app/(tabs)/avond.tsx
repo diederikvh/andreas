@@ -32,7 +32,6 @@ import Animated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppHeader, HEADER_HEIGHT } from '@/components/AppHeader';
-import { ContentModeSwitch } from '@/components/ContentModeSwitch';
 import { Cross } from '@/components/Cross';
 import { EventListRow } from '@/components/EventListRow';
 import { RefreshBanner } from '@/components/RefreshBanner';
@@ -592,12 +591,6 @@ export default function Avond() {
               </Text>
             </View>
 
-            {/* Content-mode-switch — top-level keuze tussen 'Uit' en
-                'Expo' content. Boven de chipRow, met dezelfde padding
-                zodat de visuele kolom doorloopt. */}
-            <View style={styles.modeSwitchWrap}>
-              <ContentModeSwitch />
-            </View>
             {/* Filter-rij. Wrapper captureert Y-positie binnen de
                 ListHeader — gebruikt door de tab-double-tap scroll én
                 door de sticky-overlay opacity-animation. */}
@@ -649,7 +642,7 @@ export default function Avond() {
           </>
         }
       />
-      <AppHeader title={t('Vandaag', 'Today')}>
+      <AppHeader title={t('Vandaag', 'Today')} showContentMode>
         {/* Sticky chip-row als AppHeader-children — deelt de fade-
             to-transparent BlurView van de non-solid header. Opacity-
             animatie fadet 'm in zodra de inline chip-row achter de
@@ -2052,14 +2045,6 @@ const styles = StyleSheet.create({
     fontSize: 10,
     letterSpacing: 1,
     textTransform: 'uppercase',
-  },
-
-  // Content-mode-switch wrap — dezelfde horizontale padding als de
-  // chipRow eronder zodat de visuele kolom doorloopt.
-  modeSwitchWrap: {
-    paddingHorizontal: 22,
-    paddingTop: 6,
-    paddingBottom: 2,
   },
 
   // Chip-row — zelfde patroon als Agenda's ChipRow. Expliciete height

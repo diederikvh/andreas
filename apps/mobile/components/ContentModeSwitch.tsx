@@ -95,25 +95,27 @@ function Pill({
 }
 
 const styles = StyleSheet.create({
+  // Compact-size matched op dn-switch (28px hoog) zodat 'ie naadloos
+  // op die plek in de AppHeader past.
   wrap: {
     flexDirection: 'row',
     alignSelf: 'flex-start',
-    height: 38,
-    padding: 3,
+    height: 28,
+    padding: 2,
     borderRadius: 999,
     borderWidth: 1,
     gap: 2,
   },
   pill: {
-    height: 32,
-    paddingHorizontal: 18,
+    height: 22,
+    paddingHorizontal: 12,
     borderRadius: 999,
     alignItems: 'center',
     justifyContent: 'center',
   },
   pillText: {
     fontFamily: fontFamily.medium,
-    fontSize: 13,
-    letterSpacing: -0.1,
+    fontSize: 11,
+    letterSpacing: 0,
   },
 });

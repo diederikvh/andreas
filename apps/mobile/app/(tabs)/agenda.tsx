@@ -25,7 +25,6 @@ import Animated, { FadeIn } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppHeader, HEADER_HEIGHT } from '@/components/AppHeader';
-import { ContentModeSwitch } from '@/components/ContentModeSwitch';
 import { Cross } from '@/components/Cross';
 import { EventListRow } from '@/components/EventListRow';
 import { RefreshBanner } from '@/components/RefreshBanner';
@@ -78,8 +77,6 @@ import { fontFamily, palette } from '@/theme/tokens';
 
 const DAYSTRIP_HEIGHT = 76;
 const CHIPROW_HEIGHT = 60;
-// Pill (38) + paddingTop (6) + paddingBottom (2) — past bij modeSwitchWrap.
-const MODE_SWITCH_HEIGHT = 46;
 
 const CATEGORIES: ApiEvent['category'][] = [
   'Muziek',
@@ -307,11 +304,7 @@ export default function Agenda() {
   }, [days, selected]);
 
   const stickyOffset =
-    insets.top +
-    HEADER_HEIGHT +
-    MODE_SWITCH_HEIGHT +
-    DAYSTRIP_HEIGHT +
-    CHIPROW_HEIGHT;
+    insets.top + HEADER_HEIGHT + DAYSTRIP_HEIGHT + CHIPROW_HEIGHT;
 
   // Sections voor de SectionList — `data` is een gemengde lijst van
   // cat-headers + rows: binnen elke dag groeperen we events op
@@ -507,10 +500,7 @@ export default function Agenda() {
         removeClippedSubviews
         initialNumToRender={12}
       />
-      <AppHeader title={t('Agenda', 'Agenda')}>
-        <View style={styles.modeSwitchWrap}>
-          <ContentModeSwitch />
-        </View>
+      <AppHeader title={t('Agenda', 'Agenda')} showContentMode>
         <View style={{ height: DAYSTRIP_HEIGHT }}>
           {days.length > 0 && selected && (
             <DayStrip
@@ -1601,14 +1591,6 @@ function ListState({
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
-
-  // Content-mode-switch wrap — past tussen logo-rij en day-strip.
-  modeSwitchWrap: {
-    paddingHorizontal: 22,
-    paddingTop: 6,
-    paddingBottom: 2,
-    height: MODE_SWITCH_HEIGHT,
-  },
 
   dayStrip: {
     gap: 6,

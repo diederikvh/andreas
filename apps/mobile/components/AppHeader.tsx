@@ -7,8 +7,8 @@ import type { ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { ContentModeSwitch } from '@/components/ContentModeSwitch';
 import { Cross } from '@/components/Cross';
-import { useModeSwitch } from '@/components/ModeCurtain';
 import { ProfileAvatar } from '@/components/ProfileAvatar';
 import { tinyTap } from '@/lib/haptics';
 import { useMe } from '@/lib/queries';
@@ -36,6 +36,13 @@ type AppHeaderProps = {
    * Andreas-wordmark de primaire identiteit blijft.
    */
   title?: string;
+  /**
+   * Toont de Uit/Expo content-mode-switch in de rechter-rij van de
+   * header (tussen DnSwitch's oude plek en de avatar). Alleen aan op
+   * Vandaag + Agenda — andere schermen zien 'm niet omdat de switch
+   * daar niets doet.
+   */
+  showContentMode?: boolean;
 };
 
 /**
@@ -47,7 +54,12 @@ type AppHeaderProps = {
  * screen's ScrollView gets `paddingTop = insets.top + HEADER_HEIGHT`
  * (plus whatever children add).
  */
-export function AppHeader({ children, solid = false, title }: AppHeaderProps = {}) {
+export function AppHeader({
+  children,
+  solid = false,
+  title,
+  showContentMode = false,
+}: AppHeaderProps = {}) {
   const mode = useMode();
   const roles = useRoles();
   const insets = useSafeAreaInsets();
@@ -121,7 +133,7 @@ export function AppHeader({ children, solid = false, title }: AppHeaderProps = {
           )}
         </View>
         <View style={styles.headerRight}>
-          <DnSwitch />
+          {showContentMode && <ContentModeSwitch />}
           <AvatarButton />
         </View>
       </View>
@@ -183,48 +195,6 @@ function AvatarButton() {
   );
 }
 
-function DnSwitch() {
-  const mode = useMode();
-  const roles = useRoles();
-  const switchMode = useModeSwitch();
-  const isNacht = mode === 'nacht';
-
-  const trackBg = isNacht ? 'rgba(31,31,35,0.7)' : 'rgba(235,230,216,0.7)';
-  const trackBorder = isNacht ? '#2a2a2d' : palette.paper;
-  const idle = roles.fgPlaceholder;
-
-  return (
-    <Pressable
-      accessibilityRole="switch"
-      accessibilityState={{ checked: isNacht }}
-      onPress={switchMode}
-      hitSlop={8}
-      style={[
-        styles.dnTrack,
-        { backgroundColor: trackBg, borderColor: trackBorder },
-      ]}
-    >
-      <View style={[styles.dnGlyph, styles.dnSun, { backgroundColor: idle }]} />
-      <Ionicons
-        name="moon"
-        size={12}
-        color={idle}
-        style={styles.dnMoonIcon}
-      />
-      <View
-        style={[
-          styles.dnThumb,
-          {
-            backgroundColor: roles.accent,
-            left: isNacht ? undefined : 2,
-            right: isNacht ? 2 : undefined,
-          },
-        ]}
-      />
-    </Pressable>
-  );
-}
-
 const styles = StyleSheet.create({
   wrap: {
     position: 'absolute',
@@ -278,35 +248,4 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
 
-  // Day/night switch (52×28 pill, thumb 22)
-  dnTrack: {
-    width: 52,
-    height: 28,
-    borderRadius: 999,
-    borderWidth: 1,
-    justifyContent: 'center',
-  },
-  dnGlyph: {
-    position: 'absolute',
-    top: '50%',
-    marginTop: -5, // -height/2
-    width: 10,
-    height: 10,
-    borderRadius: 999,
-  },
-  dnSun: { left: 8 },
-  dnMoonIcon: {
-    position: 'absolute',
-    top: '50%',
-    right: 7,
-    marginTop: -6, // -size/2
-  },
-  dnThumb: {
-    position: 'absolute',
-    top: '50%',
-    marginTop: -11, // -height/2
-    width: 22,
-    height: 22,
-    borderRadius: 999,
-  },
 });
