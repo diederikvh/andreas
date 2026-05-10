@@ -101,18 +101,22 @@ export function ContentSwitchHint() {
 // - arrow: 14×14 vierkant 45° gedraaid, half boven de card-rand
 //   geclipt door de cardWrap; geeft een schone driehoek-illusie.
 const styles = StyleSheet.create({
+  // Layer beslaat de volle breedte minus 18 aan beide kanten zodat de
+  // card content-driven kan groeien tot maximaal 280px en daar rechts
+  // tegenaan landt. Zonder linker-extent zou het body-blok inklappen.
   layer: {
     position: 'absolute',
+    left: 18,
     right: 18,
     zIndex: 9,
     alignItems: 'flex-end',
-    maxWidth: 280,
   },
   arrowWrap: {
     height: 8,
     overflow: 'hidden',
     alignItems: 'flex-end',
     paddingRight: 30,
+    alignSelf: 'stretch',
   },
   arrow: {
     width: 14,
@@ -126,7 +130,7 @@ const styles = StyleSheet.create({
     padding: 14,
     borderRadius: 14,
     borderWidth: 1,
-    maxWidth: 280,
+    width: 280,
   },
   cardBody: {
     flex: 1,
