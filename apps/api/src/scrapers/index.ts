@@ -6,6 +6,7 @@ import { scrapeConcertgemaal, type ConcertgemaalResult } from './concertgemaal.j
 import { scrapeFourvenues, type FourvenuesResult } from './fourvenues.js';
 import { scrapeGarageNoord, type GarageNoordResult } from './garagenoord.js';
 import { scrapeIta, type ItaResult } from './ita.js';
+import { scrapeKrakeling, type KrakelingResult } from './krakeling.js';
 import { scrapeOperaballet, type OperaballetResult } from './operaballet.js';
 import { scrapeOt301, type Ot301Result } from './ot301.js';
 import { scrapePodiumMozaiek, type PodiumMozaiekResult } from './podiummozaiek.js';
@@ -65,6 +66,7 @@ export const scrapers = {
   sieraad: scrapeSieraad,
   garagenoord: scrapeGarageNoord,
   skatecafe: scrapeSkatecafe,
+  krakeling: scrapeKrakeling,
 } as const;
 
 export type ScraperName = keyof typeof scrapers;
@@ -99,4 +101,5 @@ export type ScraperResult =
   | RadioRadioResult
   | SieraadResult
   | GarageNoordResult
-  | SkatecafeResult;
+  | SkatecafeResult
+  | KrakelingResult;
