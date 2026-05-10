@@ -131,6 +131,15 @@ function extractDataDates(html: string): string[] {
   return Array.from(set);
 }
 
+/** Detecteer of een DeLaMar voorstelling als "Afgelopen" gemarkeerd is.
+ *  De page rendert dan een `<div class="genre genre--large">Afgelopen</div>`
+ *  badge en de tekst "Deze voorstelling is afgelopen". Voor zulke shows
+ *  laten we het event verwijderen i.p.v. te laten staan zonder occurrences. */
+function isAfgelopen(html: string): boolean {
+  return /class="genre genre--large">\s*Afgelopen\s*</i.test(html)
+    || /Deze voorstelling is afgelopen/i.test(html);
+}
+
 async function mirrorImage(sourceUrl: string, slug: string): Promise<string | null> {
   try {
     const r = await fetch(sourceUrl, { headers: { 'user-agent': UA_REG } });
@@ -256,7 +265,19 @@ export async function scrapeTheater(options?: {
 
         const cutoff = Date.now() - 6 * 60 * 60 * 1000;
         const fresh = slots.filter((s) => (s.endsAt ?? s.startsAt).getTime() > cutoff);
-        if (fresh.length === 0) { result.skipped++; continue; }
+        if (fresh.length === 0) {
+          // Als de show als "Afgelopen" gemarkeerd is en het event al
+          // bestaat, verwijderen we hem (occurrences cascaden mee). Zo
+          // blijft de DB schoon van afgelopen voorstellingen die anders
+          // als orphan-events met 0 occurrences blijven hangen.
+          if (existing && cfg.useDataDateAttrs && isAfgelopen(html)) {
+            await db.delete(schema.events).where(eq(schema.events.id, eventId));
+            result.skipped++;
+            continue;
+          }
+          result.skipped++;
+          continue;
+        }
 
         if (!existing) {
           description = head.description ? decodeEntities(head.description) : null;
