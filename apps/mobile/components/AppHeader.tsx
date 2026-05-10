@@ -42,6 +42,12 @@ type AppHeaderProps = {
    * daar niets doet.
    */
   showContentMode?: boolean;
+  /**
+   * Verbergt de avatar-knop rechtsboven. Default false. Aan zetten op
+   * /jij zelf zodat 'r geen "avatar → /jij → zelfde avatar → /jij"-
+   * loop ontstaat.
+   */
+  hideAvatar?: boolean;
 };
 
 /**
@@ -58,6 +64,7 @@ export function AppHeader({
   solid = false,
   title,
   showContentMode = false,
+  hideAvatar = false,
 }: AppHeaderProps = {}) {
   const mode = useMode();
   const roles = useRoles();
@@ -133,7 +140,7 @@ export function AppHeader({
         </View>
         <View style={styles.headerRight}>
           {showContentMode && <ContentModeSwitch />}
-          <AvatarButton />
+          {!hideAvatar && <AvatarButton />}
         </View>
       </View>
       {children}

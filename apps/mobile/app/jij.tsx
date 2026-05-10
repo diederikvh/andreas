@@ -294,7 +294,7 @@ export default function Jij() {
     return (
       <View style={[styles.root, styles.loadingRoot, { backgroundColor: roles.bg }]}>
         <SpinningCross size={28} color={roles.fgPlaceholder} />
-        <AppHeader title={t('Profiel', 'Profile')} />
+        <AppHeader title={t('Profiel', 'Profile')} hideAvatar />
       </View>
     );
   }
@@ -435,7 +435,7 @@ export default function Jij() {
             </Text>
           </Pressable>
         </ScrollView>
-        <AppHeader title={t('Profiel', 'Profile')} />
+        <AppHeader title={t('Profiel', 'Profile')} hideAvatar />
       </KeyboardAvoidingView>
     );
   }
@@ -576,7 +576,7 @@ export default function Jij() {
             </Pressable>
           )}
         </ScrollView>
-        <AppHeader title={t('Profiel', 'Profile')} />
+        <AppHeader title={t('Profiel', 'Profile')} hideAvatar />
       </KeyboardAvoidingView>
     );
   }
@@ -751,7 +751,7 @@ export default function Jij() {
           </View>
         )}
       </ScrollView>
-      <AppHeader title={t('Profiel', 'Profile')} />
+      <AppHeader title={t('Profiel', 'Profile')} hideAvatar />
       <Modal
         visible={showQr && Boolean(me?.handle)}
         animationType="slide"
