@@ -82,10 +82,14 @@ function extractShowtimes(html: string): Date[] {
 function parseShowPage(html: string): ShowMeta | null {
   const title = pickMeta(html, 'og:title');
   if (!title) return null;
+  // Krakeling's og:image gebruikt `header_medium`-variant die op de
+  // staging-bucket 403 geeft; de `detail_large` variant in de body
+  // is wel publiek. Pak die als ie er staat, val anders terug op og:image.
+  const detailLarge = html.match(/https?:\/\/[^"']+?\/uploads\/images\/scaled\/detail_large\/\d+/);
   return {
     title,
     description: pickMeta(html, 'og:description'),
-    imageUrl: pickMeta(html, 'og:image'),
+    imageUrl: detailLarge ? detailLarge[0] : pickMeta(html, 'og:image'),
     showtimes: extractShowtimes(html),
   };
 }
