@@ -25,12 +25,15 @@ import { fontFamily, palette } from '@/theme/tokens';
 export function RunningStrip({
   series,
   exhibitionEvents,
+  kicker,
 }: {
   series: ApiSeriesListItem[];
   /** Volledige event-lijst — wij filteren intern op `kind: 'exhibition'`
       zodat callers gewoon de events-data uit useEvents kunnen doorgeven
       zonder zelf te filteren. */
   exhibitionEvents: ApiEvent[];
+  /** Optionele kop-tekst boven de strook. Default: "Loopt nu". */
+  kicker?: string;
 }) {
   const roles = useRoles();
   const t = useT();
@@ -42,7 +45,7 @@ export function RunningStrip({
     <View style={styles.section}>
       <View style={styles.head}>
         <Text style={[styles.headLabel, { color: roles.fg }]}>
-          {t('Loopt nu', 'Running now')}
+          {kicker ?? t('Loopt nu', 'Running now')}
         </Text>
         <Text style={[styles.headCount, { color: roles.fgMuted }]}>
           {total}

@@ -528,12 +528,6 @@ export default function Avond() {
         {/* Kaart-CTA — alleen in 'uit'-modus. */}
         {cmode === 'uit' && <KaartBanner />}
 
-        {/* "Loopt nu" — series in 'uit', exhibitions in 'expo'. */}
-        <RunningStrip
-          series={cmode === 'uit' ? (seriesList ?? []) : []}
-          exhibitionEvents={cmode === 'expo' ? runningExhibitions : []}
-        />
-
         {/* Hero — divider + "{dag} {datum}" met datum in accent. */}
         <View style={[styles.heroDivider, { backgroundColor: roles.bgChip }]} />
         <View style={styles.hero}>
@@ -545,6 +539,20 @@ export default function Avond() {
             <Text style={{ color: roles.accent }}>{heroParts.date}</Text>
           </Text>
         </View>
+
+        {/* "Loopt deze week" — meerdaagse festivals/series in 'uit',
+            doorlopende tentoonstellingen in 'expo'. Tussen Hero en
+            cat-rails — eerst datum-anker, dan periodieke context, dan
+            specifieke vanavond-rails. */}
+        <RunningStrip
+          series={cmode === 'uit' ? (seriesList ?? []) : []}
+          exhibitionEvents={cmode === 'expo' ? runningExhibitions : []}
+          kicker={
+            cmode === 'uit'
+              ? t('Festivals & series', 'Festivals & series')
+              : t('Doorlopend te zien', 'Currently on view')
+          }
+        />
 
         {isLoading && (
           <View style={styles.loadingWrap}>

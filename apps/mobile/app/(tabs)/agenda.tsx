@@ -28,7 +28,6 @@ import { AppHeader, HEADER_HEIGHT } from '@/components/AppHeader';
 import { Cross } from '@/components/Cross';
 import { EventListRow } from '@/components/EventListRow';
 import { RefreshBanner } from '@/components/RefreshBanner';
-import { RunningStrip } from '@/components/RunningStrip';
 import { SpinningCross } from '@/components/SpinningCross';
 import type { ApiEvent, VenueType } from '@/lib/api';
 import {
@@ -60,7 +59,6 @@ import {
   useEventGenres,
   useEvents,
   useFriends,
-  useSeriesList,
 } from '@/lib/queries';
 import { useTabDoubleTap } from '@/lib/useTabDoubleTap';
 import { useAgendaFilters } from '@/store/agendaFilters';
@@ -190,10 +188,6 @@ export default function Agenda() {
     from: todayStartIso,
     limit: 5000,
   });
-  // Series + exhibitions delen één "Loopt nu"-strook bovenaan op de
-  // Agenda — zelfde patroon als Vandaag voor visuele rust.
-  const { data: seriesList } = useSeriesList();
-
   // Cliëntside filter op event-eigenschappen (category/genre/search) —
   // tijd-blok wordt apart per occurrence toegepast zodat een film met
   // matinee (14:00) én avondvoorstelling (22:00) bij beide blokken
@@ -443,12 +437,6 @@ export default function Agenda() {
               <ListState
                 text={t('Kon agenda niet laden.', 'Couldn’t load agenda.')}
                 tone="error"
-              />
-            )}
-            {!isLoading && !error && (
-              <RunningStrip
-                series={seriesList ?? []}
-                exhibitionEvents={filteredEvents}
               />
             )}
             {!isLoading && !error && days.length === 0 && (
