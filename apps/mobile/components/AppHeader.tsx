@@ -12,7 +12,7 @@ import { ProfileAvatar } from '@/components/ProfileAvatar';
 import { tinyTap } from '@/lib/haptics';
 import { useMe } from '@/lib/queries';
 import { useMode, useRoles } from '@/store/mode';
-import { fontFamily } from '@/theme/tokens';
+import { fontFamily, palette } from '@/theme/tokens';
 
 export const HEADER_HEIGHT = 36;
 
@@ -142,7 +142,9 @@ export function AppHeader({
 }
 
 function AvatarButton() {
+  const mode = useMode();
   const roles = useRoles();
+  const isNacht = mode === 'nacht';
   const { data: me } = useMe();
 
   const onPress = () => {
@@ -159,8 +161,14 @@ function AvatarButton() {
         accessibilityRole="button"
         accessibilityLabel="Profiel"
         onPress={onPress}
-        hitSlop={12}
-        style={styles.avatarDotWrap}
+        hitSlop={6}
+        style={[
+          styles.avatarDotWrap,
+          {
+            backgroundColor: isNacht ? palette.noir2 : palette.paper2,
+            borderColor: isNacht ? '#2a2a2d' : palette.paper,
+          },
+        ]}
       >
         <View
           style={[
@@ -237,12 +245,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  // Wrap voor de niet-ingelogd-stip — zelfde 28×28 grid als de avatar
-  // zodat de header-row niet verspringt bij login. Hitslop op de
-  // Pressable maakt de tap-target alsnog vingervriendelijk.
+  // Wrap voor de niet-ingelogd-stip — zelfde 28×28 cirkel met bg +
+  // border als de content-switch ernaast, zodat de drie elementen
+  // rechtsboven (switch + avatar-stip) visueel als familie ogen.
   avatarDotWrap: {
     width: 28,
     height: 28,
+    borderRadius: 999,
+    borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },
