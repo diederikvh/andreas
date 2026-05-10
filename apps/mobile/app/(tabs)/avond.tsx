@@ -13,8 +13,6 @@ import {
   Pressable,
   RefreshControl,
   ScrollView,
-  SectionList,
-  type SectionListData,
   StyleSheet,
   Text,
   TextInput,
@@ -33,7 +31,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppHeader, HEADER_HEIGHT } from '@/components/AppHeader';
 import { Cross } from '@/components/Cross';
-import { EventListRow } from '@/components/EventListRow';
+import { Rail } from '@/components/Rail';
+import { RailEventCard } from '@/components/RailEventCard';
 import { RefreshBanner } from '@/components/RefreshBanner';
 import { RunningStrip } from '@/components/RunningStrip';
 import { SpinningCross } from '@/components/SpinningCross';
@@ -41,8 +40,6 @@ import type { ApiEvent, VenueType } from '@/lib/api';
 import {
   eventImageUrl,
   CATEGORY_TICK,
-  CONTENT_MODE_CATS,
-  VENUE_TYPE_TICK,
   eventBelongsToMode,
   getVenueTypeChips,
   translateVenueType,
@@ -144,14 +141,11 @@ const TONE: Record<
 
 export default function Avond() {
   const roles = useRoles();
-  const mode = useMode();
   const insets = useSafeAreaInsets();
   const t = useT();
   const locale = useLocale();
   const cmode = useContentMode();
-  const scrollRef = useRef<
-    SectionList<OccurrenceRow, { category: ApiEvent['category']; items: OccurrenceRow[] }>
-  >(null);
+  const scrollRef = useRef<ScrollView>(null);
   useScrollToTop(scrollRef);
   // Y-offset van de chip-row binnen de ListHeaderComponent. SharedValue
   // zodat de sticky-overlay-animation z'n threshold direct kan lezen
@@ -160,7 +154,7 @@ export default function Avond() {
   const chipRowY = useSharedValue(0);
   const scrollY = useSharedValue(0);
   const scrollToChipRow = useCallback(() => {
-    scrollRef.current?.getScrollResponder()?.scrollTo({
+    scrollRef.current?.scrollTo({
       y: Math.max(0, chipRowY.value),
       animated: true,
     });
@@ -375,59 +369,8 @@ export default function Avond() {
     });
   }, [allToday]);
 
-  // Cat-secties: groepeer events per categorie (zelfde volgorde als
-  // CATEGORIES_ORDER). Featured-events bovenaan in elke sublijst, dan
-  // gewone rows op startsAt; eerste rij krijgt een ster. Het lead-
-  // event komt hier ook in voor — Diederik wil dat 'ie ook in de lijst
-  // staat zodat je 'm niet over het hoofd ziet als je voorbij de hero
-  // scrollt. Wel deduplicaten op event-id zodat hetzelfde event met
-  // meerdere occurrences vandaag niet meer dan één rij krijgt.
-  const restByCategory = useMemo(() => {
-    const seenEvents = new Set<string>();
-    const dedupedRest: OccurrenceRow[] = [];
-    for (const row of filtered) {
-      if (seenEvents.has(row.event.id)) continue;
-      seenEvents.add(row.event.id);
-      dedupedRest.push(row);
-    }
-    const map = new Map<ApiEvent['category'], OccurrenceRow[]>();
-    for (const row of dedupedRest) {
-      const arr = map.get(row.event.category) ?? [];
-      arr.push(row);
-      map.set(row.event.category, arr);
-    }
-    for (const arr of map.values()) {
-      arr.sort((a, b) => {
-        if (a.event.featured !== b.event.featured) {
-          return a.event.featured ? -1 : 1;
-        }
-        return (
-          new Date(a.occurrence.startsAt).getTime() -
-          new Date(b.occurrence.startsAt).getTime()
-        );
-      });
-    }
-    return CATEGORIES_ORDER.flatMap((category) => {
-      // Wanneer er een categorie-filter actief is, alleen die secties
-      // tonen — anders filter-keuze niet zichtbaar.
-      if (activeCats.length > 0 && !activeCats.includes(category)) return [];
-      // Geen expliciete cat-filter? Dan beperken we tot de mode-cats —
-      // zodat 'uit' geen Kunst/Lit secties krijgt en 'expo' geen
-      // Muziek/Theater/Film.
-      if (
-        activeCats.length === 0 &&
-        !CONTENT_MODE_CATS[cmode].includes(category)
-      ) {
-        return [];
-      }
-      const items = map.get(category);
-      return items && items.length > 0 ? [{ category, items }] : [];
-    });
-  }, [filtered, activeCats, cmode]);
-
   // Hero-tekst: "{dag} {datum} op de agenda" met de datum in
-  // accent-kleur. Niet filter-afhankelijk; geen count meer in deze
-  // copy (die zat nu boven de feature en voelde dubbelop).
+  // accent-kleur. Niet filter-afhankelijk.
   const heroParts = useMemo(() => {
     const d = todayWindow.refDate;
     return {
@@ -436,10 +379,125 @@ export default function Avond() {
     };
   }, [todayWindow.refDate, locale]);
 
-  // Sections voor de SectionList — restByCategory met `data: items`.
-  const sections = useMemo(
-    () => restByCategory.map((g) => ({ ...g, data: g.items })),
-    [restByCategory]
+  // Voor 'expo'-rails: events-pool die NIET op vandaag-window filtert
+  // én exhibitions wel meeneemt. Exhibitions lopen weken/maanden, dus
+  // "vandaag" maakt niet uit. Filtering: mode-mapping (cat ∈ expo),
+  // overrule via expliciete cats, plus de generieke search/friends/
+  // favorites filters die ook in 'uit'-mode actief zijn.
+  const expoEvents = useMemo<ApiEvent[]>(() => {
+    if (!events) return [];
+    const needle = query.trim().toLowerCase();
+    return events.filter((e) => {
+      if (activeCats.length === 0 && !eventBelongsToMode(e, 'expo')) {
+        return false;
+      }
+      if (activeCats.length > 0 && !activeCats.includes(e.category)) {
+        return false;
+      }
+      if (activeGenres.length > 0) {
+        const evGenres = e.genres ?? [];
+        if (!evGenres.some((g) => activeGenres.includes(g))) return false;
+      }
+      if (onlyFriends && (e.friendsSaved?.length ?? 0) === 0) return false;
+      if (onlyFavorites && !e.venueFollowed) return false;
+      if (needle.length > 0) {
+        const inTitle = e.title.toLowerCase().includes(needle);
+        const inVenue = e.venue.name.toLowerCase().includes(needle);
+        const inDesc = (e.description ?? '').toLowerCase().includes(needle);
+        if (!inTitle && !inVenue && !inDesc) return false;
+      }
+      return true;
+    });
+  }, [events, activeCats, activeGenres, onlyFriends, onlyFavorites, query]);
+
+  // Rails voor 'uit'-mode — gebaseerd op `filtered` (OccurrenceRow[]
+  // van vandaag, gefilterd op user-state). Per rail aanvullende
+  // filter-criterium. Lege rails worden door de Rail-component
+  // gewoonweg niet gerenderd.
+  const railClubs = useMemo(
+    () => filtered.filter((r) => r.event.venue.type === 'club'),
+    [filtered]
+  );
+  const railLivePodium = useMemo(
+    () =>
+      filtered.filter(
+        (r) =>
+          r.event.venue.type === 'podium' && r.event.category === 'Muziek'
+      ),
+    [filtered]
+  );
+  const railTheater = useMemo(
+    () => filtered.filter((r) => r.event.category === 'Theater'),
+    [filtered]
+  );
+  const railFilm = useMemo(
+    () => filtered.filter((r) => r.event.category === 'Film'),
+    [filtered]
+  );
+  const railFriendsUit = useMemo(
+    () =>
+      filtered.filter((r) => (r.event.friendsSaved?.length ?? 0) > 0),
+    [filtered]
+  );
+  const railFollowedUit = useMemo(
+    () => filtered.filter((r) => r.event.venueFollowed === true),
+    [filtered]
+  );
+
+  // Rails voor 'expo'-mode — gebaseerd op `expoEvents` (ApiEvent[]).
+  // 'Nieuw geopend': exhibitions die in de afgelopen 14 dagen zijn
+  // gestart. 'Sluit deze maand': exhibitions met endsAt binnen 30
+  // dagen. Andere rails sorteren op startsAt.
+  const railNewlyOpened = useMemo<ApiEvent[]>(() => {
+    const cutoff = Date.now() - 14 * 24 * 3600 * 1000;
+    return expoEvents
+      .filter((e) => e.kind === 'exhibition')
+      .filter((e) => {
+        if (!e.startsAt) return false;
+        const startMs = new Date(e.startsAt).getTime();
+        return startMs > cutoff && startMs <= Date.now();
+      })
+      .sort(
+        (a, b) =>
+          new Date(b.startsAt!).getTime() - new Date(a.startsAt!).getTime()
+      );
+  }, [expoEvents]);
+
+  const railClosingSoon = useMemo<ApiEvent[]>(() => {
+    const cutoff = Date.now() + 30 * 24 * 3600 * 1000;
+    return expoEvents
+      .filter((e) => e.kind === 'exhibition')
+      .filter((e) => {
+        if (!e.endsAt) return false;
+        const endMs = new Date(e.endsAt).getTime();
+        return endMs > Date.now() && endMs < cutoff;
+      })
+      .sort(
+        (a, b) =>
+          new Date(a.endsAt!).getTime() - new Date(b.endsAt!).getTime()
+      );
+  }, [expoEvents]);
+
+  const railFollowedExpo = useMemo<ApiEvent[]>(
+    () => expoEvents.filter((e) => e.venueFollowed === true),
+    [expoEvents]
+  );
+
+  const railLit = useMemo<ApiEvent[]>(
+    () =>
+      expoEvents
+        .filter((e) => e.category === 'Literatuur')
+        .sort(
+          (a, b) =>
+            new Date(a.startsAt).getTime() -
+            new Date(b.startsAt).getTime()
+        ),
+    [expoEvents]
+  );
+
+  const railFriendsExpo = useMemo<ApiEvent[]>(
+    () => expoEvents.filter((e) => (e.friendsSaved?.length ?? 0) > 0),
+    [expoEvents]
   );
 
   const hasFilterActive =
@@ -486,35 +544,10 @@ export default function Avond() {
         visible={refreshing}
         topOffset={insets.top + HEADER_HEIGHT + 8}
       />
-      <SectionList
+      <ScrollView
         ref={scrollRef}
         onScroll={onScroll}
         scrollEventThrottle={16}
-        sections={isLoading || error ? [] : sections}
-        keyExtractor={(row) => row.id}
-        renderItem={({ item }) => <ApiEventRow row={item} />}
-        renderSectionHeader={({ section }) => {
-          const cat = (
-            section as SectionListData<
-              OccurrenceRow,
-              { category: ApiEvent['category']; items: OccurrenceRow[] }
-            >
-          ).category;
-          return (
-            <SectionTitle
-              title={translateCategory(cat, locale)}
-              titleColor={TONE[mode][CATEGORY_TICK[cat]]}
-              meta={t('Meer →', 'More →')}
-              onMetaPress={() =>
-                router.push({
-                  pathname: '/agenda',
-                  params: { cat: cat as string },
-                })
-              }
-            />
-          );
-        }}
-        stickySectionHeadersEnabled={false}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{
           // Header reserveert ruimte voor de sticky chip-row (ook
@@ -527,8 +560,6 @@ export default function Avond() {
           <RefreshControl
             refreshing={refreshing}
             onRefresh={onRefresh}
-            // Accent-kleur voor duidelijke zichtbaarheid op donker;
-            // op iOS toont de title als label onder de spinner.
             tintColor={roles.accent}
             colors={[roles.accent]}
             title={
@@ -540,108 +571,234 @@ export default function Avond() {
             progressViewOffset={insets.top + HEADER_HEIGHT + STICKY_CHIPROW_HEIGHT}
           />
         }
-        windowSize={11}
-        initialNumToRender={12}
-        removeClippedSubviews
-        ListHeaderComponent={
+      >
+        {/* Hoofd-artikelen: alle featured events uit vandaag-events.
+            NIET filter-afhankelijk — staan bovenaan onafhankelijk van
+            wat je beneden filtert. Negative marginTop trekt de hero
+            onder het chip-row gereserveerde band van de AppHeader
+            — door de blur fade-to-transparent ziet 't 'r mooi
+            bleed-onder-de-header uit. */}
+        {leads.length > 0 && (
+          <View style={{ marginTop: -STICKY_CHIPROW_HEIGHT + 8 }}>
+            <FeaturedCarousel
+              leads={leads}
+              kicker={t('Onze keuze', 'Our pick')}
+              locale={locale}
+            />
+          </View>
+        )}
+
+        {/* Kaart-CTA — alleen in 'uit'-modus. */}
+        {cmode === 'uit' && <KaartBanner />}
+
+        {/* "Loopt nu" — series in 'uit', exhibitions in 'expo'. */}
+        <RunningStrip
+          series={cmode === 'uit' ? (seriesList ?? []) : []}
+          exhibitionEvents={cmode === 'expo' ? runningExhibitions : []}
+        />
+
+        {/* Hero — divider + "{dag} {datum}" met datum in accent. */}
+        <View style={[styles.heroDivider, { backgroundColor: roles.bgChip }]} />
+        <View style={styles.hero}>
+          <Text
+            numberOfLines={1}
+            style={[styles.heroLine, { color: roles.fg }]}
+          >
+            {heroParts.day}{' '}
+            <Text style={{ color: roles.accent }}>{heroParts.date}</Text>
+          </Text>
+        </View>
+
+        {/* Filter-rij. Wrapper captureert Y-positie binnen de scroll
+            content — gebruikt door de tab-double-tap scroll én door de
+            sticky-overlay opacity-animation. */}
+        <View
+          onLayout={(e) => {
+            chipRowY.value = e.nativeEvent.layout.y;
+          }}
+        >
+          <AvondChipRow
+            query={query}
+            onQuery={setQuery}
+            onlyFriends={onlyFriends}
+            onToggleFriends={onToggleFriends}
+            showFriendsChip={showFriendsChip}
+            onlyFavorites={onlyFavorites}
+            onToggleFavorites={onToggleFavorites}
+            showFavoritesChip={showFavoritesChip}
+            activeBlocks={activeBlocks}
+            onToggleBlock={onToggleBlock}
+            activeCats={activeCats}
+            activeTypes={activeTypes}
+            activeGenres={activeGenres}
+            onSetBlocks={setActiveBlocks}
+            onSetFriends={setOnlyFriends}
+            onSetFavorites={setOnlyFavorites}
+            onSetCats={setActiveCats}
+            onSetTypes={setActiveTypes}
+            onSetGenres={setActiveGenres}
+            onDoubleTapScroll={scrollToChipRow}
+          />
+        </View>
+
+        {isLoading && (
+          <View style={styles.loadingWrap}>
+            <SpinningCross size={28} color={roles.fgPlaceholder} />
+          </View>
+        )}
+        {error && (
+          <ListState
+            text={t('Kon events niet laden.', 'Couldn’t load events.')}
+            tone="error"
+          />
+        )}
+
+        {/* Rails — afhankelijk van content-mode. Lege rails worden door
+            de Rail-component zelf weggelaten. Cards mappen op
+            occurrence-rij ('uit') of event ('expo' — exhibitions). */}
+        {!isLoading && !error && cmode === 'uit' && (
           <>
-            {/* Hoofd-artikelen: alle featured events uit vandaag-events.
-                NIET filter-afhankelijk — staan bovenaan onafhankelijk van
-                wat je beneden filtert. Negative marginTop trekt de hero
-                onder het chip-row gereserveerde band van de AppHeader
-                — door de blur fade-to-transparent ziet 't 'r mooi
-                bleed-onder-de-header uit. */}
-            {leads.length > 0 && (
-              <View style={{ marginTop: -STICKY_CHIPROW_HEIGHT + 8 }}>
-                <FeaturedCarousel
-                  leads={leads}
-                  kicker={t('Onze keuze', 'Our pick')}
-                  locale={locale}
+            <Rail kicker={t('Vannacht in de clubs', 'Tonight in the clubs')}>
+              {railClubs.map((r) => (
+                <RailEventCard
+                  key={r.id}
+                  event={r.event}
+                  occurrenceId={
+                    r.occurrence.id.endsWith('::next') ? undefined : r.occurrence.id
+                  }
+                  occurrenceStartsAt={r.occurrence.startsAt}
+                  occurrenceEndsAt={r.occurrence.endsAt}
                 />
-              </View>
-            )}
-
-            {/* Kaart-CTA — alleen in 'uit'-modus (ruimtelijk verkennen
-                past bij avond-uitgaan, niet bij planning-modus). */}
-            {cmode === 'uit' && <KaartBanner />}
-
-            {/* "Loopt nu" — in 'uit'-modus actieve series (festivals,
-                tour-weeks). In 'expo'-modus doorlopende tentoon-
-                stellingen. Beide strooken hebben een ander ritme dan
-                de dag-events en horen daarom apart bovenaan. */}
-            <RunningStrip
-              series={cmode === 'uit' ? (seriesList ?? []) : []}
-              exhibitionEvents={
-                cmode === 'expo' ? runningExhibitions : []
+              ))}
+            </Rail>
+            <Rail kicker={t('Live op de podia', 'Live on stage')}>
+              {railLivePodium.map((r) => (
+                <RailEventCard
+                  key={r.id}
+                  event={r.event}
+                  occurrenceId={
+                    r.occurrence.id.endsWith('::next') ? undefined : r.occurrence.id
+                  }
+                  occurrenceStartsAt={r.occurrence.startsAt}
+                  occurrenceEndsAt={r.occurrence.endsAt}
+                />
+              ))}
+            </Rail>
+            <Rail
+              kicker={t('Theater & dans', 'Theatre & dance')}
+              moreLabel={t('Meer →', 'More →')}
+              onMore={() =>
+                router.push({ pathname: '/agenda', params: { cat: 'Theater' } })
               }
-            />
-
-            {/* Hero — divider + "{dag} {datum}" met datum in primair
-                (accent). Eén regel, kort. Niet filter-afhankelijk. */}
-            <View
-              style={[styles.heroDivider, { backgroundColor: roles.bgChip }]}
-            />
-            <View style={styles.hero}>
-              <Text
-                numberOfLines={1}
-                style={[styles.heroLine, { color: roles.fg }]}
-              >
-                {heroParts.day}{' '}
-                <Text style={{ color: roles.accent }}>{heroParts.date}</Text>
-              </Text>
-            </View>
-
-            {/* Filter-rij. Wrapper captureert Y-positie binnen de
-                ListHeader — gebruikt door de tab-double-tap scroll én
-                door de sticky-overlay opacity-animation. */}
-            <View
-              onLayout={(e) => {
-                chipRowY.value = e.nativeEvent.layout.y;
-              }}
             >
-              <AvondChipRow
-                query={query}
-                onQuery={setQuery}
-                onlyFriends={onlyFriends}
-                onToggleFriends={onToggleFriends}
-                showFriendsChip={showFriendsChip}
-                onlyFavorites={onlyFavorites}
-                onToggleFavorites={onToggleFavorites}
-                showFavoritesChip={showFavoritesChip}
-                activeBlocks={activeBlocks}
-                onToggleBlock={onToggleBlock}
-                activeCats={activeCats}
-                activeTypes={activeTypes}
-                activeGenres={activeGenres}
-                onSetBlocks={setActiveBlocks}
-                onSetFriends={setOnlyFriends}
-                onSetFavorites={setOnlyFavorites}
-                onSetCats={setActiveCats}
-                onSetTypes={setActiveTypes}
-                onSetGenres={setActiveGenres}
-                onDoubleTapScroll={scrollToChipRow}
-              />
-            </View>
-
-            {isLoading && (
-              <View style={styles.loadingWrap}>
-                <SpinningCross size={28} color={roles.fgPlaceholder} />
-              </View>
-            )}
-            {error && (
-              <ListState
-                text={t('Kon events niet laden.', 'Couldn’t load events.')}
-                tone="error"
-              />
-            )}
-            {!isLoading && !error && filtered.length === 0 && events && (
-              <Animated.View entering={FadeIn.duration(220)}>
-                <EmptyResults hasFilter={hasFilterActive} minHeight={240} />
-              </Animated.View>
-            )}
+              {railTheater.map((r) => (
+                <RailEventCard
+                  key={r.id}
+                  event={r.event}
+                  occurrenceId={
+                    r.occurrence.id.endsWith('::next') ? undefined : r.occurrence.id
+                  }
+                  occurrenceStartsAt={r.occurrence.startsAt}
+                  occurrenceEndsAt={r.occurrence.endsAt}
+                />
+              ))}
+            </Rail>
+            <Rail
+              kicker={t('Film vanavond', 'Film tonight')}
+              moreLabel={t('Meer →', 'More →')}
+              onMore={() =>
+                router.push({ pathname: '/agenda', params: { cat: 'Film' } })
+              }
+            >
+              {railFilm.map((r) => (
+                <RailEventCard
+                  key={r.id}
+                  event={r.event}
+                  occurrenceId={
+                    r.occurrence.id.endsWith('::next') ? undefined : r.occurrence.id
+                  }
+                  occurrenceStartsAt={r.occurrence.startsAt}
+                  occurrenceEndsAt={r.occurrence.endsAt}
+                />
+              ))}
+            </Rail>
+            <Rail kicker={t('Vrienden gaan', 'Friends going')}>
+              {railFriendsUit.map((r) => (
+                <RailEventCard
+                  key={r.id}
+                  event={r.event}
+                  occurrenceId={
+                    r.occurrence.id.endsWith('::next') ? undefined : r.occurrence.id
+                  }
+                  occurrenceStartsAt={r.occurrence.startsAt}
+                  occurrenceEndsAt={r.occurrence.endsAt}
+                />
+              ))}
+            </Rail>
+            <Rail kicker={t('Bij venues die je volgt', 'At venues you follow')}>
+              {railFollowedUit.map((r) => (
+                <RailEventCard
+                  key={r.id}
+                  event={r.event}
+                  occurrenceId={
+                    r.occurrence.id.endsWith('::next') ? undefined : r.occurrence.id
+                  }
+                  occurrenceStartsAt={r.occurrence.startsAt}
+                  occurrenceEndsAt={r.occurrence.endsAt}
+                />
+              ))}
+            </Rail>
           </>
-        }
-      />
+        )}
+
+        {!isLoading && !error && cmode === 'expo' && (
+          <>
+            <Rail kicker={t('Nieuw geopend', 'Newly opened')}>
+              {railNewlyOpened.map((e) => (
+                <RailEventCard key={e.id} event={e} />
+              ))}
+            </Rail>
+            <Rail kicker={t('Sluit deze maand', 'Closing this month')}>
+              {railClosingSoon.map((e) => (
+                <RailEventCard key={e.id} event={e} />
+              ))}
+            </Rail>
+            <Rail kicker={t('Bij musea die je volgt', 'At museums you follow')}>
+              {railFollowedExpo.map((e) => (
+                <RailEventCard key={e.id} event={e} />
+              ))}
+            </Rail>
+            <Rail
+              kicker={t('Literatuur', 'Literature')}
+              moreLabel={t('Meer →', 'More →')}
+              onMore={() =>
+                router.push({
+                  pathname: '/agenda',
+                  params: { cat: 'Literatuur' },
+                })
+              }
+            >
+              {railLit.map((e) => (
+                <RailEventCard key={e.id} event={e} />
+              ))}
+            </Rail>
+            <Rail kicker={t('Vrienden gaan', 'Friends going')}>
+              {railFriendsExpo.map((e) => (
+                <RailEventCard key={e.id} event={e} />
+              ))}
+            </Rail>
+          </>
+        )}
+
+        {/* Empty-state komt onder de rails — als alle rails leeg zijn
+            betekent 't dat er niets te tonen valt voor deze mode +
+            filter combinatie. */}
+        {!isLoading && !error && filtered.length === 0 && events && (
+          <Animated.View entering={FadeIn.duration(220)}>
+            <EmptyResults hasFilter={hasFilterActive} minHeight={240} />
+          </Animated.View>
+        )}
+      </ScrollView>
       <AppHeader title={t('Vandaag', 'Today')} showContentMode>
         {/* Sticky chip-row als AppHeader-children — deelt de fade-
             to-transparent BlurView van de non-solid header. Opacity-
@@ -1597,41 +1754,6 @@ function eventPathFor(row: OccurrenceRow): string {
   return `/event/${row.event.id}?o=${row.occurrence.id}`;
 }
 
-function ApiEventRow({ row }: { row: OccurrenceRow }) {
-  const { event, occurrence } = row;
-  const locale = useLocale();
-  const toggleType = useVandaagFilters((s) => s.toggleType);
-  const rawFriends = occurrence.friendsSaved ?? event.friendsSaved ?? [];
-  const friends = rawFriends.map((f) => ({
-    name: f.name,
-    avatar: f.avatarUrl,
-  }));
-  // Op Vandaag laten we de categorie-tag weg in de rij — die staat
-  // al in de sectie-titel erboven. Venue komt als eerste pill in
-  // venue-type tone (podium=acid, club=flare, ...); de tijd staat
-  // rechts in een eigen kolom. DOW + prijs zijn weggehaald — datum
-  // is impliciet ("vandaag") en prijs zat ondergesneeuwd in de
-  // mono-subline. Pill is tappable: toggelt het venue-type-filter.
-  const venueType = event.venue.type;
-  const venueTone = venueType ? VENUE_TYPE_TICK[venueType] : undefined;
-  const onVenuePress = venueType ? () => toggleType(venueType) : undefined;
-  return (
-    <EventListRow
-      thumb={eventImageUrl(event) ?? ''}
-      title={event.title}
-      venue={event.venue.name}
-      venueTone={venueTone}
-      onVenuePress={onVenuePress}
-      time={rowTimeLabel(occurrence.startsAt, occurrence.endsAt, locale)}
-      seriesLabel={event.series?.[0]?.name}
-      genreLabel={event.genres?.[0]}
-      friends={friends && friends.length > 0 ? friends : undefined}
-      tick={CATEGORY_TICK[event.category]}
-      onPress={() => router.push(eventPathFor(row) as never)}
-    />
-  );
-}
-
 function ListState({
   text,
   tone = 'muted',
@@ -1870,47 +1992,6 @@ function FeaturedCard({
   );
 }
 
-function SectionTitle({
-  title,
-  titleColor,
-  meta,
-  onMetaPress,
-}: {
-  title: string;
-  titleColor?: string;
-  meta: string;
-  onMetaPress?: () => void;
-}) {
-  const roles = useRoles();
-  // Match het kop-design van "Doorlopend te zien" en "Series": bold-
-  // uppercase label links (in optionele thema-kleur), mono-uppercase
-  // meta rechts in een rustig grijs zodat de "Meer →"-link niet de
-  // aandacht steelt van het thema-label.
-  return (
-    <View style={styles.sectionTitle}>
-      <Text
-        style={[
-          styles.sectionTitleLabel,
-          { color: titleColor ?? roles.fg },
-        ]}
-      >
-        {title}
-      </Text>
-      {onMetaPress ? (
-        <Pressable onPress={onMetaPress} hitSlop={8}>
-          <Text style={[styles.sectionTitleMeta, { color: roles.fgMuted }]}>
-            {meta}
-          </Text>
-        </Pressable>
-      ) : (
-        <Text style={[styles.sectionTitleMeta, { color: roles.fgMuted }]}>
-          {meta}
-        </Text>
-      )}
-    </View>
-  );
-}
-
 function KaartBanner() {
   const roles = useRoles();
   const t = useT();
@@ -2023,28 +2104,6 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
     textTransform: 'uppercase',
     marginTop: 10,
-  },
-
-  // Section title — coherent met de afstand tussen sub-secties (row
-  // paddingBottom 14 + sectionTitle paddingTop 14 = 28). Korte
-  // paddingBottom houdt 'm strak tegen de eerste row.
-  sectionTitle: {
-    paddingHorizontal: 22,
-    paddingTop: 14,
-    paddingBottom: 6,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'baseline',
-  },
-  sectionTitleLabel: {
-    fontFamily: fontFamily.display,
-    fontSize: 24,
-  },
-  sectionTitleMeta: {
-    fontFamily: fontFamily.mono,
-    fontSize: 10,
-    letterSpacing: 1,
-    textTransform: 'uppercase',
   },
 
   // Chip-row — zelfde patroon als Agenda's ChipRow. Expliciete height
