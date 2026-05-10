@@ -185,7 +185,7 @@ export const venues = pgTable('venues', {
       voor Radion. Andere keys (eventbrite, rss, ical, …) volgen wanneer
       die scrapers er zijn. */
   scraperConfig: jsonb().$type<{
-    stager?: { host: string; shopId: number };
+    stager?: { host: string; shopId: number; shopHandle?: string };
     eventbrite?: { organizerId: string };
     rss?: { url: string };
     ical?: { url: string };

@@ -35,7 +35,7 @@ function shortHash(input: string): string {
 
 const UA = 'Andreas-Scraper/1.0 (+https://andreas.amsterdam)';
 
-type StagerConfig = { host: string; shopId: number };
+type StagerConfig = { host: string; shopId: number; shopHandle?: string };
 
 type StagerEvent = {
   eventId: number;
@@ -316,7 +316,7 @@ async function scrapeOneVenue(
           const occurrenceId = isGrouped
             ? `occ-stg-${cfg.shopId}-${shortHash(`${groupKey}|${inst.startsOn}`)}`
             : `occ-stg-${cfg.shopId}-${inst.eventId}`;
-          const instTicketUrl = `https://${cfg.host}/shop/default/events/${inst.eventId}`;
+          const instTicketUrl = `https://${cfg.host}/shop/${cfg.shopHandle ?? 'default'}/events/${inst.eventId}`;
           const instStatus: 'scheduled' | 'cancelled' | 'sold_out' =
             inst.soldOut ? 'sold_out' : 'scheduled';
           await db
@@ -417,7 +417,7 @@ async function scrapeOneVenue(
           const occurrenceId = isGrouped
             ? `occ-stg-${cfg.shopId}-${shortHash(`${groupKey}|${inst.startsOn}`)}`
             : `occ-stg-${cfg.shopId}-${inst.eventId}`;
-          const instTicketUrl = `https://${cfg.host}/shop/default/events/${inst.eventId}`;
+          const instTicketUrl = `https://${cfg.host}/shop/${cfg.shopHandle ?? 'default'}/events/${inst.eventId}`;
           const instStatus: 'scheduled' | 'cancelled' | 'sold_out' =
             inst.soldOut ? 'sold_out' : 'scheduled';
 
