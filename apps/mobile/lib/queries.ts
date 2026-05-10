@@ -16,6 +16,7 @@ import {
   getFriendRequests,
   getFriends,
   getInvites,
+  getMe,
   getOutgoingFriendRequests,
   getMySaves,
   getSeries,
@@ -30,12 +31,14 @@ import {
   sendInvites,
   setVenueFollow,
   toggleSave,
+  type ApiMe,
   type EventsFilter,
   type SavedApiEvent,
   type VenueCategory,
   type VenueFollowState,
   type VenueType,
 } from '@/lib/api';
+import { useSession } from '@/lib/authClient';
 
 export const queryKeys = {
   events: (filter: EventsFilter = {}) => ['events', filter] as const,
@@ -55,7 +58,22 @@ export const queryKeys = {
   userSearch: (q: string) => ['user-search', q] as const,
   invites: () => ['invites'] as const,
   socialFeed: () => ['social-feed'] as const,
+  me: (userId: string | null) => ['me', userId] as const,
 };
+
+// `useMe()` — gedeelde profiel-query. Sleutel matcht met wat /jij
+// gebruikt zodat de cache hergebruikt wordt en avatar/naam in de
+// header direct beschikbaar zijn nadat /jij ze heeft opgehaald.
+export function useMe() {
+  const { data: session } = useSession();
+  const userId = session?.user?.id ?? null;
+  return useQuery<ApiMe | null>({
+    queryKey: queryKeys.me(userId),
+    queryFn: () => getMe(),
+    enabled: Boolean(userId),
+    staleTime: 5 * 60_000,
+  });
+}
 
 export function useEvents(filter: EventsFilter = {}) {
   return useQuery({

@@ -14,7 +14,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   TabIconAgenda,
   TabIconAvond,
-  TabIconJij,
   TabIconSocial,
   TabIconVenues,
 } from '@/components/icons/TabIcons';
@@ -29,12 +28,13 @@ type IconCmp = ComponentType<{ color: string }>;
 // Kaart heeft `href: null` in de tabs-config, maar verschijnt nog wel
 // in `state.routes`. Door 'm hier weg te laten valt 'ie via de
 // `if (!Icon) return null;` automatisch uit de tab-bar.
+// `jij` is sinds de IA-shift géén tab meer — bereikbaar via de
+// avatar-knop rechtsboven in de AppHeader.
 const TAB_ICONS: Record<string, IconCmp> = {
   avond: TabIconAvond,
   agenda: TabIconAgenda,
   venues: TabIconVenues,
   social: TabIconSocial,
-  jij: TabIconJij,
 };
 
 /**

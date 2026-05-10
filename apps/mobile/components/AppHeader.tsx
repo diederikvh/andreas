@@ -2,12 +2,16 @@ import { Ionicons } from '@expo/vector-icons';
 import MaskedView from '@react-native-masked-view/masked-view';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
+import { router } from 'expo-router';
 import type { ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Cross } from '@/components/Cross';
 import { useModeSwitch } from '@/components/ModeCurtain';
+import { ProfileAvatar } from '@/components/ProfileAvatar';
+import { tinyTap } from '@/lib/haptics';
+import { useMe } from '@/lib/queries';
 import { useMode, useRoles } from '@/store/mode';
 import { fontFamily, palette } from '@/theme/tokens';
 
@@ -116,10 +120,66 @@ export function AppHeader({ children, solid = false, title }: AppHeaderProps = {
             </Text>
           )}
         </View>
-        <DnSwitch />
+        <View style={styles.headerRight}>
+          <DnSwitch />
+          <AvatarButton />
+        </View>
       </View>
       {children}
     </View>
+  );
+}
+
+function AvatarButton() {
+  const mode = useMode();
+  const roles = useRoles();
+  const isNacht = mode === 'nacht';
+  const { data: me } = useMe();
+
+  const onPress = () => {
+    tinyTap();
+    router.push('/jij' as never);
+  };
+
+  // Niet-ingelogd: subtiele person-cirkel als hint dat hier 'iets met
+  // jou' zit. Geen badge of label — pas na log-in / handle wordt 't
+  // een echte avatar.
+  if (!me) {
+    return (
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Profiel"
+        onPress={onPress}
+        hitSlop={6}
+        style={[
+          styles.avatarBtn,
+          {
+            backgroundColor: isNacht
+              ? 'rgba(31,31,35,0.7)'
+              : 'rgba(235,230,216,0.7)',
+            borderColor: isNacht ? '#2a2a2d' : palette.paper,
+          },
+        ]}
+      >
+        <Ionicons
+          name="person-outline"
+          size={14}
+          color={roles.fgPlaceholder}
+        />
+      </Pressable>
+    );
+  }
+  const displayName =
+    me.name && !me.name.startsWith('+') ? me.name : me.handle ?? '?';
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`Profiel — ${displayName}`}
+      onPress={onPress}
+      hitSlop={6}
+    >
+      <ProfileAvatar avatarUrl={me.avatarUrl ?? null} name={displayName} size={28} />
+    </Pressable>
   );
 }
 
@@ -202,6 +262,20 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     lineHeight: 18,
     flexShrink: 1,
+  },
+
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  avatarBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 999,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 
   // Day/night switch (52×28 pill, thumb 22)

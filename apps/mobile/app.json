@@ -11,10 +11,15 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "amsterdam.andreas.app",
-      "associatedDomains": ["applinks:andreas.amsterdam"],
+      "associatedDomains": [
+        "applinks:andreas.amsterdam"
+      ],
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
-        "CFBundleLocalizations": ["nl", "en"]
+        "CFBundleLocalizations": [
+          "nl",
+          "en"
+        ]
       }
     },
     "locales": {
@@ -52,7 +57,10 @@
               "pathPrefix": "/u"
             }
           ],
-          "category": ["BROWSABLE", "DEFAULT"]
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
         }
       ],
       "permissions": [
@@ -101,7 +109,8 @@
           "recordAudioAndroid": false
         }
       ],
-      "expo-notifications"
+      "expo-notifications",
+      "expo-localization"
     ],
     "experiments": {
       "typedRoutes": true,

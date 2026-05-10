@@ -86,6 +86,26 @@ const CATEGORY_EN: Record<ApiEvent['category'], string> = {
   Kunst: 'Art',
 };
 
+/** Mapping van content-mode → categorieën. 'uit' = avond/uitgaan-ritme
+ *  (concerten, club-avonden, theater, film). 'expo' = planning-ritme
+ *  (musea, galleries, literatuur-events, lezingen). De clubganger en
+ *  museumbezoeker hebben fundamenteel andere intent — deze splitsing
+ *  voorkomt dat ze door elkaars content moeten scrollen. */
+export const CONTENT_MODE_CATS: Record<
+  'uit' | 'expo',
+  ApiEvent['category'][]
+> = {
+  uit: ['Muziek', 'Theater', 'Film'],
+  expo: ['Kunst', 'Literatuur'],
+};
+
+export function eventBelongsToMode(
+  event: { category: ApiEvent['category'] },
+  mode: 'uit' | 'expo'
+): boolean {
+  return CONTENT_MODE_CATS[mode].includes(event.category);
+}
+
 export function translateCategory(
   cat: ApiEvent['category'],
   locale?: Locale

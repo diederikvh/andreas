@@ -16,7 +16,6 @@ export default function TabsLayout() {
       <Tabs.Screen name="kaart" options={{ href: null }} />
       <Tabs.Screen name="venues" />
       <Tabs.Screen name="social" />
-      <Tabs.Screen name="jij" />
     </Tabs>
   );
 }
