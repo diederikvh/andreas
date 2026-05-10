@@ -60,6 +60,7 @@ import {
   useEvents,
   useFriends,
 } from '@/lib/queries';
+import { useResetFiltersOnTabBlur } from '@/lib/useResetFiltersOnTabBlur';
 import { useTabDoubleTap } from '@/lib/useTabDoubleTap';
 import { useAgendaFilters } from '@/store/agendaFilters';
 import { useContentMode } from '@/store/contentMode';
@@ -147,6 +148,19 @@ export default function Agenda() {
   const setActiveCats = useAgendaFilters((s) => s.setActiveCats);
   const setActiveTypes = useAgendaFilters((s) => s.setActiveTypes);
   const setActiveGenres = useAgendaFilters((s) => s.setActiveGenres);
+  const resetFilters = useAgendaFilters((s) => s.reset);
+
+  // Stack-persistent filter-state: reset bij tab-wissel, behoud bij
+  // tap-naar-detail-en-terug. Caller markeert een stack-push vóór elke
+  // router.push naar een detail-route (zie onRowTap hieronder).
+  const markPush = useResetFiltersOnTabBlur(resetFilters);
+  const onRowTap = useCallback(
+    (path: string) => {
+      markPush();
+      router.push(path as never);
+    },
+    [markPush]
+  );
 
   // Deeplink-merge: Vandaag's "Meer →"-knop pusht naar /agenda?cat=X.
   // Bij eerste arrival mergen we die in de store (en wissen de URL-param
@@ -417,7 +431,7 @@ export default function Agenda() {
           item.type === 'cat-header' ? (
             <CategoryHeader category={item.category} count={item.count} />
           ) : (
-            <AgendaRow row={item.row} />
+            <AgendaRow row={item.row} onTap={onRowTap} />
           )
         }
         renderSectionHeader={({ section }) => (
@@ -1505,7 +1519,13 @@ function DateAnchor({ day }: { day: OccurrenceGroup }) {
   );
 }
 
-function AgendaRow({ row }: { row: OccurrenceRow }) {
+function AgendaRow({
+  row,
+  onTap,
+}: {
+  row: OccurrenceRow;
+  onTap: (path: string) => void;
+}) {
   const { event, occurrence } = row;
   const locale = useLocale();
   const toggleType = useAgendaFilters((s) => s.toggleType);
@@ -1550,7 +1570,7 @@ function AgendaRow({ row }: { row: OccurrenceRow }) {
       genreLabel={event.genres?.[0]}
       friends={friends && friends.length > 0 ? friends : undefined}
       tick={CATEGORY_TICK[event.category]}
-      onPress={() => router.push(path as never)}
+      onPress={() => onTap(path)}
     />
   );
 }

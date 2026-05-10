@@ -45,6 +45,7 @@ import { useLocale, useT, type Locale } from '@/lib/i18n';
 import { useVenues, useVenueSubtypes } from '@/lib/queries';
 import { useTabDoubleTap } from '@/lib/useTabDoubleTap';
 import { useMode, useRoles } from '@/store/mode';
+import { useResetFiltersOnTabBlur } from '@/lib/useResetFiltersOnTabBlur';
 import { useVenuesFilters } from '@/store/venuesFilters';
 import {
   isSavedVenueSearchActive,
@@ -157,6 +158,19 @@ export default function Venues() {
   const setActiveScene = useVenuesFilters((s) => s.setActiveScene);
   const setActiveSubtypes = useVenuesFilters((s) => s.setActiveSubtypes);
   const setOnlyVolgend = useVenuesFilters((s) => s.setOnlyVolgend);
+  const resetFilters = useVenuesFilters((s) => s.reset);
+
+  // Stack-persistent filter-state: reset bij tab-wissel, behoud bij
+  // tap op een venue → terug. markPush wordt aangeroepen vóór elke
+  // navigatie naar de venue-detail.
+  const markPush = useResetFiltersOnTabBlur(resetFilters);
+  const onVenueTap = useCallback(
+    (slug: string) => {
+      markPush();
+      router.push(`/venue/${slug}` as never);
+    },
+    [markPush]
+  );
 
   const [debouncedQ, setDebouncedQ] = useState(q.trim());
   useEffect(() => {
@@ -261,7 +275,7 @@ export default function Venues() {
             : groupedVenues.map((g) => ({ ...g, data: g.items }))
         }
         keyExtractor={(item) => item.id}
-        renderItem={({ item }) => <VenueRow venue={item} />}
+        renderItem={({ item }) => <VenueRow venue={item} onTap={onVenueTap} />}
         renderSectionHeader={({ section }) => {
           const s = section as SectionListData<
             ApiVenueListItem,
@@ -379,7 +393,13 @@ function VenueGroupTitle({
   );
 }
 
-function VenueRow({ venue }: { venue: ApiVenueListItem }) {
+function VenueRow({
+  venue,
+  onTap,
+}: {
+  venue: ApiVenueListItem;
+  onTap: (slug: string) => void;
+}) {
   const mode = useMode();
   const roles = useRoles();
   const isNacht = mode === 'nacht';
@@ -388,7 +408,7 @@ function VenueRow({ venue }: { venue: ApiVenueListItem }) {
   const sceneChips = useMemo(() => getSceneChips(locale), [locale]);
   return (
     <Pressable
-      onPress={() => router.push(`/venue/${venue.slug}` as never)}
+      onPress={() => onTap(venue.slug)}
       style={[styles.row, { borderColor: roles.bgChip }]}
     >
       {venue.imageUrl ? (
