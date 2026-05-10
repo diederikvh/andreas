@@ -84,6 +84,40 @@ const CATEGORIES: ApiEvent['category'][] = [
   'Film',
 ];
 
+// Categorie-titels per mode — zelfde mapping als op Vandaag, zodat de
+// kleur van een "Muziek"-sub-kop in de Agenda matcht met de tag-pill
+// op de event-row én met het cat-kopje op Vandaag.
+const TONE: Record<
+  'nacht' | 'dag',
+  Record<'acid' | 'flare' | 'plum' | 'azure' | 'saffron', string>
+> = {
+  nacht: {
+    acid: palette.acid,
+    flare: palette.flare,
+    plum: palette.plum,
+    azure: palette.azure,
+    saffron: palette.saffron,
+  },
+  dag: {
+    acid: palette.red,
+    flare: palette.forest,
+    plum: palette.cobalt,
+    azure: '#8a5b00',
+    saffron: '#9d6008',
+  },
+};
+
+// Item-types in een dag-sectie: een cat-header markeert de start van
+// een hoofdcategorie binnen die dag, gevolgd door één of meer rows.
+type AgendaItem =
+  | {
+      type: 'cat-header';
+      id: string;
+      category: ApiEvent['category'];
+      count: number;
+    }
+  | { type: 'row'; id: string; row: OccurrenceRow };
+
 export default function Agenda() {
   const roles = useRoles();
   const mode = useMode();
@@ -91,7 +125,7 @@ export default function Agenda() {
   const t = useT();
   const locale = useLocale();
   const timeBlocks = useTimeBlocks();
-  const sectionListRef = useRef<SectionList<OccurrenceRow, OccurrenceGroup>>(null);
+  const sectionListRef = useRef<SectionList<AgendaItem, OccurrenceGroup>>(null);
   // useScrollToTop accepteert ook een ref met scrollToLocation — past
   // 'm zonder fuss op SectionList.
   useScrollToTop(sectionListRef);
@@ -258,13 +292,37 @@ export default function Agenda() {
   const stickyOffset =
     insets.top + HEADER_HEIGHT + DAYSTRIP_HEIGHT + CHIPROW_HEIGHT;
 
-  // Sections voor de SectionList — `data` is wat 'r in de items komt,
-  // de OccurrenceGroup-velden (id/dow/num/month) blijven beschikbaar
-  // voor renderSectionHeader.
-  const sections = useMemo(
-    () => days.map((d) => ({ ...d, data: d.rows })),
-    [days]
-  );
+  // Sections voor de SectionList — `data` is een gemengde lijst van
+  // cat-headers + rows: binnen elke dag groeperen we events op
+  // hoofdcategorie (Muziek/Theater/Kunst/Literatuur/Film), met een
+  // gekleurd sub-kopje boven elke groep. Cat-volgorde is vast (zelfde
+  // als op Vandaag) zodat de visuele ritme dag-op-dag stabiel blijft.
+  const sections = useMemo(() => {
+    return days.map((d) => {
+      const byCategory = new Map<ApiEvent['category'], OccurrenceRow[]>();
+      for (const row of d.rows) {
+        const cat = row.event.category;
+        const arr = byCategory.get(cat) ?? [];
+        arr.push(row);
+        byCategory.set(cat, arr);
+      }
+      const data: AgendaItem[] = [];
+      for (const cat of CATEGORIES) {
+        const items = byCategory.get(cat);
+        if (!items || items.length === 0) continue;
+        data.push({
+          type: 'cat-header',
+          id: `${d.id}::cat::${cat}`,
+          category: cat,
+          count: items.length,
+        });
+        for (const row of items) {
+          data.push({ type: 'row', id: row.id, row });
+        }
+      }
+      return { ...d, data };
+    });
+  }, [days]);
 
   // Onthoudt waar we naartoe willen, voor de retry vanuit
   // onScrollToIndexFailed wanneer de target-sectie nog niet
@@ -346,11 +404,17 @@ export default function Agenda() {
       <SectionList
         ref={sectionListRef}
         sections={isLoading || error ? [] : sections}
-        keyExtractor={(row) => row.id}
-        renderItem={({ item }) => <AgendaRow row={item} />}
+        keyExtractor={(item) => item.id}
+        renderItem={({ item }) =>
+          item.type === 'cat-header' ? (
+            <CategoryHeader category={item.category} count={item.count} />
+          ) : (
+            <AgendaRow row={item.row} />
+          )
+        }
         renderSectionHeader={({ section }) => (
           <DateAnchor
-            day={section as SectionListData<OccurrenceRow, OccurrenceGroup>}
+            day={section as SectionListData<AgendaItem, OccurrenceGroup>}
           />
         )}
         stickySectionHeadersEnabled={false}
@@ -1393,6 +1457,29 @@ function DayChip({
   );
 }
 
+function CategoryHeader({
+  category,
+  count,
+}: {
+  category: ApiEvent['category'];
+  count: number;
+}) {
+  const mode = useMode();
+  const roles = useRoles();
+  const locale = useLocale();
+  const tone = TONE[mode][CATEGORY_TICK[category]];
+  return (
+    <View style={styles.catHeader}>
+      <Text style={[styles.catHeaderLabel, { color: tone }]}>
+        {translateCategory(category, locale)}
+      </Text>
+      <Text style={[styles.catHeaderCount, { color: roles.fgPlaceholder }]}>
+        {count}
+      </Text>
+    </View>
+  );
+}
+
 function DateAnchor({ day }: { day: OccurrenceGroup }) {
   const roles = useRoles();
   const t = useT();
@@ -1519,6 +1606,30 @@ const styles = StyleSheet.create({
     fontSize: 24,
     letterSpacing: -0.48,
     lineHeight: 24,
+  },
+
+  // Categorie sub-kop binnen een dag — kleinere display dan de
+  // dateAnchor (22px) zodat de dag-divider dominant blijft. Tone-color
+  // matcht met de Vandaag-kopjes en de tag-pills op de rows.
+  catHeader: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+    paddingHorizontal: 22,
+    paddingTop: 10,
+    paddingBottom: 4,
+    gap: 10,
+  },
+  catHeaderLabel: {
+    fontFamily: fontFamily.display,
+    fontSize: 18,
+    letterSpacing: -0.36,
+  },
+  catHeaderCount: {
+    fontFamily: fontFamily.mono,
+    fontSize: 10,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
   },
 
   // Date anchor — same style as Gered's so the two screens read alike
