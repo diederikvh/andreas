@@ -1,4 +1,3 @@
-import { Ionicons } from '@expo/vector-icons';
 import MaskedView from '@react-native-masked-view/masked-view';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -13,7 +12,7 @@ import { ProfileAvatar } from '@/components/ProfileAvatar';
 import { tinyTap } from '@/lib/haptics';
 import { useMe } from '@/lib/queries';
 import { useMode, useRoles } from '@/store/mode';
-import { fontFamily, palette } from '@/theme/tokens';
+import { fontFamily } from '@/theme/tokens';
 
 export const HEADER_HEIGHT = 36;
 
@@ -143,9 +142,7 @@ export function AppHeader({
 }
 
 function AvatarButton() {
-  const mode = useMode();
   const roles = useRoles();
-  const isNacht = mode === 'nacht';
   const { data: me } = useMe();
 
   const onPress = () => {
@@ -153,30 +150,23 @@ function AvatarButton() {
     router.push('/jij' as never);
   };
 
-  // Niet-ingelogd: subtiele person-cirkel als hint dat hier 'iets met
-  // jou' zit. Geen badge of label — pas na log-in / handle wordt 't
-  // een echte avatar.
+  // Niet-ingelogd: een rustige stip (4px) — minimale hint dat hier
+  // 'iets met jou' zit, zonder de visuele zwaarte van een
+  // avatar-bolletje. Pas na log-in wordt 't een echte avatar.
   if (!me) {
     return (
       <Pressable
         accessibilityRole="button"
         accessibilityLabel="Profiel"
         onPress={onPress}
-        hitSlop={6}
-        style={[
-          styles.avatarBtn,
-          {
-            backgroundColor: isNacht
-              ? 'rgba(31,31,35,0.7)'
-              : 'rgba(235,230,216,0.7)',
-            borderColor: isNacht ? '#2a2a2d' : palette.paper,
-          },
-        ]}
+        hitSlop={12}
+        style={styles.avatarDotWrap}
       >
-        <Ionicons
-          name="person-outline"
-          size={14}
-          color={roles.fgPlaceholder}
+        <View
+          style={[
+            styles.avatarDot,
+            { backgroundColor: roles.fgPlaceholder },
+          ]}
         />
       </Pressable>
     );
@@ -246,6 +236,20 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  // Wrap voor de niet-ingelogd-stip — zelfde 28×28 grid als de avatar
+  // zodat de header-row niet verspringt bij login. Hitslop op de
+  // Pressable maakt de tap-target alsnog vingervriendelijk.
+  avatarDotWrap: {
+    width: 28,
+    height: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarDot: {
+    width: 4,
+    height: 4,
+    borderRadius: 999,
   },
 
 });
