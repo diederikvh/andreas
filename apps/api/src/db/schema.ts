@@ -209,6 +209,17 @@ export const venues = pgTable('venues', {
         enige config. Image-augmentatie kan optioneel via een eigen
         agenda-page met JSON-LD of og-meta. */
     weeztix?: { shopUuid: string; imageAgendaUrl?: string };
+    /** WeTicket is een Next.js ticket-platform (Vercel-hosted) dat
+        SSR-render't naar een `<script id="__NEXT_DATA__">` met
+        `upcoming_events` per organisatie. Eén subdomain per venue
+        (bv. `skatecafe.weticket.io`, `sissisamsterdam.weticket.io`).
+        Achter een Vercel Security Checkpoint dus Playwright nodig.
+        Lokaal-only (niet in Fly Docker image). */
+    weticket?: { subdomain: string };
+    /** The Events Calendar (Pro) — WP-plugin met publieke REST API:
+        `{apiBase}/events?per_page=50&start_date=YYYY-MM-DD`. Eén
+        config-veld: `apiBase` = `https://{venue}.nl/wp-json/tribe/events/v1`. */
+    eventscalendar?: { apiBase: string };
     /** Fourvenues is een ticket-platform met iframe-widget per venue.
         URL-vorm: `web.fourvenues.com/en/iframe/{slug}/events?date=YYYY-MM`.
         We scrapen via Playwright omdat events client-side gerenderd

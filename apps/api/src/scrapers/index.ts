@@ -3,6 +3,10 @@ import { scrapeBoomChicago, type BoomChicagoResult } from './boomchicago.js';
 import { scrapeBrakkeGrond, type BrakkeGrondResult } from './brakkegrond.js';
 import { scrapeCelebratix, type CelebratixVenueResult } from './celebratix.js';
 import { scrapeConcertgemaal, type ConcertgemaalResult } from './concertgemaal.js';
+import {
+  scrapeEventsCalendar,
+  type EventsCalendarVenueResult,
+} from './eventscalendar.js';
 import { scrapeFourvenues, type FourvenuesResult } from './fourvenues.js';
 import { scrapeGarageNoord, type GarageNoordResult } from './garagenoord.js';
 import { scrapeIta, type ItaResult } from './ita.js';
@@ -23,10 +27,10 @@ import { scrapeParadiso, type ParadisoResult } from './paradiso.js';
 import { scrapeRadioRadio, type RadioRadioResult } from './radioradio.js';
 import { scrapeShelter, type ShelterResult } from './shelter.js';
 import { scrapeSieraad, type SieraadResult } from './sieraad.js';
-import { scrapeSkatecafe, type SkatecafeResult } from './skatecafe.js';
 import { scrapeStager, type StagerVenueResult } from './stager.js';
 import { scrapeTheater, type TheaterVenueResult } from './theater.js';
 import { scrapeTicketmaster, type TicketmasterVenueResult } from './ticketmaster.js';
+import { scrapeWeticket, type WeticketVenueResult } from './weticket.js';
 import { scrapeWpTheatre, type WpTheatreResult } from './wptheatre.js';
 import { scrapeZiggodome, type ZiggodomeResult } from './ziggodome.js';
 
@@ -65,8 +69,9 @@ export const scrapers = {
   radioradio: scrapeRadioRadio,
   sieraad: scrapeSieraad,
   garagenoord: scrapeGarageNoord,
-  skatecafe: scrapeSkatecafe,
+  weticket: scrapeWeticket,
   krakeling: scrapeKrakeling,
+  eventscalendar: scrapeEventsCalendar,
 } as const;
 
 export type ScraperName = keyof typeof scrapers;
@@ -101,5 +106,6 @@ export type ScraperResult =
   | RadioRadioResult
   | SieraadResult
   | GarageNoordResult
-  | SkatecafeResult
-  | KrakelingResult;
+  | WeticketVenueResult
+  | KrakelingResult
+  | EventsCalendarVenueResult;
