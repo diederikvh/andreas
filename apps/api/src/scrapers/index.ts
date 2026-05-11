@@ -30,6 +30,7 @@ import { scrapeSieraad, type SieraadResult } from './sieraad.js';
 import { scrapeStager, type StagerVenueResult } from './stager.js';
 import { scrapeTheater, type TheaterVenueResult } from './theater.js';
 import { scrapeTicketmaster, type TicketmasterVenueResult } from './ticketmaster.js';
+import { scrapeVolkshotel, type VolkshotelVenueResult } from './volkshotel.js';
 import { scrapeWeticket, type WeticketVenueResult } from './weticket.js';
 import { scrapeWpTheatre, type WpTheatreResult } from './wptheatre.js';
 import { scrapeZiggodome, type ZiggodomeResult } from './ziggodome.js';
@@ -72,6 +73,7 @@ export const scrapers = {
   weticket: scrapeWeticket,
   krakeling: scrapeKrakeling,
   eventscalendar: scrapeEventsCalendar,
+  volkshotel: scrapeVolkshotel,
 } as const;
 
 export type ScraperName = keyof typeof scrapers;
@@ -108,4 +110,5 @@ export type ScraperResult =
   | GarageNoordResult
   | WeticketVenueResult
   | KrakelingResult
-  | EventsCalendarVenueResult;
+  | EventsCalendarVenueResult
+  | VolkshotelVenueResult;

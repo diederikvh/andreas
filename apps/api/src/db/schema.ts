@@ -225,6 +225,11 @@ export const venues = pgTable('venues', {
         `{apiBase}/events?per_page=50&start_date=YYYY-MM-DD`. Eén
         config-veld: `apiBase` = `https://{venue}.nl/wp-json/tribe/events/v1`. */
     eventscalendar?: { apiBase: string };
+    /** Volkshotel agenda's (Canvas, Doka, Werkplaats) — custom WP-
+        template op `volkshotel.nl/en/agenda/{roomPath}/`. Geen JSON-LD;
+        scraper parseert de tile-DOM. `roomPath` is het URL-segment
+        ('canvas', 'doka', 'werkplaats'). */
+    volkshotel?: { roomPath: string };
     /** Fourvenues is een ticket-platform met iframe-widget per venue.
         URL-vorm: `web.fourvenues.com/en/iframe/{slug}/events?date=YYYY-MM`.
         We scrapen via Playwright omdat events client-side gerenderd
