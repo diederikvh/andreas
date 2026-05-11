@@ -183,9 +183,10 @@ export default function Agenda() {
   }, [params.cat]);
 
   // Bij content-mode-flip: wis activeCats / activeTypes die buiten de
-  // nieuwe mode vallen. Anders zou de Filter-knop "Filter · 1" laten
-  // zien terwijl 't actieve filter niet meer in de filter-sheet
-  // voorkomt (chip is uitgefilterd op mode).
+  // nieuwe mode vallen, en wis ALLE activeGenres (genres zijn 1-op-1
+  // aan cats gekoppeld — een 'techno'-filter heeft geen zin in
+  // 'expo'-mode). Anders zou de Filter-knop "Filter · 1" laten zien
+  // terwijl 't actieve filter niet meer in de filter-sheet voorkomt.
   useEffect(() => {
     const validCats = activeCats.filter((c) =>
       CONTENT_MODE_CATS[cmode].includes(c)
@@ -198,6 +199,9 @@ export default function Agenda() {
     );
     if (validTypes.length !== activeTypes.length) {
       setActiveTypes(validTypes);
+    }
+    if (activeGenres.length > 0) {
+      setActiveGenres([]);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cmode]);
@@ -992,23 +996,25 @@ function FilterSheet({
 
   const groupedGenres = useMemo(() => {
     if (!genreData) return [];
-    // Filter genre-buckets op de geselecteerde categorieën — als er
-    // niets gekozen is, alle genres tonen.
-    const filtered =
-      activeCats.length > 0
-        ? genreData.filter((b) => activeCats.includes(b.category))
-        : genreData;
+    // Filter genre-buckets op de geselecteerde categorieën als er
+    // expliciete cats actief zijn; anders op de mode-cats. Zo zien
+    // gebruikers in 'expo'-mode geen muziek-genres en omgekeerd.
+    const restrictTo =
+      activeCats.length > 0 ? activeCats : CONTENT_MODE_CATS[cmode];
+    const filtered = genreData.filter((b) =>
+      restrictTo.includes(b.category)
+    );
     const map = new Map<ApiEvent['category'], typeof filtered>();
     for (const b of filtered) {
       const arr = map.get(b.category) ?? [];
       arr.push(b);
       map.set(b.category, arr);
     }
-    return CATEGORIES.flatMap((category) => {
+    return modeCats.flatMap((category) => {
       const items = map.get(category);
       return items ? [{ category, items }] : [];
     });
-  }, [genreData, activeCats]);
+  }, [genreData, activeCats, cmode, modeCats]);
 
   const toggleCat = (c: ApiEvent['category']) => {
     if (activeCats.includes(c)) onCats(activeCats.filter((x) => x !== c));

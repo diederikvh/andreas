@@ -78,7 +78,7 @@ export function Splash() {
       </View>
       <Animated.View style={[styles.tagWrap, tagStyle]}>
         <Text style={[styles.tag, { color: roles.fgMuted }]}>
-          Amsterdam Culture App
+          Amsterdam Culture
         </Text>
       </Animated.View>
     </View>
