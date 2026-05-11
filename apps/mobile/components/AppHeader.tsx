@@ -1,9 +1,11 @@
+import { useFocusEffect } from '@react-navigation/native';
 import MaskedView from '@react-native-masked-view/masked-view';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
-import type { ReactNode } from 'react';
+import { useCallback, useRef, useState, type ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import Animated, { FadeInDown } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ContentModeSwitch } from '@/components/ContentModeSwitch';
@@ -69,6 +71,25 @@ export function AppHeader({
   const mode = useMode();
   const roles = useRoles();
   const insets = useSafeAreaInsets();
+
+  // Focus-key bumpt bij élk focus-event op de host-screen — behalve de
+  // eerste mount, want daar speelt de Animated.Text z'n entering al
+  // vanzelf. Zo speelt de title-animatie óók wanneer je terugkeert naar
+  // een tab die al gemount is (tabs blijven default mounted in
+  // expo-router, dus zonder dit zou de animatie alleen op de aller-
+  // eerste bezoek vuren).
+  const [focusKey, setFocusKey] = useState(0);
+  const isFirstFocus = useRef(true);
+  useFocusEffect(
+    useCallback(() => {
+      if (isFirstFocus.current) {
+        isFirstFocus.current = false;
+        return;
+      }
+      setFocusKey((k) => k + 1);
+    }, [])
+  );
+
   return (
     // pointerEvents="box-none" laat de header zelf geen touches vangen,
     // zodat scroll-gestures (en pull-to-refresh!) op de scrollview
@@ -130,12 +151,18 @@ export function AppHeader({
             <Cross size={16} thickness={4} color={roles.accent} />
           </View>
           {title && (
-            <Text
+            // key combineert title + focusKey: title-wijziging triggert
+            // remount (en dus entering), en bij terugkeer naar een al
+            // gemounte tab bumpt useFocusEffect de focusKey waardoor de
+            // animatie ook dan opnieuw vuurt.
+            <Animated.Text
+              key={`${title}-${focusKey}`}
+              entering={FadeInDown.duration(260)}
               style={[styles.title, { color: roles.fg }]}
               numberOfLines={1}
             >
               {title}
-            </Text>
+            </Animated.Text>
           )}
         </View>
         <View style={styles.headerRight}>
