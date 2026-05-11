@@ -6,6 +6,101 @@ Prioriteit-volgorde voor scraper-implementaties, op volgorde van impact (events 
 
 ---
 
+## Volledige venue-status (DB)
+
+Gegenereerd via `apps/api/scripts/_venue-report.ts` — alle gepubliceerde venues gegroepeerd op `type`, gesorteerd op aantal toekomstige events (desc). ✅ = events binnen, ⬜ = nog geen feed of feed levert nu 0 events.
+
+### Clubs (22)
+- ✅ **Panama** (mainstream/groot/oost) — 33 events · `eventscalendar`
+- ✅ **Thuishaven** (mainstream/groot/west) — 21 events · Playwright
+- ✅ **Radion** (alternatief/klein/nieuw-west) — 20 events · `stager`
+- ✅ **Skatecafe Karin & Yvonne** (alternatief/middel/noord) — 20 events · `weticket`
+- ✅ **Shelter** (mainstream/middel/noord) — 15 events · WP REST
+- ✅ **BRET** (alternatief/klein/west) — 14 events · `celebratix`
+- ✅ **Lofi** (alternatief/middel/west) — 14 events · `jsonld`
+- ✅ **nachbar** (alternatief/klein/centrum) — 14 events · `stager`
+- ✅ **Chin Chin Club** (mainstream/middel/centrum) — 13 events · `celebratix`
+- ✅ **Tilla Tec** (alternatief/klein/west) — 13 events · `weeztix`
+- ✅ **Radio Radio** (alternatief/klein/west) — 11 events · Playwright
+- ✅ **Sissi's** (alternatief/middel/zuid) — 10 events · `weticket`
+- ✅ **Club NYX** (mainstream/middel/centrum) — 7 events · `weeztix`
+- ✅ **Garage Noord** (alternatief/middel/noord) — 7 events · pure-HTTP
+- ✅ **Madam** (mainstream/middel/noord) — 7 events · `fourvenues`
+- ✅ **Canvas** (alternatief/middel/oost) — 6 events · `volkshotel`
+- ✅ **Het Sieraad** (alternatief/klein/west) — 6 events · pure-HTTP
+- ✅ **Doka** (alternatief/middel/oost) — 2 events · via Paradiso routing
+- ✅ **Warehouse Elementenstraat** (mainstream/groot/west) — 0 events · `weeztix` (shop leeg)
+- ✅ **Yellow House** (alternatief/middel/west) — 0 events · `weeztix` (shop leeg)
+- ⬜ **Café Café** (mainstream/middel/centrum) — geen publieke feed gevonden
+- ⬜ **Escape** (mainstream/groot/centrum) — Fairtix-platform, vereist dedicated scraper
+
+### Podia (53)
+- ✅ **Het Concertgebouw** (mainstream/groot/zuid) — 487 events · `theater`
+- ✅ **Internationaal Theater Amsterdam** (mainstream/groot/centrum) — 423 events · Playwright
+- ✅ **Muziekgebouw aan 't IJ** (alternatief/groot/centrum) — 385 events · Playwright
+- ✅ **DeLaMar Theater** (mainstream/middel/centrum) — 359 events · `theater`
+- ✅ **Nationale Opera & Ballet** (mainstream/xl/centrum) — 267 events · Playwright
+- ✅ **Paradiso** (mainstream/groot/centrum) — 261 events · GraphQL (+ Tolhuistuin/Bitterzoet/Doka routing)
+- ✅ **Melkweg** (mainstream/groot/centrum) — 185 events · Playwright + Next.js
+- ✅ **Koninklijk Theater Carré** (mainstream/groot/centrum) — 183 events · `theater`
+- ✅ **Boom Chicago** (mainstream/middel/centrum) — 179 events · `ticketmaster` + FareHarbor
+- ✅ **Theater Bellevue** (mainstream/middel/centrum) — 136 events · `theater`
+- ✅ **Frascati** (mainstream/groot/centrum) — 127 events · `theater`
+- ✅ **Tolhuistuin** (mainstream/groot/noord) — 109 events · via Paradiso routing
+- ✅ **Ziggo Dome** (mainstream/xl/zuidoost) — 95 events · direct JSON-API
+- ✅ **Meervaart** (mainstream/groot/nieuw-west) — 76 events · `theater`
+- ✅ **OT301** (underground/klein/west) — 66 events · Playwright
+- ✅ **De Krakeling** (mainstream/middel/centrum) — 59 events · pure-HTTP
+- ✅ **AFAS Live** (mainstream/xl/zuidoost) — 53 events · `ticketmaster`
+- ✅ **Bijlmer Parktheater** (mainstream/groot/zuidoost) — 45 events · `theater`
+- ✅ **Splendor** (alternatief/middel/centrum) — 40 events · `stager`
+- ✅ **Bitterzoet** (alternatief/middel/centrum) — 30 events · via Paradiso routing
+- ✅ **OCCII** (underground/klein/zuid) — 25 events · `ical`
+- ✅ **Podium Mozaiek** (alternatief/middel/west) — 23 events · Ticketmatic
+- ✅ **P60** (mainstream/middel/amstelveen) — 22 events · WP REST
+- ✅ **Bimhuis** (mainstream/middel/centrum) — 20 events · Playwright
+- ✅ **Johan Cruijff ArenA** (mainstream/xl/zuidoost) — 20 events · `ticketmaster`
+- ✅ **Podium DE FLUX** (alternatief/middel) — 17 events · `wpTheatre`
+- ✅ **De Brakke Grond** (mainstream/middel/centrum) — 12 events · Playwright
+- ✅ **RAI Theater** (mainstream/groot/zuid) — 11 events · `ticketmaster`
+- ✅ **Q-Factory** (alternatief/middel/oost) — 10 events · Playwright
+- ✅ **On the Roof** (alternatief/klein/noord) — 8 events · Playwright
+- ✅ **Concertgemaal** (fringe/klein/noord) — 5 events · Wix Events JSON-LD
+- ✅ **Theater Amsterdam** (mainstream/groot/west) — 4 events · `ticketmaster`
+- ⬜ **Sugarfactory** — `/agenda/` 404, geen publieke events
+- ⬜ **Jazz Café Alto** — WP zonder custom event post-type
+- ⬜ **Pakhuis Wilhelmina, De Nieuwe Anita, De Krakeling, Het Veem House for Performance, Plein Theater, ZID Theater, Betty Asfalt Complex, Bourbon Street, De Ruimte, Podium Vrijburcht, Teatro Munganga, Astarotheatro, Casablanca Variété, Mike's Badhuistheater, Volta, Space for Dance Art, Zaal 100, Perdu, Salon de IJzerstaven, Compagnietheater** — separate research per venue
+
+### Musea (12) — geen scrapers, alle 0 events
+⬜ Amsterdam Museum, Anne Frank Huis, Cobra Museum, FOAM, Huis Marseille, Nxt Museum, Oude Kerk, Rijksmuseum, Stedelijk Museum, Van Gogh Museum, Verzetsmuseum, Wereldmuseum Amsterdam
+
+> Musea hebben meestal eigen tentoonstellings-systemen (lange runtijden, geen losse events). Aanpak: per-museum een exhibitions-scraper of een aggregator zoals iamsterdam.com.
+
+### Galleries (55)
+- ✅ **W139** (underground/klein/centrum) — 9 events · `jsonld`
+- ✅ **Bajesdorp - GROND** (underground/klein/oost) — 3 events · `ical`
+- ✅ **If I Can't Dance** (underground/klein/centrum) — 0 events · `stager` (config klaar, shop leeg)
+- ⬜ Overige 52 (AKINCI, Andriesse Eyck, Annet Gelink, Arti et Amicitiae, Borzo, Bradwolff, Buro Stedelijk, CBK Zuidoost, De Appel, Ellen de Bruijne, Enari, Framer Framed (×2), Galerie Bart, Caroline O'Breen, de Schans, dudokdegroot, Fleur & Wouter, Fons Welters, Fontana, Martin van Zomeren, Onrust, Ron Mandos, Fanny Freytag, GoMulan, GRIMM, Hama, Helicopter, ISO, Josilda da Conceição, Kers, Kunstverein, LANGArt, Lumen Travo, m.simons, Madé van Krimpen, Marwan, No Limits!, No Man's Art, OSCAM, P/////AKT, Projectspace 38/40, puntWG, ROZENSTRAAT, Rutger Brandt, Slewe, Stigter Van Doesburg, tegenboschvanvreden, TORCH, Upstream, Zone 2 Source) — separate research
+
+### Film (11)
+- ✅ **Cinetol** (alternatief/middel/zuid) — 0 events · `stager` (shop leeg)
+- ⬜ Cavia, De Uitkijk, Eye Filmmuseum, FC Hyena, FilmHallen, Kriterion, Lab111, Rialto, Studio/K, The Movies
+
+### Ruimtes / culturele plekken (38)
+- ✅ **Ruigoord** (fringe/groot/nieuw-west) — 29 events · `ical`
+- ✅ **Mediamatic** (alternatief/middel/oost) — 27 events · `stager`
+- ✅ **Voedselpark Amsterdam** (fringe/klein/nieuw-west) — 9 events · `ical`
+- ✅ **Plantagedok** (underground/klein/centrum) — 6 events · `ical`
+- ✅ **Ru Paré** (alternatief/klein/nieuw-west) — 3 events · `ical`
+- ✅ **NDSM Loods** (alternatief/groot/noord) — 2 events · `theater`
+- ⬜ Overige 32 (woonruimte coöperatief, A Lab, ADM Noord, AtelierWG, Buurtwerkplaats Noorderhof, De (Roze) Tanker, De Ateliers, De Balie, De Ceuvel, De Culturele Stelling, De Fabriek, De Hoop, De Omleiding, De Sloot, Felix Meritis, Huis te Vraag, KasKantine, Kostgewonnen, LIMA, Loods 6, NieuwLand, OT West, Pakhuis de Zwijger, Parknest, Rijksakademie, RijksHemelVaartDienst, SEXYLAND World, SPUI25, Steelhenge, Treehouse NDSM, Vondelbunker, Workship op de Ceuvel)
+
+### Boekhandel-cafés (4)
+- ✅ **Fort van Sjakoo** (underground/klein/centrum) — 1 event · `ical`
+- ⬜ Athenaeum Boekhandel, Kanarie Club, Noon coffee & culture
+
+---
+
 ## ✅ Done (11)
 
 | # | Venue | Events | Methode |
