@@ -11,8 +11,6 @@ if (!process.env.BETTER_AUTH_SECRET) {
   throw new Error('BETTER_AUTH_SECRET is not set');
 }
 
-const isDev = process.env.NODE_ENV !== 'production';
-
 /**
  * Apple App Store-review bypass voor het OTP-pad. Reviewers in Cupertino
  * krijgen onze Bird-SMS niet, dus we accepteren één vast nummer met één
@@ -62,22 +60,19 @@ export const auth = betterAuth({
     'andreas://',
     'https://andreas.amsterdam',
     'https://api.andreas.amsterdam',
-    ...(isDev
-      ? [
-          // Expo Go fetched bundle / dev-client
-          'exp://',
-          'exp://**',
-          // Metro / browser dev-server
-          'http://localhost',
-          'http://localhost:**',
-          'http://127.0.0.1',
-          'http://127.0.0.1:**',
-          // Telefoon hangt aan LAN-IP van je laptop (Expo Go fetch
-          // hits API rechtstreeks vanaf het toestel)
-          'http://192.168.*.*:**',
-          'http://10.*.*.*:**',
-        ]
-      : []),
+    // Dev-origins ook in prod toegestaan zodat lokale Expo-builds tegen
+    // de prod-API kunnen testen (handig voor demo-account verificatie
+    // en algemeen smoke-testen). CSRF is geen risico — Andreas gebruikt
+    // bearer-tokens (geen cookies), dus origin-spoofing geeft een
+    // aanvaller niets om mee te liften.
+    'exp://',
+    'exp://**',
+    'http://localhost',
+    'http://localhost:**',
+    'http://127.0.0.1',
+    'http://127.0.0.1:**',
+    'http://192.168.*.*:**',
+    'http://10.*.*.*:**',
   ],
   session: {
     // Mobile-app default: ingelogd blijven tot je uitlogt. Sliding
