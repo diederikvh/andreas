@@ -25,7 +25,7 @@ export function DnSwitch() {
     <Pressable
       accessibilityRole="switch"
       accessibilityState={{ checked: isNacht }}
-      onPress={switchMode}
+      onPress={() => switchMode()}
       hitSlop={8}
       style={[
         styles.track,

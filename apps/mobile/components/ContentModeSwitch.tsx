@@ -29,16 +29,18 @@ export function ContentModeSwitch() {
   const setCmode = useSetContentMode();
   const switchVisualMode = useModeSwitch();
 
-  // Combined-toggle: flipt content-mode synchronously en triggert de
-  // curtain animation die mid-sweep ook de visuele mode flipt. Beide
-  // stores eindigen consistent. Eerste keer dat 'r gewisseld wordt
-  // dismissen we óók de coachmark-hint — de gebruiker heeft de switch
-  // gevonden, geen uitleg meer nodig.
+  // Combined-toggle: triggert de curtain en flipt content-mode op het
+  // moment dat de curtain volledig dekkend is (via onCommit), zodat de
+  // gebruiker de pill niet ziet omschakelen vóór de curtain hem
+  // afdekt. Visuele mode flipt op datzelfde moment. Eerste keer dat
+  // 'r gewisseld wordt dismissen we óók de coachmark-hint.
   const onToggle = () => {
     tinyTap();
     useModeStore.getState().dismissContentSwitchHint();
-    setCmode(cmode === 'uit' ? 'expo' : 'uit');
-    switchVisualMode();
+    const next = cmode === 'uit' ? 'expo' : 'uit';
+    switchVisualMode(() => {
+      setCmode(next);
+    });
   };
 
   return (
