@@ -1374,6 +1374,7 @@ adminUi.post('/venues/new', async (c) => {
     website: (form.website as string) || null,
     instagram: form.instagram ? normalizeInstagram(String(form.instagram)) : null,
     priceNote: form.priceNote ? String(form.priceNote).trim() || null : null,
+    agendaUrl: form.agendaUrl ? String(form.agendaUrl).trim() || null : null,
     published: form.published !== 'off',
   });
   return c.redirect('/admin/venues');
@@ -1587,6 +1588,7 @@ adminUi.post('/venues/:id', async (c) => {
       website: (form.website as string) || null,
       instagram: form.instagram ? normalizeInstagram(String(form.instagram)) : null,
       priceNote: form.priceNote ? String(form.priceNote).trim() || null : null,
+      agendaUrl: form.agendaUrl ? String(form.agendaUrl).trim() || null : null,
       published: form.published !== 'off',
     })
     .where(eq(schema.venues.id, id));
@@ -1743,6 +1745,29 @@ function VenueForm({
           placeholder="leeg = niets onder de prijs"
           value={venue?.priceNote ?? ''}
         />
+      </label>
+      <label>
+        Agenda-URL (voor LLM-import — alleen musea + galleries)
+        <input
+          type="url"
+          name="agendaUrl"
+          placeholder="https://venue.nl/tentoonstellingen"
+          value={venue?.agendaUrl ?? ''}
+        />
+        {venue?.agendaUrl && venue?.id && (
+          <small>
+            <a
+              href={`/admin/import?venueId=${encodeURIComponent(venue.id)}&url=${encodeURIComponent(venue.agendaUrl)}`}
+            >
+              → Open import met deze URL
+            </a>
+            {venue.lastImportedAt && (
+              <span style="opacity:0.7;margin-left:1em">
+                Laatst gesynced: {venue.lastImportedAt.toISOString().slice(0, 10)}
+              </span>
+            )}
+          </small>
+        )}
       </label>
       <ImageUrlField
         name="imageUrl"
@@ -2124,10 +2149,38 @@ adminUi.get('/import', async (c) => {
   // Lijst alle musea + galleries voor de venue-selector. Andere
   // venue-types horen niet bij dit flow (die hebben event-feeds).
   const venues = await db
-    .select({ id: schema.venues.id, name: schema.venues.name, type: schema.venues.type })
+    .select({
+      id: schema.venues.id,
+      name: schema.venues.name,
+      type: schema.venues.type,
+      agendaUrl: schema.venues.agendaUrl,
+      lastImportedAt: schema.venues.lastImportedAt,
+    })
     .from(schema.venues)
     .where(inArray(schema.venues.type, ['museum', 'galerie']))
     .orderBy(asc(schema.venues.name));
+
+  function fmtRelative(d: Date | null): string {
+    if (!d) return 'nooit';
+    const ms = Date.now() - d.getTime();
+    const days = Math.floor(ms / (24 * 3600_000));
+    if (days < 1) return 'vandaag';
+    if (days < 7) return `${days}d geleden`;
+    if (days < 30) return `${Math.floor(days / 7)}w geleden`;
+    if (days < 365) return `${Math.floor(days / 30)}m geleden`;
+    return `${Math.floor(days / 365)}j geleden`;
+  }
+
+  // Querystring-prefill: ?venueId=…&url=… (komt vanaf venue-pagina).
+  const preselectedId = c.req.query('venueId') ?? '';
+  const preselectedUrl = c.req.query('url') ?? '';
+
+  // Inline data-map voor de client-side: venueId → agendaUrl, zodat
+  // we de URL automatisch invullen bij venue-keuze.
+  const venueAgendaMap: Record<string, string> = {};
+  for (const v of venues) {
+    if (v.agendaUrl) venueAgendaMap[v.id] = v.agendaUrl;
+  }
 
   return c.html(
     <Layout title="Import" active="import">
@@ -2141,28 +2194,78 @@ adminUi.get('/import', async (c) => {
       <form id="extract-form">
         <label>
           Venue (museum of galerie)
-          <select name="venueId" required>
-            <option value="">— kies venue —</option>
+          <input
+            type="text"
+            list="venue-list"
+            name="venueLabel"
+            id="venueLabel"
+            placeholder="Begin te typen…"
+            autocomplete="off"
+            value={
+              preselectedId
+                ? venues.find((v) => v.id === preselectedId)?.name ?? ''
+                : ''
+            }
+            required
+          />
+          <datalist id="venue-list">
             {venues.map((v) => (
-              <option value={v.id}>
-                {v.name} ({v.type})
-              </option>
+              <option
+                value={`${v.name} — ${v.type} · laatst: ${fmtRelative(v.lastImportedAt)}`}
+                data-id={v.id}
+              />
             ))}
-          </select>
+          </datalist>
+          <input type="hidden" name="venueId" id="venueId" value={preselectedId} />
+          <small style="opacity:0.7">
+            Datalist met alle {venues.length} musea + galleries — typ naam om te zoeken.
+          </small>
         </label>
         <label>
           URL van de agenda-/tentoonstellings-pagina
           <input
             type="url"
             name="url"
+            id="urlField"
             placeholder="https://www.stedelijk.nl/nl/nu-te-zien"
+            value={preselectedUrl}
             required
           />
+          <small style="opacity:0.7">
+            Wordt automatisch ingevuld als de venue een opgeslagen agenda-URL heeft.
+          </small>
         </label>
         <button type="submit" id="extract-btn">
           Pak tentoonstellingen op
         </button>
       </form>
+
+      <script
+        dangerouslySetInnerHTML={{
+          __html: `window.__venueAgendaMap = ${JSON.stringify(venueAgendaMap)};
+window.__venueLabelToId = ${JSON.stringify(
+            Object.fromEntries(
+              venues.map((v) => [
+                `${v.name} — ${v.type} · laatst: ${fmtRelative(v.lastImportedAt)}`,
+                v.id,
+              ]),
+            ),
+          )};
+const venueLabel = document.getElementById('venueLabel');
+const venueId = document.getElementById('venueId');
+const urlField = document.getElementById('urlField');
+venueLabel.addEventListener('input', () => {
+  const id = window.__venueLabelToId[venueLabel.value];
+  if (id) {
+    venueId.value = id;
+    const url = window.__venueAgendaMap[id];
+    if (url && !urlField.value) urlField.value = url;
+  } else {
+    venueId.value = '';
+  }
+});`,
+        }}
+      />
 
       <div id="status" style="margin-top:1em"></div>
       <div id="result" style="margin-top:1em"></div>
@@ -2182,7 +2285,10 @@ form.addEventListener('submit', async (e) => {
   const fd = new FormData(form);
   const url = fd.get('url');
   const venueId = fd.get('venueId');
-  if (!url || !venueId) return;
+  if (!url || !venueId) {
+    status.innerHTML = '<mark>Kies eerst een venue uit de lijst (typen → selecteer een suggestie).</mark>';
+    return;
+  }
   btn.disabled = true;
   btn.setAttribute('aria-busy', 'true');
   status.textContent = 'Pagina ophalen + Claude analyseert…';

@@ -1022,6 +1022,15 @@ adminApi.post('/import/exhibitions', async (c) => {
     }
   }
 
+  // Markeer wanneer er voor 't laatst voor deze venue succesvol
+  // is gesynced (inclusief updates — alleen errors-only telt niet).
+  if (inserted > 0 || updated > 0) {
+    await db
+      .update(schema.venues)
+      .set({ lastImportedAt: new Date() })
+      .where(eq(schema.venues.id, venueId));
+  }
+
   return c.json({
     venueId,
     inserted,

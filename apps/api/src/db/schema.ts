@@ -179,6 +179,16 @@ export const venues = pgTable('venues', {
       schap vereist" voor Paradiso). Wordt op event-detail gerenderd
       onder de prijs, tenzij events.priceNote 'm overschrijft. */
   priceNote: text(),
+  /** URL naar de agenda-/tentoonstellings-pagina van het venue —
+      gebruikt door /admin/import om met één klik dezelfde pagina
+      door Claude te laten extraheren. Vooral voor musea + galleries
+      waar geen automatische scraper voor is. */
+  agendaUrl: text(),
+  /** Wanneer er voor 't laatst een succesvolle LLM-import gerund is
+      voor deze venue. Wordt geüpdatet door
+      /admin/api/import/exhibitions bij elk run met >0 succesvolle
+      inserts/updates. Nul = nooit. */
+  lastImportedAt: timestamp('last_imported_at', { withTimezone: true }),
   /** Per-platform scraper-config. Aanwezigheid van een sleutel betekent
       dat de bijbehorende scraper deze venue meeneemt in z'n run. Bv.
       `{ stager: { host: "radionamsterdam.stager.co", shopId: 92 } }`
