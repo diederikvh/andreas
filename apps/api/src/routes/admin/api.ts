@@ -944,13 +944,45 @@ adminApi.post('/import/exhibitions', async (c) => {
           updated++;
         }
       } else {
+        // Image mirroren naar Bunny zodat 'm niet afhankelijk is van
+        // upstream-availability. Bij fout: skip de mirror, gewoon
+        // de bron-URL bewaren als fallback.
+        let mirroredUrl: string | null = item.imageUrl;
+        if (item.imageUrl) {
+          try {
+            const r = await fetch(item.imageUrl);
+            if (r.ok) {
+              const mime = r.headers.get('content-type') ?? 'image/jpeg';
+              if (mime.startsWith('image/')) {
+                const buf = await r.arrayBuffer();
+                if (buf.byteLength >= 1024 && buf.byteLength <= 16 * 1024 * 1024) {
+                  const ext = mime.includes('png')
+                    ? 'png'
+                    : mime.includes('webp')
+                      ? 'webp'
+                      : mime.includes('gif')
+                        ? 'gif'
+                        : 'jpg';
+                  const path = `media/events/import-${venueId}-${slugify(item.title)}.${ext}`;
+                  mirroredUrl = await uploadToBunny(path, buf, mime);
+                }
+              }
+            }
+          } catch (e) {
+            // Mirror faalt — behoud de bron-URL.
+            errors.push({
+              title: item.title,
+              error: `image mirror: ${(e as Error).message}`,
+            });
+          }
+        }
         await db.insert(schema.events).values({
           id: eventId,
           venueId,
           title: item.title,
           description: item.description,
           kind: 'exhibition',
-          imageUrl: item.imageUrl,
+          imageUrl: mirroredUrl,
           category: item.category,
           featured: false,
           genres: [],
