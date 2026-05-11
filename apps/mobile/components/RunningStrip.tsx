@@ -1,5 +1,7 @@
+import { useScrollToTop } from '@react-navigation/native';
 import { Image } from 'expo-image';
 import { router } from 'expo-router';
+import { useRef } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import type { ApiEvent, ApiSeriesListItem } from '@/lib/api';
@@ -37,6 +39,13 @@ export function RunningStrip({
 }) {
   const roles = useRoles();
   const t = useT();
+  // Re-tap op de Vandaag-tab scrollt deze strook terug naar het begin.
+  // useScrollToTop bindt aan een ScrollView-ref en vuurt op tabPress
+  // wanneer dit scherm focused is — werkt 1-op-1 voor horizontale en
+  // verticale ScrollViews. Hook staat vóór de early-return zodat
+  // Rules of Hooks gerespecteerd blijven.
+  const scrollRef = useRef<ScrollView>(null);
+  useScrollToTop(scrollRef);
   const exhibitions = exhibitionEvents.filter((e) => e.kind === 'exhibition');
   const total = series.length + exhibitions.length;
   if (total === 0) return null;
@@ -71,6 +80,7 @@ export function RunningStrip({
         </View>
       ) : (
         <ScrollView
+          ref={scrollRef}
           horizontal
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.scroller}

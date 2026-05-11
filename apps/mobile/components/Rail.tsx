@@ -100,14 +100,14 @@ export function Rail({
 }
 
 const styles = StyleSheet.create({
-  section: { paddingTop: 4, paddingBottom: 4 },
+  section: { paddingTop: 14, paddingBottom: 4 },
   head: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'baseline',
     paddingHorizontal: 22,
     paddingTop: 8,
-    paddingBottom: 8,
+    paddingBottom: 16,
     gap: 10,
   },
   headLabel: {

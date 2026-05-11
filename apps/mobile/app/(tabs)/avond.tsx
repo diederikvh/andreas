@@ -1,8 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useScrollToTop } from '@react-navigation/native';
+import { useNavigation, useScrollToTop } from '@react-navigation/native';
 import { Image } from 'expo-image';
 import { router } from 'expo-router';
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   KeyboardAvoidingView,
   type NativeScrollEvent,
@@ -57,6 +57,7 @@ import {
   useEventGenres,
   useEvents,
   useFriends,
+  useVenues,
   useSeriesList,
 } from '@/lib/queries';
 import { useSession } from '@/lib/authClient';
@@ -126,6 +127,7 @@ const TONE: Record<
 };
 
 export default function Avond() {
+  const mode = useMode();
   const roles = useRoles();
   const insets = useSafeAreaInsets();
   const t = useT();
@@ -170,6 +172,25 @@ export default function Avond() {
   // Series + exhibitions delen één "Loopt nu"-strook bovenaan. Series
   // komen uit /series (apart endpoint), exhibitions zitten in `events`.
   const { data: seriesList } = useSeriesList();
+  // Alle venues die de gebruiker volgt — onafhankelijk van wat er
+  // vandaag speelt. Voor de "Jouw favorieten"-rail onder de
+  // agenda-banner. Backend filtert myFollowState per venue; wij
+  // selecteren 'volgen' aan de client-kant zodat we ook de venue-data
+  // (imageUrl, type) direct in handen hebben.
+  const { data: allVenues } = useVenues();
+  // Splits de "Jouw favoriete venues"-rail op visuele modus: nacht
+  // toont night/both, dag toont day/both. Venues zonder dayNight-veld
+  // (`null`) blijven in beide modi staan — geen reden om verborgen te
+  // houden als 't classification ontbreekt.
+  const followedVenues = useMemo(() => {
+    return (allVenues ?? []).filter((v) => {
+      if (v.myFollowState !== 'volgen') return false;
+      if (v.dayNight === null || v.dayNight === 'both') return true;
+      return mode === 'nacht'
+        ? v.dayNight === 'night'
+        : v.dayNight === 'day';
+    });
+  }, [allVenues, mode]);
 
   // Filter-state — leeft persistent in een Zustand-store. Het zoek+
   // filter-paneel is verhuisd naar Agenda; op Vandaag respecteren we
@@ -412,28 +433,16 @@ export default function Avond() {
     () => filtered.filter((r) => r.event.category === 'Film'),
     [filtered]
   );
+  // "Vrienden gaan" is bewust toekomst-inclusief (geen vandaag-window):
+  // vrienden plannen vooruit, en de rail hoort daarom onder de
+  // agenda-banner — los van het vandaag-deel. Pool is `leadsPool`
+  // (uit-mode-events, alle toekomst, gesorteerd op startsAt) gefilterd
+  // op friendsSaved.
   const railFriendsUit = useMemo(
     () =>
-      filtered.filter((r) => (r.event.friendsSaved?.length ?? 0) > 0),
-    [filtered]
+      leadsPool.filter((r) => (r.event.friendsSaved?.length ?? 0) > 0),
+    [leadsPool]
   );
-  // Venues die je volgt (dedupe op venue.id) — kaartjes leiden naar
-  // /venue/[slug] waar je het volledige programma ziet. Bron is de
-  // mode-pool zodat 'uit' alleen uit-venues toont en 'expo' alleen
-  // cultuur-venues.
-  const railFollowedVenuesUit = useMemo(() => {
-    const seen = new Set<string>();
-    const out: ApiEvent['venue'][] = [];
-    for (const r of filtered) {
-      if (!r.event.venueFollowed) continue;
-      const v = r.event.venue;
-      if (seen.has(v.id)) continue;
-      seen.add(v.id);
-      out.push(v);
-    }
-    return out;
-  }, [filtered]);
-
   // Rails voor 'expo'-mode — gebaseerd op `expoEvents` (ApiEvent[]).
   // 'Nieuw geopend': exhibitions die in de afgelopen 14 dagen zijn
   // gestart. 'Sluit deze maand': exhibitions met endsAt binnen 30
@@ -468,18 +477,6 @@ export default function Avond() {
       );
   }, [expoEvents]);
 
-  const railFollowedVenuesExpo = useMemo(() => {
-    const seen = new Set<string>();
-    const out: ApiEvent['venue'][] = [];
-    for (const e of expoEvents) {
-      if (!e.venueFollowed) continue;
-      if (seen.has(e.venue.id)) continue;
-      seen.add(e.venue.id);
-      out.push(e.venue);
-    }
-    return out;
-  }, [expoEvents]);
-
   const railLit = useMemo<ApiEvent[]>(
     () =>
       expoEvents
@@ -493,7 +490,13 @@ export default function Avond() {
   );
 
   const railFriendsExpo = useMemo<ApiEvent[]>(
-    () => expoEvents.filter((e) => (e.friendsSaved?.length ?? 0) > 0),
+    () =>
+      expoEvents
+        .filter((e) => (e.friendsSaved?.length ?? 0) > 0)
+        .sort(
+          (a, b) =>
+            new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime()
+        ),
     [expoEvents]
   );
 
@@ -592,6 +595,10 @@ export default function Avond() {
           <>
             <Rail
               kicker={t('Vannacht in de clubs', 'Tonight in the clubs')}
+              moreLabel={t('Meer →', 'More →')}
+              onMore={() =>
+                router.push({ pathname: '/agenda', params: { cat: 'Muziek' } })
+              }
             >
               {railClubs.map((r) => (
                 <RailEventCard
@@ -607,6 +614,10 @@ export default function Avond() {
             </Rail>
             <Rail
               kicker={t('Live op de podia', 'Live on stage')}
+              moreLabel={t('Meer →', 'More →')}
+              onMore={() =>
+                router.push({ pathname: '/agenda', params: { cat: 'Muziek' } })
+              }
             >
               {railLivePodium.map((r) => (
                 <RailEventCard
@@ -658,34 +669,6 @@ export default function Avond() {
                 />
               ))}
             </Rail>
-            <Rail
-              kicker={t('Vrienden gaan', 'Friends going')}
-            >
-              {railFriendsUit.map((r) => (
-                <RailEventCard
-                  key={r.id}
-                  event={r.event}
-                  occurrenceId={
-                    r.occurrence.id.endsWith('::next') ? undefined : r.occurrence.id
-                  }
-                  occurrenceStartsAt={r.occurrence.startsAt}
-                  occurrenceEndsAt={r.occurrence.endsAt}
-                />
-              ))}
-            </Rail>
-            <Rail
-              kicker={t('Venues die je volgt', 'Venues you follow')}
-            >
-              {railFollowedVenuesUit.map((v) => (
-                <VenueRailCard
-                  key={v.id}
-                  slug={v.slug}
-                  name={v.name}
-                  imageUrl={v.imageUrl}
-                  type={v.type}
-                />
-              ))}
-            </Rail>
           </>
         )}
 
@@ -693,6 +676,10 @@ export default function Avond() {
           <>
             <Rail
               kicker={t('Nieuw geopend', 'Newly opened')}
+              moreLabel={t('Meer →', 'More →')}
+              onMore={() =>
+                router.push({ pathname: '/agenda', params: { cat: 'Kunst' } })
+              }
             >
               {railNewlyOpened.map((e) => (
                 <RailEventCard key={e.id} event={e} />
@@ -700,22 +687,13 @@ export default function Avond() {
             </Rail>
             <Rail
               kicker={t('Sluit deze maand', 'Closing this month')}
+              moreLabel={t('Meer →', 'More →')}
+              onMore={() =>
+                router.push({ pathname: '/agenda', params: { cat: 'Kunst' } })
+              }
             >
               {railClosingSoon.map((e) => (
                 <RailEventCard key={e.id} event={e} />
-              ))}
-            </Rail>
-            <Rail
-              kicker={t('Musea die je volgt', 'Museums you follow')}
-            >
-              {railFollowedVenuesExpo.map((v) => (
-                <VenueRailCard
-                  key={v.id}
-                  slug={v.slug}
-                  name={v.name}
-                  imageUrl={v.imageUrl}
-                  type={v.type}
-                />
               ))}
             </Rail>
             <Rail
@@ -729,13 +707,6 @@ export default function Avond() {
               }
             >
               {railLit.map((e) => (
-                <RailEventCard key={e.id} event={e} />
-              ))}
-            </Rail>
-            <Rail
-              kicker={t('Vrienden gaan', 'Friends going')}
-            >
-              {railFriendsExpo.map((e) => (
                 <RailEventCard key={e.id} event={e} />
               ))}
             </Rail>
@@ -762,6 +733,56 @@ export default function Avond() {
             klikken naar de volledige Agenda. Spiegelt visueel de
             KaartBanner bovenaan. */}
         {!isLoading && !error && <AgendaBanner />}
+
+        {/* Vrienden gaan — toekomst-inclusief, dus niet bij het
+            vandaag-deel maar onder de agenda-banner. Splitst alsnog
+            per content-mode (uit gebruikt OccurrenceRow met occurrence-
+            id voor recurring events, expo werkt op kale ApiEvent). */}
+        {!isLoading && !error && cmode === 'uit' && railFriendsUit.length > 0 && (
+          <Rail kicker={t('Vrienden gaan', 'Friends going')}>
+            {railFriendsUit.map((r) => (
+              <RailEventCard
+                key={r.id}
+                event={r.event}
+                occurrenceId={
+                  r.occurrence.id.endsWith('::next') ? undefined : r.occurrence.id
+                }
+                occurrenceStartsAt={r.occurrence.startsAt}
+                occurrenceEndsAt={r.occurrence.endsAt}
+              />
+            ))}
+          </Rail>
+        )}
+        {!isLoading && !error && cmode === 'expo' && railFriendsExpo.length > 0 && (
+          <Rail kicker={t('Vrienden gaan', 'Friends going')}>
+            {railFriendsExpo.map((e) => (
+              <RailEventCard key={e.id} event={e} />
+            ))}
+          </Rail>
+        )}
+
+        {/* Favoriete venues, altijd zichtbaar — los van of er vandaag
+            iets speelt. Komt na de agenda-banner omdat 't visueel
+            buiten de "vandaag"-bubbel valt en als hub voor je
+            volg-lijst dient (tap → venue-pagina met volledige
+            programmering). */}
+        {followedVenues.length > 0 && (
+          <Rail
+            kicker={t('Jouw favoriete venues', 'Your favourite venues')}
+            moreLabel={t('Alle venues →', 'All venues →')}
+            onMore={() => router.push('/venues' as never)}
+          >
+            {followedVenues.map((v) => (
+              <VenueRailCard
+                key={v.id}
+                slug={v.slug}
+                name={v.name}
+                imageUrl={v.imageUrl}
+                type={v.type}
+              />
+            ))}
+          </Rail>
+        )}
       </ScrollView>
       <AppHeader title={t('Vandaag', 'Today')} showContentMode />
       <ContentSwitchHint />
@@ -859,6 +880,24 @@ function FeaturedCarousel({
   const { width } = useWindowDimensions();
   const roles = useRoles();
   const [page, setPage] = useState(0);
+  // Re-tap op Vandaag-tab → carousel terug naar eerste lead + dot-
+  // indicator gereset. Eigen listener (geen useScrollToTop) omdat we
+  // óók de page-state moeten meereseten, anders staat de dot scheef.
+  // Hooks vóór de single-lead early return — Rules of Hooks.
+  // `as any` op de event-naam omdat useNavigation default getypt is
+  // op de root-navigator; tabPress wordt geëmit door de tab-navigator
+  // waar dit scherm in zit (de Tabs-stack).
+  const carouselRef = useRef<ScrollView>(null);
+  const navigation = useNavigation();
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('tabPress' as never, () => {
+      if (navigation.isFocused()) {
+        carouselRef.current?.scrollTo({ x: 0, animated: true });
+        setPage(0);
+      }
+    });
+    return unsubscribe;
+  }, [navigation]);
 
   if (leads.length === 1) {
     const lead = leads[0];
@@ -883,6 +922,7 @@ function FeaturedCarousel({
   return (
     <View>
       <ScrollView
+        ref={carouselRef}
         horizontal
         pagingEnabled
         showsHorizontalScrollIndicator={false}
