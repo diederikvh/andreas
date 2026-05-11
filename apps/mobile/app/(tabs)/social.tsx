@@ -997,8 +997,10 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     borderWidth: 1,
     overflow: 'hidden',
-    alignSelf: 'center',
-    minWidth: 280,
+    // Vol-breed binnen subTabsAlign's horizontale padding zodat de
+    // Nederlandse labels (Vrienden / Planning) niet inklemmen op
+    // smallere telefoons.
+    alignSelf: 'stretch',
   },
   switchBlob: {
     position: 'absolute',
