@@ -71,10 +71,35 @@ function slugify(s: string): string {
     .slice(0, 80);
 }
 
-async function fetchHtml(url: string, useBot: boolean): Promise<string | null> {
+// Per-fetch timeout zodat één hangende venue niet de hele
+// theater-scraper-run blokkeert (curl-side timeout was 540s; we
+// gaven die op met >20 venues × meerdere URLs). 30s is ruim voor
+// een gezonde response, maar kort genoeg om een hang snel op te
+// geven en door te gaan met de volgende URL.
+const FETCH_TIMEOUT_MS = 30_000;
+
+async function fetchWithTimeout(
+  url: string,
+  init: RequestInit,
+  timeoutMs = FETCH_TIMEOUT_MS,
+): Promise<Response | null> {
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), timeoutMs);
   try {
-    const r = await fetch(url, { headers: { 'user-agent': useBot ? UA_BOT : UA_REG } });
-    if (!r.ok) return null;
+    return await fetch(url, { ...init, signal: ctl.signal });
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function fetchHtml(url: string, useBot: boolean): Promise<string | null> {
+  const r = await fetchWithTimeout(url, {
+    headers: { 'user-agent': useBot ? UA_BOT : UA_REG },
+  });
+  if (!r || !r.ok) return null;
+  try {
     return await r.text();
   } catch {
     return null;
@@ -83,8 +108,10 @@ async function fetchHtml(url: string, useBot: boolean): Promise<string | null> {
 
 async function fetchSitemap(url: string, depth = 0): Promise<string[]> {
   if (depth > 3) return [];
-  const r = await fetch(url, { headers: { 'user-agent': UA_REG } });
-  if (!r.ok) return [];
+  const r = await fetchWithTimeout(url, {
+    headers: { 'user-agent': UA_REG },
+  });
+  if (!r || !r.ok) return [];
   const xml = await r.text();
   const isIndex = /<sitemapindex\b/.test(xml);
   const out: string[] = [];

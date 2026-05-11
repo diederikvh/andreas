@@ -31,7 +31,11 @@ jobs:
     steps:
       - name: POST /admin/api/scrapers/run/${{ matrix.scraper }}
         run: |
-          HTTP=$(curl --silent --show-error --max-time 540 \
+          # Per-scraper timeout 25 min. Theater met 20+ venues kan
+          # tegen 9 min aanlopen; ruim genoeg houden voorkomt valse
+          # falen. Individuele fetch-timeouts in de scrapers
+          # voorkomen dat één hangende venue alles blokkeert.
+          HTTP=$(curl --silent --show-error --max-time 1500 \
             -X POST "https://api.andreas.amsterdam/admin/api/scrapers/run/${{ matrix.scraper }}" \
             -H "Authorization: Bearer ${{ secrets.ANDREAS_ADMIN_API_KEY }}" \
             -H "Content-Type: application/json" \
