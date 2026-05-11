@@ -169,8 +169,12 @@ export async function scrapeWeticket(options?: {
     }
 
     // Filter alleen events bij déze venue (externe shows skippen).
+    // Default: exact-match op venue.name. Config kan via
+    // `locationName` een andere string forceren (bv. Sissi's heet
+    // op WeTicket "Sissi's Amsterdam (Anthony Fokkerweg 3)").
+    const expected = cfg.locationName ?? venue.name;
     const own = shops.filter(
-      (s) => s.location_name === venue.name && s.is_published && !s.is_hidden,
+      (s) => s.location_name === expected && s.is_published && !s.is_hidden,
     );
     result.fetched = own.length;
 

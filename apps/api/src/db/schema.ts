@@ -214,8 +214,13 @@ export const venues = pgTable('venues', {
         `upcoming_events` per organisatie. Eén subdomain per venue
         (bv. `skatecafe.weticket.io`, `sissisamsterdam.weticket.io`).
         Achter een Vercel Security Checkpoint dus Playwright nodig.
-        Lokaal-only (niet in Fly Docker image). */
-    weticket?: { subdomain: string };
+        Lokaal-only (niet in Fly Docker image).
+        `locationName` (optional) overschrijft de exact-match filter
+        op `shop.location_name`. Sissi's bv. ticketed onder
+        "Sissi's Amsterdam (Anthony Fokkerweg 3)" terwijl de venue
+        bij ons gewoon `Sissi's` heet — zet 'm dan op de WeTicket-
+        string. Default: venue.name. */
+    weticket?: { subdomain: string; locationName?: string };
     /** The Events Calendar (Pro) — WP-plugin met publieke REST API:
         `{apiBase}/events?per_page=50&start_date=YYYY-MM-DD`. Eén
         config-veld: `apiBase` = `https://{venue}.nl/wp-json/tribe/events/v1`. */
