@@ -2,6 +2,7 @@ import { expo } from '@better-auth/expo';
 import { betterAuth } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { bearer, phoneNumber } from 'better-auth/plugins';
+import { eq } from 'drizzle-orm';
 
 import { db, schema } from './db/index.js';
 import { sendSms } from './sms/messagebird.js';
@@ -11,6 +12,32 @@ if (!process.env.BETTER_AUTH_SECRET) {
 }
 
 const isDev = process.env.NODE_ENV !== 'production';
+
+/**
+ * Apple App Store-review bypass voor het OTP-pad. Reviewers in Cupertino
+ * krijgen onze Bird-SMS niet, dus we accepteren één vast nummer met één
+ * vaste code zonder echte Bird-aanroep. Active alleen als beide env-vars
+ * gezet zijn — laat ze leeg in dev en je hebt de gewone flow.
+ *
+ * Setup:
+ *   fly secrets set \
+ *     APPLE_REVIEW_DEMO_PHONE='+31600000000' \
+ *     APPLE_REVIEW_DEMO_CODE='739184' \
+ *     -a andreas-api
+ *
+ * Vul daarna dezelfde combinatie in op:
+ *   App Store Connect → App Review → Sign-In Information
+ *
+ * Het bypass-nummer +31600000000 is bewust een NL-mobile-format dat
+ * geen enkele operator uitgeeft (mobile blocks beginnen niet met 00) —
+ * geen risico op botsing met een echte user. Code is geen patroon en
+ * niet "000000" om brute-force op het demo-nummer uit te sluiten.
+ */
+const DEMO_PHONE_RAW = process.env.APPLE_REVIEW_DEMO_PHONE ?? null;
+const DEMO_CODE = process.env.APPLE_REVIEW_DEMO_CODE ?? null;
+const normalizePhone = (s: string) => s.replace(/[\s\-()]/g, '');
+const DEMO_PHONE = DEMO_PHONE_RAW ? normalizePhone(DEMO_PHONE_RAW) : null;
+const demoActive = Boolean(DEMO_PHONE && DEMO_CODE);
 
 export const auth = betterAuth({
   logger: {
@@ -77,6 +104,20 @@ export const auth = betterAuth({
     bearer(),
     phoneNumber({
       sendOTP: async ({ phoneNumber, code }) => {
+        // Apple-review bypass: voor het demo-nummer overschrijven we de
+        // zojuist door better-auth aangemaakte verification-row met onze
+        // vaste code. De reviewer kan dan inloggen zonder echte SMS.
+        // Geen Bird-aanroep, geen kosten, geen log-spoor naar Bird.
+        if (demoActive && normalizePhone(phoneNumber) === DEMO_PHONE) {
+          await db
+            .update(schema.verification)
+            .set({
+              value: `${DEMO_CODE!}:0`,
+              updatedAt: new Date(),
+            })
+            .where(eq(schema.verification.identifier, phoneNumber));
+          return;
+        }
         // Apple "domain-bound code" format: de tweede regel
         // `@<domain> #<code>` triggert iOS' SMS-autofill direct in
         // het OTP-veld. Domain moet matchen met een associatedDomain
