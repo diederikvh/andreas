@@ -124,6 +124,15 @@ Andreas-night-modus targeted. 3 al gescrape'd (Doka 2, Lofi 16, Radion 22 = 40 e
 
 **Mainstream clubs (resterend):** Marktkantine, Club NL, Club Home — staan op `published=false`. Eerst onderzoek welke nog actief zijn (sommige zijn permanent gesloten of verhuisd).
 
+**Nieuw toegevoegd (mei 2026):**
+- ✅ **Sissi's** [middel/alt, Schinkel] — WeTicket `sissisamsterdam.weticket.io`. Generieke `weticket.ts` scraper (refactor van skatecafe.ts) loopt over `scraperConfig.weticket.subdomain`. Playwright, lokaal-only.
+- ✅ **Chin Chin Club** [middel/mainstream, Jordaan] — Celebratix channel `2vys5` (achter tracking-link `?t=y2g8j`, resolved via `/v2/consumers/TrackingLinks/y2g8j`). 13 events live.
+- ✅ **Panama** [groot/mainstream, Oost] — The Events Calendar Pro WP-plugin via REST `panama.nl/wp-json/tribe/events/v1/events`. Pure HTTP, in CI matrix als `eventscalendar`. 28 events.
+- ⏳ **Canvas** [middel/alt, Oost] — Volkshotel custom WP-template op `volkshotel.nl/en/agenda/canvas/`. Per event: `<a class="card agenda buzz-hover">` met `<h2 class="buzz">` + `class="event-date"` + `class="event-time"` + og:image op detail. Vereist custom HTML-parser (~2u werk), nog niet gedaan.
+- ⏳ **Club NYX** [middel/mainstream, centrum] — alleen Facebook events op `facebook.com/NYXamsterdam/events`. FB blokt crawlers + vereist login. Opties: (a) FB Graph API met page-token (auth-setup), (b) third-party FB-event-scraper. Niet gedaan, hoogste-pijn-niveau van de set.
+- ⬜ **Café Café** [middel/mainstream, centrum] — `cafecafe-restaurant.nl/cafecafebar` lijkt geen publieke agenda-feed te hebben. Eerst manual probe nodig.
+- ✅ **Yellow House** [middel/alt, Houthavens] — venue toegevoegd, scraper nog niet gekozen.
+
 **Mogelijke bulk-aanpak**: Resident Advisor (`ra.co/clubs/amsterdam`) heeft venue-pages voor de meeste underground clubs (Garage Noord, Lofi, Doka, Radion, BRET, Radio Radio, Tilla Tec, Shelter). Eén RA-scraper zou ~10 venues in één keer dekken. Worth investigating als per-club aanpak meer custom werk vereist.
 
 ---
