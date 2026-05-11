@@ -2117,3 +2117,154 @@ function SeriesForm({
     </form>
   );
 }
+
+// ─── Import (LLM-extract van URL) ──────────────────────────────────
+
+adminUi.get('/import', async (c) => {
+  // Lijst alle musea + galleries voor de venue-selector. Andere
+  // venue-types horen niet bij dit flow (die hebben event-feeds).
+  const venues = await db
+    .select({ id: schema.venues.id, name: schema.venues.name, type: schema.venues.type })
+    .from(schema.venues)
+    .where(inArray(schema.venues.type, ['museum', 'galerie']))
+    .orderBy(asc(schema.venues.name));
+
+  return c.html(
+    <Layout title="Import" active="import">
+      <h2>LLM-import voor tentoonstellingen</h2>
+      <p style="opacity:0.7;max-width:60ch">
+        Plak een URL van een museum- of galerie-agenda. De server haalt
+        de pagina op (Playwright als 't een SPA is) en laat Claude alle
+        tentoonstellingen extraheren — titel, datums, beschrijving,
+        image. Daarna kun je per-item bevestigen en bulk-inserten.
+      </p>
+      <form id="extract-form">
+        <label>
+          Venue (museum of galerie)
+          <select name="venueId" required>
+            <option value="">— kies venue —</option>
+            {venues.map((v) => (
+              <option value={v.id}>
+                {v.name} ({v.type})
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          URL van de agenda-/tentoonstellings-pagina
+          <input
+            type="url"
+            name="url"
+            placeholder="https://www.stedelijk.nl/nl/nu-te-zien"
+            required
+          />
+        </label>
+        <button type="submit" id="extract-btn">
+          Pak tentoonstellingen op
+        </button>
+      </form>
+
+      <div id="status" style="margin-top:1em"></div>
+      <div id="result" style="margin-top:1em"></div>
+
+      <script
+        dangerouslySetInnerHTML={{
+          __html: `
+const form = document.getElementById('extract-form');
+const btn = document.getElementById('extract-btn');
+const status = document.getElementById('status');
+const result = document.getElementById('result');
+
+function esc(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+form.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const fd = new FormData(form);
+  const url = fd.get('url');
+  const venueId = fd.get('venueId');
+  if (!url || !venueId) return;
+  btn.disabled = true;
+  btn.setAttribute('aria-busy', 'true');
+  status.textContent = 'Pagina ophalen + Claude analyseert…';
+  result.innerHTML = '';
+  try {
+    const res = await fetch('/admin/api/import/extract-from-url', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ url }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      status.innerHTML = '<mark>Fout: ' + esc(data.error || res.status) + '</mark>';
+      return;
+    }
+    status.innerHTML = 'Klaar in ' + Math.round(data.durationMs/1000) + 's · fetch=' + data.fetchMethod + ' · ' + data.exhibitions.length + ' items · ' + data.promptTokens + ' tokens in / ' + data.completionTokens + ' uit';
+
+    // Render review-tabel
+    const items = data.exhibitions;
+    if (items.length === 0) {
+      result.innerHTML = '<p><em>Geen tentoonstellingen gevonden.</em></p>';
+      return;
+    }
+    let html = '<form id="import-form"><table><thead><tr><th></th><th>Titel</th><th>Datums</th><th>Cat</th><th>Beschrijving</th><th>Image</th></tr></thead><tbody>';
+    items.forEach((it, idx) => {
+      html += '<tr>';
+      html += '<td><input type="checkbox" name="pick" value="' + idx + '" checked></td>';
+      html += '<td><input type="text" name="title-' + idx + '" value="' + esc(it.title) + '" style="width:200px"></td>';
+      html += '<td><input type="date" name="startDate-' + idx + '" value="' + esc(it.startDate || '') + '" style="width:140px"> – <input type="date" name="endDate-' + idx + '" value="' + esc(it.endDate || '') + '" style="width:140px"></td>';
+      html += '<td><select name="category-' + idx + '">' + ['Kunst','Theater','Literatuur','Film','Muziek'].map(c => '<option' + (c === it.category ? ' selected' : '') + '>' + c + '</option>').join('') + '</select></td>';
+      html += '<td><textarea name="description-' + idx + '" rows="2" style="width:280px">' + esc(it.description || '') + '</textarea></td>';
+      html += '<td>' + (it.imageUrl ? '<img src="' + esc(it.imageUrl) + '" style="max-width:80px;max-height:60px">' : '—') + '<input type="hidden" name="imageUrl-' + idx + '" value="' + esc(it.imageUrl || '') + '"><input type="hidden" name="sourceUrl-' + idx + '" value="' + esc(it.sourceUrl || '') + '"></td>';
+      html += '</tr>';
+    });
+    html += '</tbody></table>';
+    html += '<button type="submit" id="import-btn">Importeer geselecteerde</button>';
+    html += '</form>';
+    result.innerHTML = html;
+
+    document.getElementById('import-form').addEventListener('submit', async (e2) => {
+      e2.preventDefault();
+      const fd2 = new FormData(e2.target);
+      const picked = fd2.getAll('pick');
+      const exhibitions = picked.map(idx => ({
+        title: fd2.get('title-' + idx),
+        startDate: fd2.get('startDate-' + idx) || null,
+        endDate: fd2.get('endDate-' + idx) || null,
+        description: fd2.get('description-' + idx) || null,
+        imageUrl: fd2.get('imageUrl-' + idx) || null,
+        sourceUrl: fd2.get('sourceUrl-' + idx) || null,
+        category: fd2.get('category-' + idx),
+      }));
+      const importBtn = document.getElementById('import-btn');
+      importBtn.disabled = true;
+      importBtn.setAttribute('aria-busy', 'true');
+      const r2 = await fetch('/admin/api/import/exhibitions', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ venueId, exhibitions }),
+      });
+      const d2 = await r2.json();
+      importBtn.removeAttribute('aria-busy');
+      importBtn.disabled = false;
+      if (!r2.ok) {
+        status.innerHTML += '<br><mark>Import-fout: ' + esc(d2.error || r2.status) + '</mark>';
+        return;
+      }
+      status.innerHTML += '<br><strong>Klaar:</strong> ' + d2.inserted + ' inserted, ' + d2.updated + ' updated, ' + d2.errors.length + ' errors';
+      if (d2.errors.length > 0) {
+        status.innerHTML += '<br>' + d2.errors.map(e => esc(e.title) + ': ' + esc(e.error)).join('<br>');
+      }
+    });
+  } catch (err) {
+    status.innerHTML = '<mark>Fout: ' + esc(err.message) + '</mark>';
+  } finally {
+    btn.disabled = false;
+    btn.removeAttribute('aria-busy');
+  }
+});
+`,
+        }}
+      />
+    </Layout>,
+  );
+});

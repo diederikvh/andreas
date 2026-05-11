@@ -3,6 +3,7 @@ import { and, asc, eq, inArray } from 'drizzle-orm';
 import { Hono } from 'hono';
 
 import { db, schema } from '../../db/index.js';
+import { extractFromUrl } from '../../scrapers/extract-from-url.js';
 import { scrapers, type ScraperName } from '../../scrapers/index.js';
 import { uploadToBunny } from '../../storage/bunny.js';
 import { requireAdminAny } from './auth.js';
@@ -822,4 +823,178 @@ adminApi.post('/scrapers/run/:name', async (c) => {
       500
     );
   }
+});
+
+// ─── LLM-import (musea/galleries) ───────────────────────────────────
+//
+// Voor traag-veranderende content: één endpoint pakt elke URL, plukt
+// de pagina-tekst, en laat Claude een lijst tentoonstellingen
+// extraheren. Admin reviewt + accepteert, daarna pas DB-insert.
+
+adminApi.post('/import/extract-from-url', async (c) => {
+  const body = await c.req.json<{ url?: unknown }>();
+  const url = typeof body.url === 'string' ? body.url.trim() : '';
+  if (!url || !/^https?:\/\//.test(url)) {
+    return c.json({ error: 'geef een geldige http(s)-URL' }, 400);
+  }
+  const startedAt = Date.now();
+  try {
+    const result = await extractFromUrl(url);
+    return c.json({
+      ...result,
+      durationMs: Date.now() - startedAt,
+    });
+  } catch (e) {
+    return c.json(
+      {
+        error: (e as Error).message,
+        durationMs: Date.now() - startedAt,
+      },
+      500,
+    );
+  }
+});
+
+adminApi.post('/import/exhibitions', async (c) => {
+  const body = await c.req.json<{
+    venueId?: unknown;
+    exhibitions?: unknown;
+  }>();
+  const venueId = String(body.venueId ?? '').trim();
+  if (!venueId) return c.json({ error: 'venueId verplicht' }, 400);
+  const [venue] = await db
+    .select({ id: schema.venues.id, name: schema.venues.name, categories: schema.venues.categories })
+    .from(schema.venues)
+    .where(eq(schema.venues.id, venueId))
+    .limit(1);
+  if (!venue) return c.json({ error: `venue ${venueId} bestaat niet` }, 400);
+
+  if (!Array.isArray(body.exhibitions)) {
+    return c.json({ error: 'exhibitions[] verplicht' }, 400);
+  }
+
+  type Item = {
+    title: string;
+    startDate: string | null;
+    endDate: string | null;
+    description: string | null;
+    imageUrl: string | null;
+    sourceUrl: string | null;
+    category: 'Kunst' | 'Theater' | 'Literatuur' | 'Film' | 'Muziek';
+  };
+
+  const items: Item[] = [];
+  for (const raw of body.exhibitions as Array<Record<string, unknown>>) {
+    const title = typeof raw.title === 'string' ? raw.title.trim() : '';
+    if (title.length < 2) continue;
+    const category = typeof raw.category === 'string' && CATEGORIES.includes(raw.category as Category)
+      ? (raw.category as Category)
+      : venue.categories?.[0] ?? 'Kunst';
+    items.push({
+      title,
+      startDate: typeof raw.startDate === 'string' ? raw.startDate : null,
+      endDate: typeof raw.endDate === 'string' ? raw.endDate : null,
+      description: typeof raw.description === 'string' ? raw.description : null,
+      imageUrl: typeof raw.imageUrl === 'string' ? raw.imageUrl : null,
+      sourceUrl: typeof raw.sourceUrl === 'string' ? raw.sourceUrl : null,
+      category,
+    });
+  }
+  if (items.length === 0) {
+    return c.json({ error: 'geen geldige items om in te voegen' }, 400);
+  }
+
+  // Idempotency: eventId = `evt-${venueId}-${slugify(title)}`. Re-runs
+  // overschrijven imageUrl en description NIET (admin kan deze
+  // bewerken via de gewone /events PATCH).
+  let inserted = 0;
+  let updated = 0;
+  const errors: Array<{ title: string; error: string }> = [];
+
+  for (const item of items) {
+    const eventId = `evt-${venueId}-${slugify(item.title)}`;
+    const occurrenceId = `occ-${venueId}-${slugify(item.title)}`;
+
+    // Datum-parse: YYYY-MM-DD → 00:00 Amsterdam. Geen datums = skip
+    // de occurrence-insert, alleen event.
+    const startsAt = item.startDate
+      ? new Date(`${item.startDate}T00:00:00+02:00`)
+      : null;
+    const endsAt = item.endDate
+      ? new Date(`${item.endDate}T23:59:00+02:00`)
+      : null;
+
+    try {
+      const [existing] = await db
+        .select({ id: schema.events.id })
+        .from(schema.events)
+        .where(eq(schema.events.id, eventId))
+        .limit(1);
+
+      if (existing) {
+        // Alleen updaten als description/sourceUrl iets nieuws hebben.
+        if (item.description || item.sourceUrl) {
+          await db
+            .update(schema.events)
+            .set({
+              description: item.description ?? undefined,
+              category: item.category,
+            })
+            .where(eq(schema.events.id, eventId));
+          updated++;
+        }
+      } else {
+        await db.insert(schema.events).values({
+          id: eventId,
+          venueId,
+          title: item.title,
+          description: item.description,
+          kind: 'exhibition',
+          imageUrl: item.imageUrl,
+          category: item.category,
+          featured: false,
+          genres: [],
+          published: true,
+        });
+        inserted++;
+      }
+
+      if (startsAt) {
+        const occEnd =
+          endsAt ?? new Date(startsAt.getTime() + 90 * 24 * 60 * 60 * 1000);
+        await db
+          .insert(schema.occurrences)
+          .values({
+            id: occurrenceId,
+            eventId,
+            startsAt,
+            endsAt: occEnd,
+            priceCents: null,
+            priceNote: null,
+            ticketUrl: item.sourceUrl,
+            room: null,
+            lineup: null,
+            status: 'scheduled',
+          })
+          .onConflictDoUpdate({
+            target: schema.occurrences.id,
+            set: {
+              startsAt,
+              endsAt: occEnd,
+              ticketUrl: item.sourceUrl,
+            },
+          });
+      }
+    } catch (e) {
+      errors.push({ title: item.title, error: (e as Error).message });
+    }
+  }
+
+  return c.json({
+    venueId,
+    inserted,
+    updated,
+    errors,
+    total: items.length,
+  });
 });
