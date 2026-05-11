@@ -222,7 +222,15 @@ function SubTabs({
   return (
     <View style={styles.subTabsAlign}>
       <View
-        style={[styles.switchTrack, { borderColor: roles.bgChip }]}
+        style={[
+          styles.switchTrack,
+          {
+            // Zelfde border-tint als de Filter-knop op Agenda zodat
+            // de twee pills visueel familie zijn — iets lichter dan
+            // roles.bgChip.
+            borderColor: mode === 'nacht' ? '#2a2a2d' : palette.paper,
+          },
+        ]}
         onLayout={(e) => setTrackW(e.nativeEvent.layout.width)}
       >
         <BlurView
