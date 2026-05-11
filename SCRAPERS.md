@@ -72,9 +72,25 @@ Gegenereerd via `apps/api/scripts/_venue-report.ts` — alle gepubliceerde venue
 - ⬜ **Pakhuis Wilhelmina, De Nieuwe Anita, De Krakeling, Het Veem House for Performance, Plein Theater, ZID Theater, Betty Asfalt Complex, Bourbon Street, De Ruimte, Podium Vrijburcht, Teatro Munganga, Astarotheatro, Casablanca Variété, Mike's Badhuistheater, Volta, Space for Dance Art, Zaal 100, Perdu, Salon de IJzerstaven, Compagnietheater** — separate research per venue
 
 ### Musea (12) — geen scrapers, alle 0 events
-⬜ Amsterdam Museum, Anne Frank Huis, Cobra Museum, FOAM, Huis Marseille, Nxt Museum, Oude Kerk, Rijksmuseum, Stedelijk Museum, Van Gogh Museum, Verzetsmuseum, Wereldmuseum Amsterdam
 
-> Musea hebben meestal eigen tentoonstellings-systemen (lange runtijden, geen losse events). Aanpak: per-museum een exhibitions-scraper of een aggregator zoals iamsterdam.com.
+Musea programmeren tentoonstellingen (multi-week, kind=`exhibition`), niet point-in-time events. Per-museum scraper vereist HTML-parse omdat 'r geen standaard ticket-platform tussen zit. Status per venue:
+
+| Venue | Agenda URL | Platform | Strategy |
+|---|---|---|---|
+| Amsterdam Museum | `/zien-en-doen/agenda` | Next.js | `__NEXT_DATA__` mining + Playwright |
+| Cobra Museum | `/te-doen/tentoonstellingen/` | WordPress (geen JSON-LD/plugin) | per-detail og:tags + datum uit body |
+| FOAM | `/nl/programme` | SPA (geen SSR-data) | Playwright + DOM-extractie |
+| Huis Marseille | `/tentoonstellingen/` | WP + lege JSON-LD | per-detail og:tags |
+| NXT Museum | `/events` | Next.js + JSON-LD | `__NEXT_DATA__` mining |
+| Oude Kerk | `/` | Next.js | `__NEXT_DATA__` mining |
+| Rijksmuseum | `/en/whats-on?filter=exhibitions` | enterprise (SSR/jaardata in head) | Playwright + selectors |
+| Stedelijk | `/nl/nu-te-zien` | SPA | Playwright + DOM-extractie |
+| Van Gogh Museum | `/en/visit/whats-on/exhibitions` | enterprise | Playwright + selectors |
+| Verzetsmuseum | `/nl/agenda` | onbekend | probe |
+| Wereldmuseum Amsterdam | `/nl/zien-en-doen/tentoonstellingen` | JSON-LD detected | jsonld-scraper of detail-mining |
+| Anne Frank Huis | — | (geen tentoonstellingen, vast museum) | overslaan |
+
+Plan: **één generieke museum-scraper** met `scraperConfig.museum = { listingUrl, detailUrlPattern, dateSelector?, ... }`. Een venue-specifieke probe + config per museum. Niet in deze sessie gedaan — separate batch.
 
 ### Galleries (55)
 - ✅ **W139** (underground/klein/centrum) — 9 events · `jsonld`
