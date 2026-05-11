@@ -1,8 +1,10 @@
+import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useT } from '@/lib/i18n';
+import { useSetContentMode } from '@/store/contentMode';
 import { useMode, useModeStore, useRoles } from '@/store/mode';
 import { fontFamily, palette, type Mode } from '@/theme/tokens';
 
@@ -14,11 +16,17 @@ export function ModePick({ onPicked }: Props) {
   const roles = useRoles();
   const insets = useSafeAreaInsets();
   const setMode = useModeStore((s) => s.setMode);
+  const setContentMode = useSetContentMode();
   const t = useT();
 
   const pick = (mode: Mode) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    // Visuele én content-mode tegelijk flippen — anders zit de
+    // gebruiker straks in nacht-mode (donker) terwijl Vandaag nog
+    // expo-content (musea/literatuur) toont. Koppeling: nacht→uit,
+    // dag→expo. Zelfde mapping als de ContentModeSwitch in de header.
     setMode(mode);
+    setContentMode(mode === 'nacht' ? 'uit' : 'expo');
     onPicked(mode);
   };
 
@@ -36,7 +44,7 @@ export function ModePick({ onPicked }: Props) {
       ]}
     >
       <Text style={[styles.kicker, { color: roles.accent }]}>
-        {t('— Dag of nacht', '— Day or night')}
+        {t('Dag of nacht', 'Day or night')}
       </Text>
 
       <Text style={[styles.title, { color: roles.fg }]}>
@@ -105,7 +113,10 @@ function ModeTile({ name, meta, onPress, variant }: TileProps) {
       style={[
         styles.tile,
         {
-          backgroundColor: isNacht ? palette.noir : palette.paper,
+          // noir2 ipv noir: in nacht-mode is roles.bg ook noir, dus
+          // noir verdween in de achtergrond. noir2 (#17171a) is net
+          // wat lichter en blijft visueel los staan in beide modi.
+          backgroundColor: isNacht ? palette.noir2 : palette.paper,
           borderColor,
           borderWidth,
         },
@@ -122,20 +133,22 @@ function ModeTile({ name, meta, onPress, variant }: TileProps) {
   );
 }
 
-/** Half-moon: full circle with the right half filled in acid (inset shadow). */
+/** Filled crescent — zelfde Ionicons-maan als de ContentModeSwitch in
+ *  de AppHeader, zodat de keuze hier visueel doorloopt naar de toggle
+ *  die de gebruiker later gebruikt om te switchen. */
 function NachtGlyph() {
   return (
     <View style={glyph.disc}>
-      <View style={glyph.moonHalf} />
+      <Ionicons name="moon" size={26} color={palette.acid} />
     </View>
   );
 }
 
-/** Filled red dot inside a faint red ring. */
+/** Platte cirkel — exact dezelfde minimalistische zon-glyph als de
+ *  ContentModeSwitch (bewust géén Ionicons.sunny met stralen). */
 function DagGlyph() {
   return (
     <View style={glyph.disc}>
-      <View style={glyph.dagRing} />
       <View style={glyph.dagDot} />
     </View>
   );
@@ -148,6 +161,7 @@ const styles = StyleSheet.create({
     fontSize: 10,
     letterSpacing: 1.6,
     textTransform: 'uppercase',
+    textAlign: 'center',
   },
   title: {
     fontFamily: fontFamily.display,
@@ -156,16 +170,19 @@ const styles = StyleSheet.create({
     letterSpacing: -1.3,
     marginTop: 10,
     marginBottom: 8,
+    textAlign: 'center',
   },
   titleEm: {
     fontFamily: fontFamily.body,
     fontWeight: '400',
   },
   sub: {
-    fontFamily: fontFamily.mono,
-    fontSize: 12,
-    lineHeight: 18,
+    fontFamily: fontFamily.body,
+    fontSize: 15,
+    lineHeight: 22,
     marginTop: 10,
+    textAlign: 'center',
+    alignSelf: 'center',
     maxWidth: '92%',
   },
   tiles: {
@@ -178,7 +195,9 @@ const styles = StyleSheet.create({
     height: 190,
     borderRadius: 18,
     padding: 16,
-    justifyContent: 'space-between',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 16,
   },
   tileName: {
     fontFamily: fontFamily.display,
@@ -186,6 +205,7 @@ const styles = StyleSheet.create({
     letterSpacing: -1.05,
     lineHeight: 30 * 0.9,
     textTransform: 'uppercase',
+    textAlign: 'center',
   },
   tileMeta: {
     fontFamily: fontFamily.mono,
@@ -194,6 +214,7 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     marginTop: 6,
     opacity: 0.65,
+    textAlign: 'center',
   },
   glyph: { width: 36, height: 36 },
   footWrap: { marginTop: 'auto', paddingTop: 18, alignItems: 'center' },
@@ -209,36 +230,16 @@ const glyph = StyleSheet.create({
   disc: {
     width: 36,
     height: 36,
-    borderRadius: 18,
-    overflow: 'hidden',
-    position: 'relative',
-  },
-  moonHalf: {
-    position: 'absolute',
-    top: 0,
-    bottom: 0,
-    right: 0,
-    width: 10,
-    backgroundColor: palette.acid,
-  },
-  dagRing: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    borderRadius: 18,
-    borderWidth: 2.5,
-    borderColor: palette.red,
-    opacity: 0.35,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   dagDot: {
-    position: 'absolute',
-    top: 6,
-    left: 6,
-    right: 6,
-    bottom: 6,
-    borderRadius: 12,
+    // Matched op de visuele grootte van de Ionicons-maan (size 26).
+    // Een filled cirkel heeft geen icon-font-padding, dus ~22px geeft
+    // ongeveer hetzelfde optisch volume.
+    width: 22,
+    height: 22,
+    borderRadius: 999,
     backgroundColor: palette.red,
   },
 });
