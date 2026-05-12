@@ -24,7 +24,6 @@ import {
 import QRCode from 'react-native-qrcode-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { AppHeader, HEADER_HEIGHT } from '@/components/AppHeader';
 import { Cross } from '@/components/Cross';
 import { ProfileAvatar } from '@/components/ProfileAvatar';
 import { SpinningCross } from '@/components/SpinningCross';
@@ -53,6 +52,10 @@ export default function Jij() {
   const roles = useRoles();
   const insets = useSafeAreaInsets();
   const isNacht = mode === 'nacht';
+  // iOS-modal sheets zitten al onder de system status bar (insets.top
+  // ≈ 0 binnen de modal); op Android schuift de modal full-screen op,
+  // dus daar moeten we wél een safe-area-padding aanhouden.
+  const modalTopInset = Platform.OS === 'android' ? insets.top : 0;
   const t = useT();
   const scrollRef = useRef<ScrollView>(null);
   useScrollToTop(scrollRef);
@@ -294,7 +297,7 @@ export default function Jij() {
     return (
       <View style={[styles.root, styles.loadingRoot, { backgroundColor: roles.bg }]}>
         <SpinningCross size={28} color={roles.fgPlaceholder} />
-        <AppHeader title={t('Profiel', 'Profile')} hideAvatar />
+        <ModalCloseBtn />
       </View>
     );
   }
@@ -311,7 +314,7 @@ export default function Jij() {
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
           contentContainerStyle={{
-            paddingTop: insets.top + HEADER_HEIGHT + 16,
+            paddingTop: modalTopInset + 56,
             paddingBottom: insets.bottom + 96,
             paddingHorizontal: 22,
           }}
@@ -435,7 +438,7 @@ export default function Jij() {
             </Text>
           </Pressable>
         </ScrollView>
-        <AppHeader title={t('Profiel', 'Profile')} hideAvatar />
+        <ModalCloseBtn />
       </KeyboardAvoidingView>
     );
   }
@@ -462,7 +465,7 @@ export default function Jij() {
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
           contentContainerStyle={{
-            paddingTop: insets.top + HEADER_HEIGHT + 16,
+            paddingTop: modalTopInset + 56,
             paddingBottom: insets.bottom + 96,
             paddingHorizontal: 22,
           }}
@@ -576,7 +579,7 @@ export default function Jij() {
             </Pressable>
           )}
         </ScrollView>
-        <AppHeader title={t('Profiel', 'Profile')} hideAvatar />
+        <ModalCloseBtn />
       </KeyboardAvoidingView>
     );
   }
@@ -593,7 +596,7 @@ export default function Jij() {
         ref={scrollRef}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{
-          paddingTop: insets.top + HEADER_HEIGHT,
+          paddingTop: modalTopInset + 56,
           paddingBottom: insets.bottom + 96,
         }}
       >
@@ -755,7 +758,7 @@ export default function Jij() {
           </View>
         )}
       </ScrollView>
-      <AppHeader title={t('Profiel', 'Profile')} hideAvatar />
+      <ModalCloseBtn />
       <Modal
         visible={showQr && Boolean(me?.handle)}
         animationType="slide"
@@ -817,6 +820,37 @@ function authFieldStyle(isNacht: boolean) {
     borderColor: isNacht ? '#2a2a2d' : palette.paper,
     backgroundColor: isNacht ? palette.noir2 : palette.paper2,
   };
+}
+
+/**
+ * Sluit-knop voor /jij in modal-presentatie. Absoluut gepositioneerd
+ * rechtsboven; iOS-modals zitten al onder de status-bar (top: 12),
+ * Android-modals moeten safe-area aanhouden (top: insets.top + 12).
+ */
+function ModalCloseBtn() {
+  const mode = useMode();
+  const roles = useRoles();
+  const insets = useSafeAreaInsets();
+  const isNacht = mode === 'nacht';
+  const top = (Platform.OS === 'android' ? insets.top : 0) + 12;
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel="Sluiten"
+      onPress={() => router.back()}
+      hitSlop={8}
+      style={[
+        styles.modalCloseBtn,
+        {
+          top,
+          backgroundColor: isNacht ? palette.noir2 : palette.paper2,
+          borderColor: isNacht ? '#2a2a2d' : palette.paper,
+        },
+      ]}
+    >
+      <Cross size={10} thickness={2.2} color={roles.fg} />
+    </Pressable>
+  );
 }
 
 function SectionHead({
@@ -1220,6 +1254,20 @@ function PrivacySection({
 const styles = StyleSheet.create({
   root: { flex: 1 },
   loadingRoot: { alignItems: 'center', justifyContent: 'center' },
+
+  // Sluit-knop voor modal-presentatie — 28×28 cirkel met brand-kruis,
+  // rechtsboven, zelfde footprint als de avatar-stip elders.
+  modalCloseBtn: {
+    position: 'absolute',
+    right: 18,
+    width: 28,
+    height: 28,
+    borderRadius: 999,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 20,
+  },
 
   // Auth-form copy
   kicker: {

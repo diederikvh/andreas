@@ -97,6 +97,10 @@ export default function RootLayout() {
                 name="event/[id]/invite"
                 options={{ presentation: 'modal' }}
               />
+              <Stack.Screen
+                name="jij"
+                options={{ presentation: 'modal' }}
+              />
             </Stack>
             <ModeCurtain />
             <PushManager />
