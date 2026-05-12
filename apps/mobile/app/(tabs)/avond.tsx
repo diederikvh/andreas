@@ -444,38 +444,63 @@ export default function Avond() {
     [leadsPool]
   );
   // Rails voor 'expo'-mode — gebaseerd op `expoEvents` (ApiEvent[]).
-  // 'Nieuw geopend': exhibitions die in de afgelopen 14 dagen zijn
-  // gestart. 'Sluit deze maand': exhibitions met endsAt binnen 30
-  // dagen. Andere rails sorteren op startsAt.
-  const railNewlyOpened = useMemo<ApiEvent[]>(() => {
-    const cutoff = Date.now() - 14 * 24 * 3600 * 1000;
-    return expoEvents
-      .filter((e) => e.kind === 'exhibition')
-      .filter((e) => {
-        if (!e.startsAt) return false;
-        const startMs = new Date(e.startsAt).getTime();
-        return startMs > cutoff && startMs <= Date.now();
-      })
-      .sort(
-        (a, b) =>
-          new Date(b.startsAt!).getTime() - new Date(a.startsAt!).getTime()
-      );
-  }, [expoEvents]);
+  // Doorlopende exhibitions worden gegroepeerd per type instelling
+  // (musea per genre, galleries per scene) i.p.v. op tijd-framing —
+  // omdat exhibitions weken/maanden lopen is een tijd-rail ('nieuw
+  // geopend' / 'sluit binnenkort') minder bruikbaar dan een
+  // instelling-rail. De 'Vandaag te bezoeken'-rail valt buiten dit
+  // patroon: dat is `filtered` in cmode='expo' (zelfde today-window-
+  // logic als 'uit'-mode, alleen mode-cats wijzen op Kunst/Literatuur).
+  const isFotoOrMediaMuseum = (e: ApiEvent): boolean => {
+    const sub = e.venue.subtype ?? [];
+    return sub.includes('fotografie') || sub.includes('media');
+  };
 
-  const railClosingSoon = useMemo<ApiEvent[]>(() => {
-    const cutoff = Date.now() + 30 * 24 * 3600 * 1000;
-    return expoEvents
-      .filter((e) => e.kind === 'exhibition')
-      .filter((e) => {
-        if (!e.endsAt) return false;
-        const endMs = new Date(e.endsAt).getTime();
-        return endMs > Date.now() && endMs < cutoff;
-      })
-      .sort(
-        (a, b) =>
-          new Date(a.endsAt!).getTime() - new Date(b.endsAt!).getTime()
-      );
-  }, [expoEvents]);
+  const sortByStartsAt = (a: ApiEvent, b: ApiEvent) =>
+    new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime();
+
+  const railMuseaMain = useMemo<ApiEvent[]>(
+    () =>
+      expoEvents
+        .filter(
+          (e) => e.venue.type === 'museum' && !isFotoOrMediaMuseum(e)
+        )
+        .sort(sortByStartsAt),
+    [expoEvents]
+  );
+
+  const railMuseaFoto = useMemo<ApiEvent[]>(
+    () =>
+      expoEvents
+        .filter((e) => e.venue.type === 'museum' && isFotoOrMediaMuseum(e))
+        .sort(sortByStartsAt),
+    [expoEvents]
+  );
+
+  const railGalleriesHedendaags = useMemo<ApiEvent[]>(
+    () =>
+      expoEvents
+        .filter(
+          (e) =>
+            e.venue.type === 'galerie' &&
+            (e.venue.scene === 'mainstream' ||
+              e.venue.scene === 'alternatief')
+        )
+        .sort(sortByStartsAt),
+    [expoEvents]
+  );
+
+  const railGalleriesAndere = useMemo<ApiEvent[]>(
+    () =>
+      expoEvents
+        .filter(
+          (e) =>
+            e.venue.type === 'galerie' &&
+            (e.venue.scene === 'underground' || e.venue.scene === 'fringe')
+        )
+        .sort(sortByStartsAt),
+    [expoEvents]
+  );
 
   const railLit = useMemo<ApiEvent[]>(
     () =>
@@ -675,24 +700,65 @@ export default function Avond() {
         {!isLoading && !error && cmode === 'expo' && (
           <>
             <Rail
-              kicker={t('Nieuw geopend', 'Newly opened')}
+              kicker={t('Vandaag te bezoeken', 'Today on view')}
               moreLabel={t('Meer →', 'More →')}
               onMore={() =>
                 router.push({ pathname: '/agenda', params: { cat: 'Kunst' } })
               }
             >
-              {railNewlyOpened.map((e) => (
+              {filtered.map((r) => (
+                <RailEventCard
+                  key={r.id}
+                  event={r.event}
+                  occurrenceId={
+                    r.occurrence.id.endsWith('::next') ? undefined : r.occurrence.id
+                  }
+                  occurrenceStartsAt={r.occurrence.startsAt}
+                  occurrenceEndsAt={r.occurrence.endsAt}
+                />
+              ))}
+            </Rail>
+            <Rail
+              kicker={t('Grote kunstmusea', 'Major art museums')}
+              moreLabel={t('Meer →', 'More →')}
+              onMore={() =>
+                router.push({ pathname: '/agenda', params: { cat: 'Kunst' } })
+              }
+            >
+              {railMuseaMain.map((e) => (
                 <RailEventCard key={e.id} event={e} />
               ))}
             </Rail>
             <Rail
-              kicker={t('Sluit deze maand', 'Closing this month')}
+              kicker={t('Foto & media musea', 'Photo & media museums')}
               moreLabel={t('Meer →', 'More →')}
               onMore={() =>
                 router.push({ pathname: '/agenda', params: { cat: 'Kunst' } })
               }
             >
-              {railClosingSoon.map((e) => (
+              {railMuseaFoto.map((e) => (
+                <RailEventCard key={e.id} event={e} />
+              ))}
+            </Rail>
+            <Rail
+              kicker={t('Hedendaagse galleries', 'Contemporary galleries')}
+              moreLabel={t('Meer →', 'More →')}
+              onMore={() =>
+                router.push({ pathname: '/agenda', params: { cat: 'Kunst' } })
+              }
+            >
+              {railGalleriesHedendaags.map((e) => (
+                <RailEventCard key={e.id} event={e} />
+              ))}
+            </Rail>
+            <Rail
+              kicker={t('Andere kunstruimtes', 'Other art spaces')}
+              moreLabel={t('Meer →', 'More →')}
+              onMore={() =>
+                router.push({ pathname: '/agenda', params: { cat: 'Kunst' } })
+              }
+            >
+              {railGalleriesAndere.map((e) => (
                 <RailEventCard key={e.id} event={e} />
               ))}
             </Rail>

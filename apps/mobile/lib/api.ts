@@ -86,6 +86,12 @@ export type ApiEvent = {
         Optioneel — niet alle endpoints leveren 'm; UI gebruikt 'm voor de
         venue-tone-pill in lijst-rijen. */
     type?: VenueType | null;
+    /** Scene (mainstream/alternatief/underground/fringe). Gebruikt door
+        Vandaag-rails om galleries te splitsen op professioneel vs DIY. */
+    scene?: VenueScene | null;
+    /** Vrije subtype-tags op de venue (bv. ['fotografie'] voor FOAM). Vandaag
+        groepeert musea hierop. */
+    subtype?: string[] | null;
     description?: string | null;
     imageUrl?: string | null;
     /** Default priceNote vanuit venue (bv. "lidmaatschap vereist"). */
