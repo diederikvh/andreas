@@ -261,6 +261,11 @@ export const SEO_STYLES = `
     display: flex; align-items: center; gap: 10px;
     font-size: 13px;
   }
+  /* Op mobile is de sticky-bottom-cta al de prominente actie; top-banner
+     scrollt dan gewoon mee weg in plaats van plek af te snoepen. */
+  @media (max-width: 899px) {
+    .banner { position: static; }
+  }
   .banner .brand {
     display: inline-flex; align-items: center; gap: 7px;
     flex-shrink: 0;
@@ -345,9 +350,12 @@ export const SEO_STYLES = `
     .sticky-mobile-cta { display: none; }
   }
   /* Wanneer sticky-mobile-cta zichtbaar is, extra bottom-padding op main
-     zodat de footer niet wordt afgedekt. */
+     zodat de footer niet wordt afgedekt. Class-based ipv :has() voor
+     bredere browser-support (Chrome iOS, oudere Android-Chrome). */
   @media (max-width: 899px) {
-    body:has(.sticky-mobile-cta) main { padding-bottom: 120px; }
+    body.has-sticky-cta main {
+      padding-bottom: calc(96px + env(safe-area-inset-bottom));
+    }
   }
 
   /* Kicker — kleine caps boven elke sectie of als breadcrumb. */

@@ -820,7 +820,7 @@ function renderEventSeoPage(opts: {
   return `<!doctype html>
 <html lang="nl">
 <head>${head}</head>
-<body>
+<body class="has-sticky-cta">
   ${renderAppBanner(appLink, `${event.title} in ${event.venue.name}`)}
   ${renderMobileStickyCta(appLink, event.title)}
   <main>
@@ -1108,7 +1108,7 @@ function renderVenueSeoPage(opts: {
   return `<!doctype html>
 <html lang="nl">
 <head>${head}</head>
-<body>
+<body class="has-sticky-cta">
   ${renderAppBanner(appLink, venue.name)}
   ${renderMobileStickyCta(appLink, venue.name)}
   <main>
@@ -1880,9 +1880,62 @@ shareRoute.get('/', async (c) => {
       .tagline { font-size: 22px; }
       .stores { margin-bottom: 56px; }
     }
+    /* Mobile sticky CTA — alleen onder 900px zichtbaar. Op desktop staan
+       de store-buttons hoog in de hero, dus daar is deze overbodig. */
+    .sticky-mobile-cta {
+      position: fixed; bottom: 0; left: 0; right: 0;
+      z-index: 100;
+      display: flex; align-items: center; gap: 12px;
+      padding: 12px 18px calc(12px + env(safe-area-inset-bottom)) 18px;
+      background: rgba(10, 10, 11, 0.92);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border-top: 1px solid var(--border);
+    }
+    .sticky-mobile-cta .brand {
+      display: inline-flex; align-items: center; gap: 7px; flex-shrink: 0;
+    }
+    .sticky-mobile-cta .brand strong {
+      color: var(--fg); font-weight: 800;
+      font-size: 14px; letter-spacing: -0.1px;
+      font-family: 'Archivo', sans-serif;
+    }
+    .sticky-mobile-cta .cross-mini {
+      position: relative; width: 16px; height: 16px; flex-shrink: 0;
+    }
+    .sticky-mobile-cta .cross-mini::before,
+    .sticky-mobile-cta .cross-mini::after {
+      content: ""; position: absolute; top: 50%; left: 0;
+      width: 100%; height: 4px; margin-top: -2px; background: var(--acid);
+    }
+    .sticky-mobile-cta .cross-mini::before { transform: rotate(45deg); }
+    .sticky-mobile-cta .cross-mini::after { transform: rotate(-45deg); }
+    .sticky-mobile-cta .label {
+      flex: 1; min-width: 0;
+      color: var(--fg-muted); font-size: 13px;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .sticky-mobile-cta a.open {
+      background: var(--acid); color: var(--bg);
+      padding: 10px 18px; border-radius: 999px;
+      font-weight: 700; font-size: 13px;
+      text-decoration: none; flex-shrink: 0;
+    }
+    .sticky-mobile-cta a.open:hover { opacity: 0.9; }
+    @media (min-width: 900px) {
+      .sticky-mobile-cta { display: none; }
+    }
+    /* Extra bottom-padding op main wanneer sticky-CTA actief, zodat de
+       footer/colofon niet onder de bar verdwijnt. */
+    @media (max-width: 899px) {
+      body.has-sticky-cta main {
+        padding-bottom: calc(96px + env(safe-area-inset-bottom));
+      }
+    }
   </style>
 </head>
-<body>
+<body class="has-sticky-cta">
+  ${renderMobileStickyCta('andreas://', 'Uitgaan in Amsterdam')}
   <main>
     <header class="hero">
       <div class="logo">

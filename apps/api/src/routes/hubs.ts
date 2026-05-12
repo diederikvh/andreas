@@ -498,7 +498,7 @@ function renderHubPage(
     ${PAGE_GRID_STYLES}
   </style>
 </head>
-<body>
+<body class="has-sticky-cta">
   ${renderMobileStickyCta('andreas://', hub.title)}
   <main>
     <nav class="breadcrumb" aria-label="Kruimelpad">
