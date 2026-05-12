@@ -74,6 +74,7 @@
       "favicon": "./assets/images/favicon.png"
     },
     "plugins": [
+      "./plugins/with-android-lint-config.js",
       "expo-router",
       [
         "expo-splash-screen",
