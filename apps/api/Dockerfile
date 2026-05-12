@@ -33,6 +33,7 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY --from=build /app/apps/api/dist ./apps/api/dist
 COPY apps/api/package.json ./apps/api/
 COPY apps/api/src/db/migrations ./apps/api/src/db/migrations
+COPY apps/api/static ./apps/api/static
 COPY packages/shared/package.json ./packages/shared/
 COPY packages/shared/src ./packages/shared/src
 COPY pnpm-workspace.yaml package.json ./

@@ -120,7 +120,7 @@ const SHARED_STYLES = `
 
 function shell(opts: {
   title: string;
-  active: 'privacy' | 'voorwaarden';
+  active: 'privacy' | 'voorwaarden' | 'auteursrecht';
   body: string;
 }): string {
   return `<!doctype html>
@@ -140,6 +140,8 @@ function shell(opts: {
         <a href="/privacy" ${opts.active === 'privacy' ? 'aria-current="page"' : ''}>Privacy</a>
         &nbsp;·&nbsp;
         <a href="/voorwaarden" ${opts.active === 'voorwaarden' ? 'aria-current="page"' : ''}>Voorwaarden</a>
+        &nbsp;·&nbsp;
+        <a href="/auteursrecht" ${opts.active === 'auteursrecht' ? 'aria-current="page"' : ''}>Auteursrecht</a>
       </nav>
     </header>
     ${opts.body}
@@ -334,5 +336,92 @@ legalRoute.get('/voorwaarden', (c) => {
   c.header('Cache-Control', 'public, max-age=300');
   return c.body(
     shell({ title: 'Voorwaarden', active: 'voorwaarden', body: VOORWAARDEN_BODY })
+  );
+});
+
+// ─── Auteursrecht ───────────────────────────────────────────────────────
+
+const AUTEURSRECHT_BODY = `
+<h1>Auteursrecht & takedown</h1>
+<p class="meta">Laatst gewijzigd: ${LAST_UPDATED}</p>
+
+<p>
+  Andreas toont evenement- en venue-pagina's die zijn samengesteld uit
+  publiek toegankelijke bronnen — meestal de eigen websites,
+  ticket-platforms of social-media-kanalen van de venues zelf. De
+  bedoeling van die pagina's is om de programmering van een Amsterdams
+  podium, museum, club of bioscoop vindbaar te maken en bezoekers door
+  te verwijzen naar de venue voor verdere informatie en ticketverkoop.
+</p>
+
+<h2>Beeldmateriaal</h2>
+<p>
+  Foto's bij events en venues zijn afkomstig van de venues zelf of van
+  hun officiële PR-bronnen. Het auteursrecht ligt bij de oorspronkelijke
+  rechthebbenden. Andreas claimt geen eigenaarschap op dit beeldmateriaal
+  en gebruikt het in redactionele context, ter aankondiging van het
+  betreffende evenement — een gebruik dat in de praktijk overeenkomt met
+  het doel waarvoor de venues het materiaal hebben gepubliceerd.
+</p>
+
+<h2>Tekstuele inhoud</h2>
+<p>
+  Beschrijvingen, line-ups, prijsinformatie en data komen uit publiek
+  beschikbare bronnen (venue-agenda's, ticket-API's, RSS-feeds, en
+  redactionele samenvattingen). Originele redactionele teksten op
+  Andreas-pagina's vallen onder het auteursrecht van Andreas.
+</p>
+
+<h2>Niet voor AI-training</h2>
+<p>
+  Andreas geeft via de <code>X-Robots-Tag: noai, noimageai</code>-header
+  en de <code>robots.txt</code>-bot-richtlijnen een expliciet signaal
+  dat de inhoud van deze site niet gebruikt mag worden voor training
+  van generatieve AI-modellen. Dit signaal richt zich tot alle
+  AI-crawlers die deze veelgebruikte conventie respecteren.
+</p>
+
+<h2>Takedown-verzoek</h2>
+<p>
+  Ben je rechthebbende van een foto, tekst of evenement-vermelding op
+  Andreas en wil je dat we het verwijderen of aanpassen? Stuur een
+  takedown-verzoek naar
+  <a href="mailto:${CONTACT_EMAIL}?subject=Takedown-verzoek">${CONTACT_EMAIL}</a>
+  met:
+</p>
+<ul>
+  <li>De volledige URL van de pagina(s) waar het materiaal staat;</li>
+  <li>Een omschrijving van het auteursrechtelijk beschermde werk
+      (welke foto, welke tekst, welk event);</li>
+  <li>Een verklaring dat je rechthebbende bent of namens de rechthebbende
+      handelt;</li>
+  <li>Een werkend contactadres.</li>
+</ul>
+<p>
+  Verzoeken worden binnen <strong>vijf werkdagen</strong> behandeld.
+  In de regel verwijderen of vervangen we het materiaal direct;
+  bij onduidelijke claims nemen we contact op voor verificatie.
+</p>
+
+<h2>Onjuiste vermelding</h2>
+<p>
+  Klopt een datum, prijs, line-up of beschrijving niet meer? Stuur een
+  correctie naar
+  <a href="mailto:${CONTACT_EMAIL}?subject=Correctie">${CONTACT_EMAIL}</a>.
+  We verwerken correcties zo snel mogelijk, meestal binnen één
+  werkdag.
+</p>
+
+<h2>Contact</h2>
+<p>
+  <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a>
+</p>
+`;
+
+legalRoute.get('/auteursrecht', (c) => {
+  c.header('Content-Type', 'text/html; charset=utf-8');
+  c.header('Cache-Control', 'public, max-age=300');
+  return c.body(
+    shell({ title: 'Auteursrecht', active: 'auteursrecht', body: AUTEURSRECHT_BODY })
   );
 });

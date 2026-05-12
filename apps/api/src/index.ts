@@ -10,10 +10,12 @@ import { db, schema } from './db/index.js';
 import { adminRoute } from './routes/admin/index.js';
 import { eventsRoute } from './routes/events.js';
 import { friendsRoute, usersRoute } from './routes/friends.js';
+import { hubsRoute } from './routes/hubs.js';
 import { invitesRoute } from './routes/invites.js';
 import { legalRoute } from './routes/legal.js';
 import { pushRoute } from './routes/push.js';
 import { savesRoute } from './routes/saves.js';
+import { seoFeedsRoute } from './routes/seo-feeds.js';
 import { seriesRoute } from './routes/series.js';
 import { shareRoute } from './routes/share.js';
 import { socialRoute } from './routes/social.js';
@@ -218,6 +220,11 @@ app.route('/admin', adminRoute);
 // krijgen op `/` matches. Legal eerst zodat /privacy en /voorwaarden
 // niet door shareRoute worden opgevangen.
 app.route('/', legalRoute);
+app.route('/', seoFeedsRoute);
+// Hub-pagina's (`/muziek`, `/clubs`, `/vandaag` enz.) mounten vóór
+// shareRoute zodat de specifieke slugs voorrang krijgen op de
+// catchall-routes (geen die nu bestaan, maar future-safe).
+app.route('/', hubsRoute);
 app.route('/', shareRoute);
 
 const port = Number(process.env.PORT ?? 8787);
