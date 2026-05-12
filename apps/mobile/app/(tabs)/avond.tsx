@@ -304,16 +304,6 @@ export default function Avond() {
     cmode,
   ]);
 
-  // Lopende tentoonstellingen — altijd zichtbaar als losse strook.
-  // Bestaat uit alle exhibitions die nu lopen of binnenkort openen
-  // (de events-query haalt vanaf vandaag op zonder upper bound).
-  // Gelijk aan wat Agenda toont, zodat beide tabs dezelfde set
-  // doorlopende-events laten zien.
-  const runningExhibitions = useMemo(() => {
-    if (!events) return [];
-    return events.filter((e) => e.kind === 'exhibition');
-  }, [events]);
-
   // Pool voor de Featured-carousel: events die nu nog komen, mode-aware,
   // exhibitions weg. Vandaag's events eerst (gesorteerd op startsAt),
   // daarna upcoming dagen — zodat 't Feature ook laat op de avond niet
@@ -598,7 +588,7 @@ export default function Avond() {
             en datum-range subline. */}
         <RunningStrip
           series={cmode === 'uit' ? (seriesList ?? []) : []}
-          exhibitionEvents={cmode === 'expo' ? runningExhibitions : []}
+          exhibitionEvents={[]}
         />
 
         {isLoading && (
