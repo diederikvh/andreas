@@ -284,9 +284,6 @@ export const SEO_STYLES = `
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     min-width: 0;
   }
-  .banner .label::before {
-    content: "·"; color: var(--fg-faint); margin-right: 6px;
-  }
   .banner a.open {
     background: var(--acid); color: var(--bg);
     padding: 6px 14px; border-radius: 999px;
@@ -334,9 +331,6 @@ export const SEO_STYLES = `
     flex: 1; min-width: 0;
     color: var(--fg-muted); font-size: 13px;
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  }
-  .sticky-mobile-cta .label::before {
-    content: "·"; color: var(--fg-faint); margin-right: 6px;
   }
   .sticky-mobile-cta a.open {
     background: var(--acid); color: var(--bg);
