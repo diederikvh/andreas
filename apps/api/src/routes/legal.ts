@@ -226,6 +226,13 @@ const PRIVACY_BODY = `
   <li><strong>Server-logs</strong> — IP-adres + user-agent bij elke API-call, zodat we misbruik kunnen herkennen. Maximaal 30 dagen.</li>
 </ul>
 
+<h2>Toestel-permissies</h2>
+<ul>
+  <li><strong>Camera</strong> — alleen actief wanneer je via de friends-functie een vriend-QR-code scant. De camera-stream wordt lokaal op je toestel verwerkt om de code te decoderen; er gaan geen foto's of beelden naar onze servers.</li>
+  <li><strong>Foto-bibliotheek</strong> — alleen wanneer je een avatar-foto kiest. De gekozen foto wordt geüpload naar Bunny (zie sub-verwerkers); andere foto's blijven op je toestel.</li>
+  <li><strong>Notificaties</strong> — alleen wanneer je expliciet toestemt. Gebruikt voor herinneringen aan opgeslagen events en updates van gevolgde venues.</li>
+</ul>
+
 <h2>Wat we niet opslaan</h2>
 <ul>
   <li>Geen wachtwoorden — Andreas heeft er geen.</li>
@@ -501,6 +508,13 @@ const PRIVACY_BODY_EN = `
   <li><strong>Saves, friendships, invites, followed venues and series</strong> — if you create them.</li>
   <li><strong>Sessions</strong> — a token on your device that keeps you logged in. Valid for 180 days, rolling.</li>
   <li><strong>Server logs</strong> — IP address + user agent on each API call, so we can detect abuse. Max 30 days.</li>
+</ul>
+
+<h2>Device permissions</h2>
+<ul>
+  <li><strong>Camera</strong> — only active when you scan a friend's QR code via the friends feature. The camera stream is processed locally on your device to decode the code; no photos or imagery is sent to our servers.</li>
+  <li><strong>Photo library</strong> — only when you pick an avatar photo. The chosen photo is uploaded to Bunny (see sub-processors); other photos remain on your device.</li>
+  <li><strong>Notifications</strong> — only when you explicitly opt in. Used for reminders of saved events and updates from venues you follow.</li>
 </ul>
 
 <h2>What we don't store</h2>
