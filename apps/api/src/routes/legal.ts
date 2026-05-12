@@ -1,19 +1,51 @@
 import { Hono } from 'hono';
 
+import { PUBLIC_BASE_URL } from './_seo.js';
+
 /**
- * Privacy + voorwaarden — server-rendered, geen build-stap. Beide
- * pagina's hangen visueel aan de landing/share-stijl: zwart canvas,
+ * Privacy + voorwaarden + auteursrecht — server-rendered, geen build-stap.
+ * Pagina's hangen visueel aan de landing/share-stijl: zwart canvas,
  * acid-yellow accent, monospace sub-tekst. Stijl bewust kaal — wettelijk
  * verplicht en lezerslogisch, niet marketing.
  *
- * Bewerken? Pas de constants aan onderaan en de body-secties hierboven.
- * Datum-stempel hieronder bij elke wijziging bumpen — dat is wat de
- * AVG verwacht aan transparantie.
+ * Tweetalig: NL onder `/privacy`, `/voorwaarden`, `/auteursrecht`;
+ * EN onder `/en/privacy`, `/en/terms`, `/en/copyright`. Hreflang-alternates
+ * koppelen de varianten zodat Google de juiste taal aan de juiste markt
+ * serveert.
+ *
+ * Bewerken? Pas de constants en bodies hieronder aan. Datum-stempel bij
+ * elke materiële wijziging bumpen — dat is wat de AVG verwacht aan
+ * transparantie.
  */
 export const legalRoute = new Hono();
 
-const LAST_UPDATED = '3 mei 2026';
+const LAST_UPDATED_NL = '3 mei 2026';
+const LAST_UPDATED_EN = '3 May 2026';
 const CONTACT_EMAIL = 'wij@andreas.amsterdam';
+
+type LegalPage = 'privacy' | 'terms' | 'copyright';
+type Lang = 'nl' | 'en';
+
+/** URL-paden per taal — gebruikt voor navigatie en hreflang. */
+const PATHS: Record<Lang, Record<LegalPage, string>> = {
+  nl: { privacy: '/privacy', terms: '/voorwaarden', copyright: '/auteursrecht' },
+  en: { privacy: '/en/privacy', terms: '/en/terms', copyright: '/en/copyright' },
+};
+
+const NAV_LABELS: Record<Lang, Record<LegalPage, string>> = {
+  nl: { privacy: 'Privacy', terms: 'Voorwaarden', copyright: 'Auteursrecht' },
+  en: { privacy: 'Privacy', terms: 'Terms', copyright: 'Copyright' },
+};
+
+const BACK_LABEL: Record<Lang, string> = {
+  nl: '← terug',
+  en: '← back',
+};
+
+const LANG_SWITCH: Record<Lang, { other: Lang; label: string }> = {
+  nl: { other: 'en', label: 'EN' },
+  en: { other: 'nl', label: 'NL' },
+};
 
 const SHARED_STYLES = `
   :root { color-scheme: dark; }
@@ -120,16 +152,33 @@ const SHARED_STYLES = `
 
 function shell(opts: {
   title: string;
-  active: 'privacy' | 'voorwaarden' | 'auteursrecht';
+  lang: Lang;
+  active: LegalPage;
   body: string;
 }): string {
+  const { lang, active } = opts;
+  const labels = NAV_LABELS[lang];
+  const paths = PATHS[lang];
+  const switchTo = LANG_SWITCH[lang];
+  const switchPath = PATHS[switchTo.other][active];
+  const canonical = `${PUBLIC_BASE_URL}${paths[active]}`;
+  const altNl = `${PUBLIC_BASE_URL}${PATHS.nl[active]}`;
+  const altEn = `${PUBLIC_BASE_URL}${PATHS.en[active]}`;
+
+  const navLink = (page: LegalPage) =>
+    `<a href="${paths[page]}"${active === page ? ' aria-current="page"' : ''}>${labels[page]}</a>`;
+
   return `<!doctype html>
-<html lang="nl">
+<html lang="${lang}">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>${opts.title} · Andreas</title>
   <meta name="robots" content="index,follow" />
+  <link rel="canonical" href="${canonical}" />
+  <link rel="alternate" hreflang="nl" href="${altNl}" />
+  <link rel="alternate" hreflang="en" href="${altEn}" />
+  <link rel="alternate" hreflang="x-default" href="${altNl}" />
   <style>${SHARED_STYLES}</style>
 </head>
 <body>
@@ -137,16 +186,18 @@ function shell(opts: {
     <header class="top">
       <a class="wordmark" href="/">Andreas</a>
       <nav class="topnav">
-        <a href="/privacy" ${opts.active === 'privacy' ? 'aria-current="page"' : ''}>Privacy</a>
+        ${navLink('privacy')}
         &nbsp;·&nbsp;
-        <a href="/voorwaarden" ${opts.active === 'voorwaarden' ? 'aria-current="page"' : ''}>Voorwaarden</a>
+        ${navLink('terms')}
         &nbsp;·&nbsp;
-        <a href="/auteursrecht" ${opts.active === 'auteursrecht' ? 'aria-current="page"' : ''}>Auteursrecht</a>
+        ${navLink('copyright')}
+        &nbsp;&nbsp;|&nbsp;&nbsp;
+        <a href="${switchPath}" hreflang="${switchTo.other}">${switchTo.label}</a>
       </nav>
     </header>
     ${opts.body}
     <hr/>
-    <p class="footer-back"><a href="/">← terug</a></p>
+    <p class="footer-back"><a href="/">${BACK_LABEL[lang]}</a></p>
   </main>
 </body>
 </html>`;
@@ -156,7 +207,7 @@ function shell(opts: {
 
 const PRIVACY_BODY = `
 <h1>Privacy</h1>
-<p class="meta">Laatst gewijzigd: ${LAST_UPDATED}</p>
+<p class="meta">Laatst gewijzigd: ${LAST_UPDATED_NL}</p>
 
 <p>
   Andreas is een uitgaansapp voor Amsterdam. Hieronder staat wat we van je
@@ -251,7 +302,7 @@ legalRoute.get('/privacy', (c) => {
   c.header('Content-Type', 'text/html; charset=utf-8');
   c.header('Cache-Control', 'public, max-age=300');
   return c.body(
-    shell({ title: 'Privacy', active: 'privacy', body: PRIVACY_BODY })
+    shell({ title: 'Privacy', lang: 'nl', active: 'privacy', body: PRIVACY_BODY })
   );
 });
 
@@ -259,7 +310,7 @@ legalRoute.get('/privacy', (c) => {
 
 const VOORWAARDEN_BODY = `
 <h1>Voorwaarden</h1>
-<p class="meta">Laatst gewijzigd: ${LAST_UPDATED}</p>
+<p class="meta">Laatst gewijzigd: ${LAST_UPDATED_NL}</p>
 
 <p>
   Deze voorwaarden zijn van toepassing op het gebruik van Andreas, de
@@ -335,7 +386,7 @@ legalRoute.get('/voorwaarden', (c) => {
   c.header('Content-Type', 'text/html; charset=utf-8');
   c.header('Cache-Control', 'public, max-age=300');
   return c.body(
-    shell({ title: 'Voorwaarden', active: 'voorwaarden', body: VOORWAARDEN_BODY })
+    shell({ title: 'Voorwaarden', lang: 'nl', active: 'terms', body: VOORWAARDEN_BODY })
   );
 });
 
@@ -343,7 +394,7 @@ legalRoute.get('/voorwaarden', (c) => {
 
 const AUTEURSRECHT_BODY = `
 <h1>Auteursrecht & takedown</h1>
-<p class="meta">Laatst gewijzigd: ${LAST_UPDATED}</p>
+<p class="meta">Laatst gewijzigd: ${LAST_UPDATED_NL}</p>
 
 <p>
   Andreas toont evenement- en venue-pagina's die zijn samengesteld uit
@@ -422,6 +473,269 @@ legalRoute.get('/auteursrecht', (c) => {
   c.header('Content-Type', 'text/html; charset=utf-8');
   c.header('Cache-Control', 'public, max-age=300');
   return c.body(
-    shell({ title: 'Auteursrecht', active: 'auteursrecht', body: AUTEURSRECHT_BODY })
+    shell({ title: 'Auteursrecht', lang: 'nl', active: 'copyright', body: AUTEURSRECHT_BODY })
+  );
+});
+
+// ============================================================
+// English versions — /en/privacy, /en/terms, /en/copyright
+// ============================================================
+
+// ─── Privacy (EN) ───────────────────────────────────────────────────────
+
+const PRIVACY_BODY_EN = `
+<h1>Privacy</h1>
+<p class="meta">Last updated: ${LAST_UPDATED_EN}</p>
+
+<p>
+  Andreas is a going-out app for Amsterdam. Below: what we store about you,
+  why, where it lives, how long we keep it and how to remove it.
+</p>
+
+<h2>What we store about you</h2>
+<ul>
+  <li><strong>Phone number</strong> — required, because it's your login. We send one SMS-code per login attempt and verify it.</li>
+  <li><strong>Name and handle</strong> — whatever you set in the app. Friends can see this.</li>
+  <li><strong>Avatar</strong> — if you upload one. Optional.</li>
+  <li><strong>Preferences</strong> — night/day mode, whether your saves are visible to friends, whether you're discoverable in search.</li>
+  <li><strong>Saves, friendships, invites, followed venues and series</strong> — if you create them.</li>
+  <li><strong>Sessions</strong> — a token on your device that keeps you logged in. Valid for 180 days, rolling.</li>
+  <li><strong>Server logs</strong> — IP address + user agent on each API call, so we can detect abuse. Max 30 days.</li>
+</ul>
+
+<h2>What we don't store</h2>
+<ul>
+  <li>No passwords — Andreas doesn't have them.</li>
+  <li>No date of birth, address, gender — never asked.</li>
+  <li>No location. Distance is calculated on your device; nothing leaves the phone.</li>
+  <li>No tracking pixels, no advertising IDs, no analytics SDKs, no Facebook integration.</li>
+</ul>
+
+<h2>Why we store it (legal basis)</h2>
+<ul>
+  <li><strong>Performance of contract</strong> (article 6.1.b GDPR) — login, profile, saves and friend network: without these the app doesn't function.</li>
+  <li><strong>Legitimate interest</strong> (article 6.1.f GDPR) — server logs for abuse detection, and brief retention of OTP-codes during a login attempt.</li>
+</ul>
+
+<h2>Where it lives</h2>
+<p>
+  Andreas uses the following sub-processors, all within the European
+  Economic Area:
+</p>
+<table class="subprocs">
+  <thead>
+    <tr><th>Component</th><th>Provider</th><th>Location</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Database</td><td>Neon Inc.</td><td>Frankfurt (Germany)</td></tr>
+    <tr><td>Server hosting</td><td>Fly.io Inc.</td><td>Amsterdam</td></tr>
+    <tr><td>Image storage (avatars, photos)</td><td>BunnyWay d.o.o.</td><td>Ljubljana (Slovenia)</td></tr>
+    <tr><td>SMS / login code</td><td>Bird B.V. (formerly MessageBird)</td><td>Amsterdam</td></tr>
+    <tr><td>App distribution</td><td>Apple Distribution International</td><td>Ireland (App Store publication)</td></tr>
+  </tbody>
+</table>
+<p style="font-size:13px;opacity:0.75;">
+  With Fly.io and Neon (US companies with EU regions) we've signed a
+  data-processing agreement based on the Standard Contractual Clauses.
+</p>
+
+<h2>How long we keep it</h2>
+<ul>
+  <li><strong>Account data</strong> — until you delete your account, then removed from live systems within 30 days.</li>
+  <li><strong>Sessions</strong> — 180 days after last activity.</li>
+  <li><strong>OTP codes</strong> — minutes only, as long as the SMS code is valid.</li>
+  <li><strong>Server logs</strong> — max 30 days.</li>
+  <li><strong>Backups</strong> — encrypted, with the same rolling expiry.</li>
+</ul>
+
+<h2>Your rights</h2>
+<p>
+  Under the GDPR you have the right to access, rectify, erase, restrict and
+  port your personal data. Exercise your rights by emailing
+  <a href="mailto:${CONTACT_EMAIL}?subject=Privacy-request">${CONTACT_EMAIL}</a>.
+  We respond within four weeks.
+</p>
+<p>
+  Not satisfied? You can file a complaint with the Dutch
+  <a href="https://autoriteitpersoonsgegevens.nl/en" target="_blank" rel="noopener">Data Protection Authority</a>.
+</p>
+
+<h2>Changes</h2>
+<p>
+  When we update this text we mark it with a new date at the top. Material
+  changes (new processor, different purpose) are also announced in the app.
+</p>
+
+<h2>Contact</h2>
+<p>
+  Email: <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a>.
+</p>
+`;
+
+legalRoute.get('/en/privacy', (c) => {
+  c.header('Content-Type', 'text/html; charset=utf-8');
+  c.header('Cache-Control', 'public, max-age=300');
+  return c.body(
+    shell({ title: 'Privacy', lang: 'en', active: 'privacy', body: PRIVACY_BODY_EN })
+  );
+});
+
+// ─── Terms (EN) ─────────────────────────────────────────────────────────
+
+const TERMS_BODY_EN = `
+<h1>Terms</h1>
+<p class="meta">Last updated: ${LAST_UPDATED_EN}</p>
+
+<p>
+  These terms apply to the use of Andreas, the going-out app for Amsterdam.
+</p>
+
+<h2>What Andreas is</h2>
+<p>
+  An app that shows the programming of Amsterdam venues and what friends
+  have saved. Andreas is not a ticket vendor. Tickets, prices, doors and
+  cancellations are handled by the venue. A link on an event detail page
+  refers to that venue's website, where the transaction happens.
+</p>
+
+<h2>Your account</h2>
+<p>
+  Login uses a phone number. The user is responsible for keeping their
+  number and device confidential. An account can be deleted on request
+  via
+  <a href="mailto:${CONTACT_EMAIL}?subject=Account-deletion">${CONTACT_EMAIL}</a>.
+  Deletion takes place within five working days.
+</p>
+
+<h2>Acceptable use</h2>
+<p>Not permitted:</p>
+<ul>
+  <li>Using someone else's phone number or identity.</li>
+  <li>Spam, harassment or disclosing personal data via invites or handles.</li>
+  <li>Automated requests or large-scale scraping that strain the service.</li>
+  <li>Reverse-engineering or attempts to access other accounts.</li>
+</ul>
+<p>
+  In case of violation, an account may be deactivated without prior notice.
+</p>
+
+<h2>No warranties</h2>
+<p>
+  Andreas is provided as-is. Andreas does not warrant that an event will
+  take place, that a venue will be open, or that the service is available
+  without interruption.
+</p>
+
+<h2>Liability</h2>
+<p>
+  Andreas's liability is limited to the extent that cannot be excluded under
+  Dutch law. Indirect damages — including missed events, travel costs and
+  lost income — are excluded.
+</p>
+
+<h2>Changes</h2>
+<p>
+  Changes to these terms are announced in the app before they take effect.
+  The date at the top reflects the latest version.
+</p>
+
+<h2>Governing law</h2>
+<p>
+  Use of Andreas is governed by Dutch law. Disputes are submitted to the
+  competent court in Amsterdam.
+</p>
+
+<h2>Contact</h2>
+<p>
+  <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a>
+</p>
+`;
+
+legalRoute.get('/en/terms', (c) => {
+  c.header('Content-Type', 'text/html; charset=utf-8');
+  c.header('Cache-Control', 'public, max-age=300');
+  return c.body(
+    shell({ title: 'Terms', lang: 'en', active: 'terms', body: TERMS_BODY_EN })
+  );
+});
+
+// ─── Copyright (EN) ─────────────────────────────────────────────────────
+
+const COPYRIGHT_BODY_EN = `
+<h1>Copyright & takedown</h1>
+<p class="meta">Last updated: ${LAST_UPDATED_EN}</p>
+
+<p>
+  Andreas presents event and venue pages compiled from publicly accessible
+  sources — typically the websites, ticket platforms or social-media
+  channels of the venues themselves. The purpose of these pages is to make
+  the programming of an Amsterdam stage, museum, club or cinema findable
+  and to refer visitors to the venue for further information and ticketing.
+</p>
+
+<h2>Imagery</h2>
+<p>
+  Photos accompanying events and venues originate from the venues
+  themselves or from their official PR sources. Copyright rests with the
+  original rights-holders. Andreas claims no ownership of this imagery and
+  uses it in editorial context, to announce the relevant event — a use
+  that in practice matches the purpose for which the venues published the
+  material.
+</p>
+
+<h2>Textual content</h2>
+<p>
+  Descriptions, line-ups, pricing and dates come from publicly available
+  sources (venue agendas, ticket APIs, RSS feeds, and editorial summaries).
+  Original editorial texts on Andreas pages are copyrighted to Andreas.
+</p>
+
+<h2>Not for AI training</h2>
+<p>
+  Andreas signals via <code>X-Robots-Tag: noai, noimageai</code> headers
+  and <code>robots.txt</code> bot directives that this site's content
+  must not be used to train generative AI models. This signal addresses
+  all AI crawlers that respect the widely-used convention.
+</p>
+
+<h2>Takedown request</h2>
+<p>
+  Are you the rights-holder of a photo, text or event listing on Andreas
+  and you want it removed or amended? Send a takedown request to
+  <a href="mailto:${CONTACT_EMAIL}?subject=Takedown-request">${CONTACT_EMAIL}</a>
+  with:
+</p>
+<ul>
+  <li>The full URL of the page(s) where the material appears;</li>
+  <li>A description of the copyrighted work (which photo, which text,
+      which event);</li>
+  <li>A statement that you're the rights-holder or acting on their behalf;</li>
+  <li>A working contact address.</li>
+</ul>
+<p>
+  Requests are handled within <strong>five working days</strong>.
+  As a rule we remove or replace the material directly; for unclear claims
+  we'll get in touch for verification.
+</p>
+
+<h2>Incorrect listing</h2>
+<p>
+  Is a date, price, line-up or description wrong? Send a correction to
+  <a href="mailto:${CONTACT_EMAIL}?subject=Correction">${CONTACT_EMAIL}</a>.
+  We process corrections as quickly as possible, usually within one
+  working day.
+</p>
+
+<h2>Contact</h2>
+<p>
+  <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a>
+</p>
+`;
+
+legalRoute.get('/en/copyright', (c) => {
+  c.header('Content-Type', 'text/html; charset=utf-8');
+  c.header('Cache-Control', 'public, max-age=300');
+  return c.body(
+    shell({ title: 'Copyright', lang: 'en', active: 'copyright', body: COPYRIGHT_BODY_EN })
   );
 });

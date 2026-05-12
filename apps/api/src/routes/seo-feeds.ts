@@ -273,6 +273,12 @@ seoFeedsRoute.get('/sitemap-hubs.xml', (c) => {
     <priority>1.0</priority>
   </url>
 ${urls}
+  <url><loc>${PUBLIC_BASE_URL}/privacy</loc><changefreq>monthly</changefreq><priority>0.3</priority></url>
+  <url><loc>${PUBLIC_BASE_URL}/voorwaarden</loc><changefreq>monthly</changefreq><priority>0.3</priority></url>
+  <url><loc>${PUBLIC_BASE_URL}/auteursrecht</loc><changefreq>monthly</changefreq><priority>0.3</priority></url>
+  <url><loc>${PUBLIC_BASE_URL}/en/privacy</loc><changefreq>monthly</changefreq><priority>0.3</priority></url>
+  <url><loc>${PUBLIC_BASE_URL}/en/terms</loc><changefreq>monthly</changefreq><priority>0.3</priority></url>
+  <url><loc>${PUBLIC_BASE_URL}/en/copyright</loc><changefreq>monthly</changefreq><priority>0.3</priority></url>
 </urlset>
 `;
   return c.body(body, 200, XML_HEADERS);
