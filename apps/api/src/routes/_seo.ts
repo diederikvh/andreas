@@ -258,24 +258,40 @@ export const SEO_STYLES = `
     background: var(--bg-lift);
     border-bottom: 1px solid var(--border-soft);
     padding: 10px 18px;
-    display: flex; align-items: center; gap: 12px;
+    display: flex; align-items: center; gap: 10px;
     font-size: 13px;
   }
+  .banner .brand {
+    display: inline-flex; align-items: center; gap: 7px;
+    flex-shrink: 0;
+  }
+  .banner .brand strong {
+    color: var(--fg); font-weight: 800;
+    font-size: 13px; letter-spacing: -0.1px;
+    font-family: 'Archivo', sans-serif;
+  }
   .banner .cross-mini {
-    position: relative; width: 18px; height: 18px; flex-shrink: 0;
+    position: relative; width: 14px; height: 14px; flex-shrink: 0;
   }
   .banner .cross-mini::before, .banner .cross-mini::after {
     content: ""; position: absolute; top: 50%; left: 0;
-    width: 100%; height: 4px; margin-top: -2px; background: var(--acid);
+    width: 100%; height: 3px; margin-top: -1.5px; background: var(--acid);
   }
   .banner .cross-mini::before { transform: rotate(45deg); }
   .banner .cross-mini::after { transform: rotate(-45deg); }
-  .banner .label { flex: 1; color: var(--fg-muted); }
-  .banner .label strong { color: var(--fg); font-weight: 700; }
+  .banner .label {
+    flex: 1; color: var(--fg-muted);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    min-width: 0;
+  }
+  .banner .label::before {
+    content: "·"; color: var(--fg-faint); margin-right: 6px;
+  }
   .banner a.open {
     background: var(--acid); color: var(--bg);
     padding: 6px 14px; border-radius: 999px;
     font-weight: 600; font-size: 12px;
+    flex-shrink: 0;
   }
   .banner a.open:hover { text-decoration: none; opacity: 0.9; }
 
@@ -295,28 +311,32 @@ export const SEO_STYLES = `
     -webkit-backdrop-filter: blur(12px);
     border-top: 1px solid var(--border);
   }
+  .sticky-mobile-cta .brand {
+    display: inline-flex; align-items: center; gap: 7px;
+    flex-shrink: 0;
+  }
+  .sticky-mobile-cta .brand strong {
+    color: var(--fg); font-weight: 800;
+    font-size: 14px; letter-spacing: -0.1px;
+    font-family: 'Archivo', sans-serif;
+  }
   .sticky-mobile-cta .cross-mini {
-    position: relative; width: 20px; height: 20px; flex-shrink: 0;
+    position: relative; width: 16px; height: 16px; flex-shrink: 0;
   }
   .sticky-mobile-cta .cross-mini::before,
   .sticky-mobile-cta .cross-mini::after {
     content: ""; position: absolute; top: 50%; left: 0;
-    width: 100%; height: 5px; margin-top: -2.5px; background: var(--acid);
+    width: 100%; height: 4px; margin-top: -2px; background: var(--acid);
   }
   .sticky-mobile-cta .cross-mini::before { transform: rotate(45deg); }
   .sticky-mobile-cta .cross-mini::after { transform: rotate(-45deg); }
   .sticky-mobile-cta .label {
     flex: 1; min-width: 0;
-    line-height: 1.2;
-    display: flex; flex-direction: column;
-  }
-  .sticky-mobile-cta .label strong {
-    color: var(--fg); font-weight: 700;
-    font-size: 13px; letter-spacing: -0.1px;
-  }
-  .sticky-mobile-cta .label span {
-    color: var(--fg-muted); font-size: 12px;
+    color: var(--fg-muted); font-size: 13px;
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .sticky-mobile-cta .label::before {
+    content: "·"; color: var(--fg-faint); margin-right: 6px;
   }
   .sticky-mobile-cta a.open {
     background: var(--acid); color: var(--bg);
@@ -575,8 +595,11 @@ export type AppleAppMeta = {
 export function renderAppBanner(deeplink: string, label: string): string {
   return `
     <div class="banner" role="banner">
-      <span class="cross-mini" aria-hidden="true"></span>
-      <div class="label"><strong>ANDREAS</strong> · ${escapeHtml(label)}</div>
+      <span class="brand">
+        <strong>ANDREAS</strong>
+        <span class="cross-mini" aria-hidden="true"></span>
+      </span>
+      <span class="label">${escapeHtml(label)}</span>
       <a class="open" href="${escapeHtml(deeplink)}">Open in app</a>
     </div>
   `;
@@ -593,11 +616,11 @@ export function renderAppBanner(deeplink: string, label: string): string {
 export function renderMobileStickyCta(deeplink: string, label: string): string {
   return `
     <div class="sticky-mobile-cta" role="region" aria-label="Open in app">
-      <span class="cross-mini" aria-hidden="true"></span>
-      <div class="label">
+      <span class="brand">
         <strong>ANDREAS</strong>
-        <span>${escapeHtml(label)}</span>
-      </div>
+        <span class="cross-mini" aria-hidden="true"></span>
+      </span>
+      <span class="label">${escapeHtml(label)}</span>
       <a class="open" href="${escapeHtml(deeplink)}">Open</a>
     </div>
   `;
