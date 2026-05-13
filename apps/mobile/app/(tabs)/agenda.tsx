@@ -9,6 +9,8 @@ import {
   Alert,
   KeyboardAvoidingView,
   Modal,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
   Platform,
   Pressable,
   RefreshControl,
@@ -377,12 +379,19 @@ export default function Agenda() {
   // onScrollToIndexFailed wanneer de target-sectie nog niet
   // gemount is in de virtualized lijst.
   const pendingSectionRef = useRef<number | null>(null);
+  // Vlag: staat aan tijdens een tap-geinitieerde scroll (selectDay
+  // → scrollToLocation). onViewableItemsChanged onderdrukken we
+  // dan, anders pakt de chip elke tussenliggende sectie mee tijdens
+  // het overscrollen — onrustig, en bij landing pakt 'ie de sectie
+  // vóór de target (off-by-one). Geclr'd op momentum-end.
+  const isProgrammaticScroll = useRef(false);
 
   const selectDay = (id: string) => {
     setSelected(id);
     const sectionIndex = sections.findIndex((s) => s.id === id);
     if (sectionIndex < 0) return;
     pendingSectionRef.current = sectionIndex;
+    isProgrammaticScroll.current = true;
     sectionListRef.current?.scrollToLocation({
       sectionIndex,
       itemIndex: 0,
@@ -427,21 +436,72 @@ export default function Agenda() {
   // Sync de active chip met de huidige zichtbare sectie. In een
   // virtualized SectionList zijn niet-zichtbare items niet gemount,
   // dus onScroll + Y-positie meten werkt niet meer — gebruik
-  // onViewableItemsChanged. Stable ref zodat SectionList niet warned
-  // op identity-changes. Functional setSelected vermijdt closure-stale.
+  // onViewableItemsChanged. Twee gotcha's voor stabiliteit:
+  //  1) viewableItems[0] is de topmost row, vaak nog van de vorige
+  //     dag bij sectie-grenzen (1px zichtbaar telt). We pakken in
+  //     plaats daarvan de sectie die het meest vertegenwoordigd is
+  //     in de zichtbare items — dat is wat de gebruiker écht ziet.
+  //  2) Tijdens een tap-geinitieerde scroll (isProgrammaticScroll)
+  //     skippen we updates volledig zodat tussenliggende secties
+  //     de chip niet flickeren tot landing. onMomentumScrollEnd
+  //     clear't de flag.
   const onViewableItemsChanged = useRef(
     ({ viewableItems }: { viewableItems: ViewToken[] }) => {
+      if (isProgrammaticScroll.current) return;
       if (viewableItems.length === 0) return;
-      const first = viewableItems[0];
-      const sectionId = (first.section as OccurrenceGroup | undefined)?.id;
-      if (sectionId) {
-        setSelected((cur) => (cur === sectionId ? cur : sectionId));
+      const counts = new Map<string, number>();
+      for (const v of viewableItems) {
+        const sid = (v.section as OccurrenceGroup | undefined)?.id;
+        if (sid) counts.set(sid, (counts.get(sid) ?? 0) + 1);
+      }
+      let bestId: string | undefined;
+      let bestCount = 0;
+      for (const [id, c] of counts.entries()) {
+        if (c > bestCount) {
+          bestCount = c;
+          bestId = id;
+        }
+      }
+      if (bestId) {
+        setSelected((cur) => (cur === bestId ? cur : bestId!));
       }
     }
   ).current;
+  // 50% threshold: een rij telt pas als 'ie voor de helft binnen is.
+  // Voorkomt dat de 1-pixel-staartrij van de vorige sectie steeds als
+  // 'eerste viewable' meedoet en de chip naar de vorige dag spurt.
   const viewabilityConfig = useRef({
-    itemVisiblePercentThreshold: 0,
+    itemVisiblePercentThreshold: 50,
   }).current;
+
+  // Pas wanneer de gebruiker zélf de lijst aanraakt (vinger op het
+  // scherm voor een nieuwe scroll) clear'en we de programmatic-flag.
+  // Op momentum-end clear'en bleek te vroeg: scrollToLocation kan
+  // intermediate momentum-events vuren, en bij scrollToIndexFailed
+  // gebeurt 'r een tweede scroll — daartussen vlogen alle dagen
+  // langs als 'visible' en stuiterde de DayStrip-chip mee. De flag
+  // blijft nu staan tot een echte user-touch op de lijst.
+  //
+  // Op Android stopt de animatie van scrollToLocation níet vanzelf
+  // wanneer de gebruiker tegen-swiped — die animatie blijft door-
+  // duwen naar z'n target. We snappen daarom expliciet naar de
+  // huidige Y-positie (animated: false), wat de lopende animatie
+  // killt zodat de drag het overneemt. iOS doet dit zelf en heeft
+  // deze interventie niet nodig.
+  const onScrollBeginDrag = useCallback(
+    (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+      const wasProgrammatic = isProgrammaticScroll.current;
+      isProgrammaticScroll.current = false;
+      pendingSectionRef.current = null;
+      if (Platform.OS === 'android' && wasProgrammatic) {
+        const y = e.nativeEvent.contentOffset.y;
+        sectionListRef.current
+          ?.getScrollResponder()
+          ?.scrollTo({ y, animated: false });
+      }
+    },
+    []
+  );
 
   return (
     <View style={[styles.root, { backgroundColor: roles.bg }]}>
@@ -520,6 +580,7 @@ export default function Agenda() {
         }
         onViewableItemsChanged={onViewableItemsChanged}
         viewabilityConfig={viewabilityConfig}
+        onScrollBeginDrag={onScrollBeginDrag}
         onScrollToIndexFailed={onScrollToIndexFailed}
         // Render-window: standaard 21 (10 rows above + 10 below + 1
         // visible). Voor variable-height rows met images is dat aan
@@ -971,6 +1032,15 @@ function FilterSheet({
   const locale = useLocale();
   const timeBlocks = useTimeBlocks();
   const cmode = useContentMode();
+  // Android-modal valt full-screen, dus inset-bottom (3-knops menu /
+  // gesture-handle) moet de Bekijk/Opslaan/Sluit-rij naar boven duwen
+  // zodat de buttons niet onder de systeem-nav vallen. iOS-pageSheet
+  // hangt los van de schermrand en heeft genoeg eigen ademruimte —
+  // daar blijft de oude 16px-padding behouden, zonder home-indicator-
+  // verschuiving.
+  const sheetInsets = useSafeAreaInsets();
+  const footerPaddingBottom =
+    Platform.OS === 'android' ? sheetInsets.bottom + 16 : 16;
   // Filter de chips op de actieve content-mode: alleen cats/venue-
   // types die binnen de huidige mode events kunnen opleveren. Zo
   // voorkomen we lege-resultaat-filters (bv. 'Literatuur' in
@@ -1259,7 +1329,7 @@ function FilterSheet({
         <View
           style={[
             styles.sheetFooter,
-            { borderTopColor: roles.bgChip, paddingBottom: 16 },
+            { borderTopColor: roles.bgChip, paddingBottom: footerPaddingBottom },
           ]}
         >
           <View
@@ -1323,7 +1393,7 @@ function FilterSheet({
         <View
           style={[
             styles.sheetFooter,
-            { borderTopColor: roles.bgChip, paddingBottom: 16 },
+            { borderTopColor: roles.bgChip, paddingBottom: footerPaddingBottom },
           ]}
         >
           <Pressable

@@ -496,7 +496,7 @@ export default function Jij() {
                 key="name"
                 value={name}
                 onChangeText={onChangeName}
-                placeholder={t('bv. Harry Styles', 'e.g. Harry Styles')}
+                placeholder={t('bv. Johan Cruijff', 'e.g. Johan Cruijff')}
                 placeholderTextColor={roles.fgPlaceholder}
                 autoFocus
                 autoCapitalize="words"
@@ -521,7 +521,7 @@ export default function Jij() {
                 key="handle"
                 value={handle}
                 onChangeText={onChangeHandle}
-                placeholder="diederik"
+                placeholder="johan14"
                 placeholderTextColor={roles.fgPlaceholder}
                 autoCapitalize="none"
                 autoCorrect={false}
