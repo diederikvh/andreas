@@ -1,3 +1,4 @@
+import { scrapeArti, type ArtiResult } from './arti.js';
 import { scrapeBimhuis, type BimhuisResult } from './bimhuis.js';
 import { scrapeBoomChicago, type BoomChicagoResult } from './boomchicago.js';
 import { scrapeBrakkeGrond, type BrakkeGrondResult } from './brakkegrond.js';
@@ -76,6 +77,7 @@ export const scrapers = {
   krakeling: scrapeKrakeling,
   eventscalendar: scrapeEventsCalendar,
   volkshotel: scrapeVolkshotel,
+  arti: scrapeArti,
 } as const;
 
 export type ScraperName = keyof typeof scrapers;
@@ -114,4 +116,5 @@ export type ScraperResult =
   | WeticketVenueResult
   | KrakelingResult
   | EventsCalendarVenueResult
-  | VolkshotelVenueResult;
+  | VolkshotelVenueResult
+  | ArtiResult;
