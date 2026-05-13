@@ -175,6 +175,14 @@ Geschat: ~150 regels backend, ~80 regels mobile, ~2-3u.
 - **Kaart in venues-context** — zoals events nu een map+list-toggle hebben op de Kaart-route, zou een "venues op kaart"-modus ook fijn zijn (pins voor alle venues geografisch, niet beperkt tot vandaag-events). Nu via de Venues-tab als alfabetische lijst.
 - **Series volgen/blokken** — zelfde 3-state-systeem als venues (`series_follows.state` enum). Gevolgde series boosten in Avond, geblokkeerde verbergen al hun events overal. Post-v1.
 
+### Post-launch SEO / analytics-vervolg
+
+- **Plausible (of Simple Analytics) toevoegen** — privacy-vriendelijke pageview/referrer-tracking. Search Console laat alleen Google-traffic zien; voor inzicht in ChatGPT/Perplexity/Reddit-referrers, conversie op "Open in App"-knop en welke event/venue-pagina's populair zijn is een analytics-tool nodig. Plumbing kan via env-var (`PLAUSIBLE_DOMAIN`) zodat één Fly-secret de tracking activeert. Toevoegen wanneer ~paar duizend pageviews/maand binnenkomen.
+- **Bunny CDN edge-rules** — Image Optimizer aanzetten (anders heeft de `srcset`-werk op event-thumbs geen effect), plus `X-Robots-Tag: noai, noimageai` als response-header voor `/media/*` paden. Beide via Bunny dashboard, geen code-werk.
+- **Wikidata-entries voor grote venues** — voeg `https://andreas.amsterdam/v/<slug>` toe als external identifier op Wikidata-entries van Paradiso, Stedelijk, Concertgebouw, Bimhuis etc. AI-engines resolven entiteiten via Wikidata; sterk signaal voor brand-recognition.
+- **Search Console: sitemap submitten** — als nog niet gedaan na CNAME-verificatie. In Search Console → Sitemaps → `sitemap.xml`. Versnelt indexering substantieel.
+- **Per-hub app-deeplinks** — nu opent `andreas://` algemeen; voor `/muziek` zou `andreas://agenda?category=Muziek` direct de juiste filter in de app openen. Vereist deeplink-handler in `apps/mobile/app/(tabs)/agenda.tsx` die query-params leest.
+
 ---
 
 ## Niet meegenomen / opzettelijk gesloopt
