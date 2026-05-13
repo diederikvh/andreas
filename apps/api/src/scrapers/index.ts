@@ -24,6 +24,7 @@ import { scrapeMuziekgebouw, type MuziekgebouwResult } from './muziekgebouw.js';
 import { scrapeOnTheRoof, type OnTheRoofResult } from './ontheroof.js';
 import { scrapeP60, type P60Result } from './p60.js';
 import { scrapeParadiso, type ParadisoResult } from './paradiso.js';
+import { scrapePatronaat, type PatronaatResult } from './patronaat.js';
 import { scrapeRadioRadio, type RadioRadioResult } from './radioradio.js';
 import { scrapeShelter, type ShelterResult } from './shelter.js';
 import { scrapeSieraad, type SieraadResult } from './sieraad.js';
@@ -47,6 +48,7 @@ export const scrapers = {
   ziggodome: scrapeZiggodome,
   melkweg: scrapeMelkweg,
   paradiso: scrapeParadiso,
+  patronaat: scrapePatronaat,
   wptheatre: scrapeWpTheatre,
   muziekgebouw: scrapeMuziekgebouw,
   ontheroof: scrapeOnTheRoof,
@@ -85,6 +87,7 @@ export type ScraperResult =
   | ZiggodomeResult
   | MelkwegResult
   | ParadisoResult
+  | PatronaatResult
   | WpTheatreResult
   | MuziekgebouwResult
   | OnTheRoofResult
