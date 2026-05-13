@@ -418,10 +418,7 @@ export default function Kaart() {
               style={[styles.contextMeta, { color: roles.fgMuted }]}
               numberOfLines={1}
             >
-              {mapEvents.length}{' '}
-              {mapEvents.length === 1
-                ? t('plek in de buurt', 'spot nearby')
-                : t('plekken in de buurt', 'spots nearby')}
+              {mapEvents.length}
             </Text>
           </View>
         }
