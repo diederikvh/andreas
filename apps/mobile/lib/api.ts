@@ -214,7 +214,10 @@ export type VenueWijk =
   | 'west'
   | 'zuid'
   | 'zuidoost'
-  | 'nieuw-west';
+  | 'nieuw-west'
+  | 'amstelveen'
+  | 'zaandam'
+  | 'haarlem';
 
 export type VenueScene =
   | 'mainstream'

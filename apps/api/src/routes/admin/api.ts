@@ -42,6 +42,9 @@ const WIJKEN = [
   'zuid',
   'zuidoost',
   'nieuw-west',
+  'amstelveen',
+  'zaandam',
+  'haarlem',
 ] as const;
 type Wijk = (typeof WIJKEN)[number];
 

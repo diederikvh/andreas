@@ -52,6 +52,9 @@ const VALID_WIJKEN = new Set([
   'zuid',
   'zuidoost',
   'nieuw-west',
+  'amstelveen',
+  'zaandam',
+  'haarlem',
 ]);
 const VALID_SCENES = new Set([
   'mainstream',

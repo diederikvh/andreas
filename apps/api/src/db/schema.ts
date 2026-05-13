@@ -58,6 +58,9 @@ export const wijk = pgEnum('wijk', [
   'zuid',
   'zuidoost',
   'nieuw-west',
+  'amstelveen',
+  'zaandam',
+  'haarlem',
 ]);
 export const venueScene = pgEnum('venue_scene', [
   'mainstream',
