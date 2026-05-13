@@ -1236,6 +1236,12 @@ export function AvondFilterSheet({
   const addSaved = useAddSavedVandaagSearch();
   const [saveOpen, setSaveOpen] = useState(false);
   const [saveName, setSaveName] = useState('');
+  // Android-modal valt full-screen — inset-bottom (3-knops nav of
+  // gesture-handle) moet de footer-rij omhoog duwen. iOS pageSheet
+  // hangt los van de schermrand en heeft genoeg eigen ruimte.
+  const sheetInsets = useSafeAreaInsets();
+  const footerPaddingBottom =
+    Platform.OS === 'android' ? sheetInsets.bottom + 16 : 16;
   const { data: genreData, isLoading: genresLoading, error: genresError } =
     useEventGenres();
 
@@ -1521,7 +1527,7 @@ export function AvondFilterSheet({
         <View
           style={[
             styles.sheetFooter,
-            { borderTopColor: roles.bgChip, paddingBottom: 16 },
+            { borderTopColor: roles.bgChip, paddingBottom: footerPaddingBottom },
           ]}
         >
           <View
@@ -1585,7 +1591,7 @@ export function AvondFilterSheet({
         <View
           style={[
             styles.sheetFooter,
-            { borderTopColor: roles.bgChip, paddingBottom: 16 },
+            { borderTopColor: roles.bgChip, paddingBottom: footerPaddingBottom },
           ]}
         >
           <Pressable

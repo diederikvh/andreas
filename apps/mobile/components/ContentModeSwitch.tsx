@@ -123,14 +123,22 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
     height: 28,
     padding: 2,
-    borderRadius: 999,
+    // Expliciete halve-hoogte radius i.p.v. 999 — Android renderde
+    // `999` in combinatie met de actieve-slot backgroundColor niet
+    // betrouwbaar (slot bleef vierkant ondanks ronde wrap).
+    borderRadius: 14,
     borderWidth: 1,
     gap: 2,
+    overflow: 'hidden',
   },
   slot: {
     width: 28,
     height: 22,
-    borderRadius: 999,
+    // Halve-hoogte i.p.v. 999. + overflow:hidden zodat Android de
+    // active-bg-fill clipt op de ronde shape (anders verschijnt
+    // 'r een vierkante achterkant achter de ronde slot).
+    borderRadius: 11,
+    overflow: 'hidden',
     alignItems: 'center',
     justifyContent: 'center',
   },

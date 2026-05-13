@@ -876,6 +876,12 @@ function FilterSheet({
   const daynightChips = useMemo(() => getDaynightChips(locale), [locale]);
   const typeChips = useMemo(() => getVenueTypeChips(locale), [locale]);
   const sceneChips = useMemo(() => getSceneChips(locale), [locale]);
+  // Android-modal valt full-screen — inset-bottom (3-knops nav of
+  // gesture-handle) moet de footer-rij omhoog duwen. iOS pageSheet
+  // hangt los van de schermrand en heeft genoeg eigen ruimte.
+  const sheetInsets = useSafeAreaInsets();
+  const footerPaddingBottom =
+    Platform.OS === 'android' ? sheetInsets.bottom + 16 : 16;
   const addSaved = useAddSavedVenueSearch();
   const [saveOpen, setSaveOpen] = useState(false);
   const [saveName, setSaveName] = useState('');
@@ -1170,7 +1176,7 @@ function FilterSheet({
         <View
           style={[
             styles.sheetFooter,
-            { borderTopColor: roles.bgChip, paddingBottom: 16 },
+            { borderTopColor: roles.bgChip, paddingBottom: footerPaddingBottom },
           ]}
         >
           <View
@@ -1234,7 +1240,7 @@ function FilterSheet({
         <View
           style={[
             styles.sheetFooter,
-            { borderTopColor: roles.bgChip, paddingBottom: 16 },
+            { borderTopColor: roles.bgChip, paddingBottom: footerPaddingBottom },
           ]}
         >
           <Pressable

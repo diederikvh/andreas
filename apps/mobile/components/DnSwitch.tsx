@@ -60,6 +60,10 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     borderWidth: 1,
     justifyContent: 'center',
+    // Android clipt absolute-positioned thumb/glyph niet altijd op de
+    // borderRadius zonder explicit overflow:hidden — vooral tijdens
+    // mode-curtain re-layouts ging de pill 'm dan even vierkant zien.
+    overflow: 'hidden',
   },
   glyph: {
     position: 'absolute',
