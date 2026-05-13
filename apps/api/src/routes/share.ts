@@ -1702,7 +1702,7 @@ shareRoute.get('/', async (c) => {
       margin: 0 auto; padding: 64px 28px 96px;
     }
     /* Hero */
-    .hero { text-align: center; margin-bottom: 56px; }
+    .hero { text-align: left; margin-bottom: 56px; }
     .logo { display: inline-flex; align-items: center; gap: 18px; }
     .logo-text {
       font-family: 'Archivo', sans-serif; font-weight: 900;
@@ -1950,6 +1950,10 @@ shareRoute.get('/', async (c) => {
       ANDREAS bundelt <strong>de meest complete agenda van Amsterdam</strong>
       in één app. Concerten, clubavonden, exposities, theater, film en
       literaire events — wat er vanavond is en wat eraan komt, op één plek.
+    </p>
+    <p class="intro">
+      Krijg een herinnering, zie welke vrienden ook gaan, en ontdek meer
+      in Amsterdam. Sla je favoriete venues op en blijf op de hoogte.
     </p>
 
     <div class="stores">
