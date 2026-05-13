@@ -1,4 +1,5 @@
 import { scrapeArti, type ArtiResult } from './arti.js';
+import { scrapeBettyAsfalt, type BettyAsfaltResult } from './bettyasfalt.js';
 import { scrapeBimhuis, type BimhuisResult } from './bimhuis.js';
 import { scrapeCbkZuidoost, type CbkZuidoostResult } from './cbkzuidoost.js';
 import { scrapeNxtMuseum, type NxtMuseumResult } from './nxtmuseum.js';
@@ -82,6 +83,7 @@ export const scrapers = {
   arti: scrapeArti,
   cbkzuidoost: scrapeCbkZuidoost,
   nxtmuseum: scrapeNxtMuseum,
+  bettyasfalt: scrapeBettyAsfalt,
 } as const;
 
 export type ScraperName = keyof typeof scrapers;
@@ -123,4 +125,5 @@ export type ScraperResult =
   | VolkshotelVenueResult
   | ArtiResult
   | CbkZuidoostResult
-  | NxtMuseumResult;
+  | NxtMuseumResult
+  | BettyAsfaltResult;
