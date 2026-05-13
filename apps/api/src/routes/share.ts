@@ -1725,9 +1725,9 @@ shareRoute.get('/', async (c) => {
     h1.h1 {
       font-family: 'Archivo', sans-serif;
       font-weight: 900;
-      font-size: 36px;
-      letter-spacing: -1px;
-      line-height: 1.1;
+      font-size: 26px;
+      letter-spacing: -0.6px;
+      line-height: 1.2;
       margin: 0 0 14px;
       color: var(--fg);
       max-width: 640px;
@@ -1749,9 +1749,6 @@ shareRoute.get('/', async (c) => {
     .intro:last-of-type { margin-bottom: 32px; }
     .intro strong { color: var(--fg); font-weight: 700; }
     .intro--cta { font-weight: 600; color: var(--fg); }
-    @media (max-width: 600px) {
-      h1.h1 { font-size: 30px; letter-spacing: -0.6px; }
-    }
     /* Store-buttons */
     .stores {
       display: flex; gap: 10px; flex-wrap: wrap;
@@ -1966,8 +1963,6 @@ shareRoute.get('/', async (c) => {
       ANDREAS bundelt <strong>de complete uitgaansagenda van Amsterdam</strong>
       in één app: concerten, clubavonden, exposities, theater, film en
       literaire events. Wat er vanavond is, en wat eraan komt — op één plek.
-    </p>
-    <p class="intro">
       Sla je favoriete venues op, krijg een herinnering voor wat je niet
       wilt missen, en zie welke vrienden ook gaan.
     </p>
