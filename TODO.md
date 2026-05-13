@@ -2,7 +2,7 @@
 
 Live status van het project. Cross-checken met `HANDOFF.md` voor de oorspronkelijke briefing en met de huidige codebase voor de waarheid. Per open punt staat genoeg context om een agent zelfstandig te laten werken.
 
-Laatste sync: 2026-05-07 · branch `main`.
+Laatste sync: 2026-05-13 · branch `main`.
 
 ## Stand
 
@@ -70,6 +70,29 @@ Laatste sync: 2026-05-07 · branch `main`.
 - ✅ **Filter-knop op Kaart** in active-state vol fg (niet meer half-transparant met blur eronder); event-detail bottom-sheet sluit automatisch bij blur.
 - ✅ **Mocks-folder uitgefaseerd** — `BadgeTone` + `Friend` types verhuisd naar `lib/types.ts`, `FEED` runtime-import weg uit avond.tsx. `apps/mobile/mocks/` volledig verwijderd (1961 regels weg).
 - ✅ **Filter-bookmark-icoon** in accent-kleur voor extra opvallendheid.
+
+**Fase 7 — SEO/GEO + App Store launch** (sessie 2026-05-12 / 2026-05-13): ✅ klaar.
+- ✅ **SEO-pagina's voor events** (`/e/:id`) — uitgebreid van minimal share-redirect naar volledige SEO-pagina met `?ref=`-split: share-context houdt redirect, anders volledige pagina met JSON-LD (MusicEvent/TheaterEvent/ScreeningEvent/VisualArtsEvent/ExhibitionEvent), antwoord-capsule, facts-`<dl>` (datum/aanvang/locatie/prijs/genres/zaal/tickets), lineup, komende voorstellingen, FAQ, vergelijkbare events.
+- ✅ **SEO-pagina's voor venues** (`/v/:slug`) — idem als events: JSON-LD (MusicVenue/Museum/ArtGallery/MovieTheater/CafeOrCoffeeShop/EventVenue), facts-tabel, komende events, FAQ, vergelijkbare venues (zelfde type + scene).
+- ✅ **12 hub-pagina's** — `/muziek`, `/theater`, `/film`, `/kunst`, `/literatuur` (categorie), `/clubs`, `/musea`, `/podia`, `/bioscopen`, `/galeries` (venue-type), `/vandaag`, `/dit-weekend` (tijd). CollectionPage + ItemList JSON-LD, per-hub specifieke H2 voor venues-sectie. Top-nav-strip op homepage linkt alle 12.
+- ✅ **Homepage uitgebreid** — tagline "Heel Amsterdam, in één agenda" + intro, hub-nav strip, "Komende events" (12 shows) + "Lopende exhibitions" (8) + "Venues in Amsterdam" (30 + `<details>` voor de overige ~167) + homepage FAQ (4 vragen, JSON-LD FAQPage). Download-buttons altijd in acid-geel.
+- ✅ **Twee-koloms `page-grid` layout** op alle detail/hub-pagina's — events/venues-lijst links, sticky CTA-aside rechts op desktop (≥900px). Op iPad-portrait en mobile valt 't terug naar single column met sticky bottom-CTA i.p.v. aside.
+- ✅ **Sticky mobile CTA-bar** onderaan op alle SEO-pagina's incl. homepage. Top-banner (renderAppBanner) niet meer sticky op mobile — sticky-bottom dekt de prominente actie af.
+- ✅ **Event-thumbnails op homepage + hubs** — 56×56 lijn-stijl rijen met srcset (Bunny `?width=96/192` voor retina), lazy-loaded, placeholder met acid-kruisje voor events zonder image. Layout: thumb links, kicker (datum/tijd) boven titel, venue + genres in meta.
+- ✅ **Internal link-clusters** — "Vergelijkbare events" op event-detail (zelfde venue + zelfde category, dedupe op event-id) + "Vergelijkbare venues" op venue-detail (zelfde type + scene). Plus "Venues op deze pagina" sectie op hubs met per-hub specifieke H2 ("Alle clubs in Amsterdam", "Musea & galeries in Amsterdam" etc.).
+- ✅ **Ticket-link** in event-facts-rij + klikbare HTML FAQ-entry "Waar koop ik tickets voor X?" + JSON-LD FAQPage answer. Domain-extractor `ticketDomain()` toont `ot301.nl ↗` i.p.v. hele URL.
+- ✅ **ImageObject met `creditText` + `copyrightHolder`** op event/venue JSON-LD + visuele "FOTO VIA X" credit rechtsonder hero-image. Plus `sourceOrganization` op event JSON-LD voor content-credit.
+- ✅ **OG-image + favicon** — `/icon.png` (1024×1024 PNG van app-icoon, default OG-image), `/og.svg` (1200×630 brede card), `/favicon.png` + `/apple-touch-icon.png`. App-icons gekopieerd vanuit `apps/mobile/assets/` naar `apps/api/static/`; Dockerfile kopieert mee.
+- ✅ **`/auteursrecht`** legal-pagina met formele takedown-procedure (NL). Footer-link op alle SEO-pagina's + nav-link in legal-shell.
+- ✅ **Engelse versies** van privacy/voorwaarden/auteursrecht onder `/en/privacy`, `/en/terms`, `/en/copyright`. Hreflang-alternates koppelen NL- en EN-varianten; topnav heeft NL↔EN-toggle. Sitemap-venues bevat alle 6 legal-URLs.
+- ✅ **Camera-permissie** + foto-bibliotheek + notificaties expliciet vermeld in privacy NL+EN (vereist door Google Play voor permission-review).
+- ✅ **AI-crawler signaling** — `X-Robots-Tag: noai, noimageai` headers op eigen image-assets (`/icon.png`, `/og.svg`, `/favicon.png`, `/apple-touch-icon.png`); `<meta name="robots" content="index,follow,max-image-preview:large">` + `<meta name="ai-content-declaration" content="no-ai-training">` op alle SEO-pagina's.
+- ✅ **Sitemap-architectuur** — `/sitemap.xml` index wijst naar `sitemap-hubs.xml` (12 + homepage), `sitemap-events.xml` (~2500) en `sitemap-venues.xml` (~200 + legal-URLs). Per-URL `<lastmod>`/`<changefreq>`/`<priority>`.
+- ✅ **`robots.txt`** met expliciete `Allow:` voor Googlebot, Google-Extended, GPTBot, OAI-SearchBot, ChatGPT-User, ClaudeBot, Claude-Web, anthropic-ai, PerplexityBot, Perplexity-User, meta-externalagent, MistralAI-User. `/llms.txt` voor AI-crawler-overview.
+- ✅ **ANDREAS in capitalen** op alle SEO-pagina's en homepage (consistent met app-conventie). Top-banner wordmark + ✕ in volgorde "ANDREAS ✕ {pagina-label} [Open in app]".
+- ✅ **`PAGE_GRID_STYLES` gedeelde CSS** in `_seo.ts` voor hub/detail-page grid. `LIST_STYLES` voor lijn-rijen. `renderThumb()`/`renderEventMeta()`/`renderHeroImage()`/`renderMobileStickyCta()` helpers.
+- ✅ **App Store knop activatie** — `APPLE_APP_ID=6765957164` + `APP_STORE_URL=https://apps.apple.com/nl/app/andreas/id6765957164` als Fly secrets. Alle download-buttons + smart-app-banner (`apple-itunes-app` meta) wijzen nu naar de echte App Store ID.
+- ✅ **Google Search Console** geactiveerd via CNAME-DNS-verificatie. Submit `sitemap.xml` in Search Console nog open (zie post-launch sectie).
 
 ---
 
@@ -147,7 +170,7 @@ Geschat: ~150 regels backend, ~80 regels mobile, ~2-3u.
 | OTA-updates | Expo Updates, channel `production` | `cd apps/mobile && eas update --branch production --message "..."` |
 | Admin-panel | `https://api.andreas.amsterdam/admin` | Wachtwoord-login (`ADMIN_PASSWORD`), één-user superadmin |
 
-**Fly secrets** (live in andreas-api): `DATABASE_URL`, `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL=https://api.andreas.amsterdam`, `BUNNY_STORAGE_ZONE`, `BUNNY_STORAGE_PASSWORD`, `BUNNY_PULL_ZONE_URL`, `MESSAGEBIRD_ORIGINATOR=Andreas`, `MESSAGEBIRD_ACCESS_KEY`, `BIRD_WORKSPACE_ID`, `BIRD_CHANNEL_ID`, `APPLE_TEAM_ID=ZV933BZL7W`, `APPLE_BUNDLE_ID=amsterdam.andreas.app`, `ADMIN_PASSWORD`, `ADMIN_API_KEY`.
+**Fly secrets** (live in andreas-api): `DATABASE_URL`, `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL=https://api.andreas.amsterdam`, `BUNNY_STORAGE_ZONE`, `BUNNY_STORAGE_PASSWORD`, `BUNNY_PULL_ZONE_URL`, `MESSAGEBIRD_ORIGINATOR=Andreas`, `MESSAGEBIRD_ACCESS_KEY`, `BIRD_WORKSPACE_ID`, `BIRD_CHANNEL_ID`, `APPLE_TEAM_ID=ZV933BZL7W`, `APPLE_BUNDLE_ID=amsterdam.andreas.app`, `APPLE_APP_ID=6765957164`, `APP_STORE_URL=https://apps.apple.com/nl/app/andreas/id6765957164`, `APPLE_REVIEW_DEMO_PHONE`, `APPLE_REVIEW_DEMO_CODE`, `ADMIN_PASSWORD`, `ADMIN_API_KEY`, `EXPO_ACCESS_TOKEN`, `ANTHROPIC_API_KEY`.
 
 **Admin + n8n koppeling**:
 - Webview: `https://api.andreas.amsterdam/admin/login` → wachtwoord → 30-dagen httpOnly cookie. CRUD voor events/venues/series met "uitzetten"-toggle.
