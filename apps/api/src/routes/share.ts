@@ -1722,21 +1722,36 @@ shareRoute.get('/', async (c) => {
       color: var(--fg-muted); margin: 18px 0 0;
     }
     /* Intro */
+    h1.h1 {
+      font-family: 'Archivo', sans-serif;
+      font-weight: 900;
+      font-size: 36px;
+      letter-spacing: -1px;
+      line-height: 1.1;
+      margin: 0 0 14px;
+      color: var(--fg);
+      max-width: 640px;
+    }
     .tagline {
       font-family: 'Archivo', sans-serif;
-      font-weight: 800;
-      font-size: 26px;
-      letter-spacing: -0.6px;
-      line-height: 1.2;
-      margin: 0 0 20px;
-      color: var(--fg);
+      font-weight: 600;
+      font-size: 19px;
+      letter-spacing: -0.3px;
+      line-height: 1.3;
+      margin: 0 0 24px;
+      color: var(--fg-muted);
     }
     .intro {
       font-size: 16px; line-height: 1.55;
-      color: var(--fg-read); margin: 0 0 32px;
+      color: var(--fg-read); margin: 0 0 18px;
       max-width: 580px;
     }
+    .intro:last-of-type { margin-bottom: 32px; }
     .intro strong { color: var(--fg); font-weight: 700; }
+    .intro--cta { font-weight: 600; color: var(--fg); }
+    @media (max-width: 600px) {
+      h1.h1 { font-size: 30px; letter-spacing: -0.6px; }
+    }
     /* Store-buttons */
     .stores {
       display: flex; gap: 10px; flex-wrap: wrap;
@@ -1945,15 +1960,19 @@ shareRoute.get('/', async (c) => {
       <p class="kicker">Amsterdam · ${new Date().getFullYear()}</p>
     </header>
 
+    <h1 class="h1">Uitgaan in Amsterdam — alle events in één app</h1>
     <p class="tagline">Heel Amsterdam, in één agenda.</p>
     <p class="intro">
-      ANDREAS bundelt <strong>de meest complete agenda van Amsterdam</strong>
-      in één app. Concerten, clubavonden, exposities, theater, film en
-      literaire events — wat er vanavond is en wat eraan komt, op één plek.
+      ANDREAS bundelt <strong>de complete uitgaansagenda van Amsterdam</strong>
+      in één app: concerten, clubavonden, exposities, theater, film en
+      literaire events. Wat er vanavond is, en wat eraan komt — op één plek.
     </p>
     <p class="intro">
-      Krijg een herinnering, zie welke vrienden ook gaan, en ontdek meer
-      in Amsterdam. Sla je favoriete venues op en blijf op de hoogte.
+      Sla je favoriete venues op, krijg een herinnering voor wat je niet
+      wilt missen, en zie welke vrienden ook gaan.
+    </p>
+    <p class="intro intro--cta">
+      Download ANDREAS gratis en ontdek meer in Amsterdam.
     </p>
 
     <div class="stores">
