@@ -213,7 +213,13 @@ export async function scrapeDeNieuweAnita(options?: {
   }
   result.fetched = posts.length;
 
-  const venueCategory = venue.categories?.[0] ?? 'Muziek';
+  // Anita is multidisciplinair (muziek + theater + film + literatuur);
+  // de Muziek-default biaste Claude richting 'Muziek' bij ambigue
+  // titels (Cinemanita-filmnight kreeg ten onrechte Muziek). 'Theater'
+  // is een neutralere hint voor een multidisciplinair podium —
+  // Claude valt voor concrete signals (film/lezing/concert) terug op
+  // de juiste category uit titel + description.
+  const venueCategory = venue.categories?.[0] ?? 'Theater';
 
   const now = new Date();
   const currentYear = now.getFullYear();
@@ -290,13 +296,17 @@ export async function scrapeDeNieuweAnita(options?: {
         continue;
       }
 
-      // Description: pak de excerpt (beknopt en schoon), fallback
-      // op de eerste paragraaf van content.
-      let description = decode(stripTags(p.excerpt.rendered || ''));
-      if (description.length < 30) {
-        const fromContent = decode(stripTags(p.content.rendered || '')).slice(0, 800);
-        if (fromContent.length > description.length) description = fromContent;
-      }
+      // Description: gebruik content.rendered (per-post unieke tekst).
+      // De WP excerpt-template op Anita is admin-fout gevuld met
+      // dezelfde "Witte Geit..."-tekst op álle posts, dus die negeren
+      // we volledig. Content begint met de titel + tijd-aanduiding;
+      // we knippen 'm op 800 tekens om buitenproportionele description-
+      // sizes te voorkomen.
+      let description = decode(stripTags(p.content.rendered || ''))
+        .replace(/\s+/g, ' ')
+        .trim()
+        .slice(0, 800);
+      if (!description) description = null as unknown as string;
 
       const enriched = await enrichEvent({
         title,
