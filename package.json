@@ -8,10 +8,17 @@
     "generate": "pnpm --filter @andreas/api db:generate",
     "migrate": "pnpm --filter @andreas/api db:migrate",
     "studio": "pnpm --filter @andreas/api db:studio",
-    "seed": "pnpm --filter @andreas/api db:seed"
+    "seed": "pnpm --filter @andreas/api db:seed",
+    "android": "expo run:android",
+    "ios": "expo run:ios"
   },
   "engines": {
     "node": ">=20"
   },
-  "packageManager": "pnpm@9.15.0"
+  "packageManager": "pnpm@9.15.0",
+  "dependencies": {
+    "expo": "~54.0.34",
+    "react": "19.1.0",
+    "react-native": "0.81.5"
+  }
 }

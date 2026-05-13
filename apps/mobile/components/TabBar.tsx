@@ -2,7 +2,7 @@ import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { BlurView } from 'expo-blur';
 import type { ComponentType } from 'react';
 import { useEffect } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -57,18 +57,35 @@ export function TabBar({ state, navigation }: BottomTabBarProps) {
     ? (requests?.length ?? 0) + (invites?.length ?? 0)
     : 0;
 
-  const tint = mode === 'nacht' ? 'rgba(23,23,26,0.65)' : 'rgba(235,230,216,0.7)';
+  // Op Android leverde expo-blur weinig effect, dus tint extra
+  // opaque om de pill nog leesbaar te houden boven scrollende content.
+  const tint =
+    Platform.OS === 'android'
+      ? mode === 'nacht'
+        ? 'rgba(23,23,26,0.92)'
+        : 'rgba(235,230,216,0.94)'
+      : mode === 'nacht'
+        ? 'rgba(23,23,26,0.65)'
+        : 'rgba(235,230,216,0.7)';
   const border = mode === 'nacht' ? '#2a2a2d' : palette.paper;
   const idle = mode === 'nacht' ? '#6a6a68' : '#8a7e6b';
-  const bottom = Math.max(insets.bottom - 16, 4);
+  // iOS: -16 corrigeert tegen de home-indicator-zone die toch al
+  // diapublisher-vrij is. Android: insets.bottom is óf ~0 (gesture
+  // nav, edge-to-edge) óf de hoogte van de 3-knops nav-bar (~48dp) —
+  // beide gevallen willen we de pill ér boven plaatsen, niet erop,
+  // dus geen -16 correctie. +4 voor ademruimte tussen pill en nav.
+  const bottom =
+    Platform.OS === 'android'
+      ? insets.bottom + 4
+      : Math.max(insets.bottom - 16, 4);
 
   // Filter naar alleen zichtbare tabs (kaart heeft href:null, valt af).
   const visible = state.routes.filter((r) => TAB_ICONS[r.name]);
   const currentRoute = state.routes[state.index];
-  // Op een verborgen tab (zoals /kaart) zit de huidige route niet in
-  // `visible` — dan markeren we geen tab als actief, zodat de
-  // gebruiker visueel ziet dat de huidige pagina buiten het tab-stelsel
-  // valt en geen van de hoofdsecties is.
+  // Op een verborgen tab (zoals /kaart) verbergen we de hele tab-bar
+  // — Kaart heeft een eigen sluit-knop in de header en wil maximaal
+  // schermvulling voor de map zelf. Vroeger faadde alleen de blob
+  // uit; nu valt de balk helemaal weg.
   const onHiddenRoute = currentRoute
     ? !TAB_ICONS[currentRoute.name]
     : false;
@@ -102,6 +119,12 @@ export function TabBar({ state, navigation }: BottomTabBarProps) {
     transform: [{ translateX: `${progress.value * 100}%` }],
     opacity: opacity.value,
   }));
+
+  // Pas ná álle hooks early-returnen — anders schendt de
+  // hook-volgorde tussen renders en gooit React "rendered fewer
+  // hooks than expected" wanneer je van een zichtbare tab naar
+  // /kaart navigeert.
+  if (onHiddenRoute) return null;
 
   return (
     <View style={[styles.bar, { bottom, borderColor: border }]}>

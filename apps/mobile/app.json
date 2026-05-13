@@ -111,7 +111,8 @@
         }
       ],
       "expo-notifications",
-      "expo-localization"
+      "expo-localization",
+      "@maplibre/maplibre-react-native"
     ],
     "experiments": {
       "typedRoutes": true,

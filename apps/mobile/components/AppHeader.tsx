@@ -4,7 +4,7 @@ import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import { useCallback, useRef, useState, type ReactNode } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -50,6 +50,13 @@ type AppHeaderProps = {
    * loop ontstaat.
    */
   hideAvatar?: boolean;
+  /**
+   * Overschrijft de standaard-inhoud van het rechter-blok (Content-
+   * mode-switch + avatar) door custom JSX. Gebruikt op de Kaart-tab
+   * om een sluit-knop op de avatar-plek te zetten in plaats van de
+   * standaard navigatie-affordance.
+   */
+  rightSlot?: ReactNode;
 };
 
 /**
@@ -67,6 +74,7 @@ export function AppHeader({
   title,
   showContentMode = false,
   hideAvatar = false,
+  rightSlot,
 }: AppHeaderProps = {}) {
   const mode = useMode();
   const roles = useRoles();
@@ -103,29 +111,53 @@ export function AppHeader({
       {solid ? (
         // Solid header: blur + tint, géén fade — harde rand onderaan.
         // Past bij schermen die een sticky-controls strip nodig
-        // hebben (Agenda chip-row, Kaart map-view).
+        // hebben (Agenda chip-row, Kaart map-view). Op Android levert
+        // expo-blur in praktijk weinig effect, dus we drijven daar op
+        // een hogere tint-alpha zodat de strip leesbaar blijft over
+        // scrollende content.
         <View style={StyleSheet.absoluteFill} pointerEvents="none">
-          <BlurView
-            intensity={40}
-            tint={mode === 'nacht' ? 'dark' : 'light'}
-            style={StyleSheet.absoluteFill}
-          />
+          {Platform.OS === 'ios' && (
+            <BlurView
+              intensity={40}
+              tint={mode === 'nacht' ? 'dark' : 'light'}
+              style={StyleSheet.absoluteFill}
+            />
+          )}
           <View
             style={[
               StyleSheet.absoluteFill,
               {
                 backgroundColor:
-                  mode === 'nacht'
-                    ? 'rgba(10,10,11,0.78)'
-                    : 'rgba(245,241,232,0.82)',
+                  Platform.OS === 'android'
+                    ? mode === 'nacht'
+                      ? 'rgba(10,10,11,0.92)'
+                      : 'rgba(245,241,232,0.95)'
+                    : mode === 'nacht'
+                      ? 'rgba(10,10,11,0.78)'
+                      : 'rgba(245,241,232,0.82)',
               },
             ]}
           />
         </View>
+      ) : Platform.OS === 'android' ? (
+        // Android-fallback voor de gemaskte BlurView: een verticale
+        // gradient van semi-opaque tint → transparent. Mimics de
+        // 'blur fade onder de header'-look zonder dat we afhangen van
+        // expo-blur (die op Android tot net-zichtbare ruis verbleekt).
+        <LinearGradient
+          colors={
+            mode === 'nacht'
+              ? ['rgba(10,10,11,0.92)', 'rgba(10,10,11,0.88)', 'transparent']
+              : ['rgba(245,241,232,0.94)', 'rgba(245,241,232,0.9)', 'transparent']
+          }
+          locations={[0, 0.7, 1]}
+          style={StyleSheet.absoluteFill}
+          pointerEvents="none"
+        />
       ) : (
-        // Transparante header met blur die naar onderen wegvaagt —
-        // standaard treatment voor schermen waar content er onder
-        // doorscrollt.
+        // iOS: transparante header met echte blur die naar onderen
+        // wegvaagt — standaard treatment voor schermen waar content
+        // er onder doorscrollt.
         <MaskedView
           style={StyleSheet.absoluteFill}
           pointerEvents="none"
@@ -166,8 +198,14 @@ export function AppHeader({
           )}
         </View>
         <View style={styles.headerRight}>
-          {showContentMode && <ContentModeSwitch />}
-          {!hideAvatar && <AvatarButton />}
+          {rightSlot ? (
+            rightSlot
+          ) : (
+            <>
+              {showContentMode && <ContentModeSwitch />}
+              {!hideAvatar && <AvatarButton />}
+            </>
+          )}
         </View>
       </View>
       {children}

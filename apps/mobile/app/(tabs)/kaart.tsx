@@ -12,7 +12,12 @@ import {
   View,
 } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import MapView, { Marker, PROVIDER_DEFAULT } from 'react-native-maps';
+import {
+  Camera as MapCamera,
+  type CameraRef,
+  Map as MapView,
+  Marker as MapMarker,
+} from '@maplibre/maplibre-react-native';
 import Animated, {
   Easing,
   runOnJS,
@@ -68,12 +73,14 @@ const TONE = {
 
 const SHEET_OPEN = 200;
 const SHEET_CLOSED = 0;
-// Hoogte van de extra controls onder de logo-rij in AppHeader:
-// context-line (paddingTop 4 + tekst + paddingBottom 14 ≈ 30) +
-// kaart/lijst switch + recentre (paddingHorizontal 18, height 36,
-// marginBottom 8 ≈ 44).
-const CONTROLS_HEIGHT = 76;
-const TABBAR_CLEARANCE = 60;
+// Hoogte van de toolbar-rij onder de logo-rij in AppHeader: kicker
+// staat sinds de IA-shift in rij 1 (rightSlot), dus geen aparte
+// context-line meer. Toolbar = 44 + marginBottom 8 + paddingBottom 4.
+const CONTROLS_HEIGHT = 56;
+// TabBar is verborgen op de kaart-tab; de drawer hoeft geen extra
+// clearance meer onder zich te hebben voor een (er niet meer
+// staande) tab-bar.
+const TABBAR_CLEARANCE = 0;
 
 // Default-centre voor de kaart wanneer device-locatie nog niet binnen
 // is, geweigerd, of buiten de Amsterdam-bubbel valt (bv. iOS simulator
@@ -207,25 +214,32 @@ export default function Kaart() {
   const sheetHeight = useSharedValue(0);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
-  const mapRef = useRef<MapView>(null);
+  const cameraRef = useRef<CameraRef>(null);
+  // True na de eerste auto-recentre van deze "kaart-sessie". Reset
+  // wanneer de gebruiker de kaart sluit (close-knop). Doel:
+  //  - bij openen vanuit Vandaag → recentre op huidige plek ✓
+  //  - bij terugkomen vanuit /event/[id] → géén recentre, focus
+  //    behouden ✓
+  // De ref blijft staan over blur/focus van de tab-stack zelf;
+  // alleen een expliciete close reset 'm.
+  const hasAutoRecenteredRef = useRef(false);
 
   const activeMapEvent = mapEvents.find((m) => m.event.id === activeId) ?? null;
 
   const recentre = useCallback(() => {
-    mapRef.current?.animateToRegion(
-      {
-        latitude: centre.lat,
-        longitude: centre.lng,
-        latitudeDelta: 0.045,
-        longitudeDelta: 0.04,
-      },
-      450
-    );
+    cameraRef.current?.flyTo({
+      center: [centre.lng, centre.lat],
+      zoom: 13,
+      duration: 450,
+    });
   }, [centre.lat, centre.lng]);
 
   useFocusEffect(
     useCallback(() => {
-      recentre();
+      if (!hasAutoRecenteredRef.current) {
+        recentre();
+        hasAutoRecenteredRef.current = true;
+      }
       // Bij blur de event-detail bottom sheet sluiten zodat bij
       // terugkeer een schone kaart staat. De filter-sheet is een
       // page-sheet-Modal en blokkeert tab-navigatie zelf — geen
@@ -313,33 +327,41 @@ export default function Kaart() {
       ) : (
         <>
           <MapView
-            ref={mapRef}
-            provider={PROVIDER_DEFAULT}
-            mapType={mode === 'nacht' ? 'mutedStandard' : 'standard'}
             style={StyleSheet.absoluteFill}
-            initialRegion={{
-              latitude: centre.lat,
-              longitude: centre.lng,
-              latitudeDelta: 0.045,
-              longitudeDelta: 0.04,
-            }}
-            showsUserLocation={false}
-            showsCompass={false}
-            showsMyLocationButton={false}
+            // CARTO basemaps — free vector-style JSON's, geen API-key.
+            // Positron = clean light, dark-matter = clean dark; matcht
+            // de noir/paper-tones van Andreas. OpenFreeMap heeft (nog)
+            // geen dark-style, daarom CARTO ipv mixed-providers.
+            mapStyle={
+              mode === 'nacht'
+                ? 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json'
+                : 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json'
+            }
           >
-            {/* "You" — centre marker */}
-            <Marker
-              coordinate={{ latitude: centre.lat, longitude: centre.lng }}
-              anchor={{ x: 0.5, y: 0.5 }}
+            <MapCamera
+              ref={cameraRef}
+              initialViewState={{
+                center: [centre.lng, centre.lat],
+                zoom: 13,
+              }}
+            />
+
+            {/* "You" — centre marker. Marker accepteert één child
+                (View tree) en re-rendert wanneer props veranderen
+                — geen tracksViewChanges nodig zoals bij
+                react-native-maps. */}
+            <MapMarker
+              id="centre"
+              lngLat={[centre.lng, centre.lat]}
+              anchor="center"
             >
               <View style={[styles.you, { backgroundColor: roles.accent }]}>
                 <Cross size={14} thickness={3} color={roles.onAccent} />
               </View>
-            </Marker>
+            </MapMarker>
 
             {/* Events as markers — friend-overlay komt terug zodra
-                friendships in de DB staan. Stabiele key per event-id
-                (instabiele keys ↔ AIRMap insertReactSubview crash). */}
+                friendships in de DB staan. */}
             {mapEvents.map((m) => (
               <EventMarker
                 key={m.event.id}
@@ -380,56 +402,114 @@ export default function Kaart() {
         </>
       )}
 
-      <AppHeader solid={view === 'map'} title={t('Kaart', 'Map')}>
-        <View style={styles.contextLine}>
-          <Text style={[styles.contextLabel, { color: roles.accent }]}>
-            {t('Vandaag', 'Today')}
-          </Text>
-          <Text style={[styles.contextMeta, { color: roles.fgMuted }]}>
-            {mapEvents.length}{' '}
-            {mapEvents.length === 1
-              ? t('plek in de buurt', 'spot nearby')
-              : t('plekken in de buurt', 'spots nearby')}
-          </Text>
-        </View>
-        <View style={styles.toolbar}>
-          <View style={styles.toolbarSwitch}>
-            <ViewSwitch view={view} onChange={setView} />
-          </View>
-          <FilterButton
-            count={filterCount}
-            onPress={() => setFilterOpen(true)}
-          />
-          <TransportToggle
-            transport={transport}
-            onChange={setTransport}
-          />
-          {view === 'map' && (
-            <Pressable
-              onPress={recentre}
-              style={[styles.recentre, { borderColor: roles.bgChip }]}
+      <AppHeader
+        solid={view === 'map'}
+        title={t('Kaart', 'Map')}
+        rightSlot={
+          // Kicker in row 1 ipv eigen rij — comprimeert de header.
+          // 'Today' (accent) + telling op één regel rechts naast de
+          // titel; flexShrink zodat 'ie netjes inkort op smalle
+          // schermen.
+          <View style={styles.headerKicker}>
+            <Text style={[styles.contextLabel, { color: roles.accent }]}>
+              {t('Vandaag', 'Today')}
+            </Text>
+            <Text
+              style={[styles.contextMeta, { color: roles.fgMuted }]}
+              numberOfLines={1}
             >
-              <BlurView
-                intensity={40}
-                tint={mode === 'nacht' ? 'dark' : 'light'}
-                style={StyleSheet.absoluteFill}
-              />
-              <View
-                style={[
-                  StyleSheet.absoluteFill,
-                  {
-                    backgroundColor:
-                      mode === 'nacht'
-                        ? 'rgba(23,23,26,0.65)'
-                        : 'rgba(235,230,216,0.7)',
-                  },
-                ]}
-              />
-              <Ionicons name="locate" size={20} color={roles.fgMuted} />
-            </Pressable>
-          )}
+              {mapEvents.length}{' '}
+              {mapEvents.length === 1
+                ? t('plek in de buurt', 'spot nearby')
+                : t('plekken in de buurt', 'spots nearby')}
+            </Text>
+          </View>
+        }
+      >
+        <View style={styles.toolbar}>
+          {/* Links-cluster: map/list-switch (icons-only) + filter,
+              dicht tegen elkaar zodat ze als familie ogen. */}
+          <View style={styles.toolbarLeft}>
+            <ViewSwitch view={view} onChange={setView} />
+            <FilterButton
+              count={filterCount}
+              onPress={() => setFilterOpen(true)}
+            />
+          </View>
+          {/* Rechts: sluit-knop, met zoveel mogelijk witruimte ertussen
+              via space-between op de parent. */}
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={t('Sluit kaart', 'Close map')}
+            onPress={() => {
+              // Reset de auto-recentre flag bij echt sluiten — zodat
+              // bij heropenen vanuit Vandaag de kaart wél weer
+              // recentreert op je huidige plek.
+              hasAutoRecenteredRef.current = false;
+              if (router.canGoBack()) router.back();
+              else router.replace('/avond');
+            }}
+            hitSlop={8}
+            style={[styles.closeBtn, { borderColor: roles.bgChip }]}
+          >
+            <BlurView
+              intensity={40}
+              tint={mode === 'nacht' ? 'dark' : 'light'}
+              style={StyleSheet.absoluteFill}
+            />
+            <View
+              style={[
+                StyleSheet.absoluteFill,
+                {
+                  backgroundColor:
+                    mode === 'nacht'
+                      ? 'rgba(23,23,26,0.65)'
+                      : 'rgba(235,230,216,0.7)',
+                },
+              ]}
+            />
+            <Cross size={16} thickness={3} color={roles.fgMuted} />
+          </Pressable>
         </View>
       </AppHeader>
+
+      {/* Map-overlay: recentre + transport-toggle drijven links­
+          boven op de kaart, gestapeld in een column. Direct onder
+          de AppHeader-toolbar. Alleen op map-view. */}
+      {view === 'map' && (
+        <View
+          pointerEvents="box-none"
+          style={[
+            styles.mapOverlay,
+            { top: insets.top + HEADER_HEIGHT + CONTROLS_HEIGHT + 12 },
+          ]}
+        >
+          <TransportToggle transport={transport} onChange={setTransport} />
+          <Pressable
+            onPress={recentre}
+            accessibilityLabel={t('Centreer kaart', 'Centre map')}
+            style={[styles.recentre, { borderColor: roles.bgChip }]}
+          >
+            <BlurView
+              intensity={40}
+              tint={mode === 'nacht' ? 'dark' : 'light'}
+              style={StyleSheet.absoluteFill}
+            />
+            <View
+              style={[
+                StyleSheet.absoluteFill,
+                {
+                  backgroundColor:
+                    mode === 'nacht'
+                      ? 'rgba(23,23,26,0.65)'
+                      : 'rgba(235,230,216,0.7)',
+                },
+              ]}
+            />
+            <Ionicons name="locate" size={20} color={roles.fgMuted} />
+          </Pressable>
+        </View>
+      )}
       <Modal
         visible={filterOpen}
         animationType="slide"
@@ -648,12 +728,17 @@ function SwitchBtn({
 }) {
   const roles = useRoles();
   const tint = active ? roles.onAccent : roles.fgMuted;
+  // Icon-only — geen tekst-label naast de glyph. accessibilityLabel
+  // op de Pressable houdt screen-readers tevreden.
   return (
-    <Pressable onPress={onPress} style={styles.switchBtn}>
-      <View style={styles.switchIcon}>
-        <Icon color={tint} />
-      </View>
-      <Text style={[styles.switchBtnText, { color: tint }]}>{label}</Text>
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityState={{ selected: active }}
+      style={styles.switchBtn}
+    >
+      <Icon color={tint} />
     </Pressable>
   );
 }
@@ -682,22 +767,11 @@ const EventMarker = memo(function EventMarker({
   const mode = useMode();
   const roles = useRoles();
   const tone: BadgeTone = CATEGORY_TICK[m.event.category];
-  const [tracks, setTracks] = useState(true);
-  // Eerste paint → snapshot maken → tracks uit. Daarna bij elke
-  // verandering van isActive/minutes opnieuw kort tracks aan.
-  useEffect(() => {
-    setTracks(true);
-    const t = setTimeout(() => setTracks(false), 250);
-    return () => clearTimeout(t);
-  }, [isActive, m.minutes]);
   return (
-    <Marker
-      coordinate={{
-        latitude: m.event.venue.lat,
-        longitude: m.event.venue.lng,
-      }}
-      anchor={{ x: 0.5, y: 0.5 }}
-      tracksViewChanges={tracks}
+    <MapMarker
+      id={`evt-${m.event.id}`}
+      lngLat={[m.event.venue.lng, m.event.venue.lat]}
+      anchor="center"
       onPress={() => onPress(m.event.id)}
     >
       <View
@@ -733,7 +807,7 @@ const EventMarker = memo(function EventMarker({
           {m.minutes}m
         </Text>
       </View>
-    </Marker>
+    </MapMarker>
   );
 });
 
@@ -1000,15 +1074,41 @@ function lightenHexLocal(hex: string, amount: number): string {
 const styles = StyleSheet.create({
   root: { flex: 1 },
 
-  // Context-regel boven de toolbar — wat zie je op de kaart?
-  contextLine: {
+  // Sluit-knop in de toolbar-rij. 44×44 zodat 'ie dezelfde
+  // footprint heeft als de andere toolbar-knoppen (FilterButton,
+  // recentre, ViewSwitch) — voelt visueel als één familie, met
+  // dezelfde blur + rgba-tint achtergrond.
+  closeBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 999,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+
+  // Floating overlay linksonder op de kaart — bevat de transport-
+  // toggle (loop/fiets) + recentre-knop, verticaal gestapeld zodat
+  // ze als één duim-bereik-blok lezen. pointerEvents=box-none op de
+  // wrap zodat tussenruimte de map-pannen niet blokkeert.
+  mapOverlay: {
+    position: 'absolute',
+    left: 18,
+    flexDirection: 'column',
+    alignItems: 'flex-start',
+    gap: 10,
+    zIndex: 5,
+  },
+
+  // Kicker in row 1 van de AppHeader (Today · 41 plekken in de buurt)
+  // — rechts uitgelijnd naast de title, één regel, inkort op smal
+  // scherm. Comprimeert de header want geen aparte contextLine.
+  headerKicker: {
     flexDirection: 'row',
     alignItems: 'baseline',
-    justifyContent: 'space-between',
-    paddingHorizontal: 18,
-    paddingTop: 4,
-    paddingBottom: 14,
-    gap: 10,
+    gap: 8,
+    flexShrink: 1,
   },
   contextLabel: {
     fontFamily: fontFamily.mono,
@@ -1028,11 +1128,17 @@ const styles = StyleSheet.create({
   toolbar: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    justifyContent: 'space-between',
     paddingHorizontal: 18,
     marginBottom: 8,
   },
-  toolbarSwitch: { flex: 1 },
+  // Links-cluster: switch + filter dicht bij elkaar, daarna grote
+  // witruimte naar de sluit-knop rechts (via space-between).
+  toolbarLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
 
   // Map/List view switch (in AppHeader children)
   switchTrack: {
@@ -1050,25 +1156,15 @@ const styles = StyleSheet.create({
     bottom: 3,
     borderRadius: 999,
   },
+  // Icon-only switch button — compact, geen tekst meer. 44×38 zodat
+  // de switch zelf op 44 hoog uitkomt (= matched aan andere toolbar-
+  // knoppen). Beide halves samen geven dus een pill van 88×44.
   switchBtn: {
-    flex: 1,
-    flexDirection: 'row',
+    width: 38,
+    height: 38,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
-    paddingVertical: 9,
     borderRadius: 999,
-  },
-  switchBtnText: {
-    fontFamily: fontFamily.medium,
-    fontSize: 14,
-    letterSpacing: -0.06,
-  },
-  switchIcon: {
-    width: 18,
-    height: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
 
   // List view kicker
