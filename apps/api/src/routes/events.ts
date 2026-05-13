@@ -16,6 +16,32 @@ import {
 
 const VALID_CATEGORIES = new Set(['Muziek', 'Theater', 'Literatuur', 'Film', 'Kunst']);
 
+/**
+ * Exhibitions hebben geen specifieke aanvangstijd — ze lopen tijdens
+ * openingstijden van de venue. De scraper slaat soms toch een uur op
+ * (vaak 00:00, soms een afwijkende waarde uit de bron-HTML). Mobile
+ * gebruikt `isAllDayRange()` om "Hele dag" te tonen i.p.v. een tijd;
+ * die heuristic vereist start=00:00 en end=23:59 (of multi-day).
+ *
+ * We normaliseren hier zodat client-side niets hoeft te raden:
+ *  - startsAt → 00:00 lokale dag-begin (UTC ISO)
+ *  - endsAt   → 23:59:59 van de eind-datum (UTC ISO)
+ *
+ * Geldt alleen voor kind='exhibition'. Concert/film/theater behouden
+ * hun precieze tijd-info. Helper is null-safe.
+ */
+function normalizeExhibitionTime(
+  iso: string | null,
+  edge: 'start' | 'end'
+): string | null {
+  if (!iso) return iso;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  if (edge === 'start') d.setUTCHours(0, 0, 0, 0);
+  else d.setUTCHours(23, 59, 59, 999);
+  return d.toISOString();
+}
+
 export const eventsRoute = new Hono();
 
 eventsRoute.get('/', async (c) => {
@@ -139,10 +165,17 @@ eventsRoute.get('/', async (c) => {
     // Per occurrence: friendsSaved van vrienden die díe specifieke
     // voorstelling/avond gesaved hebben. Een film op woensdag toont
     // niet de friends van de maandag-occurrence.
+    const isExhibition = event.kind === 'exhibition';
     const occurrencesInRange = occ.all.map((o) => {
       const f = friendsByOcc.get(o.id);
       return {
         ...o,
+        startsAt: isExhibition
+          ? normalizeExhibitionTime(o.startsAt as unknown as string, 'start')!
+          : o.startsAt,
+        endsAt: isExhibition
+          ? normalizeExhibitionTime(o.endsAt as unknown as string | null, 'end')
+          : o.endsAt,
         friendsSaved: f?.friends ?? [],
         friendsSavedCount: f?.count ?? 0,
       };
@@ -150,11 +183,17 @@ eventsRoute.get('/', async (c) => {
     // Event-level friendsSaved = friends van de nextOccurrence (default
     // weergave wanneer er nog geen specifieke occurrence is geselecteerd).
     const headFriends = occ.next ? friendsByOcc.get(occ.next.id) : undefined;
+    const nextStarts = occ.next?.startsAt ?? null;
+    const nextEnds = occ.next?.endsAt ?? null;
     return {
       ...event,
       // gedenormaliseerd vanuit nextOccurrence
-      startsAt: occ.next?.startsAt ?? null,
-      endsAt: occ.next?.endsAt ?? null,
+      startsAt: isExhibition
+        ? normalizeExhibitionTime(nextStarts as unknown as string | null, 'start')
+        : nextStarts,
+      endsAt: isExhibition
+        ? normalizeExhibitionTime(nextEnds as unknown as string | null, 'end')
+        : nextEnds,
       priceCents: occ.next?.priceCents ?? null,
       priceNote: occ.next?.priceNote ?? null,
       ticketUrl: occ.next?.ticketUrl ?? null,
@@ -303,24 +342,37 @@ eventsRoute.get('/:id', async (c) => {
           .orderBy(asc(schema.invites.createdAt))
       : [];
 
+  const isExhibition = row.kind === 'exhibition';
   // Per occurrence z'n eigen friendsSaved injecteren zodat de mobile-UI
   // bij een `?o=` switch direct de juiste pill toont zonder extra fetch.
   const occurrencesWithFriends = (occ?.all ?? []).map((o) => {
     const f = friendsByOcc.get(o.id);
     return {
       ...o,
+      startsAt: isExhibition
+        ? normalizeExhibitionTime(o.startsAt as unknown as string, 'start')!
+        : o.startsAt,
+      endsAt: isExhibition
+        ? normalizeExhibitionTime(o.endsAt as unknown as string | null, 'end')
+        : o.endsAt,
       friendsSaved: f?.friends ?? [],
       friendsSavedCount: f?.count ?? 0,
     };
   });
 
+  const nextStarts = occ?.next?.startsAt ?? null;
+  const nextEnds = occ?.next?.endsAt ?? null;
   return c.json({
     event: {
       ...row,
       // Gedenormaliseerd vanuit nextOccurrence — voor list-clients die
       // ook detail krijgen via dezelfde shape.
-      startsAt: occ?.next?.startsAt ?? null,
-      endsAt: occ?.next?.endsAt ?? null,
+      startsAt: isExhibition
+        ? normalizeExhibitionTime(nextStarts as unknown as string | null, 'start')
+        : nextStarts,
+      endsAt: isExhibition
+        ? normalizeExhibitionTime(nextEnds as unknown as string | null, 'end')
+        : nextEnds,
       priceCents: occ?.next?.priceCents ?? null,
       priceNote: occ?.next?.priceNote ?? null,
       ticketUrl: occ?.next?.ticketUrl ?? null,
