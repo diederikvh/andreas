@@ -105,15 +105,20 @@ function parseDateTimeFromHtml(
   html: string,
   rawTitle: string
 ): { startsAt: Date | null; description: string | null } {
-  // Decode entity-titel ("P60&#8217;S" etc) en escape voor regex
+  // Match titel uit WP REST (HTML-encoded, bv. `P60&#8217;S RADAR`)
+  // tegen Elementor-heading in de page-HTML, die dezelfde encoding
+  // gebruikt. Vroeger decode'den we hier `&#8217;` → `'` (U+2019) en
+  // zochten die unicode-versie in raw HTML — mismatch, event geskipt.
+  // We proberen beide varianten zodat het robuust blijft als WP REST
+  // en Elementor ooit divergeren.
   const decoded = rawTitle
     .replace(/&#(\d+);/g, (_, c) => String.fromCodePoint(parseInt(c, 10)))
     .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>');
-  // Vind de heading met deze titel (ongevoelig voor case + speciale chars
-  // door het in de regex te escapen)
-  const escaped = decoded.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const escRaw = rawTitle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const escDec = decoded.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const titlePattern = escRaw === escDec ? escRaw : `(?:${escRaw}|${escDec})`;
   const headingRe = new RegExp(
-    `class="elementor-heading-title[^"]*"[^>]*>\\s*${escaped}\\s*<`,
+    `class="elementor-heading-title[^"]*"[^>]*>\\s*${titlePattern}\\s*<`,
     'i'
   );
   const headingMatch = html.match(headingRe);
