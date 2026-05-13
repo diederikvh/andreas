@@ -25,6 +25,29 @@ import { enrichEvent, refineKindByDuration } from './enrich.js';
 const UA_BOT = 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)';
 const UA_REG = 'Andreas-Scraper/1.0 (+https://andreas.amsterdam)';
 
+// Concurrency voor de show-URL loop per venue. Concertgebouw heeft
+// ~4000 /concerten/-pagina's; sequentieel × ~200ms/fetch = >13 min
+// per venue, wat in productie de curl-timeout van 25 min vol vrat.
+// Met 8 parallel zakt dat naar ~1-2 min. Een venue-server overrompelen
+// we niet — 8 concurrent is standaard browser-niveau.
+const SHOW_FETCH_CONCURRENCY = 8;
+
+async function runWithConcurrency<T>(
+  items: T[],
+  limit: number,
+  fn: (item: T) => Promise<void>,
+): Promise<void> {
+  let next = 0;
+  async function worker(): Promise<void> {
+    while (next < items.length) {
+      const idx = next++;
+      await fn(items[idx]);
+    }
+  }
+  const n = Math.min(limit, items.length);
+  await Promise.all(Array.from({ length: n }, () => worker()));
+}
+
 type SchemaOrgEvent = {
   '@type': string;
   name?: string;
@@ -76,17 +99,51 @@ function slugify(s: string): string {
 // gaven die op met >20 venues × meerdere URLs). 30s is ruim voor
 // een gezonde response, maar kort genoeg om een hang snel op te
 // geven en door te gaan met de volgende URL.
+//
+// BELANGRIJK: AbortController moet de hele request inclusief
+// body-stream lezen afdekken. Een naïeve wrapper die alleen
+// `fetch()` (= connect + headers) wraps laat `r.text()` /
+// `r.arrayBuffer()` oneindig hangen op slow-loris servers.
+// Dat was de oorzaak van de "0 bytes in 25 min" prod-hang.
 const FETCH_TIMEOUT_MS = 30_000;
 
-async function fetchWithTimeout(
+async function fetchTextWithTimeout(
   url: string,
   init: RequestInit,
   timeoutMs = FETCH_TIMEOUT_MS,
-): Promise<Response | null> {
+): Promise<string | null> {
   const ctl = new AbortController();
-  const timer = setTimeout(() => ctl.abort(), timeoutMs);
+  const timer = setTimeout(() => {
+    console.warn(`[theater] fetch timeout (${timeoutMs}ms) ${url}`);
+    ctl.abort();
+  }, timeoutMs);
   try {
-    return await fetch(url, { ...init, signal: ctl.signal });
+    const r = await fetch(url, { ...init, signal: ctl.signal });
+    if (!r.ok) return null;
+    return await r.text();
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function fetchBytesWithTimeout(
+  url: string,
+  init: RequestInit,
+  timeoutMs = FETCH_TIMEOUT_MS,
+): Promise<{ buf: ArrayBuffer; mime: string } | null> {
+  const ctl = new AbortController();
+  const timer = setTimeout(() => {
+    console.warn(`[theater] image-fetch timeout (${timeoutMs}ms) ${url}`);
+    ctl.abort();
+  }, timeoutMs);
+  try {
+    const r = await fetch(url, { ...init, signal: ctl.signal });
+    if (!r.ok) return null;
+    const mime = r.headers.get('content-type') ?? 'image/jpeg';
+    const buf = await r.arrayBuffer();
+    return { buf, mime };
   } catch {
     return null;
   } finally {
@@ -95,37 +152,55 @@ async function fetchWithTimeout(
 }
 
 async function fetchHtml(url: string, useBot: boolean): Promise<string | null> {
-  const r = await fetchWithTimeout(url, {
+  return fetchTextWithTimeout(url, {
     headers: { 'user-agent': useBot ? UA_BOT : UA_REG },
   });
-  if (!r || !r.ok) return null;
-  try {
-    return await r.text();
-  } catch {
-    return null;
-  }
 }
 
-async function fetchSitemap(url: string, depth = 0): Promise<string[]> {
+type SitemapEntry = { loc: string; lastmod: Date | null };
+
+// Sub-sitemaps en show-URLs met een `<lastmod>` ouder dan dit window
+// slaan we over: een pagina die in >12 maanden niet is aangeraakt is
+// vrijwel zeker een historische show. Conservatief gekozen want
+// theaters publiceren seizoens-programma's tot ~9 maanden vooruit;
+// 365 dagen vangt 2023/2024-historie van Concertgebouw zonder
+// risico op missen van de huidige programmering.
+const SITEMAP_STALE_MS = 365 * 24 * 60 * 60 * 1000;
+
+async function fetchSitemap(url: string, depth = 0): Promise<SitemapEntry[]> {
   if (depth > 3) return [];
-  const r = await fetchWithTimeout(url, {
+  const xml = await fetchTextWithTimeout(url, {
     headers: { 'user-agent': UA_REG },
   });
-  if (!r || !r.ok) return [];
-  const xml = await r.text();
+  if (!xml) return [];
   const isIndex = /<sitemapindex\b/.test(xml);
-  const out: string[] = [];
-  for (const m of xml.matchAll(/<loc>\s*([^<\s]+)\s*<\/loc>/g)) {
-    out.push(m[1]);
+
+  const entries: SitemapEntry[] = [];
+  const blockRe = isIndex
+    ? /<sitemap[\s>][\s\S]*?<\/sitemap>/g
+    : /<url[\s>][\s\S]*?<\/url>/g;
+  for (const m of xml.matchAll(blockRe)) {
+    const locM = m[0].match(/<loc>\s*([^<\s]+)\s*<\/loc>/);
+    if (!locM) continue;
+    const lastmodM = m[0].match(/<lastmod>\s*([^<\s]+)\s*<\/lastmod>/);
+    const lm = lastmodM ? new Date(lastmodM[1]) : null;
+    entries.push({
+      loc: locM[1],
+      lastmod: lm && !isNaN(lm.getTime()) ? lm : null,
+    });
   }
-  if (!isIndex) return out;
+  if (!isIndex) return entries;
+
   // Sitemap-index: recursive volgens alle sub-sitemaps. Concertgebouw,
   // Bimhuis e.d. splitsen hun sitemap in `sitemap_sections_*.xml` of
-  // `event-sitemap{N}.xml`.
-  const all: string[] = [];
-  for (const sub of out) {
-    const subUrls = await fetchSitemap(sub, depth + 1);
-    all.push(...subUrls);
+  // `event-sitemap{N}.xml`. Skip sub-sitemaps die >365 dagen niet
+  // gewijzigd zijn — die bevatten alleen oude programma's.
+  const cutoff = Date.now() - SITEMAP_STALE_MS;
+  const all: SitemapEntry[] = [];
+  for (const sub of entries) {
+    if (sub.lastmod && sub.lastmod.getTime() < cutoff) continue;
+    const subEntries = await fetchSitemap(sub.loc, depth + 1);
+    all.push(...subEntries);
   }
   return all;
 }
@@ -168,15 +243,13 @@ function isAfgelopen(html: string): boolean {
 }
 
 async function mirrorImage(sourceUrl: string, slug: string): Promise<string | null> {
+  const r = await fetchBytesWithTimeout(sourceUrl, { headers: { 'user-agent': UA_REG } });
+  if (!r) return null;
+  if (!r.mime.startsWith('image/')) return null;
+  if (r.buf.byteLength > 8 * 1024 * 1024) return null;
+  const ext = r.mime.includes('png') ? 'png' : r.mime.includes('webp') ? 'webp' : 'jpg';
   try {
-    const r = await fetch(sourceUrl, { headers: { 'user-agent': UA_REG } });
-    if (!r.ok) return null;
-    const mime = r.headers.get('content-type') ?? 'image/jpeg';
-    if (!mime.startsWith('image/')) return null;
-    const buf = await r.arrayBuffer();
-    if (buf.byteLength > 8 * 1024 * 1024) return null;
-    const ext = mime.includes('png') ? 'png' : mime.includes('webp') ? 'webp' : 'jpg';
-    return await uploadToBunny(`media/events/th-${slug}.${ext}`, buf, mime);
+    return await uploadToBunny(`media/events/th-${slug}.${ext}`, r.buf, r.mime);
   } catch (e) {
     console.warn(`[theater] mirror image failed: ${(e as Error).message}`);
     return null;
@@ -205,6 +278,8 @@ export async function scrapeTheater(options?: {
 
   for (const venue of targets) {
     const cfg = venue.scraperConfig!.theater!;
+    const venueStart = Date.now();
+    console.log(`[theater] start ${venue.slug} (${cfg.sitemapUrl})`);
     const result: TheaterVenueResult = {
       venueId: venue.id,
       fetched: 0,
@@ -220,17 +295,26 @@ export async function scrapeTheater(options?: {
       ? new RegExp(cfg.showSlugStripPattern)
       : null;
 
-    const allUrls = await fetchSitemap(cfg.sitemapUrl);
-    const showUrls = Array.from(new Set(allUrls.filter((u) => showRe.test(u))));
+    const allEntries = await fetchSitemap(cfg.sitemapUrl);
+    const urlCutoff = Date.now() - SITEMAP_STALE_MS;
+    const matching = allEntries.filter((e) => {
+      if (!showRe.test(e.loc)) return false;
+      // Show-URL met lastmod ouder dan window = vrijwel zeker
+      // historisch. Geen lastmod = doorgaan (oude scrapers leveren
+      // er geen, en we willen niet per ongeluk alles overslaan).
+      if (e.lastmod && e.lastmod.getTime() < urlCutoff) return false;
+      return true;
+    });
+    const showUrls = Array.from(new Set(matching.map((e) => e.loc)));
     result.fetched = showUrls.length;
 
-    for (const url of showUrls) {
+    await runWithConcurrency(showUrls, SHOW_FETCH_CONCURRENCY, async (url) => {
       try {
         const html = await fetchHtml(url, !!cfg.useGooglebotUA);
-        if (!html) { result.skipped++; continue; }
+        if (!html) { result.skipped++; return; }
 
         const evs = extractEvents(html);
-        if (evs.length === 0) { result.skipped++; continue; }
+        if (evs.length === 0) { result.skipped++; return; }
 
         // Title komt uit het eerste Event blok. Slug uit de URL voor
         // stable IDs (titel kan kleine wijzigingen hebben tussen runs).
@@ -240,7 +324,7 @@ export async function scrapeTheater(options?: {
         // voor de slug zodat alle alias-pages naar één event mergen.
         const head = evs[0];
         const title = head.name?.trim();
-        if (!title) { result.skipped++; continue; }
+        if (!title) { result.skipped++; return; }
         const canonicalUrl =
           typeof head.url === 'string' && head.url.length > 0 ? head.url : url;
         let showSlug = canonicalUrl
@@ -253,7 +337,7 @@ export async function scrapeTheater(options?: {
         // prefix — zonder strip wordt elke avond een eigen event).
         if (stripRe) showSlug = showSlug.replace(stripRe, '');
         const titleSlug = slugify(showSlug || title);
-        if (!titleSlug) { result.skipped++; continue; }
+        if (!titleSlug) { result.skipped++; return; }
 
         const eventId = `evt-th-${venue.id}-${titleSlug}`;
 
@@ -300,10 +384,10 @@ export async function scrapeTheater(options?: {
           if (existing && cfg.useDataDateAttrs && isAfgelopen(html)) {
             await db.delete(schema.events).where(eq(schema.events.id, eventId));
             result.skipped++;
-            continue;
+            return;
           }
           result.skipped++;
-          continue;
+          return;
         }
 
         if (!existing) {
@@ -344,7 +428,7 @@ export async function scrapeTheater(options?: {
             result.inserted++;
           } catch (e) {
             result.errors.push(`insert event ${eventId}: ${(e as Error).message}`);
-            continue;
+            return;
           }
         }
 
@@ -384,8 +468,12 @@ export async function scrapeTheater(options?: {
         result.errors.push(`show ${url}: ${(e as Error).message}`);
         result.skipped++;
       }
-    }
+    });
 
+    const tookMs = Date.now() - venueStart;
+    console.log(
+      `[theater] done ${venue.slug} in ${tookMs}ms — fetched=${result.fetched} inserted=${result.inserted} occ=${result.occurrencesUpserted} skipped=${result.skipped} errors=${result.errors.length}`
+    );
     results.push(result);
   }
 
