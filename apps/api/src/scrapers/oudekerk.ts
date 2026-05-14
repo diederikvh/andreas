@@ -229,6 +229,16 @@ export async function scrapeOudeKerk(options?: {
       continue;
     }
 
+    // Oude Kerk's og:image is een GENERIC museum-share image
+    // (24C005F.jpg) en is voor elke event gelijk. De échte event-hero
+    // staat in de body als `<img data-src=".../blocks/_WxH_crop_…/file.jpg">`.
+    // We pakken de eerste lazy-loaded block-image als hero; fall back op
+    // og:image als geen blocks-image gevonden wordt.
+    const blockImg = detailHtml.match(
+      /data-src="(https:\/\/assets\.oudekerk\.nl\/images\/transfroms\/blocks\/_\d+x\d+_crop_center-center_none\/[^"]+)"/
+    );
+    const heroImage = blockImg ? blockImg[1] : og.image;
+
     // Parse uitsluitend uit de h1+h2(+h2) sequence — de body bevat
     // banner-/sidebar-ruis met de huidige tentoonstelling-data wat
     // anders alle events op die date-range zou zetten.
@@ -264,7 +274,7 @@ export async function scrapeOudeKerk(options?: {
       startsAt,
       endsAt,
       isMultiDay,
-      imageUrl: og.image,
+      imageUrl: heroImage,
     });
   }
   result.fetched = cards.length;
@@ -283,9 +293,10 @@ export async function scrapeOudeKerk(options?: {
         .limit(1);
 
       if (existing) {
-        const needsImageRepair =
-          !existing.imageUrl || !existing.imageUrl.match(/^https?:\/\//i);
-        if (needsImageRepair && card.imageUrl) {
+        // Altijd re-mirror: een eerdere bug-batch sloeg de generic
+        // og:image op voor alle events. Door nu altijd de detail-page
+        // block-image te mirrorre fixen we die batch in één run.
+        if (card.imageUrl) {
           const newImage =
             (await mirrorImage(card.imageUrl, card.composite)) ?? card.imageUrl;
           await db
