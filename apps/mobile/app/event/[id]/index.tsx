@@ -5,6 +5,7 @@ import * as Haptics from 'expo-haptics';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, useLocalSearchParams } from 'expo-router';
+import * as WebBrowser from 'expo-web-browser';
 import { useMemo } from 'react';
 import { Linking, Platform, Pressable, Share, StyleSheet, Text, View } from 'react-native';
 import Animated, {
@@ -36,6 +37,7 @@ import {
   translateCategory,
 } from '@/lib/eventDisplay';
 import { useLocale, useT, type Locale } from '@/lib/i18n';
+import { safeBack } from '@/lib/navigation';
 import { useEvent, useMySaves, useToggleSave } from '@/lib/queries';
 import { useMode, useRoles } from '@/store/mode';
 import { fontFamily, palette } from '@/theme/tokens';
@@ -368,7 +370,7 @@ export default function EventDetail() {
         </Animated.View>
 
         <View style={styles.topBarRow}>
-          <CircleButton icon="chevron-back" onPress={() => router.back()} />
+          <CircleButton icon="chevron-back" onPress={() => safeBack()} />
           <Animated.View style={[styles.topBarTitleWrap, stickyStyle]}>
             <Text
               numberOfLines={1}
@@ -684,67 +686,90 @@ function TicketsBlock({
 }) {
   const roles = useRoles();
   const t = useT();
-  const ctaLabel = soldOut ? t('Uitverkocht', 'Sold out') : t('Tickets', 'Tickets');
   const source = ticketSourceLabel(ticketUrl);
-  // Voor de "via {x}"-label is priceNote vaak rijker (bv. "€15,00 per
-  // keer (kleinbeurs €10,00)"); als die er is gebruiken we 'm i.p.v.
-  // het kale ticket-domein.
-  const subtitle = priceNote ?? (source ? t(`via ${source}`, `via ${source}`) : null);
-  return (
-    <>
-      <Text style={[styles.crewHeading, { color: roles.fg }]}>
-        {t('Tickets', 'Tickets')}
-      </Text>
+  // priceNote (rijkere venue-tekst) krijgt voorrang boven het kale
+  // ticket-domein als subtitle.
+  const subtitle = priceNote ?? (source ? `via ${source}` : null);
+  const title = soldOut
+    ? t('Uitverkocht', 'Sold out')
+    : price
+      ? `${t('Tickets', 'Tickets')} ${price}`
+      : t('Tickets', 'Tickets');
+
+  // Disabled state — geen tap, grijze border, geen acid-fill.
+  if (soldOut || !ticketUrl) {
+    return (
       <View
         style={[
-          styles.ticketsBlock,
+          styles.ticketsBigCtaDisabled,
           { borderColor: isNacht ? '#232327' : palette.paper },
         ]}
       >
-        <View style={styles.ticketsLeft}>
-          {price ? (
-            <Text style={[styles.ticketsPrice, { color: roles.fg }]}>
-              {price}
-            </Text>
-          ) : null}
-          {subtitle && (
-            <Text style={[styles.ticketsNote, { color: roles.fgMuted }]}>
-              {subtitle}
-            </Text>
-          )}
-        </View>
-        {ticketUrl && !soldOut && (
-          <Pressable
-            onPress={() => {
-              Haptics.selectionAsync();
-              Linking.openURL(ticketUrl).catch(() => {
-                // URL ongeldig of geen handler — stilletjes negeren.
-              });
-            }}
-            style={[
-              styles.ticketsCta,
-              { backgroundColor: isNacht ? palette.acid : palette.soil },
-            ]}
+        <Text style={[styles.ticketsBigCtaTitle, { color: roles.fgMuted }]}>
+          {title}
+        </Text>
+        {subtitle && (
+          <Text
+            style={[styles.ticketsBigCtaSubtitle, { color: roles.fgMuted }]}
           >
-            <Text
-              style={[
-                styles.ticketsCtaText,
-                { color: isNacht ? palette.noir : palette.paper3 },
-              ]}
-            >
-              {ctaLabel}
-            </Text>
-          </Pressable>
-        )}
-        {soldOut && (
-          <View style={[styles.ticketsCtaDisabled, { borderColor: roles.bgChip }]}>
-            <Text style={[styles.ticketsCtaDisabledText, { color: roles.fgMuted }]}>
-              {ctaLabel}
-            </Text>
-          </View>
+            {subtitle}
+          </Text>
         )}
       </View>
-    </>
+    );
+  }
+
+  return (
+    <Pressable
+      onPress={() => {
+        Haptics.selectionAsync();
+        // SFSafariViewController (iOS) / Chrome Custom Tabs (Android) —
+        // deelt cookies/autofill met system browser én ondersteunt
+        // Apple Pay + iDEAL-deeplinks naar bank-apps. Gebruiker swipet
+        // 'Done' om terug te keren naar Andreas met state intact.
+        WebBrowser.openBrowserAsync(ticketUrl).catch(() => {
+          // Fallback: extern openen als de in-app browser faalt.
+          Linking.openURL(ticketUrl).catch(() => {});
+        });
+      }}
+      style={[
+        styles.ticketsBigCta,
+        { backgroundColor: isNacht ? palette.acid : palette.soil },
+      ]}
+    >
+      <View style={styles.ticketsBigCtaContent}>
+        <Text
+          style={[
+            styles.ticketsBigCtaTitle,
+            { color: isNacht ? palette.noir : palette.paper3 },
+          ]}
+        >
+          {title}
+        </Text>
+        {subtitle && (
+          <Text
+            style={[
+              styles.ticketsBigCtaSubtitle,
+              {
+                color: isNacht
+                  ? 'rgba(10,10,11,0.65)'
+                  : 'rgba(255,255,255,0.7)',
+              },
+            ]}
+          >
+            {subtitle}
+          </Text>
+        )}
+      </View>
+      <Text
+        style={[
+          styles.ticketsBigCtaArrow,
+          { color: isNacht ? palette.noir : palette.paper3 },
+        ]}
+      >
+        ›
+      </Text>
+    </Pressable>
   );
 }
 
@@ -996,7 +1021,7 @@ function DetailFallback({
         ]}
       >
         <View style={styles.topBarRow}>
-          <CircleButton icon="chevron-back" onPress={() => router.back()} />
+          <CircleButton icon="chevron-back" onPress={() => safeBack()} />
         </View>
       </View>
       <View style={styles.fallbackBody}>
@@ -1014,7 +1039,7 @@ function DetailFallback({
         )}
         {tone === 'error' && (
           <Pressable
-            onPress={() => router.back()}
+            onPress={() => safeBack()}
             style={[
               styles.fallbackAction,
               { borderColor: isNacht ? '#2a2a2e' : palette.paper },
@@ -1421,53 +1446,39 @@ const styles = StyleSheet.create({
   },
   inviteChev: { fontFamily: fontFamily.mono, fontSize: 14 },
 
-  // Tickets-blok inline — zelfde container-stijl als crew+invite voor
-  // visuele consistency. Prijs links groot, button rechts.
-  ticketsBlock: {
-    marginTop: 6,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
+  // Tickets als één full-width CTA met titel + subtitle binnen de
+  // button zelf. Geen aparte section-heading — de button bevat al
+  // "Tickets". Disabled-variant voor sold-out / geen ticketUrl.
+  ticketsBigCta: {
+    marginTop: 26,
+    paddingHorizontal: 18,
+    paddingVertical: 14,
     borderRadius: 8,
-    borderWidth: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
   },
-  ticketsLeft: { flex: 1 },
-  ticketsPrice: {
-    fontFamily: fontFamily.display,
-    fontSize: 22,
-    letterSpacing: -0.44,
+  ticketsBigCtaContent: { flex: 1 },
+  ticketsBigCtaTitle: {
+    fontFamily: fontFamily.bold,
+    fontSize: 17,
+    letterSpacing: -0.2,
   },
-  ticketsNote: {
-    fontFamily: fontFamily.body,
-    fontSize: 12.5,
-    letterSpacing: -0.06,
-    lineHeight: 16,
-    marginTop: 4,
-  },
-  ticketsCta: {
-    paddingHorizontal: 22,
-    paddingVertical: 12,
-    // Lichte rounding zodat de button visueel binnen de container-radius
-    // van 8 past — een pill-shape zou eruit "vallen".
-    borderRadius: 4,
-  },
-  ticketsCtaText: {
+  ticketsBigCtaSubtitle: {
     fontFamily: fontFamily.medium,
-    fontSize: 14.5,
+    fontSize: 13,
     letterSpacing: -0.07,
   },
-  ticketsCtaDisabled: {
-    paddingHorizontal: 18,
-    paddingVertical: 11,
-    borderRadius: 999,
-    borderWidth: 1,
-  },
-  ticketsCtaDisabledText: {
+  ticketsBigCtaArrow: {
     fontFamily: fontFamily.mono,
-    fontSize: 11,
-    letterSpacing: 1,
-    textTransform: 'uppercase',
+    fontSize: 14,
+    marginLeft: 12,
+  },
+  ticketsBigCtaDisabled: {
+    marginTop: 26,
+    paddingHorizontal: 18,
+    paddingVertical: 14,
+    borderRadius: 8,
+    borderWidth: 1,
+    alignItems: 'flex-start',
   },
 });

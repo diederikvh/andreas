@@ -27,6 +27,7 @@ import {
   translateCategory,
 } from '@/lib/eventDisplay';
 import { useLocale, useT } from '@/lib/i18n';
+import { safeBack } from '@/lib/navigation';
 import {
   useEvent,
   useFriends,
@@ -151,7 +152,7 @@ export default function InviteModal() {
       });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setSent(true);
-      setTimeout(() => router.back(), 700);
+      setTimeout(() => safeBack(), 700);
     } catch {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
     }
@@ -174,7 +175,7 @@ export default function InviteModal() {
         ]}
       >
         <Pressable
-          onPress={() => router.back()}
+          onPress={() => safeBack()}
           hitSlop={8}
           style={[
             styles.closeBtn,
@@ -274,7 +275,7 @@ export default function InviteModal() {
             </Text>
             <Pressable
               onPress={() => {
-                router.back();
+                safeBack();
                 router.push('/add-friend' as never);
               }}
               style={[styles.emptyAction, { borderColor: roles.bgChip }]}

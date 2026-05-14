@@ -55,6 +55,7 @@ import {
   isAllDayRange,
 } from '@/lib/eventDisplay';
 import { useLocale, useT, type Locale } from '@/lib/i18n';
+import { safeBack } from '@/lib/navigation';
 import { useSession } from '@/lib/authClient';
 import { useSetVenueFollow, useVenue } from '@/lib/queries';
 import { useMode, useRoles } from '@/store/mode';
@@ -679,7 +680,7 @@ export default function VenueDetail() {
         </Animated.View>
 
         <View style={styles.topBarRow}>
-          <CircleButton icon="chevron-back" onPress={() => router.back()} />
+          <CircleButton icon="chevron-back" onPress={() => safeBack()} />
           <Animated.View style={[styles.topBarTitleWrap, stickyStyle]}>
             <Text
               numberOfLines={1}
@@ -1028,7 +1029,7 @@ function VenueFallback({
         ]}
       >
         <View style={styles.topBarRow}>
-          <CircleButton icon="chevron-back" onPress={() => router.back()} />
+          <CircleButton icon="chevron-back" onPress={() => safeBack()} />
         </View>
       </View>
       <View style={styles.fallbackBody}>
@@ -1046,7 +1047,7 @@ function VenueFallback({
         )}
         {tone === 'error' && (
           <Pressable
-            onPress={() => router.back()}
+            onPress={() => safeBack()}
             style={[
               styles.fallbackAction,
               { borderColor: isNacht ? '#2a2a2e' : palette.paper },
