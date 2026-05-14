@@ -179,8 +179,15 @@ export function parseDateRangeEN(text: string): {
   };
 }
 
-/** Pakt alle og:* meta-tags uit de HTML-head. */
-export function parseOgTags(html: string): {
+/**
+ * Pakt alle og:* meta-tags uit de HTML-head. Met `baseUrl` worden
+ * relatieve image-paden ("/assets/…") tot absolute URLs gemaakt —
+ * Van Gogh Museum doet dat bv. expliciet.
+ */
+export function parseOgTags(
+  html: string,
+  baseUrl?: string
+): {
   title: string | null;
   description: string | null;
   image: string | null;
@@ -193,10 +200,18 @@ export function parseOgTags(html: string): {
     const m = html.match(re);
     return m ? decode(m[1]) : null;
   };
+  let image = pick('image');
+  if (image && baseUrl && !image.match(/^https?:\/\//i)) {
+    try {
+      image = new URL(image, baseUrl).toString();
+    } catch {
+      image = null;
+    }
+  }
   return {
     title: pick('title'),
     description: pick('description'),
-    image: pick('image'),
+    image,
   };
 }
 

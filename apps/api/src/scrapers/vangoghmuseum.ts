@@ -133,7 +133,9 @@ export async function scrapeVanGoghMuseum(options?: {
       result.skipped++;
       continue;
     }
-    const og = parseOgTags(detailHtml);
+    // Van Gogh's og:image is een relatief pad ("/assets/…"); de
+    // helper resolvet 'm tegen BASE zodat we 'm kunnen mirroren.
+    const og = parseOgTags(detailHtml, BASE);
     if (!og.title) {
       result.skipped++;
       continue;
@@ -171,12 +173,27 @@ export async function scrapeVanGoghMuseum(options?: {
       const occurrenceId = `occ-vangoghmuseum-${card.slug}`;
 
       const [existing] = await db
-        .select({ id: schema.events.id })
+        .select({ id: schema.events.id, imageUrl: schema.events.imageUrl })
         .from(schema.events)
         .where(eq(schema.events.id, eventId))
         .limit(1);
 
       if (existing) {
+        // Repareer ontbrekende/ongeldige imageUrl voor bestaande events.
+        // Eerdere runs sloegen relatieve URLs ("/assets/…") op die niet
+        // resolvable zijn voor de Bunny-mirror — fix is om bij re-run
+        // alsnog te mirroren wanneer de huidige imageUrl niet absoluut is.
+        const needsImageRepair =
+          !existing.imageUrl || !existing.imageUrl.match(/^https?:\/\//i);
+        if (needsImageRepair && card.imageUrl) {
+          const newImage =
+            (await mirrorImage(card.imageUrl, card.slug)) ?? card.imageUrl;
+          await db
+            .update(schema.events)
+            .set({ imageUrl: newImage })
+            .where(eq(schema.events.id, eventId));
+        }
+
         await db
           .insert(schema.occurrences)
           .values({
