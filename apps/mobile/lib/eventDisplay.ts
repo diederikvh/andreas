@@ -478,9 +478,13 @@ export function isAllDayRange(
 }
 
 /**
- * True als het event over meerdere kalenderdagen loopt (verschillende
- * dag-getallen). Gebruikt door rail-cards om i.p.v. een tijd-label een
- * date-range ("12 jun – 5 jul") te tonen.
+ * True als het event span ≥ 24 uur is. Gebruikt door rail-cards om
+ * i.p.v. een tijd-label een date-range ("12 jun – 5 jul") te tonen,
+ * en door filters om midnight-crossing single-night events
+ * (22:00 → 03:00 = 5h span) NIET als multi-day te zien.
+ *
+ * Span-based ipv "andere kalenderdag": een 5h-event dat middernacht
+ * passeert is nog steeds een single-night event, geen multi-day ding.
  */
 export function isMultiDay(
   startIso: string,
@@ -490,11 +494,28 @@ export function isMultiDay(
   const start = new Date(startIso);
   const end = new Date(endIso);
   if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return false;
-  return (
-    start.getFullYear() !== end.getFullYear() ||
-    start.getMonth() !== end.getMonth() ||
-    start.getDate() !== end.getDate()
-  );
+  return end.getTime() - start.getTime() >= 24 * 60 * 60 * 1000;
+}
+
+/**
+ * True als het event span > 7 dagen is — een tentoonstelling, lang-
+ * lopende installatie of permanente tour. Deze events vermelden we
+ * niet per-dag in Agenda/Vandaag (te repetitief voor iets dat maanden
+ * loopt) maar tonen we wél in de doorlopende musea/galleries-rails.
+ *
+ * Multi-day-short events (24h-7d) zijn workshops/festivals/runs die
+ * wél per-dag in de agenda thuishoren — die zien we als enkel-dag-
+ * achtig en expanderen we naar per-dag occurrence-rows.
+ */
+export function isLongRunning(
+  startIso: string,
+  endIso: string | null | undefined
+): boolean {
+  if (!endIso) return false;
+  const start = new Date(startIso);
+  const end = new Date(endIso);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return false;
+  return end.getTime() - start.getTime() > 7 * 24 * 60 * 60 * 1000;
 }
 
 /**
@@ -699,22 +720,78 @@ export function expandToOccurrenceRows(events: ApiEvent[]): OccurrenceRow[] {
         });
       }
     } else if (event.startsAt) {
-      // Synthetische occurrence vanuit gedenormaliseerde event-velden.
-      rows.push({
-        id: `${event.id}::next`,
-        event,
-        occurrence: {
+      // Multi-day-short events (24h-7d) zonder expliciete occurrences
+      // expanderen we naar één synthetische rij per kalenderdag in de
+      // span. Zo verschijnt een 3-daagse workshop op elk van zijn 3
+      // dagen in de Agenda, en valt 'ie op vandaag wél in de "Vandaag
+      // te bezoeken"-rail. Per-dag occurrence = 00:00 → 23:59 (all-
+      // day-stijl); de card-/detail-laag toont alsnog de volledige
+      // date-range via event.startsAt/endsAt.
+      const md = isMultiDay(event.startsAt, event.endsAt);
+      const lr = isLongRunning(event.startsAt, event.endsAt);
+      if (md && !lr) {
+        const start = new Date(event.startsAt);
+        const end = new Date(event.endsAt!);
+        const dayStart = new Date(
+          start.getFullYear(),
+          start.getMonth(),
+          start.getDate()
+        );
+        // Inclusive einddag: pak alle dagen waarop 't event nog loopt.
+        const dayEnd = new Date(
+          end.getFullYear(),
+          end.getMonth(),
+          end.getDate()
+        );
+        for (
+          let d = new Date(dayStart);
+          d.getTime() <= dayEnd.getTime();
+          d.setDate(d.getDate() + 1)
+        ) {
+          const yyyy = d.getFullYear();
+          const mm = String(d.getMonth() + 1).padStart(2, '0');
+          const dd = String(d.getDate()).padStart(2, '0');
+          const dayKey = `${yyyy}-${mm}-${dd}`;
+          const dayStartIso = new Date(yyyy, d.getMonth(), d.getDate(), 0, 0, 0, 0).toISOString();
+          const dayEndIso = new Date(yyyy, d.getMonth(), d.getDate(), 23, 59, 59, 0).toISOString();
+          const id = `${event.id}::day::${dayKey}`;
+          rows.push({
+            id,
+            event,
+            occurrence: {
+              id,
+              startsAt: dayStartIso,
+              endsAt: dayEndIso,
+              priceCents: event.priceCents,
+              priceNote: event.priceNote ?? null,
+              ticketUrl: event.ticketUrl,
+              room: null,
+              lineup: null,
+              status: 'scheduled',
+            },
+          });
+        }
+      } else {
+        // Single-day OF long-running event: één synthetische occurrence.
+        // Long-running krijgt geen per-dag expansie (zou repetitief zijn
+        // voor iets dat maanden loopt — die filteren we elders weg uit
+        // dag-lijsten).
+        rows.push({
           id: `${event.id}::next`,
-          startsAt: event.startsAt,
-          endsAt: event.endsAt,
-          priceCents: event.priceCents,
-          priceNote: event.priceNote ?? null,
-          ticketUrl: event.ticketUrl,
-          room: null,
-          lineup: null,
-          status: 'scheduled',
-        },
-      });
+          event,
+          occurrence: {
+            id: `${event.id}::next`,
+            startsAt: event.startsAt,
+            endsAt: event.endsAt,
+            priceCents: event.priceCents,
+            priceNote: event.priceNote ?? null,
+            ticketUrl: event.ticketUrl,
+            room: null,
+            lineup: null,
+            status: 'scheduled',
+          },
+        });
+      }
     }
   }
   return rows.sort(

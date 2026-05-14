@@ -48,7 +48,7 @@ import {
   rowTimeLabel,
   getTimeBlock,
   groupOccurrenceRowsByDay,
-  isMultiDay,
+  isLongRunning,
   monthShort,
   translateCategory,
   type OccurrenceGroup,
@@ -289,15 +289,17 @@ export default function Agenda() {
   const now = useNowMinute();
 
   // Expand naar één rij per occurrence en groepeer per dag. Een
-  // 3-daagse festival komt zo op alle 3 dagen voor; een wekelijks feest
-  // op elke maandag binnen de gevraagde range. Multi-day events
-  // (exhibitions én lang-lopende shows zoals audio tours) filteren we
-  // eruit — in de dag-buckets zouden ze alleen op de start-dag
-  // verschijnen, wat onintuïtief is voor iets dat 90+ dagen loopt.
+  // 3-daagse festival komt zo op alle 3 dagen voor (via de per-dag
+  // expansie in expandToOccurrenceRows); een wekelijks feest op elke
+  // maandag binnen de gevraagde range. Long-running events (>7 dagen,
+  // dus exhibitions en lang-lopende shows zoals audio tours) filteren
+  // we eruit — in de dag-buckets zouden ze repetitief op elke dag
+  // verschijnen voor iets dat maanden loopt; die staan al via de
+  // musea/galleries-rails op Vandaag.
   const days = useMemo(() => {
     const rows = expandToOccurrenceRows(filteredEvents).filter((row) => {
       if (row.event.kind === 'exhibition') return false;
-      if (isMultiDay(row.event.startsAt, row.event.endsAt)) return false;
+      if (isLongRunning(row.event.startsAt, row.event.endsAt)) return false;
       if (effectiveEndsAtMs(row.occurrence) < now) return false;
       if (activeBlocks.length === 0) return true;
       const block = getTimeBlock(new Date(row.occurrence.startsAt).getHours());

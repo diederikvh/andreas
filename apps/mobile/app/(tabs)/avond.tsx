@@ -40,7 +40,7 @@ import {
   dowUpper,
   effectiveEndsAtMs,
   expandToOccurrenceRows,
-  isMultiDay,
+  isLongRunning,
   rowTimeLabel,
   freeLabel,
   getTimeBlock,
@@ -254,11 +254,14 @@ export default function Avond() {
     return expandToOccurrenceRows(events).filter((row) => {
       const e = row.event;
       if (e.kind === 'exhibition') return false;
-      // Multi-day events (zoals shows die maanden lopen — audio tours,
-      // permanente installaties) horen niet in "Vandaag te bezoeken".
+      // Long-running events (> 7 dagen — audio tours, permanente
+      // installaties, exhibitions) horen niet in "Vandaag te bezoeken".
       // Die zijn niet echt 'op een tijd vandaag' maar doorlopend, en
-      // verschijnen al via de musea/galleries-rails.
-      if (isMultiDay(e.startsAt, e.endsAt)) return false;
+      // verschijnen al via de musea/galleries-rails. Multi-day-short
+      // events (24h-7d) zoals weekendfestivals BLIJVEN — die zijn
+      // single-day-achtig en hun per-dag occurrence-rows tonen op de
+      // juiste dag.
+      if (isLongRunning(e.startsAt, e.endsAt)) return false;
       if (effectiveEndsAtMs(row.occurrence) < now) return false;
       // Cliënt-side vandaag-filter: alleen occurrences waarvan
       // startsAt vandaag valt (= < morgen 00:00).
@@ -520,15 +523,16 @@ export default function Avond() {
     [expoEvents, todayWindow.toMs, startOfTodayMs]
   );
 
-  // Sort-key voor expo-rails: single-day events (concrete happenings —
-  // openingen, lezingen, talks) komen vóór multi-day items
-  // (doorlopende exhibitions). Een vandaag-eenmalige opening anders
-  // is anders gevaarlijk eenvoudig te missen tussen wekenlange
-  // tentoonstellingen. Binnen elke groep sorteert 'ie op startsAt.
+  // Sort-key voor expo-rails: concrete happenings (single-day én
+  // multi-day-short, dus openingen/lezingen/festivals tot een week)
+  // komen vóór long-running items (doorlopende exhibitions). Een
+  // vandaag-eenmalige opening is anders gevaarlijk eenvoudig te
+  // missen tussen wekenlange tentoonstellingen. Binnen elke groep
+  // sorteert 'ie op startsAt.
   const sortByStartsAt = (a: ApiEvent, b: ApiEvent) => {
-    const aMulti = isMultiDay(a.startsAt, a.endsAt);
-    const bMulti = isMultiDay(b.startsAt, b.endsAt);
-    if (aMulti !== bMulti) return aMulti ? 1 : -1;
+    const aLong = isLongRunning(a.startsAt, a.endsAt);
+    const bLong = isLongRunning(b.startsAt, b.endsAt);
+    if (aLong !== bLong) return aLong ? 1 : -1;
     return new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime();
   };
 
