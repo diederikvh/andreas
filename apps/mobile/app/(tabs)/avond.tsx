@@ -413,11 +413,12 @@ export default function Avond() {
     };
   }, [todayWindow.refDate, locale]);
 
-  // Voor 'expo'-rails: events-pool die NIET op vandaag-window filtert
-  // én exhibitions wel meeneemt. Exhibitions lopen weken/maanden, dus
-  // "vandaag" maakt niet uit. Filtering: mode-mapping (cat ∈ expo),
-  // overrule via expliciete cats, plus de generieke search/friends/
-  // favorites filters die ook in 'uit'-mode actief zijn.
+  // Voor 'expo'-rails: events-pool die exhibitions wél meeneemt.
+  // Filtering: mode-mapping (cat ∈ expo), overrule via expliciete cats,
+  // plus de generieke search/friends/favorites filters die ook in
+  // 'uit'-mode actief zijn. Voor de musea/galleries/lit-rails verder
+  // afgekapt op "vandaag op view" via expoEventsToday hieronder; de
+  // vrienden-rail draait op de bredere pool (toekomst-inclusief).
   const expoEvents = useMemo<ApiEvent[]>(() => {
     if (!events) return [];
     const needle = query.trim().toLowerCase();
@@ -491,6 +492,29 @@ export default function Avond() {
     return sub.includes('fotografie') || sub.includes('media');
   };
 
+  // "Op view vandaag": event-window overlapt met het vandaag-window.
+  // Dwz. het event is begonnen of begint vandaag (startsAt < morgen 00:00)
+  // én is nog niet afgelopen (endsAt ≥ vandaag 00:00). Hierdoor:
+  // - lopende exhibitions (started weeks ago, runs for months) blijven ✓
+  // - openingen/lezingen vandaag blijven ✓
+  // - exhibitions die pas later openen vallen weg ✓
+  // - single-day events in de toekomst vallen weg ✓
+  // endsAt mag null zijn — we behandelen 'm dan als startsAt (single-day).
+  const startOfTodayMs = todayWindow.refDate.getTime();
+  const isOnViewToday = (e: ApiEvent): boolean => {
+    const startsMs = new Date(e.startsAt).getTime();
+    const endsMs = e.endsAt ? new Date(e.endsAt).getTime() : startsMs;
+    return startsMs < todayWindow.toMs && endsMs >= startOfTodayMs;
+  };
+
+  // Smallere pool voor de instelling-rails: alleen wat vandaag écht
+  // te bezoeken is. Vrienden-rail gebruikt 'm bewust niet.
+  const expoEventsToday = useMemo<ApiEvent[]>(
+    () => expoEvents.filter(isOnViewToday),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [expoEvents, todayWindow.toMs, startOfTodayMs]
+  );
+
   // Sort-key voor expo-rails: single-day events (concrete happenings —
   // openingen, lezingen, talks) komen vóór multi-day items
   // (doorlopende exhibitions). Een vandaag-eenmalige opening anders
@@ -505,25 +529,25 @@ export default function Avond() {
 
   const railMuseaMain = useMemo<ApiEvent[]>(
     () =>
-      expoEvents
+      expoEventsToday
         .filter(
           (e) => e.venue.type === 'museum' && !isFotoOrMediaMuseum(e)
         )
         .sort(sortByStartsAt),
-    [expoEvents]
+    [expoEventsToday]
   );
 
   const railMuseaFoto = useMemo<ApiEvent[]>(
     () =>
-      expoEvents
+      expoEventsToday
         .filter((e) => e.venue.type === 'museum' && isFotoOrMediaMuseum(e))
         .sort(sortByStartsAt),
-    [expoEvents]
+    [expoEventsToday]
   );
 
   const railGalleriesHedendaags = useMemo<ApiEvent[]>(
     () =>
-      expoEvents
+      expoEventsToday
         .filter(
           (e) =>
             e.venue.type === 'galerie' &&
@@ -531,27 +555,27 @@ export default function Avond() {
               e.venue.scene === 'alternatief')
         )
         .sort(sortByStartsAt),
-    [expoEvents]
+    [expoEventsToday]
   );
 
   const railGalleriesAndere = useMemo<ApiEvent[]>(
     () =>
-      expoEvents
+      expoEventsToday
         .filter(
           (e) =>
             e.venue.type === 'galerie' &&
             (e.venue.scene === 'underground' || e.venue.scene === 'fringe')
         )
         .sort(sortByStartsAt),
-    [expoEvents]
+    [expoEventsToday]
   );
 
   const railLit = useMemo<ApiEvent[]>(
     () =>
-      expoEvents
+      expoEventsToday
         .filter((e) => e.category === 'Literatuur')
         .sort(sortByStartsAt),
-    [expoEvents]
+    [expoEventsToday]
   );
 
   const railFriendsExpo = useMemo<ApiEvent[]>(
