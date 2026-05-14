@@ -99,6 +99,37 @@ export const CONTENT_MODE_CATS: Record<
   expo: ['Kunst', 'Literatuur'],
 };
 
+/** Vóór dit uur (lokaal) telt een occurrence als 'overdag' (start). */
+export const DAY_START_CUTOFF_HOUR = 18;
+/** Eindigt een occurrence vóór dit uur (zelfde dag) dan blijft 't
+ *  overdag — anders loopt het te ver de avond in. */
+export const DAY_END_CUTOFF_HOUR = 20;
+
+/** True als de occurrence helemaal binnen het 'overdag'-venster valt:
+ *  start vóór 18:00 én eindigt vóór 20:00 op dezelfde kalenderdag.
+ *  Een event 16:00 → 02:00 valt dus NIET in overdag (eindigt veel
+ *  later, dus primair avond-/nacht-event). */
+export function isDaytimeOccurrence(
+  startIso: string,
+  endIso: string | null | undefined
+): boolean {
+  const start = new Date(startIso);
+  if (Number.isNaN(start.getTime())) return false;
+  if (start.getHours() >= DAY_START_CUTOFF_HOUR) return false;
+  if (!endIso) return true;
+  const end = new Date(endIso);
+  if (Number.isNaN(end.getTime())) return true;
+  // Eindigt op een latere kalenderdag → niet overdag
+  if (
+    end.getFullYear() !== start.getFullYear() ||
+    end.getMonth() !== start.getMonth() ||
+    end.getDate() !== start.getDate()
+  ) {
+    return false;
+  }
+  return end.getHours() < DAY_END_CUTOFF_HOUR;
+}
+
 /** Mapping van content-mode → venue-types die binnen die mode vallen.
  *  Wordt gebruikt om filter-chips te filteren zodat een gebruiker niet
  *  per ongeluk op een museum filtert in 'uit'-mode (lege resultaat). */
@@ -567,14 +598,36 @@ export function formatDateRange(
 
 export function formatPrice(cents: number | null, locale?: Locale): string {
   const l = locale ?? useLocaleStore.getState().locale;
-  // Geen prijs bekend → wijzen naar de ticket-site ipv een lege em-dash
-  // tonen. Het event-detail heeft sowieso een Tickets-knop dus de
-  // gebruiker weet waar 'ie heen moet.
-  if (cents == null) return l === 'nl' ? 'Zie tickets' : 'See tickets';
+  // Geen prijs bekend → lege string, zodat de UI 'm verbergt en de
+  // ticket-source-label de linkerkant van de TicketsBlock invult.
+  if (cents == null) return '';
   if (cents === 0) return l === 'nl' ? 'Gratis' : 'Free';
   return l === 'nl'
     ? `€${(cents / 100).toFixed(2).replace('.', ',')}`
     : `€${(cents / 100).toFixed(2)}`;
+}
+
+/**
+ * Compact domein-label van een ticket-URL. Zorgt dat de gebruiker
+ * weet via welk platform de tickets worden verkocht voordat 'ie op
+ * de Tickets-knop tikt en weggestuurd wordt naar een externe site.
+ *
+ *   https://tickets.paradiso.nl/event/123 → "paradiso.nl"
+ *   https://www.ticketmaster.nl/event/x  → "ticketmaster.nl"
+ *   https://eventbrite.com/…             → "eventbrite.com"
+ */
+export function ticketSourceLabel(url: string | null): string | null {
+  if (!url) return null;
+  try {
+    const u = new URL(url);
+    // Strip ticket-portal subdomeinen (tickets., shop., book.) zodat we
+    // de venue/platform-naam tonen, niet de ticketing-subdomain-stub.
+    return u.hostname
+      .replace(/^(www|tickets?|shop|book|store|order|ticketing)\./i, '')
+      .toLowerCase();
+  } catch {
+    return null;
+  }
 }
 
 export function freeLabel(locale?: Locale): string {

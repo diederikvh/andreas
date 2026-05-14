@@ -28,6 +28,7 @@ import {
   formatDateRange,
   formatPrice,
   formatTimeRange,
+  ticketSourceLabel,
   rowTimeLabel,
   isAllDayRange,
   isMultiDay,
@@ -684,6 +685,11 @@ function TicketsBlock({
   const roles = useRoles();
   const t = useT();
   const ctaLabel = soldOut ? t('Uitverkocht', 'Sold out') : t('Tickets', 'Tickets');
+  const source = ticketSourceLabel(ticketUrl);
+  // Voor de "via {x}"-label is priceNote vaak rijker (bv. "€15,00 per
+  // keer (kleinbeurs €10,00)"); als die er is gebruiken we 'm i.p.v.
+  // het kale ticket-domein.
+  const subtitle = priceNote ?? (source ? t(`via ${source}`, `via ${source}`) : null);
   return (
     <>
       <Text style={[styles.crewHeading, { color: roles.fg }]}>
@@ -696,12 +702,14 @@ function TicketsBlock({
         ]}
       >
         <View style={styles.ticketsLeft}>
-          <Text style={[styles.ticketsPrice, { color: roles.fg }]}>
-            {price}
-          </Text>
-          {priceNote && (
+          {price ? (
+            <Text style={[styles.ticketsPrice, { color: roles.fg }]}>
+              {price}
+            </Text>
+          ) : null}
+          {subtitle && (
             <Text style={[styles.ticketsNote, { color: roles.fgMuted }]}>
-              {priceNote}
+              {subtitle}
             </Text>
           )}
         </View>
