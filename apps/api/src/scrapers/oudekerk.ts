@@ -5,12 +5,10 @@ import { uploadToBunny } from '../storage/bunny.js';
 import { enrichEvent, refineKindByDuration } from './enrich.js';
 import {
   ANDREAS_UA,
-  decode,
   fetchHtml,
   parseDateRangeNL,
   parseOgTags,
   shiftToLocalTime,
-  stripHtml,
 } from './_museum-helpers.js';
 
 /**
@@ -84,21 +82,68 @@ function extractListingPaths(html: string): Array<{
 }
 
 /**
- * Single-day event: `<h1>Titel</h1><h2 ...chakra-heading...>29 juli
- * 2026</h2>`. We zoeken een h2 met alleen "D maand YYYY" tekst direct
- * na de eerste h1 — dat is het oude-kerk-patroon voor concerten/talks.
+ * Pak event-datum uit de h1+h2(+h2) sequence direct na de event-titel.
+ * Oude Kerk's pattern:
+ *
+ *   Single-day:  <h1>Titel</h1><h2>5 juni 2026</h2><h2>20:15 – 21:45</h2>
+ *   Multi-day:   <h1>Titel</h1><h2>25 april – 31 oktober 2026</h2>
+ *
+ * We parsen *alleen* uit dit blok — niet uit de body — zodat de
+ * sidebar/banner van de huidige tentoonstelling (Jesse Darling) niet
+ * per ongeluk als event-datum wordt opgepakt.
  */
-function extractSingleDayDate(html: string): Date | null {
+function extractEventDateFromHeading(html: string): {
+  startsAt: Date;
+  endsAt: Date | null;
+  isMultiDay: boolean;
+} | null {
   const m = html.match(
-    /<h1[^>]*>[^<]+<\/h1>\s*<h2[^>]*>\s*(\d{1,2})\s+([a-zA-Z]+)\s+(\d{4})\s*<\/h2>/i
+    /<h1[^>]*>[^<]+<\/h1>\s*<h2[^>]*>([^<]+)<\/h2>(?:\s*<h2[^>]*>([^<]+)<\/h2>)?/i
   );
   if (!m) return null;
-  const mo = NL_MONTHS_FULL[m[2].toLowerCase()];
+  const dateText = m[1].trim();
+  const timeText = m[2]?.trim() ?? null;
+
+  // Multi-day range eerst — "25 april – 31 oktober 2026" of
+  // "21 november 2025 t/m 6 april 2026".
+  const range = parseDateRangeNL(dateText);
+  if (range) {
+    return { startsAt: range.start, endsAt: range.end, isMultiDay: true };
+  }
+
+  // Single-day: "D maand YYYY"
+  const single = dateText.match(/^(\d{1,2})\s+([a-zA-Z]+)\s+(\d{4})$/);
+  if (!single) return null;
+  const mo = NL_MONTHS_FULL[single[2].toLowerCase()];
   if (mo === undefined) return null;
-  // 20:00 als default start (concerten/talks beginnen meestal 's avonds);
-  // refineKindByDuration corrigeert eventueel naar exhibition als de
-  // werkelijke duur dat suggereert (gebeurt hier niet — single-day).
-  return shiftToLocalTime(parseInt(m[3], 10), mo, parseInt(m[1], 10), 20, 0);
+  const day = parseInt(single[1], 10);
+  const year = parseInt(single[3], 10);
+
+  // Tijd uit optionele tweede h2 — "HH:MM – HH:MM" of "HH:MM". Default
+  // start = 20:00 (concerten/talks), endsAt null als tijd onbekend.
+  let hour = 20;
+  let minute = 0;
+  let endsAt: Date | null = null;
+  if (timeText) {
+    const tm = timeText.match(
+      /(\d{1,2}):(\d{2})\s*(?:[–—-]\s*(\d{1,2}):(\d{2}))?/
+    );
+    if (tm) {
+      hour = parseInt(tm[1], 10);
+      minute = parseInt(tm[2], 10);
+      if (tm[3] && tm[4]) {
+        endsAt = shiftToLocalTime(
+          year,
+          mo,
+          day,
+          parseInt(tm[3], 10),
+          parseInt(tm[4], 10)
+        );
+      }
+    }
+  }
+  const startsAt = shiftToLocalTime(year, mo, day, hour, minute);
+  return { startsAt, endsAt, isMultiDay: false };
 }
 
 async function mirrorImage(
@@ -184,26 +229,15 @@ export async function scrapeOudeKerk(options?: {
       continue;
     }
 
-    let startsAt: Date | null = null;
-    let endsAt: Date | null = null;
-    let isMultiDay = false;
-
-    const text = stripHtml(detailHtml);
-    const range = parseDateRangeNL(text);
-    if (range) {
-      startsAt = range.start;
-      endsAt = range.end;
-      isMultiDay = true;
-    } else {
-      const single = extractSingleDayDate(detailHtml);
-      if (single) {
-        startsAt = single;
-      }
-    }
-    if (!startsAt) {
+    // Parse uitsluitend uit de h1+h2(+h2) sequence — de body bevat
+    // banner-/sidebar-ruis met de huidige tentoonstelling-data wat
+    // anders alle events op die date-range zou zetten.
+    const dateInfo = extractEventDateFromHeading(detailHtml);
+    if (!dateInfo) {
       result.skipped++;
       continue;
     }
+    const { startsAt, endsAt, isMultiDay } = dateInfo;
 
     const effectiveEnd = endsAt ?? startsAt;
     if (effectiveEnd.getTime() < now - 24 * 60 * 60_000) {
