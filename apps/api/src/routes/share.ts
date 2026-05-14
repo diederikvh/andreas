@@ -1906,19 +1906,20 @@ shareRoute.get('/', async (c) => {
     .store-btn {
       flex: 1; min-width: 160px;
       display: inline-flex; align-items: center; justify-content: center; gap: 8px;
-      padding: 14px 20px; border-radius: 999px;
+      padding: 16px 22px; border-radius: 999px;
       background: var(--acid); color: var(--bg);
-      text-decoration: none; font-size: 14px;
+      text-decoration: none; font-size: 16px;
       letter-spacing: -0.1px; transition: opacity 120ms;
       text-align: center;
     }
     .store-btn:hover { opacity: 0.85; }
     .store-btn small {
       display: block; font-family: 'JetBrains Mono', ui-monospace, monospace;
-      font-size: 9px; letter-spacing: 1px; text-transform: uppercase;
-      color: var(--bg); opacity: 0.7; margin-bottom: 2px;
+      font-size: 10px; letter-spacing: 1.2px; text-transform: uppercase;
+      color: var(--bg); opacity: 0.85; margin-bottom: 3px;
+      font-weight: 600;
     }
-    .store-btn span { font-weight: 700; }
+    .store-btn span { font-weight: 800; font-size: 17px; letter-spacing: -0.2px; }
     /* Sectie-koppen */
     .section-head {
       display: flex; align-items: baseline; gap: 18px;

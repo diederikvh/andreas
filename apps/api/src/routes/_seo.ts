@@ -550,8 +550,15 @@ export const SEO_STYLES = `
     font-weight: 700; font-size: 14px;
   }
   .cta-card a.primary:hover { opacity: 0.9; text-decoration: none; }
+  /* Secondary store-buttons — een tint boven de card-achtergrond zodat ze
+     leesbaar uitsteken, maar niet concurreren met de primary acid-knop. */
   .cta-card a.secondary {
-    color: var(--fg-muted); padding: 12px 18px; font-size: 14px;
+    background: var(--bg-chip); color: var(--fg);
+    padding: 12px 18px; border-radius: 999px;
+    font-weight: 700; font-size: 14px;
+  }
+  .cta-card a.secondary:hover {
+    background: var(--border); text-decoration: none;
   }
 
   /* QR-block: alleen zichtbaar op desktop (≥900px). Op die viewport
