@@ -5,7 +5,6 @@ import { uploadToBunny } from '../storage/bunny.js';
 import { enrichEvent, refineKindByDuration } from './enrich.js';
 import {
   ANDREAS_UA,
-  fetchHtml,
   parseDateRangeNL,
   parseOgTags,
   shiftToLocalTime,
@@ -34,6 +33,24 @@ import {
 const VENUE_ID = 'oude-kerk';
 const BASE = 'https://www.oudekerk.nl';
 const LISTING_URL = `${BASE}/nu-te-zien`;
+
+/**
+ * Oude Kerk blokt de generieke Andreas-Scraper UA na enkele requests
+ * met een 403/HTML-error. Een browser-UA omzeilt die rate-limit en
+ * werkt voor zowel de listing als detail-pages.
+ */
+const BROWSER_UA =
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36';
+
+async function fetchHtml(url: string): Promise<string | null> {
+  try {
+    const r = await fetch(url, { headers: { 'user-agent': BROWSER_UA } });
+    if (!r.ok) return null;
+    return await r.text();
+  } catch {
+    return null;
+  }
+}
 
 const NL_MONTHS_FULL: Record<string, number> = {
   januari: 0,
