@@ -136,13 +136,11 @@ export default function Kaart() {
   const activeBlocks = useKaartFilters((s) => s.activeBlocks);
   const activeCats = useKaartFilters((s) => s.activeCats);
   const activeTypes = useKaartFilters((s) => s.activeTypes);
-  const activeGenres = useKaartFilters((s) => s.activeGenres);
   const setOnlyFriends = useKaartFilters((s) => s.setOnlyFriends);
   const setOnlyFavorites = useKaartFilters((s) => s.setOnlyFavorites);
   const setActiveBlocks = useKaartFilters((s) => s.setActiveBlocks);
   const setActiveCats = useKaartFilters((s) => s.setActiveCats);
   const setActiveTypes = useKaartFilters((s) => s.setActiveTypes);
-  const setActiveGenres = useKaartFilters((s) => s.setActiveGenres);
   const toggleBlock = useKaartFilters((s) => s.toggleBlock);
 
   const showFavoritesChip = useMemo(
@@ -164,10 +162,6 @@ export default function Kaart() {
             return false;
           }
         }
-        if (activeGenres.length > 0) {
-          const evGenres = e.genres ?? [];
-          if (!evGenres.some((g) => activeGenres.includes(g))) return false;
-        }
         if (activeBlocks.length > 0) {
           const block = getTimeBlock(new Date(e.startsAt).getHours());
           if (!activeBlocks.includes(block)) return false;
@@ -177,7 +171,10 @@ export default function Kaart() {
         if (needle.length > 0) {
           const inTitle = e.title.toLowerCase().includes(needle);
           const inVenue = e.venue.name.toLowerCase().includes(needle);
-          if (!inTitle && !inVenue) return false;
+          const inGenres = (e.genres ?? []).some((g) =>
+            g.toLowerCase().includes(needle)
+          );
+          if (!inTitle && !inVenue && !inGenres) return false;
         }
         return true;
       })
@@ -196,7 +193,6 @@ export default function Kaart() {
     query,
     activeCats,
     activeTypes,
-    activeGenres,
     activeBlocks,
     onlyFriends,
     onlyFavorites,
@@ -206,7 +202,6 @@ export default function Kaart() {
     activeBlocks.length +
     activeCats.length +
     activeTypes.length +
-    activeGenres.length +
     (onlyFriends ? 1 : 0) +
     (onlyFavorites ? 1 : 0);
   const sorted = useMemo(
@@ -522,7 +517,6 @@ export default function Kaart() {
           activeBlocks={activeBlocks}
           activeCats={activeCats}
           activeTypes={activeTypes}
-          activeGenres={activeGenres}
           showFavoritesChip={showFavoritesChip}
           onSetFriends={setOnlyFriends}
           onSetFavorites={setOnlyFavorites}
@@ -530,7 +524,6 @@ export default function Kaart() {
           onSetBlocks={setActiveBlocks}
           onSetCats={setActiveCats}
           onSetTypes={setActiveTypes}
-          onSetGenres={setActiveGenres}
           onClose={() => setFilterOpen(false)}
         />
       </Modal>

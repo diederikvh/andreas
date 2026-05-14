@@ -36,10 +36,7 @@ import type { ApiEvent, VenueType } from '@/lib/api';
 import {
   eventImageUrl,
   CATEGORY_TICK,
-  CONTENT_MODE_CATS,
-  CONTENT_MODE_VENUE_TYPES,
   VENUE_TYPE_TICK,
-  eventBelongsToMode,
   getVenueTypeChips,
   translateVenueType,
   dowMixed,
@@ -62,14 +59,12 @@ import { softTap, tinyTap } from '@/lib/haptics';
 import { useLocale, useT } from '@/lib/i18n';
 import { useSession } from '@/lib/authClient';
 import {
-  useEventGenres,
   useEvents,
   useFriends,
 } from '@/lib/queries';
 import { useResetFiltersOnTabBlur } from '@/lib/useResetFiltersOnTabBlur';
 import { useTabDoubleTap } from '@/lib/useTabDoubleTap';
 import { useAgendaFilters } from '@/store/agendaFilters';
-import { useContentMode } from '@/store/contentMode';
 import { useMode, useModeStore, useRoles } from '@/store/mode';
 import {
   isSavedSearchActive,
@@ -132,7 +127,6 @@ export default function Agenda() {
   const t = useT();
   const locale = useLocale();
   const timeBlocks = useTimeBlocks();
-  const cmode = useContentMode();
   const sectionListRef = useRef<SectionList<AgendaItem, OccurrenceGroup>>(null);
   // useScrollToTop accepteert ook een ref met scrollToLocation — past
   // 'm zonder fuss op SectionList.
@@ -146,14 +140,12 @@ export default function Agenda() {
   const activeBlocks = useAgendaFilters((s) => s.activeBlocks);
   const activeCats = useAgendaFilters((s) => s.activeCats);
   const activeTypes = useAgendaFilters((s) => s.activeTypes);
-  const activeGenres = useAgendaFilters((s) => s.activeGenres);
   const setQuery = useAgendaFilters((s) => s.setQuery);
   const setOnlyFriends = useAgendaFilters((s) => s.setOnlyFriends);
   const setOnlyFavorites = useAgendaFilters((s) => s.setOnlyFavorites);
   const setActiveBlocks = useAgendaFilters((s) => s.setActiveBlocks);
   const setActiveCats = useAgendaFilters((s) => s.setActiveCats);
   const setActiveTypes = useAgendaFilters((s) => s.setActiveTypes);
-  const setActiveGenres = useAgendaFilters((s) => s.setActiveGenres);
   const resetFilters = useAgendaFilters((s) => s.reset);
 
   // Stack-persistent filter-state: reset bij tab-wissel, behoud bij
@@ -185,29 +177,11 @@ export default function Agenda() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params.cat]);
 
-  // Bij content-mode-flip: wis activeCats / activeTypes die buiten de
-  // nieuwe mode vallen, en wis ALLE activeGenres (genres zijn 1-op-1
-  // aan cats gekoppeld — een 'techno'-filter heeft geen zin in
-  // 'expo'-mode). Anders zou de Filter-knop "Filter · 1" laten zien
-  // terwijl 't actieve filter niet meer in de filter-sheet voorkomt.
-  useEffect(() => {
-    const validCats = activeCats.filter((c) =>
-      CONTENT_MODE_CATS[cmode].includes(c)
-    );
-    if (validCats.length !== activeCats.length) {
-      setActiveCats(validCats);
-    }
-    const validTypes = activeTypes.filter((tt) =>
-      CONTENT_MODE_VENUE_TYPES[cmode].includes(tt)
-    );
-    if (validTypes.length !== activeTypes.length) {
-      setActiveTypes(validTypes);
-    }
-    if (activeGenres.length > 0) {
-      setActiveGenres([]);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cmode]);
+  // Cmode-flip wist géén filters meer: in Agenda is dag/nacht puur
+  // cosmetisch (kleur-thema), niet content-bepalend. Alle 5 cats zijn
+  // in beide modi geldig — een club die overdag iets doet hoort
+  // gewoon zichtbaar te zijn in dag-mode, een avond-boekpresentatie in
+  // nacht-mode.
   const { data: session } = useSession();
   const { data: friends } = useFriends({
     enabled: Boolean(session?.user?.id),
@@ -240,23 +214,12 @@ export default function Agenda() {
     if (!events) return [];
     const needle = query.trim().toLowerCase();
     return events.filter((e) => {
-      // Content-mode-filter: beperken tot 'uit' of 'expo' cats wanneer
-      // geen expliciete categorie-keuze gemaakt is. Expliciete cat-
-      // filter blijft leidend zodat 'Kunst' filter werkt ongeacht
-      // de mode-keuze.
-      if (
-        activeCats.length === 0 &&
-        !eventBelongsToMode(e, cmode)
-      ) {
-        return false;
-      }
+      // Geen mode-coupling meer in Agenda: dag/nacht is hier puur
+      // cosmetisch. Filter-chips (cats/types/genres/blocks) blijven
+      // expliciete user-narrowing.
       if (activeCats.length > 0 && !activeCats.includes(e.category)) return false;
       if (activeTypes.length > 0) {
         if (!e.venue.type || !activeTypes.includes(e.venue.type)) return false;
-      }
-      if (activeGenres.length > 0) {
-        const evGenres = e.genres ?? [];
-        if (!evGenres.some((g) => activeGenres.includes(g))) return false;
       }
       if (onlyFriends && (e.friendsSaved?.length ?? 0) === 0) return false;
       if (onlyFavorites && !e.venueFollowed) return false;
@@ -264,7 +227,10 @@ export default function Agenda() {
         const inTitle = e.title.toLowerCase().includes(needle);
         const inVenue = e.venue.name.toLowerCase().includes(needle);
         const inDesc = (e.description ?? '').toLowerCase().includes(needle);
-        if (!inTitle && !inVenue && !inDesc) return false;
+        const inGenres = (e.genres ?? []).some((g) =>
+          g.toLowerCase().includes(needle)
+        );
+        if (!inTitle && !inVenue && !inDesc && !inGenres) return false;
       }
       return true;
     });
@@ -272,11 +238,9 @@ export default function Agenda() {
     events,
     activeCats,
     activeTypes,
-    activeGenres,
     query,
     onlyFriends,
     onlyFavorites,
-    cmode,
   ]);
 
   const showFavoritesChip = useMemo(
@@ -549,7 +513,6 @@ export default function Agenda() {
                   activeCats.length > 0 ||
                   activeTypes.length > 0 ||
                   activeBlocks.length > 0 ||
-                  activeGenres.length > 0 ||
                   query
                     ? t(
                         'Geen events voor deze filter.',
@@ -608,7 +571,6 @@ export default function Agenda() {
           query={query}
           activeBlocks={activeBlocks}
           activeTypes={activeTypes}
-          activeGenres={activeGenres}
           onlyFriends={onlyFriends}
           showFriendsChip={showFriendsChip}
           onlyFavorites={onlyFavorites}
@@ -617,7 +579,6 @@ export default function Agenda() {
           onQuery={setQuery}
           onBlocks={setActiveBlocks}
           onTypes={setActiveTypes}
-          onGenres={setActiveGenres}
           onToggleFriends={() => setOnlyFriends(!onlyFriends)}
           onToggleFavorites={() => setOnlyFavorites(!onlyFavorites)}
         />
@@ -632,7 +593,6 @@ function ChipRow({
   query,
   activeBlocks,
   activeTypes,
-  activeGenres,
   onlyFriends,
   showFriendsChip,
   onlyFavorites,
@@ -641,7 +601,6 @@ function ChipRow({
   onQuery,
   onBlocks,
   onTypes,
-  onGenres,
   onToggleFriends,
   onToggleFavorites,
 }: {
@@ -649,7 +608,6 @@ function ChipRow({
   query: string;
   activeBlocks: TimeBlock[];
   activeTypes: VenueType[];
-  activeGenres: string[];
   onlyFriends: boolean;
   showFriendsChip: boolean;
   onlyFavorites: boolean;
@@ -658,7 +616,6 @@ function ChipRow({
   onQuery: (q: string) => void;
   onBlocks: (next: TimeBlock[]) => void;
   onTypes: (next: VenueType[]) => void;
-  onGenres: (next: string[]) => void;
   onToggleFriends: () => void;
   onToggleFavorites: () => void;
 }) {
@@ -705,13 +662,10 @@ function ChipRow({
   };
 
   const filterCount =
-    activeCats.length +
-    activeBlocks.length +
-    activeTypes.length +
-    activeGenres.length;
+    activeCats.length + activeBlocks.length + activeTypes.length;
   const filterActive = filterCount > 0;
-  // Eerste belangrijke filter als label: categorie > venue-type >
-  // genre. Render: "Cinema + 2" voor primair + extra; geen primair?
+  // Eerste belangrijke filter als label: categorie > venue-type.
+  // Render: "Cinema + 2" voor primair + extra; geen primair?
   // terug naar "Filter · N" zoals voorheen.
   const filterLabel = filterActive
     ? (() => {
@@ -720,8 +674,6 @@ function ChipRow({
           primary = translateCategory(activeCats[0], locale);
         } else if (activeTypes.length > 0) {
           primary = translateVenueType(activeTypes[0], locale);
-        } else if (activeGenres.length > 0) {
-          primary = activeGenres[0];
         }
         if (primary === null) return `${t('Filter', 'Filter')} · ${filterCount}`;
         const others = filterCount - 1;
@@ -734,14 +686,13 @@ function ChipRow({
       cats: activeCats,
       tb: activeBlocks,
       vt: activeTypes,
-      gn: activeGenres,
+      gn: [],
       q: query,
     });
     if (active) {
       onCats([]);
       onBlocks([]);
       onTypes([]);
-      onGenres([]);
       onQuery('');
       return;
     }
@@ -750,7 +701,6 @@ function ChipRow({
     onCats(s.cats ?? []);
     onBlocks(s.tb ?? []);
     onTypes(s.vt ?? []);
-    onGenres(s.gn ?? []);
     onQuery(s.q ?? '');
   };
 
@@ -776,7 +726,7 @@ function ChipRow({
     cats: activeCats,
     tb: activeBlocks,
     vt: activeTypes,
-    gn: activeGenres,
+    gn: [],
     q: query,
   };
 
@@ -992,12 +942,10 @@ function ChipRow({
           activeCats={activeCats}
           activeBlocks={activeBlocks}
           activeTypes={activeTypes}
-          activeGenres={activeGenres}
           query={query}
           onCats={onCats}
           onBlocks={onBlocks}
           onTypes={onTypes}
-          onGenres={onGenres}
           onClose={() => setFilterOpen(false)}
         />
       </Modal>
@@ -1009,23 +957,19 @@ function FilterSheet({
   activeCats,
   activeBlocks,
   activeTypes,
-  activeGenres,
   query,
   onCats,
   onBlocks,
   onTypes,
-  onGenres,
   onClose,
 }: {
   activeCats: ApiEvent['category'][];
   activeBlocks: TimeBlock[];
   activeTypes: VenueType[];
-  activeGenres: string[];
   query: string;
   onCats: (next: ApiEvent['category'][]) => void;
   onBlocks: (next: TimeBlock[]) => void;
   onTypes: (next: VenueType[]) => void;
-  onGenres: (next: string[]) => void;
   onClose: () => void;
 }) {
   const mode = useMode();
@@ -1034,7 +978,6 @@ function FilterSheet({
   const t = useT();
   const locale = useLocale();
   const timeBlocks = useTimeBlocks();
-  const cmode = useContentMode();
   // Android-modal valt full-screen, dus inset-bottom (3-knops menu /
   // gesture-handle) moet de Bekijk/Opslaan/Sluit-rij naar boven duwen
   // zodat de buttons niet onder de systeem-nav vallen. iOS-pageSheet
@@ -1044,50 +987,16 @@ function FilterSheet({
   const sheetInsets = useSafeAreaInsets();
   const footerPaddingBottom =
     Platform.OS === 'android' ? sheetInsets.bottom + 16 : 16;
-  // Filter de chips op de actieve content-mode: alleen cats/venue-
-  // types die binnen de huidige mode events kunnen opleveren. Zo
-  // voorkomen we lege-resultaat-filters (bv. 'Literatuur' in
-  // 'uit'-mode → 0 events).
-  const modeCats = useMemo(
-    () =>
-      CATEGORIES.filter((c) =>
-        CONTENT_MODE_CATS[cmode].includes(c)
-      ),
-    [cmode]
-  );
+  // Filter-chips: alle cats en alle venue-types — geen mode-coupling
+  // meer.
+  const modeCats = CATEGORIES;
   const typeChips = useMemo(
-    () =>
-      getVenueTypeChips(locale).filter((c) =>
-        CONTENT_MODE_VENUE_TYPES[cmode].includes(c.value)
-      ),
-    [locale, cmode]
+    () => getVenueTypeChips(locale),
+    [locale]
   );
-  const { data: genreData, isLoading, error } = useEventGenres();
   const addSaved = useAddSavedSearch();
   const [saveOpen, setSaveOpen] = useState(false);
   const [saveName, setSaveName] = useState('');
-
-  const groupedGenres = useMemo(() => {
-    if (!genreData) return [];
-    // Filter genre-buckets op de geselecteerde categorieën als er
-    // expliciete cats actief zijn; anders op de mode-cats. Zo zien
-    // gebruikers in 'expo'-mode geen muziek-genres en omgekeerd.
-    const restrictTo =
-      activeCats.length > 0 ? activeCats : CONTENT_MODE_CATS[cmode];
-    const filtered = genreData.filter((b) =>
-      restrictTo.includes(b.category)
-    );
-    const map = new Map<ApiEvent['category'], typeof filtered>();
-    for (const b of filtered) {
-      const arr = map.get(b.category) ?? [];
-      arr.push(b);
-      map.set(b.category, arr);
-    }
-    return modeCats.flatMap((category) => {
-      const items = map.get(category);
-      return items ? [{ category, items }] : [];
-    });
-  }, [genreData, activeCats, cmode, modeCats]);
 
   const toggleCat = (c: ApiEvent['category']) => {
     if (activeCats.includes(c)) onCats(activeCats.filter((x) => x !== c));
@@ -1101,21 +1010,13 @@ function FilterSheet({
     if (activeBlocks.includes(b)) onBlocks(activeBlocks.filter((x) => x !== b));
     else onBlocks([...activeBlocks, b]);
   };
-  const toggleGenre = (g: string) => {
-    if (activeGenres.includes(g)) onGenres(activeGenres.filter((x) => x !== g));
-    else onGenres([...activeGenres, g]);
-  };
   const filterCount =
-    activeCats.length +
-    activeTypes.length +
-    activeBlocks.length +
-    activeGenres.length;
+    activeCats.length + activeTypes.length + activeBlocks.length;
 
   const onClearAll = () => {
     onCats([]);
     onTypes([]);
     onBlocks([]);
-    onGenres([]);
   };
 
   const onSave = () => {
@@ -1126,7 +1027,7 @@ function FilterSheet({
       cats: activeCats,
       tb: activeBlocks,
       vt: activeTypes,
-      gn: activeGenres,
+      gn: [],
       q: query,
     });
     setSaveOpen(false);
@@ -1231,101 +1132,6 @@ function FilterSheet({
           ))}
         </View>
 
-        <Text
-          style={[
-            styles.sheetSectionHead,
-            { color: roles.fgMuted, marginTop: 22 },
-          ]}
-        >
-          {t('Genre', 'Genre')}
-        </Text>
-        {isLoading && (
-          <View style={styles.sheetLoading}>
-            <SpinningCross size={24} color={roles.fgPlaceholder} />
-          </View>
-        )}
-        {error && (
-          <Text style={[styles.sheetEmpty, { color: '#c9453a' }]}>
-            {t('Kon genres niet laden.', 'Couldn’t load genres.')}
-          </Text>
-        )}
-        {!isLoading && !error && groupedGenres.length === 0 && (
-          <Text style={[styles.sheetEmpty, { color: roles.fgMuted }]}>
-            {activeCats.length === 1
-              ? t(
-                  `Geen genres gevonden voor ${activeCats[0]}.`,
-                  `No genres found for ${translateCategory(activeCats[0], 'en')}.`
-                )
-              : activeCats.length > 1
-                ? t(
-                    'Geen genres gevonden voor deze categorieën.',
-                    'No genres found for these categories.'
-                  )
-                : t('Nog geen genres ingevuld.', 'No genres yet.')}
-          </Text>
-        )}
-        <View style={styles.sheetSubSectionGroup}>
-        {groupedGenres.map((section) => (
-          <View key={section.category}>
-            {/* Sub-heading per categorie verschijnt alleen als er meer
-                dan één categorie zichtbaar is — anders zijn alle genres
-                impliciet van die ene gekozen categorie. */}
-            {(activeCats.length === 0 || activeCats.length > 1) && (
-              <Text
-                style={[styles.sheetSubSectionHead, { color: roles.fgPlaceholder }]}
-              >
-                {translateCategory(section.category, locale)}
-              </Text>
-            )}
-            <View style={styles.genreWrap}>
-              {section.items.map((b) => {
-                const checked = activeGenres.includes(b.genre);
-                return (
-                  <Pressable
-                    key={`${section.category}-${b.genre}`}
-                    onPress={() => {
-                      tinyTap();
-                      toggleGenre(b.genre);
-                    }}
-                    style={[
-                      styles.genreChip,
-                      {
-                        borderColor: checked ? roles.fg : roles.bgChip,
-                        backgroundColor: checked
-                          ? roles.fg
-                          : isNacht
-                            ? palette.noir2
-                            : palette.paper2,
-                      },
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.genreChipText,
-                        { color: checked ? roles.bg : roles.fg },
-                      ]}
-                    >
-                      {b.genre}
-                    </Text>
-                    <Text
-                      style={[
-                        styles.genreChipCount,
-                        {
-                          color: checked
-                            ? roles.bg
-                            : roles.fgPlaceholder,
-                        },
-                      ]}
-                    >
-                      {b.count}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-          </View>
-        ))}
-        </View>
       </ScrollView>
 
       {saveOpen ? (

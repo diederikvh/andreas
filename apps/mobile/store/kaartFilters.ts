@@ -21,14 +21,12 @@ type KaartFiltersState = {
   activeBlocks: TimeBlock[];
   activeCats: ApiEvent['category'][];
   activeTypes: VenueType[];
-  activeGenres: string[];
   setQuery: (q: string) => void;
   setOnlyFriends: (next: boolean) => void;
   setOnlyFavorites: (next: boolean) => void;
   setActiveBlocks: (next: TimeBlock[]) => void;
   setActiveCats: (next: ApiEvent['category'][]) => void;
   setActiveTypes: (next: VenueType[]) => void;
-  setActiveGenres: (next: string[]) => void;
   toggleBlock: (b: TimeBlock) => void;
   toggleType: (t: VenueType) => void;
   reset: () => void;
@@ -41,14 +39,12 @@ export const useKaartFilters = create<KaartFiltersState>((set, get) => ({
   activeBlocks: [],
   activeCats: [],
   activeTypes: [],
-  activeGenres: [],
   setQuery: (q) => set({ query: q }),
   setOnlyFriends: (next) => set({ onlyFriends: next }),
   setOnlyFavorites: (next) => set({ onlyFavorites: next }),
   setActiveBlocks: (next) => set({ activeBlocks: next }),
   setActiveCats: (next) => set({ activeCats: next }),
   setActiveTypes: (next) => set({ activeTypes: next }),
-  setActiveGenres: (next) => set({ activeGenres: next }),
   toggleBlock: (b) => {
     const { activeBlocks } = get();
     set({
@@ -73,6 +69,5 @@ export const useKaartFilters = create<KaartFiltersState>((set, get) => ({
       activeBlocks: [],
       activeCats: [],
       activeTypes: [],
-      activeGenres: [],
-    }),
+        }),
 }));

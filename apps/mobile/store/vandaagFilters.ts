@@ -19,14 +19,12 @@ type VandaagFiltersState = {
   activeBlocks: TimeBlock[];
   activeCats: ApiEvent['category'][];
   activeTypes: VenueType[];
-  activeGenres: string[];
   setQuery: (q: string) => void;
   setOnlyFriends: (next: boolean) => void;
   setOnlyFavorites: (next: boolean) => void;
   setActiveBlocks: (next: TimeBlock[]) => void;
   setActiveCats: (next: ApiEvent['category'][]) => void;
   setActiveTypes: (next: VenueType[]) => void;
-  setActiveGenres: (next: string[]) => void;
   toggleBlock: (b: TimeBlock) => void;
   toggleType: (t: VenueType) => void;
   reset: () => void;
@@ -41,14 +39,12 @@ export const useVandaagFilters = create<VandaagFiltersState>()(
       activeBlocks: [],
       activeCats: [],
       activeTypes: [],
-      activeGenres: [],
       setQuery: (q) => set({ query: q }),
       setOnlyFriends: (next) => set({ onlyFriends: next }),
       setOnlyFavorites: (next) => set({ onlyFavorites: next }),
       setActiveBlocks: (next) => set({ activeBlocks: next }),
       setActiveCats: (next) => set({ activeCats: next }),
       setActiveTypes: (next) => set({ activeTypes: next }),
-      setActiveGenres: (next) => set({ activeGenres: next }),
       toggleBlock: (b) => {
         const { activeBlocks } = get();
         set({
@@ -73,24 +69,26 @@ export const useVandaagFilters = create<VandaagFiltersState>()(
           activeBlocks: [],
           activeCats: [],
           activeTypes: [],
-          activeGenres: [],
         }),
     }),
     {
       name: 'andreas:vandaag-filters.v1',
       storage: createJSONStorage(() => AsyncStorage),
-      version: 5,
+      version: 6,
       migrate: (persistedState, version) => {
         // Step-wise migration zodat oude clients schoon optillen.
-        const state = (persistedState ?? {}) as Partial<VandaagFiltersState>;
+        // v6: activeGenres dropped — genre-filters zijn weg (zie commit).
+        const state = (persistedState ?? {}) as Partial<VandaagFiltersState> & {
+          activeGenres?: unknown;
+        };
         const out: Partial<VandaagFiltersState> = { ...state };
         if (version < 2) out.onlyFavorites = false;
         if (version < 3) out.query = '';
         if (version < 4) {
           out.activeCats = [];
-          out.activeGenres = [];
         }
         if (version < 5) out.activeTypes = [];
+        // v6: strip eventueel oude activeGenres uit persisted state
         return {
           query: out.query ?? '',
           onlyFriends: out.onlyFriends ?? false,
@@ -98,7 +96,6 @@ export const useVandaagFilters = create<VandaagFiltersState>()(
           activeBlocks: out.activeBlocks ?? [],
           activeCats: out.activeCats ?? [],
           activeTypes: out.activeTypes ?? [],
-          activeGenres: out.activeGenres ?? [],
         } as VandaagFiltersState;
       },
     }

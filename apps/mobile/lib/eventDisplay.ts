@@ -105,16 +105,24 @@ export const DAY_START_CUTOFF_HOUR = 18;
  *  overdag — anders loopt het te ver de avond in. */
 export const DAY_END_CUTOFF_HOUR = 20;
 
+/** Een logische dag wisselt om 06:00, niet om middernacht. Events die
+ *  voor 06:00 starten (zoals een club die om 02:00 nog draait of een
+ *  after die om 04:00 begint) horen bij de avond/nacht ervoor, niet
+ *  bij de nieuwe kalenderdag. */
+export const LOGICAL_DAY_BOUNDARY_HOUR = 6;
+
 /** True als de occurrence helemaal binnen het 'overdag'-venster valt:
- *  start vóór 18:00 én eindigt vóór 20:00 op dezelfde kalenderdag.
- *  Een event 16:00 → 02:00 valt dus NIET in overdag (eindigt veel
- *  later, dus primair avond-/nacht-event). */
+ *  start tussen 06:00 en 18:00 én eindigt vóór 20:00 op dezelfde
+ *  kalenderdag. Een event 02:00 → 07:00 valt dus NIET in overdag
+ *  (start te vroeg = nog nacht-overflow); 16:00 → 02:00 ook niet
+ *  (eindigt veel later, dus primair avond-/nacht-event). */
 export function isDaytimeOccurrence(
   startIso: string,
   endIso: string | null | undefined
 ): boolean {
   const start = new Date(startIso);
   if (Number.isNaN(start.getTime())) return false;
+  if (start.getHours() < LOGICAL_DAY_BOUNDARY_HOUR) return false;
   if (start.getHours() >= DAY_START_CUTOFF_HOUR) return false;
   if (!endIso) return true;
   const end = new Date(endIso);
@@ -864,9 +872,14 @@ export type OccurrenceGroup = {
 };
 
 /**
- * Groepeer occurrence-rows per kalenderdag (lokaal). Geeft per dag de
- * rijen sorted op tijd. Eén event met meerdere occurrences op
- * verschillende dagen verschijnt op elke dag.
+ * Groepeer occurrence-rows per logische dag. Eén event met meerdere
+ * occurrences op verschillende dagen verschijnt op elke dag.
+ *
+ * Logische dag wisselt om 06:00 (LOGICAL_DAY_BOUNDARY_HOUR), niet om
+ * middernacht — events die voor 06:00 starten (clubs die om 02:00 nog
+ * draaien, afters om 04:00) horen bij de avond/nacht ervoor. Een
+ * vrijdag-nacht-club die zaterdag 01:59 begint groepeert dus onder
+ * vrijdag i.p.v. zaterdag.
  */
 export function groupOccurrenceRowsByDay(
   rows: OccurrenceRow[]
@@ -874,6 +887,10 @@ export function groupOccurrenceRowsByDay(
   const map = new Map<string, OccurrenceGroup>();
   for (const row of rows) {
     const d = new Date(row.occurrence.startsAt);
+    // Logische dag-shift: start vóór 06:00 → kalenderdag - 1.
+    if (d.getHours() < LOGICAL_DAY_BOUNDARY_HOUR) {
+      d.setDate(d.getDate() - 1);
+    }
     const yyyy = d.getFullYear();
     const mm = String(d.getMonth() + 1).padStart(2, '0');
     const dd = String(d.getDate()).padStart(2, '0');

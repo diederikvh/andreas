@@ -35,6 +35,7 @@ import {
   eventImageUrl,
   CATEGORY_TICK,
   eventBelongsToMode,
+  isDaytimeOccurrence,
   getVenueTypeChips,
   dowFull,
   dowUpper,
@@ -55,7 +56,6 @@ import {
 import { softTap, tinyTap } from '@/lib/haptics';
 import { useLocale, useT, type Locale } from '@/lib/i18n';
 import {
-  useEventGenres,
   useEvents,
   useFriends,
   useVenues,
@@ -150,10 +150,18 @@ export default function Avond() {
   //   net gepasseerd is automatisch weg, zonder een refetch te triggeren.
   const focusedNow = useFocusedNow();
   const now = useNowMinute();
-  // Vandaag = 00:00 vandaag → 00:00 morgen (mode-vrij).
+  // Vandaag = 06:00 vandaag → 06:00 morgen (logische dag wisselt om
+  // 06:00, niet om middernacht). Events vóór 06:00 horen nog bij de
+  // avond/nacht ervoor — een club die om 02:00 nog draait is part of
+  // de vorige avond. Wanneer je rond 03:00 opent met "vannacht" in
+  // gedachten, valt het venster terug naar gisteren 06:00 → vandaag
+  // 06:00.
   const todayWindow = useMemo(() => {
     const d = new Date(focusedNow);
-    d.setHours(0, 0, 0, 0);
+    if (d.getHours() < 6) {
+      d.setDate(d.getDate() - 1);
+    }
+    d.setHours(6, 0, 0, 0);
     const from = new Date(d);
     const to = new Date(d);
     to.setDate(to.getDate() + 1);
@@ -163,6 +171,18 @@ export default function Avond() {
       refDate: from,
     };
   }, [focusedNow]);
+  // Morgen-window: 06:00 na todayWindow-end → 06:00 daarna. Sluit
+  // exact aan op de todayWindow zonder gap of overlap.
+  const tomorrowWindow = useMemo(() => {
+    const from = new Date(todayWindow.toMs);
+    const to = new Date(from);
+    to.setDate(to.getDate() + 1);
+    return { fromMs: from.getTime(), toMs: to.getTime() };
+  }, [todayWindow.toMs]);
+  // Late avond? Trigger voor de "Morgen"-rail in dag-mode — vanaf
+  // 20:00 is de overdag-content grotendeels achterhaald en wil de
+  // gebruiker vooruitkijken naar morgen.
+  const isLateEvening = useMemo(() => new Date(now).getHours() >= 20, [now]);
   // Geen `to` op de query: zo komen exhibitions die nog lopen (en
   // exhibitions die binnenkort openen) ook in de "Doorlopend te zien"
   // strook, gelijk aan wat de Agenda-tab toont. De vandaag-filter op
@@ -179,19 +199,13 @@ export default function Avond() {
   // selecteren 'volgen' aan de client-kant zodat we ook de venue-data
   // (imageUrl, type) direct in handen hebben.
   const { data: allVenues } = useVenues();
-  // Splits de "Jouw favoriete venues"-rail op visuele modus: nacht
-  // toont night/both, dag toont day/both. Venues zonder dayNight-veld
-  // (`null`) blijven in beide modi staan — geen reden om verborgen te
-  // houden als 't classification ontbreekt.
+  // "Jouw favoriete venues"-rail toont ALLE gevolgde venues — geen
+  // dag/nacht-filter. Je kiest expliciet wie je volgt en wilt die ook
+  // altijd zien, ongeacht of de venue als dag- of nacht-locatie
+  // geclassificeerd staat.
   const followedVenues = useMemo(() => {
-    return (allVenues ?? []).filter((v) => {
-      if (v.myFollowState !== 'volgen') return false;
-      if (v.dayNight === null || v.dayNight === 'both') return true;
-      return mode === 'nacht'
-        ? v.dayNight === 'night'
-        : v.dayNight === 'day';
-    });
-  }, [allVenues, mode]);
+    return (allVenues ?? []).filter((v) => v.myFollowState === 'volgen');
+  }, [allVenues]);
 
   // Filter-state — leeft persistent in een Zustand-store. Het zoek+
   // filter-paneel is verhuisd naar Agenda; op Vandaag respecteren we
@@ -203,7 +217,6 @@ export default function Avond() {
   const activeBlocks = useVandaagFilters((s) => s.activeBlocks);
   const activeCats = useVandaagFilters((s) => s.activeCats);
   const activeTypes = useVandaagFilters((s) => s.activeTypes);
-  const activeGenres = useVandaagFilters((s) => s.activeGenres);
   const { data: session } = useSession();
   // Friends data wordt nog gebruikt door rail-filters (friendsSaved op
   // events). Geen friends-chip meer in de header — die zat in de oude
@@ -270,13 +283,11 @@ export default function Avond() {
       ) {
         return false;
       }
-      // Content-mode-filter overschrijft de cat-filter níet: een
-      // expliciete categorie-keuze blijft leidend, ook als 'ie buiten
-      // de huidige mode valt. Geen expliciete cat? Dan beperken we
-      // tot de mode-categorieën.
-      if (activeCats.length === 0) {
-        if (!eventBelongsToMode(e, cmode)) return false;
-      }
+      // Geen cat-mode-coupling meer: `filtered` bevat alle single-day
+      // events van vandaag. Cmode kiest welke rails worden gerenderd
+      // (en die rails filteren zelf op cat en/of tijd). Een 14:00
+      // matinee in dag-mode én een 22:00 club-event zitten beide hier
+      // — de rail-render kiest wat ze tonen.
       if (activeCats.length > 0 && !activeCats.includes(e.category)) {
         return false;
       }
@@ -287,10 +298,6 @@ export default function Avond() {
         if (!e.venue.type || !activeTypes.includes(e.venue.type)) {
           return false;
         }
-      }
-      if (activeGenres.length > 0) {
-        const evGenres = e.genres ?? [];
-        if (!evGenres.some((g) => activeGenres.includes(g))) return false;
       }
       if (activeBlocks.length > 0) {
         const block = getTimeBlock(
@@ -304,7 +311,12 @@ export default function Avond() {
         const inTitle = e.title.toLowerCase().includes(needle);
         const inVenue = e.venue.name.toLowerCase().includes(needle);
         const inDesc = (e.description ?? '').toLowerCase().includes(needle);
-        if (!inTitle && !inVenue && !inDesc) return false;
+        // Search matched óók op event.genres — zo vindt "techno"
+        // events met techno-tag ook al staat 't niet in de titel.
+        const inGenres = (e.genres ?? []).some((g) =>
+          g.toLowerCase().includes(needle)
+        );
+        if (!inTitle && !inVenue && !inDesc && !inGenres) return false;
       }
       return true;
     });
@@ -315,11 +327,9 @@ export default function Avond() {
     activeBlocks,
     activeCats,
     activeTypes,
-    activeGenres,
     onlyFriends,
     onlyFavorites,
     query,
-    cmode,
   ]);
 
   // Pool voor de Featured-carousel: events die nu nog komen, mode-aware,
@@ -333,7 +343,14 @@ export default function Avond() {
       .filter((row) => {
         if (row.event.kind === 'exhibition') return false;
         if (effectiveEndsAtMs(row.occurrence) < now) return false;
-        if (!eventBelongsToMode(row.event, cmode)) return false;
+        // Tijd-coupling per mode: dag-mode hero toont alleen daytime,
+        // nacht-mode alleen niet-daytime — geen cat-coupling meer.
+        const isDay = isDaytimeOccurrence(
+          row.occurrence.startsAt,
+          row.occurrence.endsAt
+        );
+        if (cmode === 'expo' && !isDay) return false;
+        if (cmode === 'uit' && isDay) return false;
         return true;
       })
       .sort(
@@ -351,7 +368,19 @@ export default function Avond() {
     return expandToOccurrenceRows(events)
       .filter((row) => {
         if (effectiveEndsAtMs(row.occurrence) < now) return false;
-        if (!eventBelongsToMode(row.event, cmode)) return false;
+        // Exhibitions / long-running zijn doorlopend en passen bij
+        // dag-mode (musea/galleries). Voor nacht skippen we ze.
+        const lr =
+          row.event.kind === 'exhibition' ||
+          isLongRunning(row.event.startsAt, row.event.endsAt);
+        if (lr) return cmode === 'expo';
+        // Single-day events: tijd-coupling per cmode.
+        const isDay = isDaytimeOccurrence(
+          row.occurrence.startsAt,
+          row.occurrence.endsAt
+        );
+        if (cmode === 'expo' && !isDay) return false;
+        if (cmode === 'uit' && isDay) return false;
         return true;
       })
       .sort(
@@ -437,21 +466,20 @@ export default function Avond() {
       if (activeCats.length > 0 && !activeCats.includes(e.category)) {
         return false;
       }
-      if (activeGenres.length > 0) {
-        const evGenres = e.genres ?? [];
-        if (!evGenres.some((g) => activeGenres.includes(g))) return false;
-      }
       if (onlyFriends && (e.friendsSaved?.length ?? 0) === 0) return false;
       if (onlyFavorites && !e.venueFollowed) return false;
       if (needle.length > 0) {
         const inTitle = e.title.toLowerCase().includes(needle);
         const inVenue = e.venue.name.toLowerCase().includes(needle);
         const inDesc = (e.description ?? '').toLowerCase().includes(needle);
-        if (!inTitle && !inVenue && !inDesc) return false;
+        const inGenres = (e.genres ?? []).some((g) =>
+          g.toLowerCase().includes(needle)
+        );
+        if (!inTitle && !inVenue && !inDesc && !inGenres) return false;
       }
       return true;
     });
-  }, [events, activeCats, activeGenres, onlyFriends, onlyFavorites, query]);
+  }, [events, activeCats, onlyFriends, onlyFavorites, query]);
 
   // Rails voor 'uit'-mode — gebaseerd op `filtered` (OccurrenceRow[]
   // van vandaag, gefilterd op user-state). Per rail aanvullende
@@ -477,6 +505,52 @@ export default function Avond() {
     () => filtered.filter((r) => r.event.category === 'Film'),
     [filtered]
   );
+  // Expo-mode "Overdag"-rail: alle single-day events vandaag die
+  // helemaal in het dag-venster vallen (start < 18:00 én eindt
+  // < 20:00 dezelfde dag) — cat-agnostisch. Zo glipt een 15:00
+  // clubfeest, een matinee-concert of een middag-lezing er allemaal in.
+  const railOverdag = useMemo(
+    () =>
+      filtered.filter((r) =>
+        isDaytimeOccurrence(r.occurrence.startsAt, r.occurrence.endsAt)
+      ),
+    [filtered]
+  );
+  // "Vandaag te bezoeken" in expo-mode: alleen Kunst + Literatuur
+  // single-day items (openingen, lezingen) — geen tijd-cutoff, want
+  // een 19:00 art-opening hoort ook hier. Tweede mental model dan
+  // "Overdag" (een tentoonstelling/lezing bezoeken ≠ een matinee
+  // bijwonen).
+  const railVandaagKunstLit = useMemo(
+    () =>
+      filtered.filter(
+        (r) =>
+          r.event.category === 'Kunst' || r.event.category === 'Literatuur'
+      ),
+    [filtered]
+  );
+  // Morgen-rail: zelfde filter als "Overdag" (start < 18:00, eindt
+  // < 20:00 dezelfde dag) maar voor morgen. Avond-events horen niet
+  // in deze rail — die check je terug in nacht-mode. Cat-agnostisch,
+  // dus zowel matinees, daytime concerten als opening-events vallen
+  // erin.
+  const railMorgen = useMemo<OccurrenceRow[]>(() => {
+    if (!events) return [];
+    return expandToOccurrenceRows(events).filter((row) => {
+      const e = row.event;
+      if (e.kind === 'exhibition') return false;
+      if (isLongRunning(e.startsAt, e.endsAt)) return false;
+      if (effectiveEndsAtMs(row.occurrence) < now) return false;
+      const startMs = new Date(row.occurrence.startsAt).getTime();
+      if (startMs < tomorrowWindow.fromMs || startMs >= tomorrowWindow.toMs) {
+        return false;
+      }
+      if (!isDaytimeOccurrence(row.occurrence.startsAt, row.occurrence.endsAt)) {
+        return false;
+      }
+      return true;
+    });
+  }, [events, now, tomorrowWindow.fromMs, tomorrowWindow.toMs]);
   // "Vrienden gaan" is bewust toekomst-inclusief (geen vandaag-window):
   // vrienden plannen vooruit, en de rail hoort daarom onder de
   // agenda-banner — los van het vandaag-deel. Pool is `leadsPool`
@@ -540,11 +614,18 @@ export default function Avond() {
     return new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime();
   };
 
+  // Musea/galleries-rails zijn kunst-rails — gate op category='Kunst'
+  // zodat een daytime concert of literatuur-event in een museum-venue
+  // niet per ongeluk hier landt (sinds Muziek/Theater nu óók in
+  // expo-cats zitten voor de overdag-rails).
   const railMuseaMain = useMemo<ApiEvent[]>(
     () =>
       expoEventsToday
         .filter(
-          (e) => e.venue.type === 'museum' && !isFotoOrMediaMuseum(e)
+          (e) =>
+            e.category === 'Kunst' &&
+            e.venue.type === 'museum' &&
+            !isFotoOrMediaMuseum(e)
         )
         .sort(sortByStartsAt),
     [expoEventsToday]
@@ -553,7 +634,12 @@ export default function Avond() {
   const railMuseaFoto = useMemo<ApiEvent[]>(
     () =>
       expoEventsToday
-        .filter((e) => e.venue.type === 'museum' && isFotoOrMediaMuseum(e))
+        .filter(
+          (e) =>
+            e.category === 'Kunst' &&
+            e.venue.type === 'museum' &&
+            isFotoOrMediaMuseum(e)
+        )
         .sort(sortByStartsAt),
     [expoEventsToday]
   );
@@ -563,6 +649,7 @@ export default function Avond() {
       expoEventsToday
         .filter(
           (e) =>
+            e.category === 'Kunst' &&
             e.venue.type === 'galerie' &&
             (e.venue.scene === 'mainstream' ||
               e.venue.scene === 'alternatief')
@@ -576,6 +663,7 @@ export default function Avond() {
       expoEventsToday
         .filter(
           (e) =>
+            e.category === 'Kunst' &&
             e.venue.type === 'galerie' &&
             (e.venue.scene === 'underground' || e.venue.scene === 'fringe')
         )
@@ -602,7 +690,6 @@ export default function Avond() {
   const hasFilterActive =
     activeBlocks.length > 0 ||
     activeCats.length > 0 ||
-    activeGenres.length > 0 ||
     onlyFriends ||
     onlyFavorites ||
     query.trim().length > 0;
@@ -773,6 +860,44 @@ export default function Avond() {
 
         {!isLoading && !error && cmode === 'expo' && (
           <>
+            {/* Morgen-rail: alleen na 20:00 in dag-mode — voor wie op
+                de bank al wil checken wat morgen kan. */}
+            {isLateEvening && (
+              <Rail
+                kicker={t('Morgen', 'Tomorrow')}
+                moreLabel={t('Meer →', 'More →')}
+                onMore={() => router.push('/agenda' as never)}
+              >
+                {railMorgen.map((r) => (
+                  <RailEventCard
+                    key={r.id}
+                    event={r.event}
+                    occurrenceId={
+                      r.occurrence.id.endsWith('::next') ? undefined : r.occurrence.id
+                    }
+                    occurrenceStartsAt={r.occurrence.startsAt}
+                    occurrenceEndsAt={r.occurrence.endsAt}
+                  />
+                ))}
+              </Rail>
+            )}
+            <Rail
+              kicker={t('Overdag', 'Daytime')}
+              moreLabel={t('Meer →', 'More →')}
+              onMore={() => router.push('/agenda' as never)}
+            >
+              {railOverdag.map((r) => (
+                <RailEventCard
+                  key={r.id}
+                  event={r.event}
+                  occurrenceId={
+                    r.occurrence.id.endsWith('::next') ? undefined : r.occurrence.id
+                  }
+                  occurrenceStartsAt={r.occurrence.startsAt}
+                  occurrenceEndsAt={r.occurrence.endsAt}
+                />
+              ))}
+            </Rail>
             <Rail
               kicker={t('Vandaag te bezoeken', 'Today on view')}
               moreLabel={t('Meer →', 'More →')}
@@ -780,7 +905,7 @@ export default function Avond() {
                 router.push({ pathname: '/agenda', params: { cat: 'Kunst' } })
               }
             >
-              {filtered.map((r) => (
+              {railVandaagKunstLit.map((r) => (
                 <RailEventCard
                   key={r.id}
                   event={r.event}
@@ -1278,7 +1403,6 @@ export function AvondFilterSheet({
   activeBlocks,
   activeCats,
   activeTypes,
-  activeGenres,
   showFavoritesChip,
   onSetFriends,
   onSetFavorites,
@@ -1286,7 +1410,6 @@ export function AvondFilterSheet({
   onSetBlocks,
   onSetCats,
   onSetTypes,
-  onSetGenres,
   onClose,
 }: {
   query: string;
@@ -1299,7 +1422,6 @@ export function AvondFilterSheet({
   activeBlocks: TimeBlock[];
   activeCats: ApiEvent['category'][];
   activeTypes: VenueType[];
-  activeGenres: string[];
   showFavoritesChip: boolean;
   onSetFriends: (next: boolean) => void;
   onSetFavorites: (next: boolean) => void;
@@ -1307,7 +1429,6 @@ export function AvondFilterSheet({
   onSetBlocks: (next: TimeBlock[]) => void;
   onSetCats: (next: ApiEvent['category'][]) => void;
   onSetTypes: (next: VenueType[]) => void;
-  onSetGenres: (next: string[]) => void;
   onClose: () => void;
 }) {
   const mode = useMode();
@@ -1326,28 +1447,6 @@ export function AvondFilterSheet({
   const sheetInsets = useSafeAreaInsets();
   const footerPaddingBottom =
     Platform.OS === 'android' ? sheetInsets.bottom + 16 : 16;
-  const { data: genreData, isLoading: genresLoading, error: genresError } =
-    useEventGenres();
-
-  // Filter genre-buckets op de geselecteerde categorieën — als er
-  // niets gekozen is, alle genres tonen. Zelfde patroon als Agenda.
-  const groupedGenres = useMemo(() => {
-    if (!genreData) return [];
-    const filtered =
-      activeCats.length > 0
-        ? genreData.filter((b) => activeCats.includes(b.category))
-        : genreData;
-    const map = new Map<ApiEvent['category'], typeof filtered>();
-    for (const b of filtered) {
-      const arr = map.get(b.category) ?? [];
-      arr.push(b);
-      map.set(b.category, arr);
-    }
-    return CATEGORIES_ORDER.flatMap((category) => {
-      const items = map.get(category);
-      return items ? [{ category, items }] : [];
-    });
-  }, [genreData, activeCats]);
 
   const toggleCat = (c: ApiEvent['category']) => {
     if (activeCats.includes(c)) onSetCats(activeCats.filter((x) => x !== c));
@@ -1358,17 +1457,11 @@ export function AvondFilterSheet({
       onSetTypes(activeTypes.filter((x) => x !== vt));
     else onSetTypes([...activeTypes, vt]);
   };
-  const toggleGenre = (g: string) => {
-    if (activeGenres.includes(g))
-      onSetGenres(activeGenres.filter((x) => x !== g));
-    else onSetGenres([...activeGenres, g]);
-  };
 
   const filterCount =
     activeBlocks.length +
     activeCats.length +
     activeTypes.length +
-    activeGenres.length +
     (onlyFriends ? 1 : 0) +
     (onlyFavorites ? 1 : 0);
 
@@ -1378,7 +1471,6 @@ export function AvondFilterSheet({
     onSetBlocks([]);
     onSetCats([]);
     onSetTypes([]);
-    onSetGenres([]);
   };
 
   const onSave = () => {
@@ -1392,7 +1484,7 @@ export function AvondFilterSheet({
       tb: activeBlocks,
       cats: activeCats,
       vt: activeTypes,
-      gn: activeGenres,
+      gn: [],
     });
     setSaveOpen(false);
     setSaveName('');
@@ -1507,104 +1599,6 @@ export function AvondFilterSheet({
           ))}
         </View>
 
-        {/* Genres komen onderaan: het kunnen er veel zijn, dus eerst
-            de korte label-secties (categorie/venue-type/tijd) en dan
-            pas de lange genre-lijst. */}
-        <Text
-          style={[
-            styles.sheetSectionHead,
-            { color: roles.fgMuted, marginTop: 22 },
-          ]}
-        >
-          {t('Genre', 'Genre')}
-        </Text>
-        {genresLoading && (
-          <View style={styles.sheetLoading}>
-            <SpinningCross size={24} color={roles.fgPlaceholder} />
-          </View>
-        )}
-        {genresError && (
-          <Text style={[styles.sheetEmpty, { color: '#c9453a' }]}>
-            {t('Kon genres niet laden.', 'Couldn’t load genres.')}
-          </Text>
-        )}
-        {!genresLoading && !genresError && groupedGenres.length === 0 && (
-          <Text style={[styles.sheetEmpty, { color: roles.fgMuted }]}>
-            {activeCats.length === 1
-              ? t(
-                  `Geen genres gevonden voor ${activeCats[0]}.`,
-                  `No genres found for ${translateCategory(activeCats[0], 'en')}.`
-                )
-              : activeCats.length > 1
-                ? t(
-                    'Geen genres gevonden voor deze categorieën.',
-                    'No genres found for these categories.'
-                  )
-                : t('Nog geen genres ingevuld.', 'No genres yet.')}
-          </Text>
-        )}
-        <View style={styles.sheetSubGroup}>
-          {groupedGenres.map((section) => (
-            <View key={section.category}>
-              {(activeCats.length === 0 || activeCats.length > 1) && (
-                <Text
-                  style={[
-                    styles.sheetSubHead,
-                    { color: roles.fgPlaceholder },
-                  ]}
-                >
-                  {translateCategory(section.category, locale)}
-                </Text>
-              )}
-              <View style={styles.sheetWrap}>
-                {section.items.map((b) => {
-                  const checked = activeGenres.includes(b.genre);
-                  return (
-                    <Pressable
-                      key={`${section.category}-${b.genre}`}
-                      onPress={() => {
-                        tinyTap();
-                        toggleGenre(b.genre);
-                      }}
-                      style={[
-                        styles.genreChip,
-                        {
-                          borderColor: checked ? roles.fg : roles.bgChip,
-                          backgroundColor: checked
-                            ? roles.fg
-                            : isNacht
-                              ? palette.noir2
-                              : palette.paper2,
-                        },
-                      ]}
-                    >
-                      <Text
-                        style={[
-                          styles.genreChipText,
-                          { color: checked ? roles.bg : roles.fg },
-                        ]}
-                      >
-                        {b.genre}
-                      </Text>
-                      <Text
-                        style={[
-                          styles.genreChipCount,
-                          {
-                            color: checked
-                              ? roles.bg
-                              : roles.fgPlaceholder,
-                          },
-                        ]}
-                      >
-                        {b.count}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
-            </View>
-          ))}
-        </View>
       </ScrollView>
 
       {saveOpen ? (
