@@ -101,8 +101,8 @@ export default function AddFriend() {
             ? `@${me.handle}`
             : 'een vriend';
       const message = tx(
-        `Hey, ${display} hier — ik gebruik Andreas, anti-algoritme uitgaansapp voor Amsterdam. Download 'm en we zijn meteen vrienden:\n${invite.url}`,
-        `Hey, ${display} here — I use Andreas, the anti-algorithm guide to Amsterdam. Download it and we’ll be friends right away:\n${invite.url}`
+        `Hey, ${display} hier — ik gebruik Andreas, Dé uitgaansapp voor Amsterdam. Download 'm en we zijn meteen vrienden:\n${invite.url}`,
+        `Hey, ${display} here — I use Andreas, the guide to going out in Amsterdam. Download it and we’ll be friends right away:\n${invite.url}`
       );
       await Share.share(
         Platform.OS === 'ios'
