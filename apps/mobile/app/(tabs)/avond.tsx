@@ -994,11 +994,6 @@ export default function Avond() {
             </Animated.View>
           )}
 
-        {/* Bottom-banner: na alle rails een uitnodiging om door te
-            klikken naar de volledige Agenda. Spiegelt visueel de
-            KaartBanner bovenaan. */}
-        {!isLoading && !error && <AgendaBanner />}
-
         {/* Vrienden gaan — toekomst-inclusief, dus niet bij het
             vandaag-deel maar onder de agenda-banner. Splitst alsnog
             per content-mode (uit gebruikt OccurrenceRow met occurrence-
@@ -1349,41 +1344,6 @@ function KaartBanner() {
           {t(
             'Zie wat er nu speelt in de buurt.',
             'See what’s on around you right now.'
-          )}
-        </Text>
-      </View>
-      <Ionicons
-        name="chevron-forward"
-        size={18}
-        color={roles.fgPlaceholder}
-      />
-    </Pressable>
-  );
-}
-
-function AgendaBanner() {
-  const roles = useRoles();
-  const t = useT();
-  return (
-    <Pressable
-      onPress={() => router.push('/agenda' as never)}
-      style={[
-        styles.kaartBanner,
-        {
-          backgroundColor: roles.bgLift,
-          borderColor: roles.bgChip,
-        },
-      ]}
-    >
-      <Ionicons name="calendar-outline" size={22} color={roles.fgMuted} />
-      <View style={styles.kaartBody}>
-        <Text style={[styles.kaartKicker, { color: roles.fgMuted }]}>
-          {t('Vooruit plannen', 'Plan ahead')}
-        </Text>
-        <Text style={[styles.kaartTitle, { color: roles.fg }]}>
-          {t(
-            'Bekijk de hele agenda.',
-            'Browse the full agenda.'
           )}
         </Text>
       </View>

@@ -24,11 +24,14 @@ export function VenueRailCard({
   name,
   imageUrl,
   type,
+  wide = false,
 }: {
   slug: string;
   name: string;
   imageUrl: string | null | undefined;
   type: VenueType | null | undefined;
+  /** Vol-breed renderen — Rail injecteert dit bij single-item rails. */
+  wide?: boolean;
 }) {
   const roles = useRoles();
   const locale = useLocale();
@@ -43,17 +46,24 @@ export function VenueRailCard({
       onPress={onPress}
       style={[
         styles.card,
+        wide && styles.cardWide,
         { backgroundColor: surface.bg, borderColor: surface.border },
       ]}
     >
       {imageUrl ? (
         <Image
           source={{ uri: imageUrl }}
-          style={styles.cardImg}
+          style={[styles.cardImg, wide && styles.cardImgWide]}
           contentFit="cover"
         />
       ) : (
-        <View style={[styles.cardImg, { backgroundColor: surface.fallback }]} />
+        <View
+          style={[
+            styles.cardImg,
+            wide && styles.cardImgWide,
+            { backgroundColor: surface.fallback },
+          ]}
+        />
       )}
       <View style={styles.cardBody}>
         <Text
@@ -82,9 +92,15 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     overflow: 'hidden',
   },
+  cardWide: {
+    width: '100%',
+  },
   cardImg: {
     width: '100%',
     height: RAIL_CARD_IMG_HEIGHT,
+  },
+  cardImgWide: {
+    height: 220,
   },
   cardBody: {
     padding: 12,

@@ -1,4 +1,10 @@
-import type { ReactNode } from 'react';
+import {
+  Children,
+  cloneElement,
+  isValidElement,
+  type ReactElement,
+  type ReactNode,
+} from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { tinyTap } from '@/lib/haptics';
@@ -45,8 +51,15 @@ export function Rail({
   emptyText?: string;
 }) {
   const roles = useRoles();
-  const hasChildren =
-    Array.isArray(children) ? children.length > 0 : Boolean(children);
+  // Telt alleen daadwerkelijke React-elements (filtert false/null/undefined
+  // die conditioneel-renderende callers in een array stoppen). Bepaalt
+  // single-item state — bij precies één kaart renderen we vol-breed
+  // i.p.v. een 220px-card in een lege scroller.
+  const items = Children.toArray(children).filter((c) =>
+    isValidElement(c)
+  ) as ReactElement<{ wide?: boolean }>[];
+  const hasChildren = items.length > 0;
+  const isSingle = items.length === 1;
   if (!hasChildren && !emptyText) return null;
 
   const onMoreTap = onMore
@@ -81,13 +94,22 @@ export function Rail({
         ) : null}
       </View>
       {hasChildren ? (
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.scroller}
-        >
-          {children}
-        </ScrollView>
+        isSingle ? (
+          // Single item — vol-breed renderen, geen scroller. Klonen
+          // van het kind injecteert `wide`, zodat de card z'n width
+          // naar 100% schakelt.
+          <View style={styles.singleWrap}>
+            {cloneElement(items[0], { wide: true })}
+          </View>
+        ) : (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.scroller}
+          >
+            {children}
+          </ScrollView>
+        )
       ) : (
         <View style={styles.emptyWrap}>
           <Text style={[styles.emptyText, { color: roles.fgPlaceholder }]}>
@@ -130,6 +152,12 @@ const styles = StyleSheet.create({
   },
   scroller: {
     gap: 10,
+    paddingHorizontal: 22,
+    paddingBottom: 8,
+  },
+  // Wrapper voor single-item: zelfde horizontal inset als de scroller
+  // zodat 't visueel op dezelfde plek begint, vol-breed card.
+  singleWrap: {
     paddingHorizontal: 22,
     paddingBottom: 8,
   },

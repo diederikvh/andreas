@@ -28,6 +28,7 @@ export function RailEventCard({
   occurrenceId,
   occurrenceStartsAt,
   occurrenceEndsAt,
+  wide = false,
 }: {
   event: ApiEvent;
   /** Optionele specifieke occurrence — als gezet, geeft 'm mee als
@@ -37,6 +38,9 @@ export function RailEventCard({
       díe occurrence ipv de event-level startsAt. */
   occurrenceStartsAt?: string;
   occurrenceEndsAt?: string | null;
+  /** Vol-breed renderen i.p.v. de standaard 220px. Rail injecteert dit
+      automatisch wanneer er één item in de rail zit. */
+  wide?: boolean;
 }) {
   const roles = useRoles();
   const locale = useLocale();
@@ -67,17 +71,24 @@ export function RailEventCard({
       onPress={onPress}
       style={[
         styles.card,
+        wide && styles.cardWide,
         { backgroundColor: surface.bg, borderColor: surface.border },
       ]}
     >
       {eventImageUrl(event) ? (
         <Image
           source={{ uri: eventImageUrl(event)! }}
-          style={styles.cardImg}
+          style={[styles.cardImg, wide && styles.cardImgWide]}
           contentFit="cover"
         />
       ) : (
-        <View style={[styles.cardImg, { backgroundColor: surface.fallback }]} />
+        <View
+          style={[
+            styles.cardImg,
+            wide && styles.cardImgWide,
+            { backgroundColor: surface.fallback },
+          ]}
+        />
       )}
       <View style={styles.cardBody}>
         <Text
@@ -111,9 +122,15 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     overflow: 'hidden',
   },
+  cardWide: {
+    width: '100%',
+  },
   cardImg: {
     width: '100%',
     height: RAIL_CARD_IMG_HEIGHT,
+  },
+  cardImgWide: {
+    height: 220,
   },
   cardBody: {
     padding: 12,
