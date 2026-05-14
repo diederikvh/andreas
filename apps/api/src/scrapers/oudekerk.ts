@@ -239,8 +239,18 @@ export async function scrapeOudeKerk(options?: {
     }
     const { startsAt, endsAt, isMultiDay } = dateInfo;
 
+    // Past-filter: skip alleen voor *nieuwe* events. Voor bestaande
+    // events willen we ook past-dates corrigeren (vorige scrape-runs
+    // hadden een bug die alle events op de verkeerde range zette;
+    // door altijd te upsertten genezen die zichzelf).
+    const eventId = `evt-oudekerk-${slug}-${id}`;
     const effectiveEnd = endsAt ?? startsAt;
-    if (effectiveEnd.getTime() < now - 24 * 60 * 60_000) {
+    const [pre] = await db
+      .select({ id: schema.events.id })
+      .from(schema.events)
+      .where(eq(schema.events.id, eventId))
+      .limit(1);
+    if (!pre && effectiveEnd.getTime() < now - 24 * 60 * 60_000) {
       result.skipped++;
       continue;
     }
