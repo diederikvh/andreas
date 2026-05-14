@@ -202,9 +202,12 @@ export async function scrapeNieuweKerk(options?: {
         .limit(1);
 
       if (existing) {
-        const needsImageRepair =
-          !existing.imageUrl || !existing.imageUrl.startsWith('http');
-        if (needsImageRepair && card.imageUrl) {
+        // Altijd re-mirror: Nieuwe Kerk publiceert maar 2-4 exhibitions
+        // tegelijk, dus de extra fetch+upload kost niks. Een eerdere
+        // bug overschreef Bunny-files met de wrong content (Queer-image
+        // onder de world-press filename) — door bij elke run opnieuw
+        // te uploaden komt de juiste content op de juiste filename.
+        if (card.imageUrl) {
           const newImage =
             (await mirrorImage(card.imageUrl, card.slug)) ?? card.imageUrl;
           await db
