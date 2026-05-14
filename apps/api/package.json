@@ -11,7 +11,8 @@
     "db:migrate": "tsx --env-file=.env src/db/migrate.ts",
     "db:studio": "drizzle-kit studio",
     "db:push": "drizzle-kit push",
-    "db:seed": "tsx --env-file=.env src/db/seed.ts"
+    "db:seed": "tsx --env-file=.env src/db/seed.ts",
+    "scrape": "tsx --env-file=.env src/scripts/run-scraper.ts"
   },
   "dependencies": {
     "@andreas/shared": "workspace:*",
