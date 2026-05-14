@@ -8,6 +8,10 @@ import { scrapeCbkZuidoost, type CbkZuidoostResult } from './cbkzuidoost.js';
 import { scrapeDeNieuweAnita, type DeNieuweAnitaResult } from './denieuweanita.js';
 import { scrapeNxtMuseum, type NxtMuseumResult } from './nxtmuseum.js';
 import { scrapeRijksmuseum, type RijksmuseumResult } from './rijksmuseum.js';
+import { scrapeCobraMuseum, type CobraMuseumResult } from './cobramuseum.js';
+import { scrapeAmsterdamMuseum, type AmsterdamMuseumResult } from './amsterdammuseum.js';
+import { scrapeWereldmuseum, type WereldmuseumResult } from './wereldmuseum.js';
+import { scrapeVanGoghMuseum, type VanGoghMuseumResult } from './vangoghmuseum.js';
 import { scrapeBoomChicago, type BoomChicagoResult } from './boomchicago.js';
 import { scrapeBrakkeGrond, type BrakkeGrondResult } from './brakkegrond.js';
 import { scrapeCelebratix, type CelebratixVenueResult } from './celebratix.js';
@@ -89,6 +93,10 @@ export const scrapers = {
   cbkzuidoost: scrapeCbkZuidoost,
   nxtmuseum: scrapeNxtMuseum,
   rijksmuseum: scrapeRijksmuseum,
+  cobramuseum: scrapeCobraMuseum,
+  amsterdammuseum: scrapeAmsterdamMuseum,
+  wereldmuseum: scrapeWereldmuseum,
+  vangoghmuseum: scrapeVanGoghMuseum,
   bettyasfalt: scrapeBettyAsfalt,
   bourbonstreet: scrapeBourbonStreet,
   theatermascini: scrapeTheaterMascini,
@@ -137,6 +145,10 @@ export type ScraperResult =
   | CbkZuidoostResult
   | NxtMuseumResult
   | RijksmuseumResult
+  | CobraMuseumResult
+  | AmsterdamMuseumResult
+  | WereldmuseumResult
+  | VanGoghMuseumResult
   | BettyAsfaltResult
   | BourbonStreetResult
   | TheaterMasciniResult
