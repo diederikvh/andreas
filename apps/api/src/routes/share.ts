@@ -71,6 +71,7 @@ shareRoute.get('/.well-known/apple-app-site-association', (c) => {
             { '/': '/e/*', comment: 'Event-share-links' },
             { '/': '/v/*', comment: 'Venue-share-links' },
             { '/': '/u/*', comment: 'User-handle (QR) share-links' },
+            { '/': '/i/*', comment: 'Friend-invite-tokens' },
             { '/': '/', comment: 'Home' },
             { '/': '/api/*', exclude: true, comment: 'API-calls' },
           ],
@@ -369,6 +370,37 @@ shareRoute.get('/v/:slug', async (c) => {
  * Event SEO-template
  * ====================================================================== */
 
+/**
+ * ImageObject met volledige rechten-attributie. Search Console klaagt
+ * non-critical over `copyrightNotice`, `creator`, `license` en
+ * `acquireLicensePage` als die ontbreken — we wijzen license en
+ * acquireLicensePage consistent naar `/auteursrecht`, waar staat dat foto's
+ * via venues komen en bij hun rechthebbenden liggen.
+ */
+function imageObjectLd(opts: {
+  url: string;
+  creditName: string;
+  creditUrl?: string | null;
+}) {
+  const { url, creditName, creditUrl } = opts;
+  const year = new Date().getFullYear();
+  const org = {
+    '@type': 'Organization' as const,
+    name: creditName,
+    ...(creditUrl ? { url: creditUrl } : {}),
+  };
+  return {
+    '@type': 'ImageObject' as const,
+    url,
+    creditText: `Foto via ${creditName}`,
+    copyrightNotice: `© ${year} ${creditName}`,
+    copyrightHolder: org,
+    creator: org,
+    license: `${PUBLIC_BASE_URL}/auteursrecht`,
+    acquireLicensePage: `${PUBLIC_BASE_URL}/auteursrecht`,
+  };
+}
+
 type EventRow = {
   id: string;
   title: string;
@@ -488,36 +520,71 @@ function renderEventSeoPage(opts: {
         name: event.title,
       }];
 
+  // endDate-fallback: voor shows zonder `endsAt` rekenen we +2u op startsAt
+  // zodat Google's "Missing field endDate" non-critical warning verdwijnt
+  // en de event-tegel een eindtijd toont. Exhibitions horen een echte
+  // endsAt te hebben — als die mist krijg je hier dus ook een +2u, maar
+  // dat is een data-issue om bij de bron op te lossen.
+  const eventEndDate =
+    primaryOcc?.endsAt ??
+    (primaryOcc?.startsAt
+      ? new Date(primaryOcc.startsAt.getTime() + 2 * 60 * 60 * 1000)
+      : undefined);
+
+  // Image-fallback chain: event-foto → venue-foto → ANDREAS app-icoon.
+  // Search Console flagt non-critical "Missing image" als 'image' ontbreekt;
+  // door altijd te emitten halen we die warning weg.
+  const eventImage = event.imageUrl
+    ? imageObjectLd({
+        url: event.imageUrl,
+        creditName: event.venue.name,
+        creditUrl: event.venue.website,
+      })
+    : event.venue.imageUrl
+    ? imageObjectLd({
+        url: event.venue.imageUrl,
+        creditName: event.venue.name,
+        creditUrl: event.venue.website,
+      })
+    : imageObjectLd({
+        url: OG_IMAGE_URL,
+        creditName: 'ANDREAS',
+        creditUrl: PUBLIC_BASE_URL,
+      });
+
+  // Offer altijd emitten — Search Console klaagt over missende 'offers'
+  // wanneer we noch prijs noch ticket-URL hebben. URL valt terug op de
+  // share-page (de feitelijke "koop"-route in onze app); validFrom op
+  // `createdAt` van de occurrence, of nu als die mist.
+  const offerUrl = ticketUrl ?? `${PUBLIC_BASE_URL}/e/${event.id}`;
+  const offerValidFrom = primaryOcc?.createdAt ?? new Date();
+  const offerAvailability =
+    primaryOcc?.status === 'sold_out'
+      ? 'https://schema.org/SoldOut'
+      : 'https://schema.org/InStock';
+  const offerLd = {
+    '@type': 'Offer',
+    url: offerUrl,
+    priceCurrency: 'EUR',
+    availability: offerAvailability,
+    validFrom: offerValidFrom.toISOString(),
+    ...(primaryOcc?.priceCents != null
+      ? { price: (primaryOcc.priceCents / 100).toFixed(2) }
+      : {}),
+  };
+
   const eventLd = {
     '@context': 'https://schema.org',
     '@type': eventType,
     name: event.title,
     description: event.description ?? `${event.title} in ${event.venue.name}, Amsterdam.`,
     startDate: primaryOcc?.startsAt ?? undefined,
-    endDate: primaryOcc?.endsAt ?? undefined,
+    endDate: eventEndDate,
     eventStatus: primaryOcc?.status === 'cancelled'
       ? 'https://schema.org/EventCancelled'
       : 'https://schema.org/EventScheduled',
     eventAttendanceMode: 'https://schema.org/OfflineEventAttendanceMode',
-    // Image als ImageObject met expliciete credit naar de venue. Google
-    // Images en AI-engines pakken `creditText` op om de bron te tonen
-    // bij citaties; `copyrightHolder` documenteert auteursrechtelijke
-    // toedeling. Geeft Andreas een duidelijke "we hosten, maar de rechten
-    // liggen bij X"-positie.
-    image: event.imageUrl
-      ? [
-          {
-            '@type': 'ImageObject',
-            url: event.imageUrl,
-            creditText: `Foto via ${event.venue.name}`,
-            copyrightHolder: {
-              '@type': 'Organization',
-              name: event.venue.name,
-              ...(event.venue.website ? { url: event.venue.website } : {}),
-            },
-          },
-        ]
-      : undefined,
+    image: [eventImage],
     // Content-credit: beschrijving/info komt grotendeels van de venue's
     // eigen kanalen (website, ticket-platform, persbericht). `sourceOrganization`
     // documenteert dat — zowel voor Google E-E-A-T als voor juridische context.
@@ -551,29 +618,7 @@ function renderEventSeoPage(opts: {
       name: event.venue.name,
       ...(event.venue.website ? { url: event.venue.website } : {}),
     },
-    ...(primaryOcc?.priceCents != null
-      ? {
-          offers: {
-            '@type': 'Offer',
-            price: (primaryOcc.priceCents / 100).toFixed(2),
-            priceCurrency: 'EUR',
-            availability:
-              primaryOcc.status === 'sold_out'
-                ? 'https://schema.org/SoldOut'
-                : 'https://schema.org/InStock',
-            ...(ticketUrl ? { url: ticketUrl } : {}),
-          },
-        }
-      : ticketUrl
-      ? {
-          offers: {
-            '@type': 'Offer',
-            url: ticketUrl,
-            priceCurrency: 'EUR',
-            availability: 'https://schema.org/InStock',
-          },
-        }
-      : {}),
+    offers: offerLd,
     isAccessibleForFree: primaryOcc?.priceCents === 0 ? true : false,
   };
 
@@ -850,6 +895,7 @@ function renderEventSeoPage(opts: {
             deeplink: appLink,
             title: 'Bewaar dit event in ANDREAS',
             body: 'Krijg een herinnering, zie welke vrienden ook gaan, en ontdek meer in Amsterdam.',
+            qrUrl: `${PUBLIC_BASE_URL}/e/${event.id}`,
           })}
         </aside>
       </div>
@@ -911,20 +957,21 @@ function renderVenueSeoPage(opts: {
     name: venue.name,
     description: venue.description ?? `${venue.name} in Amsterdam.`,
     url: `${PUBLIC_BASE_URL}/v/${venue.slug}`,
-    // ImageObject met expliciete credit — de venue is z'n eigen
-    // copyright-holder voor de eigen pers-foto.
+    // ImageObject met volledige rechten-attributie — de venue is z'n
+    // eigen copyright-holder voor de eigen pers-foto. Bij ontbrekende
+    // venue-foto valt 'ie terug op het ANDREAS-icoon zodat 'image' altijd
+    // aanwezig is.
     image: venue.imageUrl
-      ? {
-          '@type': 'ImageObject',
+      ? imageObjectLd({
           url: venue.imageUrl,
-          creditText: `Foto via ${venue.name}`,
-          copyrightHolder: {
-            '@type': 'Organization',
-            name: venue.name,
-            ...(venue.website ? { url: venue.website } : {}),
-          },
-        }
-      : undefined,
+          creditName: venue.name,
+          creditUrl: venue.website,
+        })
+      : imageObjectLd({
+          url: OG_IMAGE_URL,
+          creditName: 'ANDREAS',
+          creditUrl: PUBLIC_BASE_URL,
+        }),
     address: {
       '@type': 'PostalAddress',
       streetAddress: streetAddress(venue.address),
@@ -1135,6 +1182,7 @@ function renderVenueSeoPage(opts: {
             deeplink: appLink,
             title: `Volg ${venue.name} in ANDREAS`,
             body: 'Krijg een melding bij nieuwe events en zie wat je vrienden hebben gered.',
+            qrUrl: `${PUBLIC_BASE_URL}/v/${venue.slug}`,
           })}
         </aside>
       </div>
@@ -1380,6 +1428,105 @@ shareRoute.get('/u/:handle', async (c) => {
 
   c.header('Content-Type', 'text/html; charset=utf-8');
   c.header('Cache-Control', 'public, max-age=300');
+  return c.body(html);
+});
+
+/* ========================================================================
+ * /i/:token  —  friend-invite share. Opent app via universal-link;
+ *               iOS pakt 'm via AASA-component /i/*. App parsed de
+ *               token + claimt via POST /share-invites/:token/claim
+ *               zodra de user ingelogd is.
+ * ====================================================================== */
+
+shareRoute.get('/i/:token', async (c) => {
+  const token = c.req.param('token');
+  const safeToken = token.replace(/[^A-Za-z0-9_-]/g, '').slice(0, 64);
+
+  // Toon de uitnodiger op de fallback-pagina (avatar + naam). We
+  // lookuppen via de share_invites + users join. Verlopen of niet-
+  // bestaande tokens tonen we als 'algemene' uitnodiging, geen 404 —
+  // dan kan de gebruiker alsnog de app downloaden zonder fout.
+  const [row] = await db
+    .select({
+      name: schema.users.name,
+      handle: schema.users.handle,
+      avatarUrl: schema.users.avatarUrl,
+      expiresAt: schema.shareInvites.expiresAt,
+    })
+    .from(schema.shareInvites)
+    .innerJoin(
+      schema.users,
+      eq(schema.users.id, schema.shareInvites.fromUserId)
+    )
+    .where(eq(schema.shareInvites.token, safeToken))
+    .limit(1);
+
+  const expired = row ? row.expiresAt.getTime() < Date.now() : false;
+  const displayName =
+    row && row.name && !row.name.startsWith('+') ? row.name : '';
+  const handleLabel = row?.handle ?? null;
+  const inviterDisplay = displayName || (handleLabel ? `@${handleLabel}` : 'iemand');
+
+  const appLink = `andreas://i/${encodeURIComponent(safeToken)}`;
+  const universalLink = `${PUBLIC_BASE_URL}/i/${encodeURIComponent(safeToken)}`;
+
+  const title = row && !expired
+    ? `${inviterDisplay} nodigt je uit op ANDREAS`
+    : 'Doe mee op ANDREAS';
+  const subTitle = row && !expired
+    ? 'Download de app, log in en jullie zijn vrienden.'
+    : 'Anti-algoritme uitgaansapp voor Amsterdam.';
+
+  const html = `<!doctype html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>${escapeHtml(title)}</title>
+  <meta property="og:title" content="${escapeHtml(title)}" />
+  <meta property="og:description" content="${escapeHtml(subTitle)}" />
+  ${row?.avatarUrl ? `<meta property="og:image" content="${escapeHtml(row.avatarUrl)}" />` : ''}
+  <meta property="og:url" content="${escapeHtml(universalLink)}" />
+  <meta property="og:type" content="website" />
+  <meta name="apple-itunes-app" content="app-id=${APPLE_APP_ID}, app-argument=${escapeHtml(appLink)}" />
+  <meta name="robots" content="noindex" />
+  <style>
+    :root { color-scheme: dark; }
+    body { margin: 0; background: #0a0a0b; color: #f2f2ef; font-family: -apple-system, system-ui, sans-serif; }
+    main { max-width: 420px; margin: 0 auto; padding: 56px 24px; text-align: center; }
+    h1 { font-size: 26px; line-height: 1.1; letter-spacing: -0.6px; margin: 16px 0 8px; font-weight: 900; }
+    p { color: #9a9a94; margin: 4px 0 24px; font-size: 14px; line-height: 1.4; }
+    a.cta { display: inline-block; background: #d4ff3a; color: #0a0a0b; padding: 14px 22px; border-radius: 999px; text-decoration: none; font-weight: 600; }
+    a.fallback { display: block; margin-top: 16px; color: #9a9a94; font-size: 12px; }
+    .avatar { width: 96px; height: 96px; border-radius: 999px; object-fit: cover; background: #17171a; margin: 0 auto; }
+    .kicker { font-family: ui-monospace, monospace; font-size: 11px; letter-spacing: 1.4px; text-transform: uppercase; color: #d4ff3a; }
+    .expired { color: #ff7a7a; font-size: 13px; margin-top: 8px; }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="kicker">ANDREAS · vrienden</div>
+    ${row?.avatarUrl ? `<img class="avatar" src="${escapeHtml(row.avatarUrl)}" alt="" />` : '<div class="avatar"></div>'}
+    <h1>${escapeHtml(title)}</h1>
+    <p>${escapeHtml(subTitle)}</p>
+    ${expired ? `<p class="expired">Deze uitnodiging is verlopen — je kunt de app wel downloaden en daarna alsnog vrienden worden.</p>` : ''}
+    <a class="cta" href="${escapeHtml(appLink)}" id="open">Open in ANDREAS</a>
+    <a class="fallback" href="${escapeHtml(APP_STORE_URL)}">Nog geen ANDREAS? Download in de App Store</a>
+  </main>
+  <script>
+    (function () {
+      var app = ${JSON.stringify(appLink)};
+      var store = ${JSON.stringify(APP_STORE_URL)};
+      var t = setTimeout(function () { window.location.href = store; }, 1200);
+      window.addEventListener('pagehide', function () { clearTimeout(t); });
+      window.location.href = app;
+    })();
+  </script>
+</body>
+</html>`;
+
+  c.header('Content-Type', 'text/html; charset=utf-8');
+  c.header('Cache-Control', 'no-store');
   return c.body(html);
 });
 
@@ -1648,8 +1795,10 @@ shareRoute.get('/', async (c) => {
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="description" content="ANDREAS bundelt de meest complete agenda van Amsterdam in één app: concerten, clubavonden, exposities, theater, film en literaire events — wat er vanavond is en wat eraan komt, op één plek." />
   <link rel="canonical" href="${PUBLIC_BASE_URL}/" />
-  <link rel="icon" type="image/png" href="${PUBLIC_BASE_URL}/favicon.png" />
-  <link rel="apple-touch-icon" href="${PUBLIC_BASE_URL}/apple-touch-icon.png" />
+  <link rel="icon" type="image/png" sizes="16x16" href="${PUBLIC_BASE_URL}/favicon-16.png" />
+  <link rel="icon" type="image/png" sizes="32x32" href="${PUBLIC_BASE_URL}/favicon-32.png" />
+  <link rel="icon" type="image/png" sizes="48x48" href="${PUBLIC_BASE_URL}/favicon.png" />
+  <link rel="apple-touch-icon" sizes="180x180" href="${PUBLIC_BASE_URL}/apple-touch-icon.png" />
   <meta name="theme-color" content="#0a0a0b" />
   <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1" />
   <meta name="googlebot" content="index, follow, max-image-preview:large" />

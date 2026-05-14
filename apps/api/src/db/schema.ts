@@ -434,6 +434,43 @@ export const invites = pgTable(
   ]
 );
 
+/**
+ * Share-invites: bevriendings-tokens die je extern (WhatsApp, iMessage)
+ * deelt. Inviter creëert een record → URL = andreas.amsterdam/i/<token>.
+ * Ontvanger downloadt + logt in → app claimt token → friendship-upsert
+ * (status accepted) + share_invite.claimedBy/At gezet.
+ *
+ * `eventId` en `venueId` zijn nullable: v1 is alleen friend-only
+ * (beide null). Toekomstige slice koppelt context.
+ */
+export const shareInvites = pgTable(
+  'share_invites',
+  {
+    id: text().primaryKey(),
+    fromUserId: text()
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    eventId: text().references(() => events.id, { onDelete: 'cascade' }),
+    venueId: text().references(() => venues.id, { onDelete: 'cascade' }),
+    /** URL-safe random string van 16-24 chars. Uniek over de tabel. */
+    token: text().notNull().unique(),
+    claimedByUserId: text().references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    claimedAt: timestamp({ withTimezone: true }),
+    /** Tokens verlopen na 30 dagen — voorkomt dat oude WhatsApp-links
+        voor altijd open blijven. */
+    expiresAt: timestamp({ withTimezone: true }).notNull(),
+    createdAt: timestamp({ withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+  },
+  (t) => [
+    index('share_invites_token_idx').on(t.token),
+    index('share_invites_from_idx').on(t.fromUserId),
+  ]
+);
+
 export const series = pgTable('series', {
   id: text().primaryKey(),
   slug: text().notNull().unique(),

@@ -459,6 +459,36 @@ export async function getMe(): Promise<ApiMe | null> {
   }
 }
 
+/**
+ * Vraag de server om een nieuwe share-invite token voor de huidige
+ * user. Body is leeg in v1 (pure friend-invite); toekomstige slice
+ * koppelt eventId/venueId.
+ */
+export async function createShareInvite(): Promise<{
+  token: string;
+  url: string;
+  expiresAt: string;
+}> {
+  return await authedRequest('/share-invites', {
+    method: 'POST',
+    body: JSON.stringify({}),
+  });
+}
+
+/**
+ * Claim een share-invite token: maakt friendship met de inviter en
+ * retourneert de inviter-profiel-info zodat de UI een toast kan tonen.
+ * Idempotent — meerdere claims door dezelfde user zijn veilig.
+ */
+export async function claimShareInvite(token: string): Promise<{
+  inviter: { id: string; name: string | null; handle: string | null; avatarUrl: string | null };
+  friendshipChange: 'created' | 'upgraded' | 'noop';
+}> {
+  return await authedRequest(`/share-invites/${encodeURIComponent(token)}/claim`, {
+    method: 'POST',
+  });
+}
+
 export async function updateMe(input: {
   name?: string;
   handle?: string;

@@ -15,6 +15,7 @@ import {
   Platform,
   Pressable,
   ScrollView,
+  Share,
   StyleSheet,
   Switch,
   Text,
@@ -28,7 +29,7 @@ import { Cross } from '@/components/Cross';
 import { ProfileAvatar } from '@/components/ProfileAvatar';
 import { SpinningCross } from '@/components/SpinningCross';
 import type { ApiMe } from '@/lib/api';
-import { getMe, updateMe, uploadAvatar } from '@/lib/api';
+import { createShareInvite, getMe, updateMe, uploadAvatar } from '@/lib/api';
 import { authClient, useSession } from '@/lib/authClient';
 import {
   type LocalePreference,
@@ -233,6 +234,34 @@ export default function Jij() {
     }
     setError(null);
     setStageOverride('profile');
+  };
+
+  // Vraagt de server om een share-invite token, opent native
+  // share-sheet (WhatsApp/iMessage). De ontvanger tikt op de URL →
+  // installeert app indien nodig → claim-hook bevriendt automatisch.
+  const onInviteFriend = async () => {
+    try {
+      const invite = await createShareInvite();
+      const display =
+        me?.name && !me.name.startsWith('+')
+          ? me.name
+          : me?.handle
+            ? `@${me.handle}`
+            : 'een vriend';
+      const messageBody = t(
+        `Hey, ${display} hier — ik gebruik Andreas, anti-algoritme uitgaansapp voor Amsterdam. Download 'm en we zijn meteen vrienden:\n${invite.url}`,
+        `Hey, ${display} here — I use Andreas, the anti-algorithm guide to Amsterdam. Download it and we’ll be friends right away:\n${invite.url}`
+      );
+      await Share.share(
+        Platform.OS === 'ios'
+          ? { url: invite.url, message: messageBody }
+          : { message: messageBody }
+      );
+      Haptics.selectionAsync();
+    } catch {
+      // Cancel of netwerk-fout — stil falen, gebruiker probeert
+      // opnieuw of weet zelf dat 'r iets niet werkte.
+    }
   };
 
   const onCancelProfileEdit = () => {
@@ -700,6 +729,20 @@ export default function Jij() {
               />
               <Text style={[styles.editBtnText, { color: roles.fgMuted }]}>
                 {t('Vrienden zoeken', 'Find friends')}
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={onInviteFriend}
+              style={[styles.editBtn, { borderColor: roles.bgChip }]}
+            >
+              <Ionicons
+                name="share-outline"
+                size={16}
+                color={roles.fgMuted}
+                style={{ marginRight: 6 }}
+              />
+              <Text style={[styles.editBtnText, { color: roles.fgMuted }]}>
+                {t('Nodig vriend uit', 'Invite a friend')}
               </Text>
             </Pressable>
             <Pressable

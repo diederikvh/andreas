@@ -22,6 +22,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { ModeCurtain } from '@/components/ModeCurtain';
 import { PushManager } from '@/components/PushManager';
+import { ShareInviteClaimer } from '@/components/ShareInviteClaimer';
 import { queryClient, queryPersister } from '@/lib/queryClient';
 import { useContentModeStore } from '@/store/contentMode';
 import { useHasHydrated, useMode, useModeStore } from '@/store/mode';
@@ -104,6 +105,7 @@ export default function RootLayout() {
             </Stack>
             <ModeCurtain />
             <PushManager />
+            <ShareInviteClaimer />
             <StatusBar style={mode === 'nacht' ? 'light' : 'dark'} />
           </SafeAreaProvider>
         )}
