@@ -1004,7 +1004,7 @@ export default function Avond() {
             per content-mode (uit gebruikt OccurrenceRow met occurrence-
             id voor recurring events, expo werkt op kale ApiEvent). */}
         {!isLoading && !error && cmode === 'uit' && railFriendsUit.length > 0 && (
-          <Rail kicker={t('Vrienden gaan', 'Friends going')}>
+          <Rail kicker={t("Vrienden vinden 't leuk", 'Friends liked')}>
             {railFriendsUit.map((r) => (
               <RailEventCard
                 key={r.id}
@@ -1019,7 +1019,7 @@ export default function Avond() {
           </Rail>
         )}
         {!isLoading && !error && cmode === 'expo' && railFriendsExpo.length > 0 && (
-          <Rail kicker={t('Vrienden gaan', 'Friends going')}>
+          <Rail kicker={t("Vrienden vinden 't leuk", 'Friends liked')}>
             {railFriendsExpo.map((e) => (
               <RailEventCard key={e.id} event={e} />
             ))}

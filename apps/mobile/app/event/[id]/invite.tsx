@@ -197,7 +197,7 @@ export default function InviteModal() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{
           paddingBottom: hasSelectable
-            ? insets.bottom + 180
+            ? insets.bottom + 260
             : insets.bottom + 24,
         }}
       >
@@ -289,35 +289,6 @@ export default function InviteModal() {
           </>
         )}
 
-        {hasSelectable && (
-          <View style={styles.fieldGroup}>
-            <Text style={[styles.label, { color: roles.fgMuted }]}>
-              {t('BERICHT (optioneel)', 'MESSAGE (optional)')}
-            </Text>
-            <View
-              style={[
-                styles.field,
-                {
-                  borderColor: isNacht ? '#2a2a2d' : palette.paper,
-                  backgroundColor: isNacht ? palette.noir2 : palette.paper2,
-                },
-              ]}
-            >
-              <TextInput
-                value={message}
-                onChangeText={setMessage}
-                placeholder={t(
-                  'bv. ik haal je om 19:30 op',
-                  'e.g. I’ll pick you up at 7.30pm'
-                )}
-                placeholderTextColor={roles.fgPlaceholder}
-                multiline
-                maxLength={280}
-                style={[styles.input, { color: roles.fg }]}
-              />
-            </View>
-          </View>
-        )}
       </ScrollView>
 
       {hasSelectable && (
@@ -331,16 +302,28 @@ export default function InviteModal() {
           },
         ]}
       >
-        <Text style={[styles.count, { color: roles.fgMuted }]}>
-          {selected.size === 0
-            ? t('Selecteer iemand', 'Select someone')
-            : selected.size === 1
-              ? t('1 vriend gekozen', '1 friend selected')
-              : t(
-                  `${selected.size} vrienden gekozen`,
-                  `${selected.size} friends selected`
-                )}
-        </Text>
+        <View
+          style={[
+            styles.field,
+            {
+              borderColor: isNacht ? '#2a2a2d' : palette.paper,
+              backgroundColor: isNacht ? palette.noir2 : palette.paper2,
+            },
+          ]}
+        >
+          <TextInput
+            value={message}
+            onChangeText={setMessage}
+            placeholder={t(
+              'bericht (optioneel)',
+              'message (optional)'
+            )}
+            placeholderTextColor={roles.fgPlaceholder}
+            multiline
+            maxLength={280}
+            style={[styles.input, { color: roles.fg }]}
+          />
+        </View>
         <Pressable
           onPress={onSend}
           disabled={selected.size === 0 || sendInvites.isPending || sent}
@@ -648,12 +631,6 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
   },
 
-  fieldGroup: { gap: 6, paddingHorizontal: 22, paddingTop: 18 },
-  label: {
-    fontFamily: fontFamily.mono,
-    fontSize: 9,
-    letterSpacing: 0.9,
-  },
   field: {
     paddingHorizontal: 14,
     paddingVertical: 12,
@@ -677,24 +654,19 @@ const styles = StyleSheet.create({
     right: 0,
     paddingHorizontal: 22,
     paddingTop: 14,
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: 'column',
     gap: 12,
     borderTopWidth: StyleSheet.hairlineWidth,
-  },
-  count: {
-    flex: 1,
-    fontFamily: fontFamily.mono,
-    fontSize: 11,
-    letterSpacing: 0.6,
   },
   cta: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: 8,
-    paddingHorizontal: 18,
-    paddingVertical: 13,
-    borderRadius: 999,
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    borderRadius: 14,
+    alignSelf: 'stretch',
   },
   ctaText: {
     fontFamily: fontFamily.medium,

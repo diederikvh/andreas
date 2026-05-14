@@ -334,11 +334,13 @@ function FriendsPill({
   );
 }
 
-function friendsLabel(names: string[], locale: Locale): string {
-  const tail = locale === 'nl' ? 'ook' : 'too';
-  if (names.length === 1) return `${names[0]} ${tail}`;
-  if (names.length === 2) return `${names[0]} & ${names[1]} ${tail}`;
-  return `${names[0]} +${names.length - 1} ${tail}`;
+function friendsLabel(names: string[], _locale: Locale): string {
+  // "ook"/"too"-suffix bewust weggelaten — een save is geen
+  // belofte-om-te-gaan, alleen een interesse-signaal. Een naam alleen
+  // communiceert dat al ("Diederik" → Diederik vindt dit relevant).
+  if (names.length === 1) return names[0];
+  if (names.length === 2) return `${names[0]} & ${names[1]}`;
+  return `${names[0]} +${names.length - 1}`;
 }
 
 const styles = StyleSheet.create({
