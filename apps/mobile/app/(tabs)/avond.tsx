@@ -481,10 +481,14 @@ export default function Avond() {
   // vrienden plannen vooruit, en de rail hoort daarom onder de
   // agenda-banner — los van het vandaag-deel. Pool is `leadsPool`
   // (uit-mode-events, alle toekomst, gesorteerd op startsAt) gefilterd
-  // op friendsSaved.
+  // op friendsSaved op occurrence-niveau — anders zou een 5-occurrence
+  // event waarvan één voorstelling is gesaved op alle 5 dagen in deze
+  // rail verschijnen.
   const railFriendsUit = useMemo(
     () =>
-      leadsPool.filter((r) => (r.event.friendsSaved?.length ?? 0) > 0),
+      leadsPool.filter(
+        (r) => (r.occurrence.friendsSaved?.length ?? 0) > 0
+      ),
     [leadsPool]
   );
   // Rails voor 'expo'-mode — gebaseerd op `expoEvents` (ApiEvent[]).
