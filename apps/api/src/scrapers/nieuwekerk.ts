@@ -55,6 +55,8 @@ function extractCards(html: string): CardRaw[] {
     const slug = m[2];
     if (slug === 'feed' || seen.has(slug)) continue;
 
+    // Title + date staan ná de link, image kan VOOR of NA staan
+    // (verschilt per card). Daarom twee zoek-windows.
     const after = html.slice(m.index + m[0].length, m.index + m[0].length + 1200);
     const titleMatch = after.match(/<h3[^>]*>([^<]+)<\/h3>/);
     if (!titleMatch) continue;
@@ -67,11 +69,26 @@ function extractCards(html: string): CardRaw[] {
     const range = parseDateRangeEN(rangeMatch[1]);
     if (!range) continue;
 
-    // Image — pak eerste img-src/data-src in dezelfde card-context.
-    // WP CDN gebruikt soms `data-src` voor lazy-loading.
-    const imgMatch = after.match(
-      /(?:src|data-src|data-lazy-src)="(https:\/\/www\.nieuwekerk\.nl\/wp-content\/uploads\/[^"]+\.(?:jpg|jpeg|png|webp))"/i
+    // Image — bredere context: 1500 chars vóór + 1200 chars na de link.
+    // WP CDN gebruikt soms `data-src` voor lazy-loading. We pakken de
+    // dichtstbijzijnde wp-uploads-URL die de slug-stem bevat (zodat we
+    // niet per ongeluk het image van een andere card grijpen).
+    const wide = html.slice(
+      Math.max(0, m.index - 1500),
+      m.index + m[0].length + 1200
     );
+    const stem = slug.split('-').slice(0, 2).join('|');
+    const stemRe = new RegExp(
+      `(?:src|data-src|data-lazy-src)="(https://www\\.nieuwekerk\\.nl/wp-content/uploads/[^"]*(?:${stem})[^"]*\\.(?:jpg|jpeg|png|webp))"`,
+      'i'
+    );
+    let imgMatch = wide.match(stemRe);
+    if (!imgMatch) {
+      // Fallback: eerste img in het smalle "after"-window.
+      imgMatch = after.match(
+        /(?:src|data-src|data-lazy-src)="(https:\/\/www\.nieuwekerk\.nl\/wp-content\/uploads\/[^"]+\.(?:jpg|jpeg|png|webp))"/i
+      );
+    }
     const imageUrl = imgMatch ? imgMatch[1] : null;
 
     seen.add(slug);
