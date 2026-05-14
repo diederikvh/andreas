@@ -138,6 +138,8 @@ function extractEventDateFromHeading(html: string): {
 
   // Tijd uit optionele tweede h2 — "HH:MM – HH:MM" of "HH:MM". Default
   // start = 20:00 (concerten/talks), endsAt null als tijd onbekend.
+  // We nemen de tijden letterlijk: Oude Kerk's Silence-serie is een
+  // ochtend-concert (8:00 – 9:00 is écht 's ochtends), niet PM-gerekend.
   let hour = 20;
   let minute = 0;
   let endsAt: Date | null = null;
@@ -310,17 +312,26 @@ export async function scrapeOudeKerk(options?: {
         .limit(1);
 
       if (existing) {
-        // Altijd re-mirror: een eerdere bug-batch sloeg de generic
-        // og:image op voor alle events. Door nu altijd de detail-page
-        // block-image te mirrorre fixen we die batch in één run.
+        // Altijd re-mirror image + herzie kind: een eerdere bug-batch
+        // sloeg de generic og:image op én markeerde single-day events
+        // als 'exhibition' (gevolg: detail-UI toonde "hele dag").
+        const baseKind = card.isMultiDay ? 'exhibition' : 'show';
+        const refinedKind = refineKindByDuration(
+          baseKind,
+          card.startsAt,
+          card.endsAt
+        );
+        const patch: Partial<typeof schema.events.$inferInsert> = {
+          kind: refinedKind,
+        };
         if (card.imageUrl) {
-          const newImage =
+          patch.imageUrl =
             (await mirrorImage(card.imageUrl, card.composite)) ?? card.imageUrl;
-          await db
-            .update(schema.events)
-            .set({ imageUrl: newImage })
-            .where(eq(schema.events.id, eventId));
         }
+        await db
+          .update(schema.events)
+          .set(patch)
+          .where(eq(schema.events.id, eventId));
 
         await db
           .insert(schema.occurrences)
