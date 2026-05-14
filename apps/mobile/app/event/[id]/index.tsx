@@ -30,6 +30,7 @@ import {
   formatTimeRange,
   rowTimeLabel,
   isAllDayRange,
+  isMultiDay,
   monthShort,
   translateCategory,
 } from '@/lib/eventDisplay';
@@ -240,12 +241,12 @@ export default function EventDetail() {
             <View style={styles.metaCellWrap}>
               <MetaCell
                 label={
-                  event.kind === 'exhibition'
+                  isMultiDay(event.startsAt, event.endsAt)
                     ? t('Loopt', 'Runs')
                     : t('Datum', 'Date')
                 }
                 value={
-                  event.kind === 'exhibition' && event.endsAt
+                  isMultiDay(event.startsAt, event.endsAt) && event.endsAt
                     ? formatDateRange(event.startsAt, event.endsAt, locale)
                     : view.date
                 }

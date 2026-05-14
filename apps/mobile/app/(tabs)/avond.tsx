@@ -254,6 +254,11 @@ export default function Avond() {
     return expandToOccurrenceRows(events).filter((row) => {
       const e = row.event;
       if (e.kind === 'exhibition') return false;
+      // Multi-day events (zoals shows die maanden lopen — audio tours,
+      // permanente installaties) horen niet in "Vandaag te bezoeken".
+      // Die zijn niet echt 'op een tijd vandaag' maar doorlopend, en
+      // verschijnen al via de musea/galleries-rails.
+      if (isMultiDay(e.startsAt, e.endsAt)) return false;
       if (effectiveEndsAtMs(row.occurrence) < now) return false;
       // Cliënt-side vandaag-filter: alleen occurrences waarvan
       // startsAt vandaag valt (= < morgen 00:00).
