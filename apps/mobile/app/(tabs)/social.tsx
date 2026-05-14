@@ -581,10 +581,16 @@ function SectionHead({
         )}
       </Text>
       {action && (
-        <Pressable onPress={onAction} hitSlop={8}>
-          <Text style={[styles.sectionAction, { color: roles.accent }]}>
-            {action}
-          </Text>
+        <Pressable
+          onPress={onAction}
+          accessibilityLabel={action}
+          hitSlop={8}
+          style={[
+            styles.sectionActionBtn,
+            { backgroundColor: roles.accent },
+          ]}
+        >
+          <Ionicons name="add" size={20} color={roles.onAccent} />
         </Pressable>
       )}
     </View>
@@ -1110,10 +1116,14 @@ const styles = StyleSheet.create({
     fontSize: 11,
     letterSpacing: 1.4,
   },
-  sectionAction: {
-    fontFamily: fontFamily.medium,
-    fontSize: 12,
-    letterSpacing: -0.12,
+  // Ronde primaire knop (bv. "+") in een section-header. Accent-bg
+  // zodat 'm direct als CTA leest tegen de muted-section-labels.
+  sectionActionBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 
   // Rows (request / invite / friend / pending)

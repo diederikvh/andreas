@@ -10,20 +10,25 @@ import { useEffect, useState } from 'react';
 import {
   Keyboard,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
+  Share,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from 'react-native';
+import QRCode from 'react-native-qrcode-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import type { ApiSearchUser } from '@/lib/api';
+import { createShareInvite } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import {
   useAcceptFriendRequest,
+  useMe,
   useSendFriendRequest,
   useUserSearch,
 } from '@/lib/queries';
@@ -81,6 +86,37 @@ export default function AddFriend() {
   const search = useUserSearch(debouncedQ);
   const sendRequest = useSendFriendRequest();
   const acceptRequest = useAcceptFriendRequest();
+  const { data: me } = useMe();
+  const [showQr, setShowQr] = useState(false);
+
+  // Vraagt server om een share-invite token en opent native share-sheet.
+  // Ontvanger downloadt app + log in → friendship-claim hook regelt de rest.
+  const onInviteFriend = async () => {
+    try {
+      const invite = await createShareInvite();
+      const display =
+        me?.name && !me.name.startsWith('+')
+          ? me.name
+          : me?.handle
+            ? `@${me.handle}`
+            : 'een vriend';
+      const message = tx(
+        `Hey, ${display} hier — ik gebruik Andreas, anti-algoritme uitgaansapp voor Amsterdam. Download 'm en we zijn meteen vrienden:\n${invite.url}`,
+        `Hey, ${display} here — I use Andreas, the anti-algorithm guide to Amsterdam. Download it and we’ll be friends right away:\n${invite.url}`
+      );
+      await Share.share(
+        Platform.OS === 'ios'
+          ? { url: invite.url, message }
+          : { message }
+      );
+      Haptics.selectionAsync();
+    } catch {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    }
+  };
+
+  const displayName =
+    me?.name && !me.name.startsWith('+') ? me.name : me?.handle ?? '';
 
   return (
     <KeyboardAvoidingView
@@ -95,17 +131,11 @@ export default function AddFriend() {
       >
         <BackButton />
         <Text style={[styles.topTitle, { color: roles.fg }]}>
-          {tx('Toevoegen', 'Add')}
+          {tx('Verbind met vrienden', 'Connect with friends')}
         </Text>
-        <Pressable
-          onPress={() => setScannerOpen(true)}
-          style={[
-            styles.scanBtn,
-            { backgroundColor: isNacht ? palette.noir2 : palette.paper2 },
-          ]}
-        >
-          <Ionicons name="qr-code-outline" size={20} color={roles.fg} />
-        </Pressable>
+        {/* Rechter slot leeg houden om titel netjes te centreren — de
+            QR-acties zijn verhuisd naar pills onder het zoekveld. */}
+        <View style={styles.topBarSpacer} />
       </View>
 
       <View style={styles.body}>
@@ -119,13 +149,18 @@ export default function AddFriend() {
           ]}
         >
           <Ionicons name="search" size={16} color={roles.fgMuted} />
-          <Text style={[styles.atPrefix, { color: roles.fgMuted }]}>@</Text>
           <TextInput
             value={q}
+            // Sta naam-tokens toe (spaties, letters), maar geen
+            // tweemaals-leading-spaties of speciale tekens die de
+            // server-side ilike vergiftigen. Server lowerCase't zelf.
             onChangeText={(t) =>
-              setQ(t.toLowerCase().replace(/[^a-z0-9_]/g, ''))
+              setQ(t.replace(/^\s+/, '').replace(/[^a-zA-Z0-9_ ]/g, ''))
             }
-            placeholder={tx('zoek op handle', 'search by handle')}
+            placeholder={tx(
+              'zoek op handle of naam',
+              'search by handle or name'
+            )}
             placeholderTextColor={roles.fgPlaceholder}
             autoCapitalize="none"
             autoCorrect={false}
@@ -137,29 +172,92 @@ export default function AddFriend() {
           />
         </View>
 
+        {/* Action-buttons in volgorde: invite → scan → my QR.
+            Externe deel-actie eerst (vaakst gebruikt voor mensen
+            buiten de app), daarna scan en eigen QR voor 1-op-1
+            connecten in dezelfde ruimte. */}
+        <View style={styles.actionsRow}>
+          <Pressable
+            onPress={onInviteFriend}
+            style={[
+              styles.actionPill2,
+              { backgroundColor: isNacht ? palette.noir2 : palette.paper2 },
+            ]}
+          >
+            <Ionicons
+              name="share-outline"
+              size={16}
+              color={roles.fg}
+              style={{ marginRight: 6 }}
+            />
+            <Text style={[styles.actionPill2Text, { color: roles.fg }]}>
+              {tx('Nodig vriend uit', 'Invite a friend')}
+            </Text>
+          </Pressable>
+          <Pressable
+            onPress={() => setScannerOpen(true)}
+            style={[
+              styles.actionPill2,
+              { backgroundColor: isNacht ? palette.noir2 : palette.paper2 },
+            ]}
+          >
+            <Ionicons
+              name="scan-outline"
+              size={16}
+              color={roles.fg}
+              style={{ marginRight: 6 }}
+            />
+            <Text style={[styles.actionPill2Text, { color: roles.fg }]}>
+              {tx('Scan QR', 'Scan QR')}
+            </Text>
+          </Pressable>
+          {me?.handle && (
+            <Pressable
+              onPress={() => setShowQr(true)}
+              style={[
+                styles.actionPill2,
+                { backgroundColor: isNacht ? palette.noir2 : palette.paper2 },
+              ]}
+            >
+              <Ionicons
+                name="qr-code-outline"
+                size={14}
+                color={roles.fg}
+                style={{ marginRight: 6 }}
+              />
+              <Text style={[styles.actionPill2Text, { color: roles.fg }]}>
+                {tx('Mijn QR', 'My QR')}
+              </Text>
+            </Pressable>
+          )}
+        </View>
+
         <ScrollView
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
           contentContainerStyle={{ paddingBottom: insets.bottom + 32 }}
         >
           {debouncedQ.length < 2 ? (
-            <Text style={[styles.hint, { color: roles.fgMuted }]}>
-              {tx(
+            <EmptyHint
+              icon="people-outline"
+              title={tx(
                 'Typ minstens 2 tekens om te zoeken.',
                 'Type at least 2 characters to search.'
               )}
-            </Text>
+            />
           ) : search.isLoading ? (
-            <Text style={[styles.hint, { color: roles.fgMuted }]}>
-              {tx('Zoeken…', 'Searching…')}
-            </Text>
+            <EmptyHint
+              icon="ellipsis-horizontal"
+              title={tx('Zoeken…', 'Searching…')}
+            />
           ) : (search.data ?? []).length === 0 ? (
-            <Text style={[styles.hint, { color: roles.fgMuted }]}>
-              {tx(
-                `Geen handle gevonden voor "@${debouncedQ}".`,
-                `No handle found for "@${debouncedQ}".`
+            <EmptyHint
+              icon="person-outline"
+              title={tx(
+                `Geen resultaat voor "${debouncedQ}".`,
+                `No result for "${debouncedQ}".`
               )}
-            </Text>
+            />
           ) : (
             (search.data ?? []).map((u) => (
               <ResultRow
@@ -213,7 +311,97 @@ export default function AddFriend() {
           }}
         />
       )}
+      <Modal
+        visible={showQr && Boolean(me?.handle)}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setShowQr(false)}
+      >
+        {me?.handle && (
+          <MyQrSheet handle={me.handle} name={displayName} />
+        )}
+      </Modal>
     </KeyboardAvoidingView>
+  );
+}
+
+/**
+ * Centered empty-state hint — gecentreerd icoon erboven, normale
+ * font-stack (niet mono), titel daaronder. Mirror van het
+ * EmptyResults-patroon op Vandaag/Agenda.
+ */
+function EmptyHint({
+  icon,
+  title,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  title: string;
+}) {
+  const roles = useRoles();
+  return (
+    <View style={styles.emptyHint}>
+      <Ionicons name={icon} size={32} color={roles.fgMuted} />
+      <Text style={[styles.emptyHintText, { color: roles.fgMuted }]}>
+        {title}
+      </Text>
+    </View>
+  );
+}
+
+/**
+ * Inline QR-modal. Spiegelt MyQrSheet van /jij (zelfde Andreas-X
+ * logo-overlay + ecl=H) zodat scannen consistent voelt waar dan ook.
+ */
+function MyQrSheet({ handle, name }: { handle: string; name: string }) {
+  const mode = useMode();
+  const roles = useRoles();
+  const isNacht = mode === 'nacht';
+  const t = useT();
+  const url = `https://andreas.amsterdam/u/${handle}`;
+  return (
+    <View style={[styles.qrSheet, { backgroundColor: roles.bg }]}>
+      <View style={styles.qrDragHandleWrap}>
+        <View
+          style={[
+            styles.qrDragHandle,
+            { backgroundColor: roles.fgPlaceholder },
+          ]}
+        />
+      </View>
+      <View style={styles.qrBody}>
+        <View
+          style={[
+            styles.qrCard,
+            { backgroundColor: isNacht ? palette.ink : palette.paper3 },
+          ]}
+        >
+          <QRCode
+            value={url}
+            size={240}
+            color={palette.noir}
+            backgroundColor={isNacht ? palette.ink : palette.paper3}
+            ecl="H"
+          />
+          <View pointerEvents="none" style={styles.qrLogoOverlay}>
+            <View
+              style={[
+                styles.qrLogoBg,
+                { backgroundColor: isNacht ? palette.noir : palette.paper3 },
+              ]}
+            >
+              <Cross size={36} thickness={10} color={roles.accent} />
+            </View>
+          </View>
+        </View>
+        <Text style={[styles.qrName, { color: roles.fg }]}>{name}</Text>
+        <Text style={[styles.qrHandle, { color: roles.fgMuted }]}>
+          @{handle}
+        </Text>
+        <Text style={[styles.qrLead, { color: roles.fgMuted }]}>
+          {t('Scan om te connecten.', 'Scan to connect.')}
+        </Text>
+      </View>
+    </View>
   );
 }
 
@@ -455,6 +643,75 @@ const styles = StyleSheet.create({
   },
   body: { flex: 1, paddingHorizontal: 22, gap: 14 },
 
+  // Action-buttons gestapeld, elk full-width — duidelijke CTA's
+  // i.p.v. inline pills. Gap zodat ze ademen.
+  actionsRow: {
+    flexDirection: 'column',
+    gap: 10,
+  },
+  // Solid button — gevulde achtergrond, geen border, full-width, ruim
+  // gepadded. Centreert icoon + tekst horizontaal.
+  actionPill2: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    borderRadius: 14,
+    width: '100%',
+  },
+  actionPill2Text: {
+    fontFamily: fontFamily.medium,
+    fontSize: 14,
+    letterSpacing: 0.1,
+  },
+
+  // QR-modal — mirror van /jij styles
+  qrSheet: { flex: 1, paddingHorizontal: 22 },
+  qrDragHandleWrap: { alignItems: 'center', paddingVertical: 12 },
+  qrDragHandle: { width: 44, height: 4, borderRadius: 999 },
+  qrBody: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 16 },
+  qrCard: {
+    width: 280,
+    height: 280,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  qrLogoOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  qrLogoBg: {
+    width: 56,
+    height: 56,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  qrName: {
+    fontFamily: fontFamily.bold,
+    fontSize: 22,
+    letterSpacing: -0.3,
+  },
+  qrHandle: {
+    fontFamily: fontFamily.mono,
+    fontSize: 11,
+    letterSpacing: 1.4,
+    textTransform: 'uppercase',
+    marginTop: -8,
+  },
+  qrLead: {
+    fontFamily: fontFamily.body,
+    fontSize: 14,
+    marginTop: 8,
+  },
+
   searchField: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -483,6 +740,21 @@ const styles = StyleSheet.create({
     fontSize: 11,
     letterSpacing: 0.5,
     paddingVertical: 14,
+  },
+
+  // Empty-state hint — gecentreerd, icoon erboven, normale font.
+  // Mirror van het EmptyResults-patroon op Vandaag/Agenda.
+  emptyHint: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 48,
+    gap: 12,
+  },
+  emptyHintText: {
+    fontFamily: fontFamily.body,
+    fontSize: 14,
+    textAlign: 'center',
+    lineHeight: 20,
   },
 
   row: {

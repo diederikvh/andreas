@@ -15,21 +15,19 @@ import {
   Platform,
   Pressable,
   ScrollView,
-  Share,
   StyleSheet,
   Switch,
   Text,
   TextInput,
   View,
 } from 'react-native';
-import QRCode from 'react-native-qrcode-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Cross } from '@/components/Cross';
 import { ProfileAvatar } from '@/components/ProfileAvatar';
 import { SpinningCross } from '@/components/SpinningCross';
 import type { ApiMe } from '@/lib/api';
-import { createShareInvite, getMe, updateMe, uploadAvatar } from '@/lib/api';
+import { getMe, updateMe, uploadAvatar } from '@/lib/api';
 import { authClient, useSession } from '@/lib/authClient';
 import {
   type LocalePreference,
@@ -236,33 +234,6 @@ export default function Jij() {
     setStageOverride('profile');
   };
 
-  // Vraagt de server om een share-invite token, opent native
-  // share-sheet (WhatsApp/iMessage). De ontvanger tikt op de URL →
-  // installeert app indien nodig → claim-hook bevriendt automatisch.
-  const onInviteFriend = async () => {
-    try {
-      const invite = await createShareInvite();
-      const display =
-        me?.name && !me.name.startsWith('+')
-          ? me.name
-          : me?.handle
-            ? `@${me.handle}`
-            : 'een vriend';
-      const messageBody = t(
-        `Hey, ${display} hier — ik gebruik Andreas, anti-algoritme uitgaansapp voor Amsterdam. Download 'm en we zijn meteen vrienden:\n${invite.url}`,
-        `Hey, ${display} here — I use Andreas, the anti-algorithm guide to Amsterdam. Download it and we’ll be friends right away:\n${invite.url}`
-      );
-      await Share.share(
-        Platform.OS === 'ios'
-          ? { url: invite.url, message: messageBody }
-          : { message: messageBody }
-      );
-      Haptics.selectionAsync();
-    } catch {
-      // Cancel of netwerk-fout — stil falen, gebruiker probeert
-      // opnieuw of weet zelf dat 'r iets niet werkte.
-    }
-  };
 
   const onCancelProfileEdit = () => {
     setError(null);
@@ -270,7 +241,6 @@ export default function Jij() {
   };
 
   const [avatarUploading, setAvatarUploading] = useState(false);
-  const [showQr, setShowQr] = useState(false);
   const onPickAvatar = async () => {
     if (avatarUploading) return;
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -499,11 +469,6 @@ export default function Jij() {
             paddingHorizontal: 22,
           }}
         >
-          <Text style={[styles.kicker, { color: roles.accent }]}>
-            {isEditing
-              ? t('Profiel bewerken', 'Edit profile')
-              : t('Even kennismaken', 'Quick intro')}
-          </Text>
           <Text style={[styles.title, { color: roles.fg }]}>
             {isEditing
               ? t('Pas je naam\nof handle aan.', 'Update your name\nor handle.')
@@ -574,16 +539,17 @@ export default function Jij() {
             onPress={saveProfile}
             disabled={busy}
             style={[
-              styles.cta,
+              styles.actionBtn,
               {
                 backgroundColor: isNacht ? palette.acid : palette.red,
+                marginTop: 16,
                 opacity: busy ? 0.5 : 1,
               },
             ]}
           >
             <Text
               style={[
-                styles.ctaText,
+                styles.actionBtnText,
                 { color: isNacht ? palette.noir : palette.paper3 },
               ]}
             >
@@ -598,11 +564,14 @@ export default function Jij() {
             <Pressable
               onPress={onCancelProfileEdit}
               style={[
-                styles.editBtn,
-                { borderColor: roles.bgChip, marginTop: 10 },
+                styles.actionBtn,
+                {
+                  backgroundColor: isNacht ? palette.noir2 : palette.paper2,
+                  marginTop: 10,
+                },
               ]}
             >
-              <Text style={[styles.editBtnText, { color: roles.fgMuted }]}>
+              <Text style={[styles.actionBtnText, { color: roles.fg }]}>
                 {t('Annuleren', 'Cancel')}
               </Text>
             </Pressable>
@@ -687,70 +656,18 @@ export default function Jij() {
             {displayHandle}
           </Text>
           <View style={styles.profileActions}>
-            {me?.handle && (
-              <Pressable
-                onPress={() => setShowQr(true)}
-                style={[styles.editBtn, { borderColor: roles.bgChip }]}
-              >
-                <Ionicons
-                  name="qr-code-outline"
-                  size={12}
-                  color={roles.fgMuted}
-                  style={{ marginRight: 4 }}
-                />
-                <Text style={[styles.editBtnText, { color: roles.fgMuted }]}>
-                  {t('Mijn QR', 'My QR')}
-                </Text>
-              </Pressable>
-            )}
-            <Pressable
-              onPress={() => router.push('/add-friend?scan=1' as never)}
-              style={[styles.editBtn, { borderColor: roles.bgChip }]}
-            >
-              <Ionicons
-                name="scan-outline"
-                size={16}
-                color={roles.fgMuted}
-                style={{ marginRight: 6 }}
-              />
-              <Text style={[styles.editBtnText, { color: roles.fgMuted }]}>
-                {t('Scan QR', 'Scan QR')}
-              </Text>
-            </Pressable>
-            <Pressable
-              onPress={() => router.push('/add-friend' as never)}
-              style={[styles.editBtn, { borderColor: roles.bgChip }]}
-            >
-              <Ionicons
-                name="search-outline"
-                size={16}
-                color={roles.fgMuted}
-                style={{ marginRight: 6 }}
-              />
-              <Text style={[styles.editBtnText, { color: roles.fgMuted }]}>
-                {t('Vrienden zoeken', 'Find friends')}
-              </Text>
-            </Pressable>
-            <Pressable
-              onPress={onInviteFriend}
-              style={[styles.editBtn, { borderColor: roles.bgChip }]}
-            >
-              <Ionicons
-                name="share-outline"
-                size={16}
-                color={roles.fgMuted}
-                style={{ marginRight: 6 }}
-              />
-              <Text style={[styles.editBtnText, { color: roles.fgMuted }]}>
-                {t('Nodig vriend uit', 'Invite a friend')}
-              </Text>
-            </Pressable>
+            {/* Profiel-pagina houdt 't bij Bewerk-profiel; vrienden-
+                acties (zoeken, scannen, delen) zitten op /add-friend
+                (bereikbaar via Sociaal). */}
             <Pressable
               onPress={onEditProfile}
-              style={[styles.editBtn, { borderColor: roles.bgChip }]}
+              style={[
+                styles.actionBtn,
+                { backgroundColor: isNacht ? palette.noir2 : palette.paper2 },
+              ]}
             >
-              <Text style={[styles.editBtnText, { color: roles.fgMuted }]}>
-                {t('Bewerk profiel', 'Edit profile')}
+              <Text style={[styles.actionBtnText, { color: roles.fg }]}>
+                {t('Bewerk naam & handle', 'Edit name & handle')}
               </Text>
             </Pressable>
           </View>
@@ -761,12 +678,28 @@ export default function Jij() {
         {me && <PrivacySection me={me} onUpdated={refetchMe} />}
         <LanguageSection />
 
+        {/* Logout zit visueel onder een divider om 'm écht van de
+            rest van de instellingen te scheiden — laatste actie op de
+            pagina, hier wil je niet per ongeluk op tikken. Stijl
+            matched de andere solid-bg buttons. */}
+        <View
+          style={[styles.logoutDivider, { backgroundColor: roles.bgChip }]}
+        />
         <View style={styles.logoutWrap}>
           <Pressable
             onPress={onLogout}
-            style={[styles.editBtn, { borderColor: roles.bgChip }]}
+            style={[
+              styles.actionBtn,
+              { backgroundColor: isNacht ? palette.noir2 : palette.paper2 },
+            ]}
           >
-            <Text style={[styles.editBtnText, { color: roles.fgMuted }]}>
+            <Ionicons
+              name="log-out-outline"
+              size={16}
+              color={roles.fg}
+              style={{ marginRight: 6 }}
+            />
+            <Text style={[styles.actionBtnText, { color: roles.fg }]}>
               {t('Uitloggen', 'Log out')}
             </Text>
           </Pressable>
@@ -802,21 +735,6 @@ export default function Jij() {
         )}
       </ScrollView>
       <ModalCloseBtn />
-      <Modal
-        visible={showQr && Boolean(me?.handle)}
-        animationType="slide"
-        presentationStyle="pageSheet"
-        onRequestClose={() => setShowQr(false)}
-      >
-        {me?.handle && (
-          <MyQrSheet
-            handle={me.handle}
-            name={displayName}
-            avatarUrl={me.avatarUrl}
-            onClose={() => setShowQr(false)}
-          />
-        )}
-      </Modal>
     </View>
   );
 }
@@ -926,81 +844,6 @@ function SectionHead({
           </Text>
         </Pressable>
       )}
-    </View>
-  );
-}
-
-function MyQrSheet({
-  handle,
-  name,
-  avatarUrl: _avatarUrl,
-  onClose,
-}: {
-  handle: string;
-  name: string;
-  avatarUrl: string | null;
-  onClose: () => void;
-}) {
-  const mode = useMode();
-  const roles = useRoles();
-  const isNacht = mode === 'nacht';
-  const t = useT();
-  const url = `https://andreas.amsterdam/u/${handle}`;
-  // iOS pageSheet heeft een ingebouwde drag-handle bovenin + swipe-down
-  // dismiss. Op Android valt 't terug op een fullscreen modal — daar
-  // dient de losse close-knop voor.
-  return (
-    <View style={[styles.qrSheet, { backgroundColor: roles.bg }]}>
-      {/* Drag-handle: zichtbare hint dat je 'm naar beneden kunt vegen.
-          Op iOS zit hier nog een UIKit-handle bovenop maar deze maakt
-          'm extra leesbaar; op Android is dit de enige indicatie. */}
-      <View style={styles.qrDragHandleWrap}>
-        <View
-          style={[
-            styles.qrDragHandle,
-            { backgroundColor: roles.fgPlaceholder },
-          ]}
-        />
-      </View>
-
-      <View style={styles.qrBody}>
-        <View
-          style={[
-            styles.qrCard,
-            { backgroundColor: isNacht ? palette.ink : palette.paper3 },
-          ]}
-        >
-          <QRCode
-            value={url}
-            size={240}
-            color={palette.noir}
-            backgroundColor={isNacht ? palette.ink : palette.paper3}
-            // High error-correction (~30%) zodat de logo-overlay in
-            // het midden geen scan-problemen geeft.
-            ecl="H"
-          />
-          {/* Andreas-X als logo-overlay. Centreren via inset+flex —
-              dat is robuuster dan margin-half. Dark mode: zwart vierkant
-              met acid-X. Light mode: cream vierkant met red-X. */}
-          <View pointerEvents="none" style={styles.qrLogoOverlay}>
-            <View
-              style={[
-                styles.qrLogoBg,
-                { backgroundColor: isNacht ? palette.noir : palette.paper3 },
-              ]}
-            >
-              <Cross size={36} thickness={10} color={roles.accent} />
-            </View>
-          </View>
-        </View>
-        <Text style={[styles.qrName, { color: roles.fg }]}>{name}</Text>
-        <Text style={[styles.qrHandle, { color: roles.fgMuted }]}>
-          @{handle}
-        </Text>
-        <Text style={[styles.qrLead, { color: roles.fgMuted }]}>
-          {t('Scan om te connecten.', 'Scan to connect.')}
-        </Text>
-      </View>
     </View>
   );
 }
@@ -1455,9 +1298,28 @@ const styles = StyleSheet.create({
   profileActions: {
     flexDirection: 'column',
     alignSelf: 'stretch',
-    gap: 8,
+    gap: 10,
     marginTop: 16,
   },
+  // Solid-bg buttons — mirror van /add-friend, full-width, ruime
+  // padding, geen border. Voelt overal in de app als één familie.
+  actionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    borderRadius: 14,
+    width: '100%',
+  },
+  actionBtnText: {
+    fontFamily: fontFamily.medium,
+    fontSize: 14,
+    letterSpacing: 0.1,
+  },
+  // Legacy outlined-btn — nog in gebruik op secundaire acties
+  // (Annuleren in edit-profile, Uitloggen). Behoudt de subtielere
+  // outlined look om hiërarchie te bewaren naast de solid-actions.
   editBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1732,10 +1594,18 @@ const styles = StyleSheet.create({
     letterSpacing: -0.12,
   },
 
+  // Visuele scheiding boven de logout-knop — duidelijk eind van
+  // settings, daaronder de afsluit-actie.
+  logoutDivider: {
+    height: StyleSheet.hairlineWidth,
+    marginHorizontal: 22,
+    marginTop: 24,
+  },
+
   // Uitloggen — full-width pill onderaan, zelfde stijl als profile-actions
   logoutWrap: {
     paddingHorizontal: 22,
-    paddingTop: 28,
+    paddingTop: 16,
     paddingBottom: 8,
   },
 

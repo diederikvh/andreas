@@ -428,6 +428,10 @@ usersRoute.get('/search', async (c) => {
   // in zoekresultaten. Bestaande vrienden blijven via /friends bereik-
   // baar; mensen die jou een verzoek hebben gestuurd staan in
   // /friends/requests.
+  //
+  // Match-strategie: handle-prefix (snelste, meest specifiek) OF
+  // name-substring (vriendelijker — "Pieter van" → vindt). Beide
+  // gecapt op 20 hits zodat we geen ronde-trip-perf-issues krijgen.
   const rows = await db
     .select({
       id: publicUserCols.id,
@@ -440,8 +444,11 @@ usersRoute.get('/search', async (c) => {
       and(
         ne(schema.users.id, me),
         isNotNull(schema.users.handle),
-        ilike(schema.users.handle, `${q}%`),
-        eq(schema.users.discoverable, true)
+        eq(schema.users.discoverable, true),
+        or(
+          ilike(schema.users.handle, `${q}%`),
+          ilike(schema.users.name, `%${q}%`)
+        )
       )
     )
     .limit(20);
