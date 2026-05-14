@@ -205,24 +205,43 @@ export default function VenueDetail() {
     [scrollY, progSectionY, inlinePillsY, topBarBottom]
   );
 
-  // Active-month-detectie via viewableItems — pak de eerste zichtbare
-  // item, z'n section.key is de actieve maand. Stable ref zodat
-  // SectionList niet warned op identity-changes; functional setter
-  // voorkomt closure-stale.
+  // Active-month-detectie via viewableItems. Twee gotcha's (zelfde
+  // patroon als Agenda's day-strip):
+  //  1) viewableItems[0] is de topmost row, vaak nog van de vorige
+  //     maand bij sectie-grenzen (1px telt met threshold=0). We pakken
+  //     daarom de sectie die het meest vertegenwoordigd is in de
+  //     zichtbare items — dat is wat de gebruiker écht ziet — én
+  //     verhogen de threshold naar 50% zodat een staart-rij niet
+  //     meetelt.
+  //  2) Tijdens een tap-geinitieerde scroll (isProgrammaticScroll)
+  //     skippen we updates volledig zodat tussenliggende maanden de
+  //     chip niet flickeren tot landing. onScrollBeginDrag clear't
+  //     de flag bij een echte user-touch.
+  const isProgrammaticScroll = useRef(false);
   const onViewableItemsChanged = useRef(
     ({ viewableItems }: { viewableItems: ViewToken[] }) => {
+      if (isProgrammaticScroll.current) return;
       if (viewableItems.length === 0) return;
-      const first = viewableItems[0];
-      const sectionKey = (first.section as MonthGroup | undefined)?.key;
-      if (sectionKey) {
-        setActiveMonthKey((prev) =>
-          prev === sectionKey ? prev : sectionKey
-        );
+      const counts = new Map<string, number>();
+      for (const v of viewableItems) {
+        const k = (v.section as MonthGroup | undefined)?.key;
+        if (k) counts.set(k, (counts.get(k) ?? 0) + 1);
+      }
+      let bestKey: string | undefined;
+      let bestCount = 0;
+      for (const [k, c] of counts.entries()) {
+        if (c > bestCount) {
+          bestCount = c;
+          bestKey = k;
+        }
+      }
+      if (bestKey) {
+        setActiveMonthKey((prev) => (prev === bestKey ? prev : bestKey!));
       }
     }
   ).current;
   const viewabilityConfig = useRef({
-    itemVisiblePercentThreshold: 0,
+    itemVisiblePercentThreshold: 50,
   }).current;
 
   // Onthoudt de target-section voor de retry-fallback van
@@ -234,6 +253,10 @@ export default function VenueDetail() {
       const sectionIndex = monthGroups.findIndex((g) => g.key === key);
       if (sectionIndex < 0) return;
       pendingSectionRef.current = sectionIndex;
+      isProgrammaticScroll.current = true;
+      // Spring direct visueel naar de target — onViewableItemsChanged
+      // is uitgezet tijdens de scroll-animatie.
+      setActiveMonthKey(key);
       scrollRef.current?.scrollToLocation({
         sectionIndex,
         itemIndex: 0,
@@ -244,6 +267,23 @@ export default function VenueDetail() {
       });
     },
     [monthGroups, topBarBottom, showMonthPills]
+  );
+
+  // User-touch op de lijst clear't de programmatic-flag (zo nemen
+  // onViewableItemsChanged-updates het over). Op Android killt 'n
+  // scrollTo naar de huidige Y de lopende scrollToLocation-animatie
+  // zodat de drag-gesture 't kan overnemen — iOS doet dat zelf.
+  const onScrollBeginDrag = useCallback(
+    (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+      const wasProgrammatic = isProgrammaticScroll.current;
+      isProgrammaticScroll.current = false;
+      pendingSectionRef.current = null;
+      if (Platform.OS === 'android' && wasProgrammatic) {
+        const y = e.nativeEvent.contentOffset.y;
+        scrollRef.current?.getScrollResponder()?.scrollTo({ y, animated: false });
+      }
+    },
+    []
   );
 
   // Fallback wanneer scrollToLocation faalt door variable-height items
@@ -355,6 +395,7 @@ export default function VenueDetail() {
         contentContainerStyle={{ paddingBottom: insets.bottom + 40 }}
         onViewableItemsChanged={onViewableItemsChanged}
         viewabilityConfig={viewabilityConfig}
+        onScrollBeginDrag={onScrollBeginDrag}
         onScrollToIndexFailed={onScrollToIndexFailed}
         windowSize={11}
         initialNumToRender={12}
