@@ -439,13 +439,16 @@ export function rowTimeLabel(
 }
 
 /**
- * "Hele dag"-detectie — voor exhibitions die meerdere dagen lopen
- * komt de bron-data binnen als 00:00 → 23:59 (bv. W139). Dat is een
- * synthetische tijdrange die we beter weergeven als "Hele dag" /
- * "Doorlopend" dan als "00:00 – 23:59".
+ * "Hele dag"-detectie. Twee scenarios tellen mee:
+ *  1. Exhibition-stijl: start 00:00 → end 23:59 op dezelfde dag
+ *     (synthetische full-day range, bv. W139).
+ *  2. Multi-day: span >= 23u — ongeacht of de start op middernacht
+ *     valt. Een tentoonstelling die loopt van 13 mei t/m 5 juli is
+ *     functioneel een 'hele dag'-event; de specifieke aanvangs-tijd
+ *     is irrelevant want de venue is overdag open.
  *
- * Criteria: start is op lokale middernacht (HH:MM = 00:00) én end is
- * op dezelfde dag 23:59 óf op een latere dag (multi-day exhibition).
+ * Cross-midnight single-night events (bv. club 23:00 → 03:00 volgende
+ * dag, 4u span) blijven onder de 23u-grens en tonen wél tijd.
  */
 export function isAllDayRange(
   startIso: string,
@@ -454,15 +457,44 @@ export function isAllDayRange(
   if (!endIso) return false;
   const start = new Date(startIso);
   const end = new Date(endIso);
-  if (start.getHours() !== 0 || start.getMinutes() !== 0) return false;
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return false;
+  // Span >= 23u → multi-day of synthetische full-day op één dag.
+  if (end.getTime() - start.getTime() >= 23 * 60 * 60 * 1000) return true;
+  // Same-day full-day: start 00:00, end 23:59.
   const sameDay =
     start.getFullYear() === end.getFullYear() &&
     start.getMonth() === end.getMonth() &&
     start.getDate() === end.getDate();
-  if (sameDay) {
-    return end.getHours() === 23 && end.getMinutes() >= 59;
+  if (
+    sameDay &&
+    start.getHours() === 0 &&
+    start.getMinutes() === 0 &&
+    end.getHours() === 23 &&
+    end.getMinutes() >= 59
+  ) {
+    return true;
   }
-  return end.getTime() - start.getTime() >= 23 * 60 * 60 * 1000;
+  return false;
+}
+
+/**
+ * True als het event over meerdere kalenderdagen loopt (verschillende
+ * dag-getallen). Gebruikt door rail-cards om i.p.v. een tijd-label een
+ * date-range ("12 jun – 5 jul") te tonen.
+ */
+export function isMultiDay(
+  startIso: string,
+  endIso: string | null | undefined
+): boolean {
+  if (!endIso) return false;
+  const start = new Date(startIso);
+  const end = new Date(endIso);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return false;
+  return (
+    start.getFullYear() !== end.getFullYear() ||
+    start.getMonth() !== end.getMonth() ||
+    start.getDate() !== end.getDate()
+  );
 }
 
 /**

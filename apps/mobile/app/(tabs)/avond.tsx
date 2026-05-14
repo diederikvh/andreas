@@ -40,6 +40,7 @@ import {
   dowUpper,
   effectiveEndsAtMs,
   expandToOccurrenceRows,
+  isMultiDay,
   rowTimeLabel,
   freeLabel,
   getTimeBlock,
@@ -215,8 +216,17 @@ export default function Avond() {
   // zodat de spinner + banner niet weg-flitsen op snelle netwerken.
   const qc = useQueryClient();
   const [refreshing, setRefreshing] = useState(false);
+  // Roterende seed voor de Featured-fallback wanneer er geen echte
+  // featured-events zijn. Wordt verhoogd bij elke pull-to-refresh
+  // zodat de hero dan een ander random item uit de rails laat zien.
+  // Start op een tijd-gebaseerde waarde zodat verschillende sessies
+  // niet allemaal hetzelfde item zien.
+  const [featuredSeed, setFeaturedSeed] = useState(() =>
+    Math.floor(Date.now() / 60_000)
+  );
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
+    setFeaturedSeed((s) => s + 1);
     const start = Date.now();
     try {
       await qc.invalidateQueries({ queryKey: ['events'] });
@@ -325,16 +335,36 @@ export default function Avond() {
       );
   }, [events, now, cmode]);
 
+  // Bredere pool voor de Featured-fallback — bevat óók exhibitions
+  // (anders zou de hero in expo-mode alleen single-day events kunnen
+  // tonen, terwijl de musea/galleries-rails wél exhibitions tonen).
+  const featuredFallbackPool = useMemo<OccurrenceRow[]>(() => {
+    if (!events) return [];
+    return expandToOccurrenceRows(events)
+      .filter((row) => {
+        if (effectiveEndsAtMs(row.occurrence) < now) return false;
+        if (!eventBelongsToMode(row.event, cmode)) return false;
+        return true;
+      })
+      .sort(
+        (a, b) =>
+          new Date(a.occurrence.startsAt).getTime() -
+          new Date(b.occurrence.startsAt).getTime()
+      );
+  }, [events, now, cmode]);
+
   // Featured leads: probeer eerst vandaag's featured-events. Geen
-  // featured vandaag? Pak vandaag's eerste rij. Geen events vandaag
-  // überhaupt (laat-op-de-avond / rustige cultuur-mode)? Val terug op
-  // de eerstkomende featured-events; en als laatste op gewoon het
-  // eerste komende event. Zo is er altijd iets te tonen zolang er
-  // ergens in de toekomst events binnen de mode bestaan.
+  // featured vandaag? Pak een RANDOM item uit de rails-pool (rotert
+  // elke pull-to-refresh, zodat je telkens iets anders ziet als hero
+  // i.p.v. monotoom hetzelfde eerste event). Idem voor de upcoming-
+  // fallback wanneer vandaag leeg is.
   const leads = useMemo<OccurrenceRow[]>(() => {
-    if (leadsPool.length === 0) return [];
+    if (leadsPool.length === 0 && featuredFallbackPool.length === 0) return [];
     const todayMs = todayWindow.toMs;
     const todayRows = leadsPool.filter(
+      (r) => new Date(r.occurrence.startsAt).getTime() < todayMs
+    );
+    const todayFallback = featuredFallbackPool.filter(
       (r) => new Date(r.occurrence.startsAt).getTime() < todayMs
     );
     const dedupe = (rows: OccurrenceRow[]) => {
@@ -345,18 +375,33 @@ export default function Avond() {
         return true;
       });
     };
+    const pickRandom = (rows: OccurrenceRow[]) => {
+      const unique = dedupe(rows);
+      if (unique.length === 0) return [];
+      const idx =
+        ((featuredSeed % unique.length) + unique.length) % unique.length;
+      return [unique[idx]];
+    };
     if (todayRows.length > 0) {
       const todayFeatured = todayRows.filter((r) => r.event.featured);
-      return todayFeatured.length > 0 ? dedupe(todayFeatured) : [todayRows[0]];
+      if (todayFeatured.length > 0) return dedupe(todayFeatured);
     }
-    // Vandaag is leeg — kijk vooruit. Featured eerst, anders gewoon
-    // de nearest upcoming.
+    // Geen vandaag-featured maar wel vandaag-content (incl. lopende
+    // exhibitions) → random pick.
+    if (todayFallback.length > 0) return pickRandom(todayFallback);
+    // Vandaag is leeg — kijk vooruit. Featured eerst, anders random
+    // uit de upcoming-pool (incl. exhibitions).
     const upcomingFeatured = leadsPool.filter((r) => r.event.featured);
     if (upcomingFeatured.length > 0) {
       return dedupe(upcomingFeatured).slice(0, 5);
     }
-    return [leadsPool[0]];
-  }, [leadsPool, todayWindow.toMs]);
+    return pickRandom(featuredFallbackPool);
+  }, [
+    leadsPool,
+    featuredFallbackPool,
+    todayWindow.toMs,
+    featuredSeed,
+  ]);
 
   // Hero-tekst: "{dag} {datum} op de agenda" met de datum in
   // accent-kleur. Niet filter-afhankelijk.
@@ -446,8 +491,17 @@ export default function Avond() {
     return sub.includes('fotografie') || sub.includes('media');
   };
 
-  const sortByStartsAt = (a: ApiEvent, b: ApiEvent) =>
-    new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime();
+  // Sort-key voor expo-rails: single-day events (concrete happenings —
+  // openingen, lezingen, talks) komen vóór multi-day items
+  // (doorlopende exhibitions). Een vandaag-eenmalige opening anders
+  // is anders gevaarlijk eenvoudig te missen tussen wekenlange
+  // tentoonstellingen. Binnen elke groep sorteert 'ie op startsAt.
+  const sortByStartsAt = (a: ApiEvent, b: ApiEvent) => {
+    const aMulti = isMultiDay(a.startsAt, a.endsAt);
+    const bMulti = isMultiDay(b.startsAt, b.endsAt);
+    if (aMulti !== bMulti) return aMulti ? 1 : -1;
+    return new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime();
+  };
 
   const railMuseaMain = useMemo<ApiEvent[]>(
     () =>
@@ -496,11 +550,7 @@ export default function Avond() {
     () =>
       expoEvents
         .filter((e) => e.category === 'Literatuur')
-        .sort(
-          (a, b) =>
-            new Date(a.startsAt).getTime() -
-            new Date(b.startsAt).getTime()
-        ),
+        .sort(sortByStartsAt),
     [expoEvents]
   );
 
@@ -508,10 +558,7 @@ export default function Avond() {
     () =>
       expoEvents
         .filter((e) => (e.friendsSaved?.length ?? 0) > 0)
-        .sort(
-          (a, b) =>
-            new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime()
-        ),
+        .sort(sortByStartsAt),
     [expoEvents]
   );
 

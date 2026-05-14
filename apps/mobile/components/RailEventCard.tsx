@@ -8,7 +8,12 @@ import {
   useRailCardStyles,
 } from '@/components/Rail';
 import type { ApiEvent } from '@/lib/api';
-import { eventImageUrl, rowTimeLabel } from '@/lib/eventDisplay';
+import {
+  eventImageUrl,
+  formatDateRange,
+  isMultiDay,
+  rowTimeLabel,
+} from '@/lib/eventDisplay';
 import { useLocale } from '@/lib/i18n';
 import { useRoles } from '@/store/mode';
 import { fontFamily } from '@/theme/tokens';
@@ -39,7 +44,16 @@ export function RailEventCard({
 
   const startsAt = occurrenceStartsAt ?? event.startsAt;
   const endsAt = occurrenceEndsAt ?? event.endsAt;
-  const timeLabel = startsAt ? rowTimeLabel(startsAt, endsAt, locale) : null;
+  // Multi-day events tonen een datum-range ("13 mei – 5 jul") i.p.v.
+  // een tijd — voor exhibitions die meerdere dagen lopen is een
+  // klokuur niet zinvol; de venue is dan tijdens openingstijden open.
+  // Single-day events houden een tijd-label (of "Hele dag" voor
+  // synthetische 00:00→23:59 ranges).
+  const timeLabel = startsAt
+    ? isMultiDay(startsAt, endsAt)
+      ? formatDateRange(startsAt, endsAt, locale)
+      : rowTimeLabel(startsAt, endsAt, locale)
+    : null;
 
   const onPress = () => {
     const path = occurrenceId

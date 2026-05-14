@@ -49,7 +49,7 @@ import { useEvents } from '@/lib/queries';
 import { useDeviceLocation } from '@/lib/useDeviceLocation';
 import type { BadgeTone } from '@/lib/types';
 import { useMode, useRoles } from '@/store/mode';
-import { useVandaagFilters } from '@/store/vandaagFilters';
+import { useKaartFilters } from '@/store/kaartFilters';
 import { fontFamily, palette } from '@/theme/tokens';
 
 import { AvondFilterSheet } from './avond';
@@ -126,22 +126,24 @@ export default function Kaart() {
     to: todayWindow.to,
   });
 
-  // Filters worden gedeeld met de Vandaag-tab — dezelfde dag,
-  // dezelfde events. Filter-sheet hergebruikt AvondFilterSheet.
-  const query = useVandaagFilters((s) => s.query);
-  const onlyFriends = useVandaagFilters((s) => s.onlyFriends);
-  const onlyFavorites = useVandaagFilters((s) => s.onlyFavorites);
-  const activeBlocks = useVandaagFilters((s) => s.activeBlocks);
-  const activeCats = useVandaagFilters((s) => s.activeCats);
-  const activeTypes = useVandaagFilters((s) => s.activeTypes);
-  const activeGenres = useVandaagFilters((s) => s.activeGenres);
-  const setOnlyFriends = useVandaagFilters((s) => s.setOnlyFriends);
-  const setOnlyFavorites = useVandaagFilters((s) => s.setOnlyFavorites);
-  const setActiveBlocks = useVandaagFilters((s) => s.setActiveBlocks);
-  const setActiveCats = useVandaagFilters((s) => s.setActiveCats);
-  const setActiveTypes = useVandaagFilters((s) => s.setActiveTypes);
-  const setActiveGenres = useVandaagFilters((s) => s.setActiveGenres);
-  const toggleBlock = useVandaagFilters((s) => s.toggleBlock);
+  // Filters zijn eigen aan Kaart (runtime-only) — eerder deelde
+  // deze tab de useVandaagFilters store, maar dat lekte cat/type-
+  // keuzes naar de Vandaag-rails. Filter-sheet hergebruikt
+  // AvondFilterSheet voor de UI; alleen de state is losgekoppeld.
+  const query = useKaartFilters((s) => s.query);
+  const onlyFriends = useKaartFilters((s) => s.onlyFriends);
+  const onlyFavorites = useKaartFilters((s) => s.onlyFavorites);
+  const activeBlocks = useKaartFilters((s) => s.activeBlocks);
+  const activeCats = useKaartFilters((s) => s.activeCats);
+  const activeTypes = useKaartFilters((s) => s.activeTypes);
+  const activeGenres = useKaartFilters((s) => s.activeGenres);
+  const setOnlyFriends = useKaartFilters((s) => s.setOnlyFriends);
+  const setOnlyFavorites = useKaartFilters((s) => s.setOnlyFavorites);
+  const setActiveBlocks = useKaartFilters((s) => s.setActiveBlocks);
+  const setActiveCats = useKaartFilters((s) => s.setActiveCats);
+  const setActiveTypes = useKaartFilters((s) => s.setActiveTypes);
+  const setActiveGenres = useKaartFilters((s) => s.setActiveGenres);
+  const toggleBlock = useKaartFilters((s) => s.toggleBlock);
 
   const showFavoritesChip = useMemo(
     () => Boolean(events?.some((e) => e.venueFollowed)),

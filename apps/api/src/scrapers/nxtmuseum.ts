@@ -12,14 +12,17 @@ import { enrichEvent, refineKindByDuration } from './enrich.js';
  * Per card:
  *   - URL + slug
  *   - `.c-event-card__date span`: "11 JUN 2026" (DD MMM-uppercase YYYY)
- *     of "November 1" (vaag, geen jaar) — die vage variant skippen we.
+ *     voor single-day shows, óf voor multi-day exhibitions:
+ *     `<span>15 APR 2026<br/><span class="end-date">…13 MAY 2026</span></span>`.
+ *     Vage "November 1" zonder jaar laten we vallen.
  *   - `.c-event-card__title`: titel
  *   - srcSet met Next.js image-proxy URL → originele admin.nxtmuseum.com
  *     URL eruit decoderen voor de hero.
  *
- * Alle Nxt-events zijn single-day shows (artist talks, openings,
- * performances) — geen multi-day ranges. Kind blijft 'show' op 20:00
- * Amsterdam-tijd. Filter: skip events vóór vandaag.
+ * Single-day → kind 'show' op 20:00 Amsterdam-tijd, endsAt null.
+ * Multi-day → kind 'exhibition' op 11:00 startdag → 18:00 einddag
+ * (museum-openingstijden, ruwe defaults). Filter: events skippen alleen
+ * als hun eind-datum (of start als geen eind) >24u in het verleden ligt.
  */
 
 const VENUE_ID = 'nxt-museum';
@@ -37,6 +40,8 @@ type CardRaw = {
   slug: string;
   title: string;
   startsAt: Date;
+  endsAt: Date | null;
+  isMultiDay: boolean;
   imageUrl: string | null;
 };
 
@@ -112,24 +117,45 @@ function extractCards(html: string): CardRaw[] {
     if (!slug || slug.includes('/')) continue;
     const url = `${BASE}/event/${slug}`;
 
-    // Datum binnen `.c-event-card__date span`
-    const dateMatch = block.match(
-      /c-event-card__date"[^>]*>\s*<span>([^<]+)<\/span>/
+    // Pak het hele `.c-event-card__date`-blok (incl. eventuele
+    // multi-day end-date span met `<br/>`-separator). Daarna extraheren
+    // we alle `D MMM YYYY`-tokens — één voor single-day, twee voor een
+    // range.
+    const dateBlock = block.match(
+      /c-event-card__date"[^>]*>([\s\S]*?)<\/div>/
     );
-    if (!dateMatch) continue;
-    const dateText = decode(dateMatch[1]).trim();
-    // Match `D MMM YYYY` (uppercase 3-letter English month). Vage
-    // varianten als "November 1" zonder jaar laten we vallen.
-    const dm = dateText.match(/^(\d{1,2})\s+([A-Z]{3})\s+(\d{4})$/);
-    if (!dm) continue;
-    const day = parseInt(dm[1], 10);
-    const month = EN_MONTHS_UPPER[dm[2]];
-    const year = parseInt(dm[3], 10);
-    if (month === undefined) continue;
-    const startsAt = shiftToLocalTime(year, month, day, 20, 0);
-    // Skip events in het verleden (24u-marge zodat lopende events
-    // tot middernacht zichtbaar blijven).
-    if (startsAt.getTime() < now - 24 * 60 * 60_000) continue;
+    if (!dateBlock) continue;
+    const dateTokens = [
+      ...dateBlock[1].matchAll(/(\d{1,2})\s+([A-Z]{3})\s+(\d{4})/g),
+    ];
+    if (dateTokens.length === 0) continue;
+    const startMonth = EN_MONTHS_UPPER[dateTokens[0][2]];
+    if (startMonth === undefined) continue;
+    const startDay = parseInt(dateTokens[0][1], 10);
+    const startYear = parseInt(dateTokens[0][3], 10);
+
+    const isMultiDay = dateTokens.length >= 2;
+    let endsAt: Date | null = null;
+    let startsAt: Date;
+    if (isMultiDay) {
+      const endMonth = EN_MONTHS_UPPER[dateTokens[1][2]];
+      if (endMonth === undefined) continue;
+      const endDay = parseInt(dateTokens[1][1], 10);
+      const endYear = parseInt(dateTokens[1][3], 10);
+      // Exhibitions / multi-day residencies: 11:00 opening → 18:00 close
+      // op einddatum. Ruwe defaults; per-event-detailpagina zou nauwkeuriger
+      // kunnen, maar deze ranges zijn altijd dagdekkend.
+      startsAt = shiftToLocalTime(startYear, startMonth, startDay, 11, 0);
+      endsAt = shiftToLocalTime(endYear, endMonth, endDay, 18, 0);
+    } else {
+      // Single-day shows: 20:00 Amsterdam-tijd (artist talks, openings).
+      startsAt = shiftToLocalTime(startYear, startMonth, startDay, 20, 0);
+    }
+    // Skip alleen als het hele event >24u in het verleden ligt: voor
+    // multi-day kijken we naar endsAt, voor single-day naar startsAt
+    // zodat lopende exhibitions zichtbaar blijven tot ze écht klaar zijn.
+    const effectiveEnd = endsAt ?? startsAt;
+    if (effectiveEnd.getTime() < now - 24 * 60 * 60_000) continue;
 
     // Titel binnen `.c-event-card__title`
     const titleMatch = block.match(
@@ -148,7 +174,7 @@ function extractCards(html: string): CardRaw[] {
       if (first) imageUrl = unwrapNextImage(first);
     }
 
-    cards.push({ url, slug, title, startsAt, imageUrl });
+    cards.push({ url, slug, title, startsAt, endsAt, isMultiDay, imageUrl });
   }
   return cards;
 }
@@ -241,7 +267,7 @@ export async function scrapeNxtMuseum(options?: {
             id: occurrenceId,
             eventId,
             startsAt: card.startsAt,
-            endsAt: null,
+            endsAt: card.endsAt,
             priceCents: null,
             priceNote: null,
             ticketUrl: card.url,
@@ -251,7 +277,11 @@ export async function scrapeNxtMuseum(options?: {
           })
           .onConflictDoUpdate({
             target: schema.occurrences.id,
-            set: { startsAt: card.startsAt, ticketUrl: card.url },
+            set: {
+              startsAt: card.startsAt,
+              endsAt: card.endsAt,
+              ticketUrl: card.url,
+            },
           });
         result.occurrencesUpserted++;
         continue;
@@ -269,7 +299,16 @@ export async function scrapeNxtMuseum(options?: {
         imageUrl = (await mirrorImage(card.imageUrl, card.slug)) ?? card.imageUrl;
       }
 
-      const refinedKind = refineKindByDuration('show', card.startsAt, null);
+      // Multi-day = exhibition (default), single-day = show.
+      // `refineKindByDuration` corrigeert daarna nog op basis van de
+      // werkelijke duur (bv. een single-day 'show' die >24u duurt wordt
+      // alsnog 'exhibition').
+      const baseKind = card.isMultiDay ? 'exhibition' : 'show';
+      const refinedKind = refineKindByDuration(
+        baseKind,
+        card.startsAt,
+        card.endsAt
+      );
 
       await db.transaction(async (tx) => {
         await tx.insert(schema.events).values({
@@ -292,7 +331,7 @@ export async function scrapeNxtMuseum(options?: {
             id: occurrenceId,
             eventId,
             startsAt: card.startsAt,
-            endsAt: null,
+            endsAt: card.endsAt,
             priceCents: null,
             priceNote: enriched.priceNote,
             ticketUrl: card.url,
@@ -304,6 +343,7 @@ export async function scrapeNxtMuseum(options?: {
             target: schema.occurrences.id,
             set: {
               startsAt: card.startsAt,
+              endsAt: card.endsAt,
               priceNote: enriched.priceNote,
               ticketUrl: card.url,
               room: enriched.room,
