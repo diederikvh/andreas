@@ -1,8 +1,14 @@
 import { eq } from 'drizzle-orm';
 
 import { db, schema } from '../db/index.js';
+import { uploadToBunny } from '../storage/bunny.js';
 import { enrichEvent, refineKindByDuration } from './enrich.js';
-import { decode, fetchHtml, shiftToLocalTime } from './_museum-helpers.js';
+import {
+  ANDREAS_UA,
+  decode,
+  fetchHtml,
+  shiftToLocalTime,
+} from './_museum-helpers.js';
 
 /**
  * STRAAT Museum (NDSM, Amsterdam-Noord) scraper.
@@ -22,11 +28,12 @@ import { decode, fetchHtml, shiftToLocalTime } from './_museum-helpers.js';
  * Datums zijn lokale Amsterdam-tijd (geen timezone-suffix). We zetten
  * ze om naar UTC via shiftToLocalTime.
  *
- * Images: niet in de listing JSON-LD aanwezig, en detail-pages bouwen
- * hero-images via Nuxt-hydration die niet uit raw HTML te halen is.
- * Voor nu imageUrl = null; later eventueel via playwright op te
- * lossen. Description vullen we met de generieke museum-blurb uit
- * og:description als fallback (alle pages tonen dezelfde).
+ * Images: detail-pages renderen `<img src="https://api.straatmuseum
+ * .com/img/assets/<path>.webp?...">`-tags die door de raw HTML wel
+ * uit te plukken zijn (Nuxt-image-componenten worden SSR gerendered,
+ * niet pas client-side). We pakken de eerste img/assets-URL per
+ * detail-page als hero, strippen de transform-query, en mirroren
+ * naar Bunny.
  */
 
 const VENUE_ID = 'straat-museum';
@@ -45,6 +52,78 @@ type CardRaw = {
   endsAt: Date;
   schemaType: string;
 };
+
+type DetailEnrichment = {
+  imageUrl: string | null;
+  description: string | null;
+};
+
+async function mirrorImage(
+  sourceUrl: string,
+  slug: string
+): Promise<string | null> {
+  try {
+    const r = await fetch(sourceUrl, { headers: { 'user-agent': ANDREAS_UA } });
+    if (!r.ok) return null;
+    const mime = r.headers.get('content-type') ?? 'image/jpeg';
+    if (!mime.startsWith('image/')) return null;
+    const buf = await r.arrayBuffer();
+    if (buf.byteLength > 8 * 1024 * 1024) return null;
+    const ext = mime.includes('png')
+      ? 'png'
+      : mime.includes('webp')
+        ? 'webp'
+        : 'jpg';
+    return await uploadToBunny(
+      `media/events/straatmuseum-${slug}.${ext}`,
+      buf,
+      mime
+    );
+  } catch (e) {
+    console.warn(`[straatmuseum] mirror image failed: ${(e as Error).message}`);
+    return null;
+  }
+}
+
+/**
+ * Fetch detail-page en haal hero-image + description eruit. Hero =
+ * eerste `https://api.straatmuseum.com/img/assets/<path>`-URL in de
+ * HTML (query-strings strippen we zodat we de originele asset krijgen
+ * en niet de Nuxt-transform).
+ *
+ * Description = eerste paragraphs binnen `<div class="content-text…">`
+ * (de hoofdtekst-sectie van een Straat detail-page). We knippen op
+ * ~500 chars zodat we onder de description-limit blijven.
+ */
+async function fetchDetail(url: string): Promise<DetailEnrichment> {
+  const html = await fetchHtml(url);
+  if (!html) return { imageUrl: null, description: null };
+
+  // Hero image — pak eerste img/assets URL, strip query.
+  let imageUrl: string | null = null;
+  const img = html.match(
+    /https:\/\/api\.straatmuseum\.com\/img\/assets\/[^"'?\s]+/
+  );
+  if (img) imageUrl = img[0];
+
+  // Description — eerste paragraphs binnen `.content-text`-blok.
+  let description: string | null = null;
+  const block = html.match(
+    /<div\s+class="content-text[^"]*"[^>]*>([\s\S]*?)<\/div>/
+  );
+  if (block) {
+    const paragraphs = [...block[1].matchAll(/<p[^>]*>([\s\S]*?)<\/p>/g)]
+      .map((m) =>
+        decode(m[1].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ')).trim()
+      )
+      .filter((p) => p && p.length > 30 && !/^let op[:.]/i.test(p));
+    if (paragraphs.length > 0) {
+      description = paragraphs.join(' ').slice(0, 500);
+    }
+  }
+
+  return { imageUrl, description };
+}
 
 /** Parse de eerste schema.org "YYYY-MM-DD HH:MM:SS"-style datum als
  *  lokale Amsterdam-tijd. */
@@ -180,12 +259,39 @@ export async function scrapeStraatMuseum(options?: {
       const occurrenceId = `occ-straatmuseum-${card.slug}`;
 
       const [existing] = await db
-        .select({ id: schema.events.id })
+        .select({
+          id: schema.events.id,
+          imageUrl: schema.events.imageUrl,
+          description: schema.events.description,
+        })
         .from(schema.events)
         .where(eq(schema.events.id, eventId))
         .limit(1);
 
       if (existing) {
+        // Repareer images/description voor events die in eerdere runs
+        // zonder enrichment zijn opgeslagen.
+        const needsImageRepair =
+          !existing.imageUrl || !existing.imageUrl.startsWith('http');
+        const needsDescRepair = !existing.description;
+        if (needsImageRepair || needsDescRepair) {
+          const detail = await fetchDetail(card.url);
+          const patch: Partial<typeof schema.events.$inferInsert> = {};
+          if (needsImageRepair && detail.imageUrl) {
+            patch.imageUrl =
+              (await mirrorImage(detail.imageUrl, card.slug)) ?? detail.imageUrl;
+          }
+          if (needsDescRepair && detail.description) {
+            patch.description = detail.description;
+          }
+          if (Object.keys(patch).length > 0) {
+            await db
+              .update(schema.events)
+              .set(patch)
+              .where(eq(schema.events.id, eventId));
+          }
+        }
+
         await db
           .insert(schema.occurrences)
           .values({
@@ -212,12 +318,20 @@ export async function scrapeStraatMuseum(options?: {
         continue;
       }
 
+      const detail = await fetchDetail(card.url);
+
       const enriched = await enrichEvent({
         title: card.title,
-        description: null,
+        description: detail.description,
         venueName: venue.name,
         venueCategory,
       });
+
+      let imageUrl: string | null = null;
+      if (detail.imageUrl) {
+        imageUrl =
+          (await mirrorImage(detail.imageUrl, card.slug)) ?? detail.imageUrl;
+      }
 
       const baseKind = kindFromSchemaType(card.schemaType);
       const refinedKind = refineKindByDuration(
@@ -231,9 +345,9 @@ export async function scrapeStraatMuseum(options?: {
           id: eventId,
           venueId: venue.id,
           title: card.title,
-          description: enriched.cleanedDescription,
+          description: enriched.cleanedDescription ?? detail.description,
           kind: refinedKind,
-          imageUrl: null,
+          imageUrl,
           category: enriched.category ?? venueCategory,
           featured: false,
           genres: enriched.genres,
