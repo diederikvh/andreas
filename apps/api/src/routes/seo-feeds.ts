@@ -19,7 +19,10 @@ import { PUBLIC_BASE_URL, escapeHtml } from './_seo.js';
 const HERE = dirname(fileURLToPath(import.meta.url));
 const STATIC_DIR = join(HERE, '..', '..', 'static');
 const ICON_PNG = readFileSync(join(STATIC_DIR, 'icon-1024.png'));
-const FAVICON_PNG = readFileSync(join(STATIC_DIR, 'favicon-48.png'));
+const APPLE_TOUCH_PNG = readFileSync(join(STATIC_DIR, 'apple-touch-icon-180.png'));
+const FAVICON_48_PNG = readFileSync(join(STATIC_DIR, 'favicon-48.png'));
+const FAVICON_32_PNG = readFileSync(join(STATIC_DIR, 'favicon-32.png'));
+const FAVICON_16_PNG = readFileSync(join(STATIC_DIR, 'favicon-16.png'));
 
 /**
  * SEO-feed routes: het web-equivalent van een API-discovery laag.
@@ -62,18 +65,24 @@ const IMG_HEADERS = {
 /** 1024×1024 app-icon — default OG-image (raster, voor WhatsApp/iMessage). */
 seoFeedsRoute.get('/icon.png', (c) => c.body(ICON_PNG, 200, IMG_HEADERS));
 
-/** Apple touch icon — iOS gebruikt deze als homescreen-icoon. */
-seoFeedsRoute.get('/apple-touch-icon.png', (c) => c.body(ICON_PNG, 200, IMG_HEADERS));
+/** 180×180 Apple touch icon — iOS gebruikt deze als homescreen-icoon. */
+seoFeedsRoute.get('/apple-touch-icon.png', (c) => c.body(APPLE_TOUCH_PNG, 200, IMG_HEADERS));
 
-/** 48×48 favicon (PNG-vorm). */
-seoFeedsRoute.get('/favicon.png', (c) => c.body(FAVICON_PNG, 200, IMG_HEADERS));
+/** 48×48 favicon (PNG-vorm) — desktop tabs. */
+seoFeedsRoute.get('/favicon.png', (c) => c.body(FAVICON_48_PNG, 200, IMG_HEADERS));
+
+/** 32×32 favicon — Retina-tabs op desktop. */
+seoFeedsRoute.get('/favicon-32.png', (c) => c.body(FAVICON_32_PNG, 200, IMG_HEADERS));
+
+/** 16×16 favicon — klassieke tab-pixelmaat. */
+seoFeedsRoute.get('/favicon-16.png', (c) => c.body(FAVICON_16_PNG, 200, IMG_HEADERS));
 
 /**
  * Browsers vragen `/favicon.ico` standaard ongeacht meta-tags; we serveren
- * dezelfde PNG-bytes onder dat pad. Werkt voor moderne browsers (Chrome,
- * Safari, Firefox).
+ * de 48×48 PNG-bytes onder dat pad. Werkt voor moderne browsers (Chrome,
+ * Safari, Firefox) die ook PNG accepteren onder `.ico`-extensie.
  */
-seoFeedsRoute.get('/favicon.ico', (c) => c.body(FAVICON_PNG, 200, IMG_HEADERS));
+seoFeedsRoute.get('/favicon.ico', (c) => c.body(FAVICON_48_PNG, 200, IMG_HEADERS));
 
 /* ---------- /og.svg  —  default OG-image (1200×630) ---------- */
 

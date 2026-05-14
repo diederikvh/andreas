@@ -11,6 +11,8 @@
  * notificaties) blijft in de app.
  */
 
+import qrcode from 'qrcode-generator';
+
 export const PUBLIC_BASE_URL =
   process.env.PUBLIC_BASE_URL ?? 'https://andreas.amsterdam';
 export const APP_STORE_URL =
@@ -552,6 +554,32 @@ export const SEO_STYLES = `
     color: var(--fg-muted); padding: 12px 18px; font-size: 14px;
   }
 
+  /* QR-block: alleen zichtbaar op desktop (≥900px). Op die viewport
+     vervangt de QR de "Open in ANDREAS"-knop — scannen-met-telefoon is
+     dáár nuttig, een knop niet. Op tablet/mobile blijft de knop staan. */
+  .cta-card .qr { display: none; }
+  .cta-card .qr-hint { display: none; }
+  @media (min-width: 900px) {
+    .cta-card.with-qr a.primary { display: none; }
+    .cta-card.with-qr .qr {
+      display: block;
+      width: 160px; height: 160px;
+      margin: 0 auto 10px;
+      padding: 12px;
+      background: #fff;
+      border-radius: 12px;
+    }
+    .cta-card.with-qr .qr svg {
+      width: 100%; height: 100%; display: block;
+    }
+    .cta-card.with-qr .qr-hint {
+      display: block;
+      color: var(--fg-muted);
+      font-size: 12px;
+      margin: 0 0 14px;
+    }
+  }
+
   /* Footer — kleine print onder elke pagina. */
   footer.site {
     border-top: 1px solid var(--border-soft);
@@ -628,17 +656,44 @@ export function renderMobileStickyCta(deeplink: string, label: string): string {
   `;
 }
 
-/** Eind-CTA onderaan elke SEO-pagina. */
+/**
+ * Genereer een schaalbare SVG QR-code voor een URL. `errorCorrectionLevel: 'M'`
+ * is de balans tussen densiteit en leesbaarheid; type 0 laat de lib zelf
+ * de minimale grootte kiezen op basis van de data. `scalable: true` strips
+ * de hardgecodeerde dimensies zodat we via CSS kunnen sizen.
+ */
+export function renderQrSvg(text: string): string {
+  const qr = qrcode(0, 'M');
+  qr.addData(text);
+  qr.make();
+  return qr.createSvgTag({ scalable: true, cellSize: 4, margin: 0 });
+}
+
+/**
+ * Eind-CTA onderaan elke SEO-pagina. Met `qrUrl` toont de card op desktop
+ * een QR-code i.p.v. de "Open in ANDREAS"-knop — scannen vanaf desktop
+ * naar telefoon is de natuurlijke flow daar. Op tablet/mobile blijft de
+ * knop staan (de QR is dan verborgen via CSS).
+ */
 export function renderCtaCard(opts: {
   deeplink: string;
   title: string;
   body: string;
+  qrUrl?: string;
 }): string {
+  const qrBlock = opts.qrUrl
+    ? `
+        <div class="qr" aria-hidden="true">${renderQrSvg(opts.qrUrl)}</div>
+        <p class="qr-hint">Scan met je telefoon</p>
+      `
+    : '';
+  const cardClass = opts.qrUrl ? 'cta-card with-qr' : 'cta-card';
   return `
-    <aside class="cta-card">
+    <aside class="${cardClass}">
       <div class="cross" aria-hidden="true"></div>
       <h3>${escapeHtml(opts.title)}</h3>
       <p>${escapeHtml(opts.body)}</p>
+      ${qrBlock}
       <div class="actions">
         <a class="primary" href="${escapeHtml(opts.deeplink)}">Open in ANDREAS</a>
         <a class="secondary" href="${escapeHtml(APP_STORE_URL)}">App Store</a>
@@ -864,8 +919,10 @@ export function renderHead(opts: {
   <title>${escapeHtml(opts.title)}</title>
   <meta name="description" content="${escapeHtml(opts.description)}" />
   <link rel="canonical" href="${escapeHtml(canonical)}" />
-  <link rel="icon" type="image/png" href="${escapeHtml(PUBLIC_BASE_URL)}/favicon.png" />
-  <link rel="apple-touch-icon" href="${escapeHtml(PUBLIC_BASE_URL)}/apple-touch-icon.png" />
+  <link rel="icon" type="image/png" sizes="16x16" href="${escapeHtml(PUBLIC_BASE_URL)}/favicon-16.png" />
+  <link rel="icon" type="image/png" sizes="32x32" href="${escapeHtml(PUBLIC_BASE_URL)}/favicon-32.png" />
+  <link rel="icon" type="image/png" sizes="48x48" href="${escapeHtml(PUBLIC_BASE_URL)}/favicon.png" />
+  <link rel="apple-touch-icon" sizes="180x180" href="${escapeHtml(PUBLIC_BASE_URL)}/apple-touch-icon.png" />
   <meta name="theme-color" content="#0a0a0b" />
   <!-- Index + grote preview voor Google rich-results; noai signaleert
        AI-crawlers dat content niet voor training gebruikt mag worden. -->

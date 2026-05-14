@@ -420,8 +420,10 @@ function renderHubPage(
   <title>${escapeHtml(hub.pageTitle)}</title>
   <meta name="description" content="${escapeHtml(hub.description)}" />
   <link rel="canonical" href="${canonical}" />
-  <link rel="icon" type="image/png" href="${PUBLIC_BASE_URL}/favicon.png" />
-  <link rel="apple-touch-icon" href="${PUBLIC_BASE_URL}/apple-touch-icon.png" />
+  <link rel="icon" type="image/png" sizes="16x16" href="${PUBLIC_BASE_URL}/favicon-16.png" />
+  <link rel="icon" type="image/png" sizes="32x32" href="${PUBLIC_BASE_URL}/favicon-32.png" />
+  <link rel="icon" type="image/png" sizes="48x48" href="${PUBLIC_BASE_URL}/favicon.png" />
+  <link rel="apple-touch-icon" sizes="180x180" href="${PUBLIC_BASE_URL}/apple-touch-icon.png" />
   <meta name="theme-color" content="#0a0a0b" />
   <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1" />
   <meta name="googlebot" content="index, follow, max-image-preview:large" />
@@ -542,6 +544,7 @@ function renderHubPage(
           deeplink: 'andreas://',
           title: `${hub.title} in de ANDREAS-app`,
           body: 'Sla op wat je interesseert, krijg herinneringen bij events die starten, en zie wat vrienden hebben gered.',
+          qrUrl: `${PUBLIC_BASE_URL}/${hub.slug}`,
         })}
       </aside>
     </div>
