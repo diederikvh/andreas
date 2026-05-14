@@ -89,7 +89,12 @@ function extractCards(html: string): CardRaw[] {
         /(?:src|data-src|data-lazy-src)="(https:\/\/www\.nieuwekerk\.nl\/wp-content\/uploads\/[^"]+\.(?:jpg|jpeg|png|webp))"/i
       );
     }
-    const imageUrl = imgMatch ? imgMatch[1] : null;
+    // WordPress geeft als `src` vaak een thumbnail-variant (`-1024x408`,
+    // `-300x150`, etc). Strip dat suffix zodat we de full-res origineel
+    // pakken voor scherpere mirrors.
+    const imageUrl = imgMatch
+      ? imgMatch[1].replace(/-\d+x\d+(?=\.\w+$)/, '')
+      : null;
 
     seen.add(slug);
     out.push({
