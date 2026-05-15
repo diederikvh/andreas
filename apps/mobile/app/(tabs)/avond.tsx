@@ -1336,12 +1336,20 @@ function OpGevoelBanner() {
     >
       <MaterialCommunityIcons
         name="cards-outline"
-        size={20}
+        size={22}
         color={roles.accent}
       />
-      <Text style={[styles.shortcutLabel, { color: roles.fg }]}>
-        {t('Vibes', 'Vibes')}
-      </Text>
+      <View style={styles.shortcutBody}>
+        <Text style={[styles.shortcutKicker, { color: roles.fgMuted }]}>
+          {t('Vibes', 'Vibes')}
+        </Text>
+        <Text style={[styles.shortcutTitle, { color: roles.fg }]}>
+          {t(
+            'Swipe en kies wat je leuk vindt.',
+            'Swipe and pick what you like.'
+          )}
+        </Text>
+      </View>
     </Pressable>
   );
 }
@@ -1357,10 +1365,18 @@ function KaartBanner() {
         { backgroundColor: roles.bgLift, borderColor: roles.bgChip },
       ]}
     >
-      <Ionicons name="map-outline" size={20} color={roles.accent} />
-      <Text style={[styles.shortcutLabel, { color: roles.fg }]}>
-        {t('Kaart', 'Map')}
-      </Text>
+      <Ionicons name="map-outline" size={22} color={roles.accent} />
+      <View style={styles.shortcutBody}>
+        <Text style={[styles.shortcutKicker, { color: roles.fgMuted }]}>
+          {t('Kaart', 'Map')}
+        </Text>
+        <Text style={[styles.shortcutTitle, { color: roles.fg }]}>
+          {t(
+            'Zie wat er nu speelt in de buurt.',
+            'See what’s on around you right now.'
+          )}
+        </Text>
+      </View>
     </Pressable>
   );
 }
@@ -2095,18 +2111,26 @@ const styles = StyleSheet.create({
   },
   shortcutBtn: {
     flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
+    // Vierkante-aanvoelende kaartknop: icoon bovenin, tekstblok eronder,
+    // alles links-uitgelijnd. Geen chevron — voelt rustiger in half-
+    // breedte naast z'n tweelingknop.
+    alignItems: 'flex-start',
+    gap: 10,
+    padding: 14,
     borderRadius: 14,
     borderWidth: 1,
   },
-  shortcutLabel: {
+  shortcutBody: { gap: 2 },
+  shortcutKicker: {
+    fontFamily: fontFamily.monoMedium,
+    fontSize: 10,
+    letterSpacing: 1.4,
+    textTransform: 'uppercase',
+  },
+  shortcutTitle: {
     fontFamily: fontFamily.bold,
     fontSize: 14,
+    lineHeight: 18,
     letterSpacing: -0.14,
   },
 
