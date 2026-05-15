@@ -9,6 +9,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { useT } from '@/lib/i18n';
 import { useRoles } from '@/store/mode';
 import { fontFamily } from '@/theme/tokens';
 
@@ -22,6 +23,7 @@ import { fontFamily } from '@/theme/tokens';
 export function UpdateBanner() {
   const roles = useRoles();
   const insets = useSafeAreaInsets();
+  const t = useT();
   const { isUpdatePending } = Updates.useUpdates();
   const [restarting, setRestarting] = useState(false);
 
@@ -65,12 +67,18 @@ export function UpdateBanner() {
     >
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel="Herlaad app voor nieuwe versie"
+        accessibilityLabel={t(
+          'Herlaad app voor nieuwe versie',
+          'Reload app for new version'
+        )}
         onPress={onPress}
         style={[styles.pill, { backgroundColor: roles.accent }]}
       >
         <Text style={[styles.text, { color: roles.onAccent }]}>
-          Nieuwe versie · Tik om te herladen
+          {t(
+            'Nieuwe versie · Tik om te herladen',
+            'New version · Tap to reload'
+          )}
         </Text>
       </Pressable>
     </Animated.View>
