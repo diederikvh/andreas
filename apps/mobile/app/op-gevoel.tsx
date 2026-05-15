@@ -89,6 +89,15 @@ export default function OpGevoel() {
   //    "op gevoel"; planning op die termijn doe je in Agenda
   //  - cmode-mismatch: dag-mode pakt alleen daytime-occurrences, nacht
   //    alleen niet-daytime
+  //
+  // Synthetische memo-key: hangt af van "hebben we events" + cmode +
+  // refresh-key, NIET van de events-reference. Anders rebuilt React
+  // Query's refetch (die telkens een nieuwe array-ref teruggeeft, ook
+  // bij identieke content) de stack met een verse Fisher-Yates shuffle
+  // → cards remount in andere volgorde → zichtbare flits bij openen.
+  const stackKey = events
+    ? `have-${cmode}-${stackRefreshKey}`
+    : 'none';
   const stack = useMemo<StackEvent[]>(() => {
     if (!events) return [];
     const savedOccIds = new Set((saves ?? []).map((s) => s.occurrenceId));
@@ -131,7 +140,7 @@ export default function OpGevoel() {
     }
     return candidates.slice(0, STACK_SIZE);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [events, cmode, stackRefreshKey]);
+  }, [stackKey]);
 
   const [index, setIndex] = useState(0);
   const [likes, setLikes] = useState<StackEvent[]>([]);
