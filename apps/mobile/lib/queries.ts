@@ -12,6 +12,7 @@ import {
   getEvent,
   getEventGenres,
   getEvents,
+  getForYouEvents,
   getFriendDetail,
   getFriendRequests,
   getFriends,
@@ -26,17 +27,21 @@ import {
   getVenueSubtypes,
   getVenues,
   removeFriend,
+  setFriendFavorite,
+  type ApiFriendDetail,
   searchUsers,
   sendFriendRequest,
   sendInvites,
   setVenueFollow,
   toggleDismiss,
   toggleSave,
+  getMirrorByHandle,
   getMyDismisses,
   getMyMirror,
   type ApiMe,
   type EventsFilter,
   type Mirror,
+  type PublicMirror,
   type SaveSource,
   type SavedApiEvent,
   type VenueCategory,
@@ -50,6 +55,7 @@ export const queryKeys = {
   event: (id: string) => ['event', id] as const,
   eventGenres: () => ['event-genres'] as const,
   mirror: () => ['mirror', 'me'] as const,
+  forYou: () => ['events', 'for-you'] as const,
   dismisses: () => ['dismisses'] as const,
   venue: (slug: string) => ['venue', slug] as const,
   venues: (input: { q?: string; category?: string } = {}) =>
@@ -93,6 +99,19 @@ export function useEvents(filter: EventsFilter = {}) {
     // filtert `useNowMinute()` continu op effectieve eindtijd, dus
     // de bovenste rij wordt nooit een dood event.
     staleTime: 10 * 60_000,
+    refetchOnWindowFocus: true,
+  });
+}
+
+export function useForYouEvents(opts: { enabled?: boolean } = {}) {
+  return useQuery({
+    queryKey: queryKeys.forYou(),
+    queryFn: () => getForYouEvents(),
+    enabled: opts.enabled ?? true,
+    // Score-based aanbevelingen veranderen niet razendsnel; matchen
+    // intern op saves+follows. Refresh op tab-focus zodat een nieuwe
+    // save in de huidige sessie de rail bijwerkt.
+    staleTime: 5 * 60_000,
     refetchOnWindowFocus: true,
   });
 }
@@ -230,6 +249,7 @@ export function useToggleSave() {
     onSettled: () => {
       qc.invalidateQueries({ queryKey: queryKeys.saves() });
       qc.invalidateQueries({ queryKey: queryKeys.mirror() });
+      qc.invalidateQueries({ queryKey: queryKeys.forYou() });
     },
   });
 }
@@ -255,6 +275,7 @@ export function useToggleDismiss() {
     onSettled: () => {
       qc.invalidateQueries({ queryKey: queryKeys.dismisses() });
       qc.invalidateQueries({ queryKey: queryKeys.mirror() });
+      qc.invalidateQueries({ queryKey: queryKeys.forYou() });
     },
   });
 }
@@ -276,7 +297,25 @@ export function useMyMirror(opts: { enabled?: boolean } = {}) {
   });
 }
 
-export type { Mirror };
+export function useMirrorByHandle(
+  handle: string | null | undefined,
+  opts: { enabled?: boolean } = {}
+) {
+  return useQuery({
+    queryKey: ['mirror', 'u', handle ?? ''] as const,
+    queryFn: () => getMirrorByHandle(handle as string),
+    enabled: Boolean(handle) && (opts.enabled ?? true),
+    staleTime: 60_000,
+    retry: (count, err) => {
+      // 403/404 zijn permanent — niet retryen, gewoon empty tonen.
+      const msg = (err as Error).message ?? '';
+      if (/40[34]/.test(msg)) return false;
+      return count < 2;
+    },
+  });
+}
+
+export type { Mirror, PublicMirror };
 
 export function useFriends(opts: { enabled?: boolean } = {}) {
   return useQuery({
@@ -376,6 +415,31 @@ export function useRemoveFriend() {
   return useMutation({
     mutationFn: (userId: string) => removeFriend(userId),
     onSettled: () => invalidateFriendsCaches(qc),
+  });
+}
+
+export function useSetFriendFavorite(friendId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (favorite: boolean) => setFriendFavorite(friendId, favorite),
+    onMutate: async (favorite) => {
+      await qc.cancelQueries({ queryKey: queryKeys.friend(friendId) });
+      const prev = qc.getQueryData<ApiFriendDetail>(queryKeys.friend(friendId));
+      if (prev) {
+        qc.setQueryData<ApiFriendDetail>(queryKeys.friend(friendId), {
+          ...prev,
+          favorite,
+        });
+      }
+      return { prev };
+    },
+    onError: (_err, _fav, ctx) => {
+      if (ctx?.prev) qc.setQueryData(queryKeys.friend(friendId), ctx.prev);
+    },
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.friend(friendId) });
+      qc.invalidateQueries({ queryKey: queryKeys.friends() });
+    },
   });
 }
 

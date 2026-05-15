@@ -82,8 +82,8 @@ app.patch('/me', async (c) => {
   const body = (await c.req.json()) as {
     name?: string;
     handle?: string;
-    savesVisibility?: 'friends' | 'private';
-    mirrorVisibility?: 'friends' | 'private';
+    savesVisibility?: 'favorites' | 'friends' | 'private';
+    mirrorVisibility?: 'favorites' | 'friends' | 'private';
     discoverable?: boolean;
   };
 
@@ -116,16 +116,23 @@ app.patch('/me', async (c) => {
     updates.handle = handle;
   }
 
+  const VISIBILITIES = ['favorites', 'friends', 'private'] as const;
   if (body.savesVisibility !== undefined) {
-    if (body.savesVisibility !== 'friends' && body.savesVisibility !== 'private') {
-      return c.json({ error: 'savesVisibility moet "friends" of "private" zijn.' }, 400);
+    if (!(VISIBILITIES as readonly string[]).includes(body.savesVisibility)) {
+      return c.json(
+        { error: 'savesVisibility moet "favorites", "friends" of "private" zijn.' },
+        400
+      );
     }
     updates.savesVisibility = body.savesVisibility;
   }
 
   if (body.mirrorVisibility !== undefined) {
-    if (body.mirrorVisibility !== 'friends' && body.mirrorVisibility !== 'private') {
-      return c.json({ error: 'mirrorVisibility moet "friends" of "private" zijn.' }, 400);
+    if (!(VISIBILITIES as readonly string[]).includes(body.mirrorVisibility)) {
+      return c.json(
+        { error: 'mirrorVisibility moet "favorites", "friends" of "private" zijn.' },
+        400
+      );
     }
     updates.mirrorVisibility = body.mirrorVisibility;
   }

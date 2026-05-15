@@ -473,7 +473,7 @@ export default function Jij() {
         >
           <Text style={[styles.title, { color: roles.fg }]}>
             {isEditing
-              ? t('Pas je naam\nof handle aan.', 'Update your name\nor handle.')
+              ? t('Profiel', 'Profile')
               : t('Hoe heet je\neigenlijk?', 'What’s your\nname?')}
           </Text>
 
@@ -562,21 +562,17 @@ export default function Jij() {
                   : t('Doorgaan', 'Continue')}
             </Text>
           </Pressable>
-          {isEditing && (
-            <Pressable
-              onPress={onCancelProfileEdit}
-              style={[
-                styles.actionBtn,
-                {
-                  backgroundColor: isNacht ? palette.noir2 : palette.paper2,
-                  marginTop: 10,
-                },
-              ]}
-            >
-              <Text style={[styles.actionBtnText, { color: roles.fg }]}>
-                {t('Annuleren', 'Cancel')}
-              </Text>
-            </Pressable>
+          {/* Instellingen — alleen zichtbaar als de gebruiker een
+              bestaand profiel bewerkt (niet tijdens onboarding-eerste-
+              keer-vullen). Marge-cancel om de ScrollView's
+              paddingHorizontal: 22 te neutraliseren zodat SectionHead's
+              eigen padding weer klopt. */}
+          {isEditing && me && (
+            <View style={{ marginHorizontal: -22, marginTop: 24 }}>
+              <NotificationsSection />
+              <PrivacySection me={me} onUpdated={refetchMe} />
+              <LanguageSection />
+            </View>
           )}
         </ScrollView>
         <ModalCloseBtn />
@@ -658,18 +654,16 @@ export default function Jij() {
             {displayHandle}
           </Text>
           <View style={styles.profileActions}>
-            {/* Profiel-pagina houdt 't bij Bewerk-profiel; vrienden-
-                acties (zoeken, scannen, delen) zitten op /add-friend
-                (bereikbaar via Sociaal). */}
+            {/* Compacte pill-knop, zelfde footprint als de Volgend-
+                /Favoriet-knop op een vriend-profiel zodat eigen en
+                andermans profiel visueel matchen. */}
             <Pressable
               onPress={onEditProfile}
-              style={[
-                styles.actionBtn,
-                { backgroundColor: isNacht ? palette.noir2 : palette.paper2 },
-              ]}
+              style={[styles.editProfileBtn, { borderColor: roles.bgChip }]}
             >
-              <Text style={[styles.actionBtnText, { color: roles.fg }]}>
-                {t('Bewerk naam & handle', 'Edit name & handle')}
+              <Ionicons name="pencil" size={14} color={roles.fg} />
+              <Text style={[styles.editProfileBtnText, { color: roles.fg }]}>
+                {t('Bewerk profiel', 'Edit profile')}
               </Text>
             </Pressable>
           </View>
@@ -677,9 +671,6 @@ export default function Jij() {
         </View>
 
         {me && <MirrorSection authed={authedAndOnboarded} />}
-        {me && <NotificationsSection />}
-        {me && <PrivacySection me={me} onUpdated={refetchMe} />}
-        <LanguageSection />
 
         {/* Logout zit visueel onder een divider om 'm écht van de
             rest van de instellingen te scheiden — laatste actie op de
@@ -831,7 +822,7 @@ function SectionHead({
   const roles = useRoles();
   return (
     <View style={styles.sectionHead}>
-      <Text style={[styles.sectionLabel, { color: roles.fgMuted }]}>
+      <Text style={[styles.sectionLabel, { color: roles.fg }]}>
         {label}
         {count !== undefined && (
           <Text style={[styles.sectionCount, { color: roles.fgPlaceholder }]}>
@@ -930,17 +921,14 @@ function MirrorSection({ authed }: { authed: boolean }) {
   const total = data.totals.saves;
   if (total === 0) {
     return (
-      <>
-        <SectionHead label={t('Spiegel', 'Mirror')} />
-        <View style={styles.privacyWrap}>
-          <Text style={[styles.privacySub, { color: roles.fgMuted }]}>
-            {t(
-              'Zodra je events redt, vind je hier je top-venues, genres en plekken.',
-              'Once you save events, you’ll find your top venues, genres and places here.'
-            )}
-          </Text>
-        </View>
-      </>
+      <View style={styles.mirrorWrap}>
+        <Text style={[styles.privacySub, { color: roles.fgMuted }]}>
+          {t(
+            'Zodra je events redt, vind je hier je top-venues, genres en plekken.',
+            'Once you save events, you’ll find your top venues, genres and places here.'
+          )}
+        </Text>
+      </View>
     );
   }
 
@@ -952,9 +940,7 @@ function MirrorSection({ authed }: { authed: boolean }) {
   const discoveryTotal = data.discovery.reduce((s, d) => s + d.count, 0);
 
   return (
-    <>
-      <SectionHead label={t('Spiegel', 'Mirror')} count={total} />
-      <View style={styles.mirrorWrap}>
+    <View style={styles.mirrorWrap}>
         {identity && (
           <Text style={[styles.mirrorIdentity, { color: roles.fg }]}>
             {identity}
@@ -998,7 +984,7 @@ function MirrorSection({ authed }: { authed: boolean }) {
                   key={g.genre}
                   style={[
                     styles.mirrorChip,
-                    { backgroundColor: roles.bgChip },
+                    { backgroundColor: roles.bgTag },
                   ]}
                 >
                   <Text
@@ -1156,8 +1142,7 @@ function MirrorSection({ authed }: { authed: boolean }) {
           {t('Dit is wat je hebt gedaan.', 'This is what you’ve done.')}
         </Text>
       </View>
-    </>
-  );
+    );
 }
 
 function MirrorBlock({
@@ -1170,7 +1155,7 @@ function MirrorBlock({
   const roles = useRoles();
   return (
     <View style={styles.mirrorBlock}>
-      <Text style={[styles.mirrorBlockTitle, { color: roles.fgMuted }]}>
+      <Text style={[styles.mirrorBlockTitle, { color: roles.fg }]}>
         {title}
       </Text>
       {children}
@@ -1194,45 +1179,21 @@ function LanguageSection() {
     <>
       <SectionHead label={t('Taal', 'Language')} />
       <View style={styles.privacyWrap}>
-        <View style={styles.privacyRow}>
-          <View style={styles.privacyBody}>
-            <Text style={[styles.privacyLabel, { color: roles.fg }]}>
-              {t('Taal van de app', 'App language')}
-            </Text>
-            <Text style={[styles.privacySub, { color: roles.fgMuted }]}>
-              {t(
-                'Automatisch volgt de taal van je toestel — Nederlands of Engels.',
-                'Automatic follows your device language — Dutch or English.'
-              )}
-            </Text>
-          </View>
-        </View>
-        <View style={styles.languageRow}>
-          {options.map((opt) => {
-            const active = preference === opt.value;
-            return (
-              <Pressable
-                key={opt.value}
-                onPress={() => setPreference(opt.value)}
-                style={[
-                  styles.languageBtn,
-                  {
-                    borderColor: active ? roles.accent : roles.bgChip,
-                    backgroundColor: active ? roles.accent : 'transparent',
-                  },
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.languageBtnText,
-                    { color: active ? roles.onAccent : roles.fgMuted },
-                  ]}
-                >
-                  {opt.label}
-                </Text>
-              </Pressable>
-            );
-          })}
+        <View style={styles.privacyBlock}>
+          <Text style={[styles.privacyLabel, { color: roles.fg }]}>
+            {t('Taal van de app', 'App language')}
+          </Text>
+          <Text style={[styles.privacySub, { color: roles.fgMuted }]}>
+            {t(
+              'Automatisch volgt de taal van je toestel — Nederlands of Engels.',
+              'Automatic follows your device language — Dutch or English.'
+            )}
+          </Text>
+          <SegmentPicker
+            value={preference}
+            options={options}
+            onChange={setPreference}
+          />
         </View>
       </View>
     </>
@@ -1360,6 +1321,8 @@ function NotificationsSection() {
   );
 }
 
+type Visibility = 'favorites' | 'friends' | 'private';
+
 function PrivacySection({
   me,
   onUpdated,
@@ -1372,20 +1335,15 @@ function PrivacySection({
   const isNacht = mode === 'nacht';
   const t = useT();
 
-  // Optimistische lokale state — voor snappy switch-animatie. Server-call
-  // komt erna; bij fout rollen we terug en tonen we niets bijzonders
-  // (de switch springt simpelweg terug).
-  const [savesPrivate, setSavesPrivate] = useState(
-    me.savesVisibility === 'private'
-  );
-  const [mirrorPrivate, setMirrorPrivate] = useState(
-    me.mirrorVisibility === 'private'
-  );
+  // Optimistische lokale state — voor snappy UI. Bij server-fout rollen
+  // we terug naar de vorige waarde.
+  const [savesVis, setSavesVis] = useState<Visibility>(me.savesVisibility);
+  const [mirrorVis, setMirrorVis] = useState<Visibility>(me.mirrorVisibility);
   const [discoverable, setDiscoverable] = useState(me.discoverable);
 
   useEffect(() => {
-    setSavesPrivate(me.savesVisibility === 'private');
-    setMirrorPrivate(me.mirrorVisibility === 'private');
+    setSavesVis(me.savesVisibility);
+    setMirrorVis(me.mirrorVisibility);
     setDiscoverable(me.discoverable);
   }, [me.savesVisibility, me.mirrorVisibility, me.discoverable]);
 
@@ -1393,25 +1351,27 @@ function PrivacySection({
   const trackOff = isNacht ? '#2a2a2d' : palette.paper;
   const thumb = isNacht ? palette.ink : palette.paper3;
 
-  const onSavesToggle = async (next: boolean) => {
-    const prev = savesPrivate;
-    setSavesPrivate(next);
+  const onSavesPick = async (next: Visibility) => {
+    if (next === savesVis) return;
+    const prev = savesVis;
+    setSavesVis(next);
     try {
-      await updateMe({ savesVisibility: next ? 'private' : 'friends' });
+      await updateMe({ savesVisibility: next });
       onUpdated();
     } catch {
-      setSavesPrivate(prev);
+      setSavesVis(prev);
     }
   };
 
-  const onMirrorToggle = async (next: boolean) => {
-    const prev = mirrorPrivate;
-    setMirrorPrivate(next);
+  const onMirrorPick = async (next: Visibility) => {
+    if (next === mirrorVis) return;
+    const prev = mirrorVis;
+    setMirrorVis(next);
     try {
-      await updateMe({ mirrorVisibility: next ? 'private' : 'friends' });
+      await updateMe({ mirrorVisibility: next });
       onUpdated();
     } catch {
-      setMirrorPrivate(prev);
+      setMirrorVis(prev);
     }
   };
 
@@ -1426,83 +1386,118 @@ function PrivacySection({
     }
   };
 
+  const visibilityOpts: { value: Visibility; label: string }[] = [
+    { value: 'favorites', label: t('Favorieten', 'Favourites') },
+    { value: 'friends', label: t('Vrienden', 'Friends') },
+    { value: 'private', label: t('Niemand', 'Nobody') },
+  ];
+  const discoverableOpts: { value: 'on' | 'off'; label: string }[] = [
+    { value: 'on', label: t('Aan', 'On') },
+    { value: 'off', label: t('Uit', 'Off') },
+  ];
+
   return (
     <>
       <SectionHead label={t('Privacy', 'Privacy')} />
       <View style={styles.privacyWrap}>
-        <View style={styles.privacyRow}>
-          <View style={styles.privacyBody}>
-            <Text style={[styles.privacyLabel, { color: roles.fg }]}>
-              {t(
-                'Vrienden zien mijn opgeslagen events',
-                'Friends see my saved events'
-              )}
-            </Text>
-            <Text style={[styles.privacySub, { color: roles.fgMuted }]}>
-              {t(
-                'Uit zetten verbergt jouw saves bij vrienden in friend-pills en op je profiel.',
-                'Turning off hides your saves from friends in friend-pills and on your profile.'
-              )}
-            </Text>
-          </View>
-          <Switch
-            // value=true betekent "vrienden mogen het zien" (sluit aan
-            // bij de label-richting); intern is dat savesVisibility =
-            // 'friends'.
-            value={!savesPrivate}
-            onValueChange={(v) => onSavesToggle(!v)}
-            trackColor={{ true: trackOn, false: trackOff }}
-            thumbColor={thumb}
-            ios_backgroundColor={trackOff}
+        <View style={styles.privacyBlock}>
+          <Text style={[styles.privacyLabel, { color: roles.fg }]}>
+            {t('Wie ziet mijn saves', 'Who sees my saves')}
+          </Text>
+          <Text style={[styles.privacySub, { color: roles.fgMuted }]}>
+            {t(
+              'Friend-pills op events en je gered-lijst op je profiel.',
+              'Friend-pills on events and your saved list on your profile.'
+            )}
+          </Text>
+          <SegmentPicker
+            value={savesVis}
+            options={visibilityOpts}
+            onChange={onSavesPick}
           />
         </View>
+
         <View style={[styles.privacyDivider, { backgroundColor: roles.bgChip }]} />
-        <View style={styles.privacyRow}>
-          <View style={styles.privacyBody}>
-            <Text style={[styles.privacyLabel, { color: roles.fg }]}>
-              {t(
-                'Vrienden zien mijn spiegel',
-                'Friends see my mirror'
-              )}
-            </Text>
-            <Text style={[styles.privacySub, { color: roles.fgMuted }]}>
-              {t(
-                'Top venues en genres zichtbaar op je profiel. Geen aantallen.',
-                'Top venues and genres visible on your profile. No counts.'
-              )}
-            </Text>
-          </View>
-          <Switch
-            value={!mirrorPrivate}
-            onValueChange={(v) => onMirrorToggle(!v)}
-            trackColor={{ true: trackOn, false: trackOff }}
-            thumbColor={thumb}
-            ios_backgroundColor={trackOff}
+
+        <View style={styles.privacyBlock}>
+          <Text style={[styles.privacyLabel, { color: roles.fg }]}>
+            {t('Wie ziet mijn spiegel', 'Who sees my mirror')}
+          </Text>
+          <Text style={[styles.privacySub, { color: roles.fgMuted }]}>
+            {t(
+              'Top venues en genres op je profiel.',
+              'Top venues and genres on your profile.'
+            )}
+          </Text>
+          <SegmentPicker
+            value={mirrorVis}
+            options={visibilityOpts}
+            onChange={onMirrorPick}
           />
         </View>
+
         <View style={[styles.privacyDivider, { backgroundColor: roles.bgChip }]} />
-        <View style={styles.privacyRow}>
-          <View style={styles.privacyBody}>
-            <Text style={[styles.privacyLabel, { color: roles.fg }]}>
-              {t('Vindbaar via zoeken', 'Findable via search')}
-            </Text>
-            <Text style={[styles.privacySub, { color: roles.fgMuted }]}>
-              {t(
-                'Anderen kunnen jou vinden via @handle. Uit betekent dat alleen mensen die jij toevoegt vrienden met je kunnen worden.',
-                'Others can find you via @handle. Off means only people you add can become friends with you.'
-              )}
-            </Text>
-          </View>
-          <Switch
-            value={discoverable}
-            onValueChange={onDiscoverableToggle}
-            trackColor={{ true: trackOn, false: trackOff }}
-            thumbColor={thumb}
-            ios_backgroundColor={trackOff}
+
+        <View style={styles.privacyBlock}>
+          <Text style={[styles.privacyLabel, { color: roles.fg }]}>
+            {t('Vindbaar via zoeken', 'Findable via search')}
+          </Text>
+          <Text style={[styles.privacySub, { color: roles.fgMuted }]}>
+            {t(
+              'Anderen kunnen jou vinden via @handle. Uit betekent dat alleen mensen die jij toevoegt vrienden met je kunnen worden.',
+              'Others can find you via @handle. Off means only people you add can become friends with you.'
+            )}
+          </Text>
+          <SegmentPicker
+            value={discoverable ? 'on' : 'off'}
+            options={discoverableOpts}
+            onChange={(v) => onDiscoverableToggle(v === 'on')}
           />
         </View>
       </View>
     </>
+  );
+}
+
+function SegmentPicker<T extends string>({
+  value,
+  options,
+  onChange,
+}: {
+  value: T;
+  options: { value: T; label: string }[];
+  onChange: (next: T) => void;
+}) {
+  const roles = useRoles();
+  return (
+    <View style={[styles.visGroup, { borderColor: roles.bgChip }]}>
+      {options.map((opt, idx) => {
+        const active = opt.value === value;
+        return (
+          <Pressable
+            key={opt.value}
+            onPress={() => onChange(opt.value)}
+            style={[
+              styles.visBtn,
+              {
+                backgroundColor: active ? roles.accent : 'transparent',
+                borderLeftWidth: idx === 0 ? 0 : StyleSheet.hairlineWidth,
+                borderLeftColor: roles.bgChip,
+              },
+            ]}
+          >
+            <Text
+              style={[
+                styles.visBtnText,
+                { color: active ? roles.onAccent : roles.fg },
+              ]}
+            >
+              {opt.label}
+            </Text>
+          </Pressable>
+        );
+      })}
+    </View>
   );
 }
 
@@ -1622,7 +1617,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 22,
     paddingTop: 12,
-    paddingBottom: 12,
+    paddingBottom: 28,
     gap: 10,
   },
   avatarWrap: {
@@ -1665,10 +1660,24 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   profileActions: {
-    flexDirection: 'column',
-    alignSelf: 'stretch',
+    alignItems: 'center',
     gap: 10,
-    marginTop: 16,
+    marginTop: 12,
+    marginBottom: 12,
+  },
+  editProfileBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
+  editProfileBtnText: {
+    fontFamily: fontFamily.medium,
+    fontSize: 14,
+    letterSpacing: -0.1,
   },
   // Solid-bg buttons — mirror van /add-friend, full-width, ruime
   // padding, geen border. Voelt overal in de app als één familie.
@@ -1704,21 +1713,21 @@ const styles = StyleSheet.create({
     letterSpacing: -0.14,
   },
 
-  // Section header
+  // Section header — gelijk aan rails-stijl (display, dik, 18pt).
   sectionHead: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'baseline',
     paddingHorizontal: 22,
-    paddingTop: 18,
-    paddingBottom: 8,
+    paddingTop: 20,
+    paddingBottom: 4,
     gap: 12,
   },
   sectionLabel: {
-    fontFamily: fontFamily.mono,
-    fontSize: 10,
-    letterSpacing: 1.6,
-    textTransform: 'uppercase',
+    fontFamily: fontFamily.display,
+    fontSize: 18,
+    letterSpacing: -0.36,
+    flexShrink: 1,
   },
   sectionCount: {
     fontFamily: fontFamily.mono,
@@ -1923,17 +1932,17 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     marginTop: -8,
   },
-  mirrorBlock: { gap: 8 },
+  mirrorBlock: { gap: 6, paddingTop: 8 },
   mirrorBlockTitle: {
-    fontFamily: fontFamily.mono,
-    fontSize: 10,
-    letterSpacing: 1.4,
-    textTransform: 'uppercase',
+    fontFamily: fontFamily.display,
+    fontSize: 18,
+    letterSpacing: -0.36,
+    paddingBottom: 2,
   },
   mirrorRow: {
     flexDirection: 'row',
     alignItems: 'baseline',
-    paddingVertical: 6,
+    paddingVertical: 2,
     gap: 8,
   },
   mirrorRowLabel: {
@@ -1955,8 +1964,8 @@ const styles = StyleSheet.create({
   mirrorChip: {
     flexDirection: 'row',
     alignItems: 'baseline',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
     borderRadius: 999,
     gap: 6,
   },
@@ -1974,7 +1983,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    paddingVertical: 4,
+    paddingVertical: 1,
   },
   mirrorBarLabel: {
     width: 80,
@@ -2049,6 +2058,30 @@ const styles = StyleSheet.create({
 
   // Privacy
   privacyWrap: { paddingHorizontal: 22, paddingTop: 4 },
+  privacyBlock: {
+    paddingVertical: 12,
+    gap: 8,
+  },
+  visGroup: {
+    marginTop: 4,
+    flexDirection: 'row',
+    borderRadius: 999,
+    borderWidth: 1,
+    overflow: 'hidden',
+    alignSelf: 'stretch',
+  },
+  visBtn: {
+    flex: 1,
+    paddingVertical: 9,
+    paddingHorizontal: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  visBtnText: {
+    fontFamily: fontFamily.medium,
+    fontSize: 13,
+    letterSpacing: -0.1,
+  },
   privacyRow: {
     flexDirection: 'row',
     alignItems: 'center',

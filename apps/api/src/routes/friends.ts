@@ -71,9 +71,32 @@ friendsRoute.get('/', async (c) => {
 
   // Combineer — geen duplicates omdat we maar één row per friendship
   // gebruiken (de from-kant is de aanvrager).
-  const friends = [...outgoing, ...incoming].sort((a, b) =>
-    a.name.localeCompare(b.name)
-  );
+  const combined = [...outgoing, ...incoming];
+
+  // Mijn favorieten ophalen, joinen op friend-ids voor de `favorite`-flag
+  // en alvast als sorteer-key. Favorieten eerst (alfabetisch), dan de
+  // rest (ook alfabetisch).
+  const friendIds = combined.map((f) => f.id);
+  const favs =
+    friendIds.length === 0
+      ? []
+      : await db
+          .select({ friendId: schema.friendFavorites.friendId })
+          .from(schema.friendFavorites)
+          .where(
+            and(
+              eq(schema.friendFavorites.userId, me),
+              inArray(schema.friendFavorites.friendId, friendIds)
+            )
+          );
+  const favSet = new Set(favs.map((f) => f.friendId));
+
+  const friends = combined
+    .map((f) => ({ ...f, favorite: favSet.has(f.id) }))
+    .sort((a, b) => {
+      if (a.favorite !== b.favorite) return a.favorite ? -1 : 1;
+      return a.name.localeCompare(b.name);
+    });
 
   return c.json({ friends });
 });
@@ -305,6 +328,7 @@ friendsRoute.get('/:id', async (c) => {
     .select({
       ...publicUserCols,
       savesVisibility: schema.users.savesVisibility,
+      mirrorVisibility: schema.users.mirrorVisibility,
     })
     .from(schema.users)
     .where(eq(schema.users.id, friendId))
@@ -314,7 +338,41 @@ friendsRoute.get('/:id', async (c) => {
   // Privacy-gate: als de friend z'n saves prive heeft staan, retourneren
   // we een leeg events-lijstje. We tonen wel het profiel zelf — zo weet
   // ik nog dat we vrienden zijn, alleen geen activiteiten.
-  const isPrivate = user.savesVisibility === 'private';
+  // Heeft de vriend mij als favoriet gemarkeerd? Bepaalt of 'favorites'-
+  // visibility-rules me toegang geven.
+  const [favOfMe] = await db
+    .select({ userId: schema.friendFavorites.userId })
+    .from(schema.friendFavorites)
+    .where(
+      and(
+        eq(schema.friendFavorites.userId, friendId),
+        eq(schema.friendFavorites.friendId, me)
+      )
+    )
+    .limit(1);
+  const friendHasMeAsFav = Boolean(favOfMe);
+
+  // savesPrivate = ik mag de events-lijst NIET zien.
+  const isPrivate =
+    user.savesVisibility === 'private' ||
+    (user.savesVisibility === 'favorites' && !friendHasMeAsFav);
+  // mirrorShared = ik mag de spiegel-subset zien.
+  const mirrorShared =
+    user.mirrorVisibility === 'friends' ||
+    (user.mirrorVisibility === 'favorites' && friendHasMeAsFav);
+
+  // Heb ik deze vriend als favoriet gemarkeerd? (Voor de UI-button.)
+  const [fav] = await db
+    .select({ userId: schema.friendFavorites.userId })
+    .from(schema.friendFavorites)
+    .where(
+      and(
+        eq(schema.friendFavorites.userId, me),
+        eq(schema.friendFavorites.friendId, friendId)
+      )
+    )
+    .limit(1);
+  const favorite = Boolean(fav);
   let events: Array<Record<string, unknown>> = [];
   if (!isPrivate) {
     // Saves zijn nu per occurrence — één rij per gesaveterde voorstelling
@@ -379,14 +437,79 @@ friendsRoute.get('/:id', async (c) => {
     });
   }
 
-  // savesVisibility hoeft niet naar de client — gebruikt om events leeg
-  // te laten en niets meer.
-  const { savesVisibility: _omit, ...publicUser } = user;
+  // savesVisibility en mirrorVisibility hoeven niet naar de client; we
+  // exposeren alleen de afgeleide booleans `savesPrivate` + `mirrorShared`.
+  const {
+    savesVisibility: _omitSaves,
+    mirrorVisibility: _omitMirror,
+    ...publicUser
+  } = user;
   return c.json({
     user: publicUser,
     events,
     savesPrivate: isPrivate,
+    mirrorShared,
+    favorite,
   });
+});
+
+/**
+ * Toggle / set favoriet-status voor een vriend. Idempotent: PUT met
+ * `{ favorite: true }` upsert, `false` verwijdert. Vereist accepted
+ * friendship — anders 403.
+ */
+friendsRoute.put('/:id/favorite', async (c) => {
+  const me = await requireUserId(c);
+  if (typeof me !== 'string') return me;
+
+  const friendId = c.req.param('id');
+  if (friendId === me) {
+    return c.json({ error: 'Niet je eigen profiel via deze route.' }, 400);
+  }
+
+  const body = (await c.req.json()) as { favorite?: boolean };
+  if (typeof body.favorite !== 'boolean') {
+    return c.json({ error: 'favorite moet boolean zijn.' }, 400);
+  }
+
+  // Friendship-gate: alleen accepted friends mogen gemarkeerd worden.
+  const [friendship] = await db
+    .select({ ok: schema.friendships.status })
+    .from(schema.friendships)
+    .where(
+      and(
+        eq(schema.friendships.status, 'accepted'),
+        or(
+          and(
+            eq(schema.friendships.fromUserId, me),
+            eq(schema.friendships.toUserId, friendId)
+          ),
+          and(
+            eq(schema.friendships.fromUserId, friendId),
+            eq(schema.friendships.toUserId, me)
+          )
+        )
+      )
+    )
+    .limit(1);
+  if (!friendship) return c.json({ error: 'Niet bevriend.' }, 403);
+
+  if (body.favorite) {
+    await db
+      .insert(schema.friendFavorites)
+      .values({ userId: me, friendId })
+      .onConflictDoNothing();
+  } else {
+    await db
+      .delete(schema.friendFavorites)
+      .where(
+        and(
+          eq(schema.friendFavorites.userId, me),
+          eq(schema.friendFavorites.friendId, friendId)
+        )
+      );
+  }
+  return c.json({ favorite: body.favorite });
 });
 
 friendsRoute.delete('/:userId', async (c) => {

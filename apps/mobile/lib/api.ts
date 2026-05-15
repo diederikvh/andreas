@@ -194,6 +194,16 @@ export async function getEvents(filter: EventsFilter = {}): Promise<ApiEvent[]> 
   return events;
 }
 
+/** "Voor jou" — gepersonaliseerde aanbevelingen op basis van eigen
+    save-historie + gevolgde venues. Backend: GET /events/for-you. Lege
+    array voor uitgelogd of zonder saves. */
+export async function getForYouEvents(): Promise<ApiEvent[]> {
+  const { events } = await authedRequest<{ events: ApiEvent[] }>(
+    '/events/for-you'
+  );
+  return events;
+}
+
 export async function getEvent(id: string): Promise<ApiEventDetail> {
   const { event } = await authedRequest<{ event: ApiEventDetail }>(`/events/${id}`);
   return event;
@@ -397,10 +407,10 @@ export type ApiMe = {
   name: string;
   avatarUrl: string | null;
   modePreference: 'nacht' | 'dag';
-  savesVisibility: 'friends' | 'private';
+  savesVisibility: 'favorites' | 'friends' | 'private';
   /** Apart van savesVisibility — controleert of de smaak-spiegel (top
       venues/genres/wijken) zichtbaar is voor vrienden op u/[handle]. */
-  mirrorVisibility: 'friends' | 'private';
+  mirrorVisibility: 'favorites' | 'friends' | 'private';
   discoverable: boolean;
   createdAt: string;
 };
@@ -504,11 +514,13 @@ export async function claimShareInvite(token: string): Promise<{
   });
 }
 
+export type Visibility = 'favorites' | 'friends' | 'private';
+
 export async function updateMe(input: {
   name?: string;
   handle?: string;
-  savesVisibility?: 'friends' | 'private';
-  mirrorVisibility?: 'friends' | 'private';
+  savesVisibility?: Visibility;
+  mirrorVisibility?: Visibility;
   discoverable?: boolean;
 }): Promise<ApiMe> {
   const { user } = await authedRequest<{ user: ApiMe }>('/me', {
@@ -605,6 +617,20 @@ export async function getMyMirror(): Promise<Mirror> {
   return await authedRequest<Mirror>('/mirror/me');
 }
 
+/** Beperkte vriend-zichtbare spiegel-subset op u/[handle]. Geen counts,
+    geen timeline — alleen top 3 venues + top 3 genres als visitekaartje.
+    403 als de vriend `mirrorVisibility='private'` heeft of niet bevriend. */
+export type PublicMirror = {
+  topVenues: { id: string; slug: string; name: string }[];
+  topGenres: { genre: string }[];
+};
+
+export async function getMirrorByHandle(handle: string): Promise<PublicMirror> {
+  return await authedRequest<PublicMirror>(
+    `/mirror/u/${encodeURIComponent(handle)}`
+  );
+}
+
 // ─── Friends ──────────────────────────────────────────────────────────
 
 export type ApiPublicUser = {
@@ -614,7 +640,11 @@ export type ApiPublicUser = {
   avatarUrl: string | null;
 };
 
-export type ApiFriend = ApiPublicUser & { since: string };
+export type ApiFriend = ApiPublicUser & {
+  since: string;
+  /** Heeft de huidige user deze vriend als favoriet gemarkeerd? */
+  favorite?: boolean;
+};
 export type ApiFriendRequest = ApiPublicUser & { requestedAt: string };
 export type ApiSearchUser = ApiPublicUser & {
   relation: 'accepted' | 'incoming' | 'outgoing' | null;
@@ -683,10 +713,29 @@ export type ApiFriendDetail = {
   user: ApiPublicUser;
   events: ApiEvent[];
   savesPrivate?: boolean;
+  /** True als deze vriend z'n spiegel deelt met vrienden
+      (`mirrorVisibility='friends'`). Voorkomt onnodige fetch + lege
+      Spiegel-tab UI. */
+  mirrorShared?: boolean;
+  /** Heeft de huidige user deze vriend als favoriet gemarkeerd? */
+  favorite?: boolean;
 };
 
 export async function getFriendDetail(id: string): Promise<ApiFriendDetail> {
   return await authedRequest<ApiFriendDetail>(`/friends/${id}`);
+}
+
+export async function setFriendFavorite(
+  id: string,
+  favorite: boolean
+): Promise<{ favorite: boolean }> {
+  return await authedRequest<{ favorite: boolean }>(
+    `/friends/${id}/favorite`,
+    {
+      method: 'PUT',
+      body: JSON.stringify({ favorite }),
+    }
+  );
 }
 
 // ─── Invites ──────────────────────────────────────────────────────────

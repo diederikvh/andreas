@@ -33,14 +33,17 @@ export const inviteStatus = pgEnum('invite_status', [
   'declined',
 ]);
 export const savesVisibility = pgEnum('saves_visibility', [
+  'favorites',
   'friends',
   'private',
 ]);
 /** Aparte zichtbaarheids-flag voor de smaak-spiegel (top venues / genres
     / activity-timeline) op het publieke `u/[handle]`-profiel. Los van
     `savesVisibility` zodat een gebruiker hun saves wel met vrienden kan
-    delen maar hun spiegel privé kan houden, of vice-versa. */
+    delen maar hun spiegel privé kan houden, of vice-versa.
+    `favorites` = alleen voor vrienden die mij als favoriet hebben. */
 export const mirrorVisibility = pgEnum('mirror_visibility', [
+  'favorites',
   'friends',
   'private',
 ]);
@@ -386,6 +389,31 @@ export const occurrences = pgTable(
     index('occurrences_event_idx').on(t.eventId),
     index('occurrences_starts_at_idx').on(t.startsAt),
     index('occurrences_event_starts_at_idx').on(t.eventId, t.startsAt),
+  ]
+);
+
+/**
+ * Per-user favoriete vrienden — een gerichte relatie ("ik markeer Alice
+ * als favoriet"). Onafhankelijk van of Alice mij óók als favoriet ziet.
+ * Vereist een bestaande accepted friendship (afgedwongen in de API,
+ * niet door FK — friend_id verwijst gewoon naar users).
+ */
+export const friendFavorites = pgTable(
+  'friend_favorites',
+  {
+    userId: text()
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    friendId: text()
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    createdAt: timestamp({ withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+  },
+  (t) => [
+    primaryKey({ columns: [t.userId, t.friendId] }),
+    index('friend_favorites_friend_idx').on(t.friendId),
   ]
 );
 

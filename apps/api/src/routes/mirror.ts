@@ -238,9 +238,9 @@ mirrorRoute.get('/u/:handle', async (c) => {
     .limit(1);
   if (!target) return c.json({ error: 'gebruiker niet gevonden' }, 404);
 
-  // Eigen profiel altijd zichtbaar, anders alleen voor friends mits opt-in.
+  // Eigen profiel altijd zichtbaar. Anders gate op visibility-keuze.
   if (target.id !== me) {
-    if (target.mirrorVisibility !== 'friends') {
+    if (target.mirrorVisibility === 'private') {
       return c.json({ error: 'spiegel niet gedeeld' }, 403);
     }
     const [friendship] = await db
@@ -263,6 +263,21 @@ mirrorRoute.get('/u/:handle', async (c) => {
       )
       .limit(1);
     if (!friendship) return c.json({ error: 'geen vriend' }, 403);
+
+    // 'favorites' vereist dat de target mij in friend_favorites heeft.
+    if (target.mirrorVisibility === 'favorites') {
+      const [fav] = await db
+        .select({ userId: schema.friendFavorites.userId })
+        .from(schema.friendFavorites)
+        .where(
+          and(
+            eq(schema.friendFavorites.userId, target.id),
+            eq(schema.friendFavorites.friendId, me)
+          )
+        )
+        .limit(1);
+      if (!fav) return c.json({ error: 'spiegel niet gedeeld' }, 403);
+    }
   }
 
   const rows = await loadSaveRows(target.id);

@@ -213,6 +213,222 @@ eventsRoute.get('/', async (c) => {
 });
 
 /**
+ * "Voor jou" — gepersonaliseerde aanbevelingen op basis van je save-
+ * historie en gevolgde venues. Geen ML, gewoon een transparante linear-
+ * weighted score:
+ *
+ *   +1 per save in je historie met overlappend genre
+ *   +2 per save in je historie bij hetzelfde venue
+ *   +5 bonus als het venue gevolgd is
+ *
+ * Excludes: events die je al gesaved hebt, occurrences die je weggeswipet
+ * hebt, geblokkeerde venues. Range: nu → +21 dagen. Cap: 30 events.
+ *
+ * Empty als de gebruiker nog geen saves heeft — UI verbergt de rail.
+ */
+eventsRoute.get('/for-you', async (c) => {
+  const me = await maybeUserId(c);
+  if (!me) return c.json({ events: [] });
+
+  // Stap 1 — bouw genre-count + venue-count uit gebruikers-historie.
+  const historyRows = await db
+    .select({
+      genres: schema.events.genres,
+      venueId: schema.events.venueId,
+    })
+    .from(schema.saves)
+    .innerJoin(
+      schema.occurrences,
+      eq(schema.saves.occurrenceId, schema.occurrences.id)
+    )
+    .innerJoin(schema.events, eq(schema.occurrences.eventId, schema.events.id))
+    .where(eq(schema.saves.userId, me));
+
+  if (historyRows.length === 0) return c.json({ events: [] });
+
+  const genreCount = new Map<string, number>();
+  const venueCount = new Map<string, number>();
+  const savedEventIds = new Set<string>();
+  for (const r of historyRows) {
+    for (const g of r.genres ?? []) {
+      const key = g.trim().toLowerCase();
+      if (key) genreCount.set(key, (genreCount.get(key) ?? 0) + 1);
+    }
+    venueCount.set(r.venueId, (venueCount.get(r.venueId) ?? 0) + 1);
+  }
+
+  // Welke events heb ik al gesaved? Niet opnieuw aanbevelen.
+  const savedEventRows = await db
+    .selectDistinct({ eventId: schema.occurrences.eventId })
+    .from(schema.saves)
+    .innerJoin(
+      schema.occurrences,
+      eq(schema.saves.occurrenceId, schema.occurrences.id)
+    )
+    .where(eq(schema.saves.userId, me));
+  for (const r of savedEventRows) savedEventIds.add(r.eventId);
+
+  // Welke occurrences heb ik weggeswipet?
+  const dismissRows = await db
+    .select({ occurrenceId: schema.dismisses.occurrenceId })
+    .from(schema.dismisses)
+    .where(eq(schema.dismisses.userId, me));
+  const dismissedOccIds = new Set(dismissRows.map((r) => r.occurrenceId));
+
+  const [followedRaw, blockedRaw] = await Promise.all([
+    getFollowedVenueIds(me),
+    getBlockedVenueIds(me),
+  ]);
+  const followedVenueIds = new Set(followedRaw);
+  const blockedSet = new Set(blockedRaw);
+
+  // Stap 2 — kandidaat-events: published, niet-geblokte venue, niet al
+  // gesaved. We pakken hier breed (geen featured-filter, alle categorieën)
+  // omdat de score zelf het sorteert.
+  const eventConditions: SQL[] = [
+    eq(schema.events.published, true),
+    eq(schema.venues.published, true),
+  ];
+  if (savedEventIds.size > 0) {
+    eventConditions.push(not(inArray(schema.events.id, [...savedEventIds])));
+  }
+  if (blockedSet.size > 0) {
+    eventConditions.push(not(inArray(schema.events.venueId, [...blockedSet])));
+  }
+
+  const candidates = await db
+    .select({
+      id: schema.events.id,
+      title: schema.events.title,
+      description: schema.events.description,
+      kind: schema.events.kind,
+      imageUrl: schema.events.imageUrl,
+      category: schema.events.category,
+      featured: schema.events.featured,
+      genres: schema.events.genres,
+      venue: {
+        id: schema.venues.id,
+        slug: schema.venues.slug,
+        name: schema.venues.name,
+        address: schema.venues.address,
+        lat: schema.venues.lat,
+        lng: schema.venues.lng,
+        type: schema.venues.type,
+        scene: schema.venues.scene,
+        subtype: schema.venues.subtype,
+        imageUrl: schema.venues.imageUrl,
+        priceNote: schema.venues.priceNote,
+      },
+    })
+    .from(schema.events)
+    .innerJoin(schema.venues, eq(schema.events.venueId, schema.venues.id))
+    .where(and(...eventConditions));
+
+  // Stap 3 — score elke kandidaat. Filter score=0 weg.
+  type Scored = (typeof candidates)[number] & { score: number };
+  const scored: Scored[] = [];
+  for (const ev of candidates) {
+    let score = 0;
+    for (const g of ev.genres ?? []) {
+      const key = g.trim().toLowerCase();
+      if (key) score += genreCount.get(key) ?? 0;
+    }
+    score += 2 * (venueCount.get(ev.venue.id) ?? 0);
+    if (followedVenueIds.has(ev.venue.id)) score += 5;
+    if (score > 0) scored.push({ ...ev, score });
+  }
+
+  if (scored.length === 0) return c.json({ events: [] });
+
+  // Stap 4 — match tegen toekomstige occurrences (next 21 dagen). Events
+  // zonder occurrence-in-range vallen weg. Dismisses filteren we per
+  // occurrence — als alle next-occurrences gedismisst zijn, valt 't event
+  // weg.
+  const horizonEnd = new Date();
+  horizonEnd.setDate(horizonEnd.getDate() + 21);
+  const occRange = await findEventsWithOccurrencesInRange({
+    from: new Date(),
+    to: horizonEnd,
+    eventIds: scored.map((s) => s.id),
+  });
+
+  // Sorteer op score (desc), met als secundaire sleutel de eerstvolgende
+  // occurrence (asc) zodat events met gelijke score vandaag-eerst.
+  const eventScores = new Map(scored.map((s) => [s.id, s.score]));
+  const ranked: string[] = [...occRange.eventIds]
+    .filter((id) => {
+      const occ = occRange.byEvent.get(id);
+      if (!occ) return false;
+      // Tenminste één niet-gedismist occurrence in range.
+      return occ.all.some((o) => !dismissedOccIds.has(o.id));
+    })
+    .sort((a, b) => {
+      const dScore = (eventScores.get(b) ?? 0) - (eventScores.get(a) ?? 0);
+      if (dScore !== 0) return dScore;
+      const aT = occRange.byEvent.get(a)?.next?.startsAt.getTime() ?? Infinity;
+      const bT = occRange.byEvent.get(b)?.next?.startsAt.getTime() ?? Infinity;
+      return aT - bT;
+    })
+    .slice(0, 30);
+
+  const eventById = new Map(scored.map((s) => [s.id, s]));
+  const ordered = ranked
+    .map((id) => ({
+      event: eventById.get(id)!,
+      occ: occRange.byEvent.get(id)!,
+    }))
+    .filter((x) => x.event);
+
+  // Standaard friend-pills + series + denormalisatie, gelijk aan GET /events.
+  const eventIds = ordered.map((x) => x.event.id);
+  const allOccurrenceIds = ordered.flatMap(({ occ }) =>
+    occ.all
+      .filter((o) => !dismissedOccIds.has(o.id))
+      .map((o) => o.id)
+  );
+  const friendsByOcc = await buildFriendsByOccurrence(me, allOccurrenceIds);
+  const seriesMap = await buildSeriesByEvent(eventIds);
+
+  const events = ordered.map(({ event, occ }) => {
+    const isExhibition = event.kind === 'exhibition';
+    const occurrencesInRange = occ.all
+      .filter((o) => !dismissedOccIds.has(o.id))
+      .map((o) => {
+        const f = friendsByOcc.get(o.id);
+        return {
+          ...o,
+          startsAt: isExhibition
+            ? normalizeExhibitionTime(o.startsAt as unknown as string, 'start')!
+            : o.startsAt,
+          endsAt: isExhibition
+            ? normalizeExhibitionTime(o.endsAt as unknown as string | null, 'end')
+            : o.endsAt,
+          friendsSaved: f?.friends ?? [],
+          friendsSavedCount: f?.count ?? 0,
+        };
+      });
+    const headOcc = occurrencesInRange[0] ?? null;
+    const headFriends = headOcc ? friendsByOcc.get(headOcc.id) : undefined;
+    return {
+      ...event,
+      startsAt: headOcc?.startsAt ?? null,
+      endsAt: headOcc?.endsAt ?? null,
+      priceCents: headOcc?.priceCents ?? null,
+      priceNote: headOcc?.priceNote ?? null,
+      ticketUrl: headOcc?.ticketUrl ?? null,
+      occurrenceCount: occurrencesInRange.length,
+      occurrencesInRange,
+      friendsSaved: headFriends?.friends ?? [],
+      friendsSavedCount: headFriends?.count ?? 0,
+      venueFollowed: followedVenueIds.has(event.venue.id),
+      series: seriesMap.get(event.id) ?? [],
+    };
+  });
+
+  return c.json({ events });
+});
+
+/**
  * Distinct genre-lijst voor de filter-sheet in de Agenda. Groepeert
  * per category zodat de mobile UI muziek-genres scheidt van theater
  * en kunst. Alleen toekomstige, gepubliceerde events meegerekend.

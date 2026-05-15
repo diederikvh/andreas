@@ -659,9 +659,17 @@ function FriendRow({ friend }: { friend: ApiFriend }) {
     >
       <ProfileAvatar avatarUrl={friend.avatarUrl} name={friend.name} size={36} />
       <View style={styles.rowBody}>
-        <Text numberOfLines={1} style={[styles.rowName, { color: roles.fg }]}>
-          {friend.name}
-        </Text>
+        <View style={styles.rowNameLine}>
+          <Text
+            numberOfLines={1}
+            style={[styles.rowName, { color: roles.fg }]}
+          >
+            {friend.name}
+          </Text>
+          {friend.favorite ? (
+            <Ionicons name="star" size={13} color={roles.accent} />
+          ) : null}
+        </View>
         {friend.handle && (
           <Text
             numberOfLines={1}
@@ -1057,10 +1065,16 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
   rowBody: { flex: 1, minWidth: 0, gap: 2 },
+  rowNameLine: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
   rowName: {
     fontFamily: fontFamily.bold,
     fontSize: 15,
     letterSpacing: -0.22,
+    flexShrink: 1,
   },
   rowMeta: {
     fontFamily: fontFamily.mono,

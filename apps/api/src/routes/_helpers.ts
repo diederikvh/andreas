@@ -9,6 +9,62 @@ export async function maybeUserId(c: Context): Promise<string | null> {
   return session?.user.id ?? null;
 }
 
+/**
+ * Geef de set vriend-IDs terug die volgens `visibility` toegestaan zijn
+ * om data van `ownerId` te zien.
+ *
+ *   - `friends`   → alle accepted friends van owner
+ *   - `favorites` → alleen vrienden die owner als favoriet heeft (rij in
+ *                   friend_favorites waar userId = ownerId)
+ *   - `private`   → leeg
+ *
+ * Gebruikt voor friend-pills, social feed, en spiegel-gate. Eén query
+ * voor friendships + één voor favorites — daarna intersect indien
+ * `favorites`.
+ */
+export async function allowedViewerIds(
+  ownerId: string,
+  visibility: 'friends' | 'favorites' | 'private'
+): Promise<Set<string>> {
+  if (visibility === 'private') return new Set();
+
+  const friendships = await db
+    .select({
+      fromUserId: schema.friendships.fromUserId,
+      toUserId: schema.friendships.toUserId,
+    })
+    .from(schema.friendships)
+    .where(
+      and(
+        eq(schema.friendships.status, 'accepted'),
+        or(
+          eq(schema.friendships.fromUserId, ownerId),
+          eq(schema.friendships.toUserId, ownerId)
+        )
+      )
+    );
+  const friendIds = friendships.map((f) =>
+    f.fromUserId === ownerId ? f.toUserId : f.fromUserId
+  );
+  if (friendIds.length === 0) return new Set();
+
+  if (visibility === 'friends') return new Set(friendIds);
+
+  // 'favorites' — alleen vrienden die de owner expliciet als favoriet
+  // heeft gemarkeerd. Niet symmetrisch: of de viewer mij óók favoriet
+  // vindt doet niet ter zake; eigenaar bepaalt.
+  const favs = await db
+    .select({ friendId: schema.friendFavorites.friendId })
+    .from(schema.friendFavorites)
+    .where(
+      and(
+        eq(schema.friendFavorites.userId, ownerId),
+        inArray(schema.friendFavorites.friendId, friendIds)
+      )
+    );
+  return new Set(favs.map((f) => f.friendId));
+}
+
 const FRIEND_PILL_LIMIT = 3;
 
 export type FriendBadge = {
@@ -55,6 +111,19 @@ export async function buildFriendsByOccurrence(
   );
   if (friendIds.length === 0) return map;
 
+  // Welke van mijn vrienden hebben mij als favoriet gemarkeerd? Dat
+  // bepaalt wie z'n 'favorites'-saves ik mag zien.
+  const favoritedByRows = await db
+    .select({ ownerId: schema.friendFavorites.userId })
+    .from(schema.friendFavorites)
+    .where(
+      and(
+        eq(schema.friendFavorites.friendId, meId),
+        inArray(schema.friendFavorites.userId, friendIds)
+      )
+    );
+  const favoritedMe = new Set(favoritedByRows.map((r) => r.ownerId));
+
   const rows = await db
     .select({
       occurrenceId: schema.saves.occurrenceId,
@@ -62,6 +131,7 @@ export async function buildFriendsByOccurrence(
       name: schema.users.name,
       handle: schema.users.handle,
       avatarUrl: schema.users.avatarUrl,
+      savesVisibility: schema.users.savesVisibility,
     })
     .from(schema.saves)
     .innerJoin(schema.users, eq(schema.users.id, schema.saves.userId))
@@ -69,11 +139,15 @@ export async function buildFriendsByOccurrence(
       and(
         inArray(schema.saves.userId, friendIds),
         inArray(schema.saves.occurrenceId, occurrenceIds),
-        eq(schema.users.savesVisibility, 'friends')
+        inArray(schema.users.savesVisibility, ['friends', 'favorites'])
       )
     );
 
   for (const r of rows) {
+    // Gate: 'favorites'-visibility verlangt dat de owner mij in z'n
+    // favorieten heeft staan. 'friends' zien alle vrienden zonder verdere
+    // check.
+    if (r.savesVisibility === 'favorites' && !favoritedMe.has(r.id)) continue;
     const entry = map.get(r.occurrenceId) ?? { friends: [], count: 0 };
     entry.count += 1;
     if (entry.friends.length < FRIEND_PILL_LIMIT) {

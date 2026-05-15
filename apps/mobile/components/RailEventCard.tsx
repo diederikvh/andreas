@@ -9,9 +9,12 @@ import {
 } from '@/components/Rail';
 import type { ApiEvent } from '@/lib/api';
 import {
+  dowMixed,
   eventImageUrl,
   formatDateRange,
+  isAllDayRange,
   isMultiDay,
+  monthShort,
   rowTimeLabel,
 } from '@/lib/eventDisplay';
 import { useLocale } from '@/lib/i18n';
@@ -29,6 +32,7 @@ export function RailEventCard({
   occurrenceStartsAt,
   occurrenceEndsAt,
   wide = false,
+  showDate = false,
 }: {
   event: ApiEvent;
   /** Optionele specifieke occurrence — als gezet, geeft 'm mee als
@@ -41,6 +45,10 @@ export function RailEventCard({
   /** Vol-breed renderen i.p.v. de standaard 220px. Rail injecteert dit
       automatisch wanneer er één item in de rail zit. */
   wide?: boolean;
+  /** Toon weekdag + datum vóór de tijd ("Za 31 mei · 21:00"). Gebruikt
+      in rails die items over meerdere dagen spreiden (bv. "Voor jou").
+      Voor "Vandaag"-rails niet nodig — die zijn impliciet vandaag. */
+  showDate?: boolean;
 }) {
   const roles = useRoles();
   const locale = useLocale();
@@ -52,12 +60,22 @@ export function RailEventCard({
   // een tijd — voor exhibitions die meerdere dagen lopen is een
   // klokuur niet zinvol; de venue is dan tijdens openingstijden open.
   // Single-day events houden een tijd-label (of "Hele dag" voor
-  // synthetische 00:00→23:59 ranges).
-  const timeLabel = startsAt
-    ? isMultiDay(startsAt, endsAt)
-      ? formatDateRange(startsAt, endsAt, locale)
-      : rowTimeLabel(startsAt, endsAt, locale)
-    : null;
+  // synthetische 00:00→23:59 ranges). Met `showDate` plakken we de
+  // dow + datum ervoor zodat events buiten "vandaag" duidelijk gedateerd
+  // zijn.
+  const timeLabel = (() => {
+    if (!startsAt) return null;
+    if (isMultiDay(startsAt, endsAt)) {
+      return formatDateRange(startsAt, endsAt, locale);
+    }
+    if (showDate) {
+      const d = new Date(startsAt);
+      const datePart = `${dowMixed(d.getDay(), locale)} ${d.getDate()} ${monthShort(d.getMonth(), locale).toLowerCase()}`;
+      if (isAllDayRange(startsAt, endsAt)) return datePart;
+      return `${datePart} · ${rowTimeLabel(startsAt, endsAt, locale)}`;
+    }
+    return rowTimeLabel(startsAt, endsAt, locale);
+  })();
 
   const onPress = () => {
     const path = occurrenceId

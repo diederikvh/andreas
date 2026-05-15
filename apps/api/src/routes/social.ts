@@ -60,6 +60,19 @@ socialRoute.get('/feed', async (c) => {
   );
   if (friendIds.length === 0) return c.json({ events: [] });
 
+  // Welke vrienden hebben míj als favoriet gemarkeerd? Dat bepaalt of
+  // ik hun 'favorites'-saves mag zien.
+  const favoritedByRows = await db
+    .select({ ownerId: schema.friendFavorites.userId })
+    .from(schema.friendFavorites)
+    .where(
+      and(
+        eq(schema.friendFavorites.friendId, userId),
+        inArray(schema.friendFavorites.userId, friendIds)
+      )
+    );
+  const favoritedMe = new Set(favoritedByRows.map((r) => r.ownerId));
+
   // Stap 2 — alle saves van vrienden, met privacy-gate. Joint events
   // + venues + occurrences mee zodat we in één query alles hebben dat
   // de mobile-feed-rij toont.
@@ -96,6 +109,7 @@ socialRoute.get('/feed', async (c) => {
       friendName: schema.users.name,
       friendHandle: schema.users.handle,
       friendAvatar: schema.users.avatarUrl,
+      savesVisibility: schema.users.savesVisibility,
       savedAt: schema.saves.createdAt,
     })
     .from(schema.saves)
@@ -109,7 +123,7 @@ socialRoute.get('/feed', async (c) => {
     .where(
       and(
         inArray(schema.saves.userId, friendIds),
-        eq(schema.users.savesVisibility, 'friends'),
+        inArray(schema.users.savesVisibility, ['friends', 'favorites']),
         eq(schema.events.published, true),
         eq(schema.venues.published, true),
         // Alleen saves waarvan het moment (occurrence) nog in de
@@ -171,6 +185,11 @@ socialRoute.get('/feed', async (c) => {
   const byEvent = new Map<string, FeedEntry>();
   const friendIdsSeenPerEvent = new Map<string, Set<string>>();
   for (const r of rows) {
+    // 'favorites'-visibility: alleen tonen als de friend mij als favoriet
+    // heeft gemarkeerd. Voor 'friends' geen check nodig.
+    if (r.savesVisibility === 'favorites' && !favoritedMe.has(r.friendId)) {
+      continue;
+    }
     let entry = byEvent.get(r.eventId);
     const seen =
       friendIdsSeenPerEvent.get(r.eventId) ?? new Set<string>();

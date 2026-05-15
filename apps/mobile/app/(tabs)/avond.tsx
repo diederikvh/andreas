@@ -57,6 +57,7 @@ import { softTap, tinyTap } from '@/lib/haptics';
 import { useLocale, useT, type Locale } from '@/lib/i18n';
 import {
   useEvents,
+  useForYouEvents,
   useFriends,
   useVenues,
   useSeriesList,
@@ -190,6 +191,9 @@ export default function Avond() {
   const { data: events, isLoading, error } = useEvents({
     from: todayWindow.from,
   });
+  // "Voor jou" — gepersonaliseerde aanbevelingen op basis van je save-
+  // historie. Lege array voor uitgelogde users of users zonder saves.
+  const { data: forYouEvents } = useForYouEvents();
   // Series + exhibitions delen één "Loopt nu"-strook bovenaan. Series
   // komen uit /series (apart endpoint), exhibitions zitten in `events`.
   const { data: seriesList } = useSeriesList();
@@ -485,6 +489,19 @@ export default function Avond() {
   // van vandaag, gefilterd op user-state). Per rail aanvullende
   // filter-criterium. Lege rails worden door de Rail-component
   // gewoonweg niet gerenderd.
+  // "Voor jou" rail — eerste occurrence per event, score-volgorde
+  // behouden (backend retourneert al op score gesorteerd).
+  const railForYou = useMemo<OccurrenceRow[]>(() => {
+    if (!forYouEvents || forYouEvents.length === 0) return [];
+    const rows: OccurrenceRow[] = [];
+    for (const event of forYouEvents) {
+      const occ = event.occurrencesInRange?.[0];
+      if (!occ) continue;
+      rows.push({ id: `${event.id}::${occ.id}`, event, occurrence: occ });
+    }
+    return rows;
+  }, [forYouEvents]);
+
   const railClubs = useMemo(
     () => filtered.filter((r) => r.event.venue.type === 'club'),
     [filtered]
@@ -742,6 +759,37 @@ export default function Avond() {
           <KaartBanner />
           <OpGevoelBanner />
         </View>
+
+        {/* "Voor jou" — score-gesorteerde aanbevelingen op basis van je
+            save-historie + gevolgde venues. Boven de datum-divider zodat
+            persoonlijke matches eerst in beeld vallen, omdat ze niet
+            beperkt zijn tot vandaag (horizon: 21 dagen). Verbergt zichzelf
+            bij lege data (Rail-component handelt dat af). */}
+        {!isLoading && !error && railForYou.length > 0 && (
+          <View style={{ marginTop: -12 }}>
+          <Rail
+            kicker={t(
+              'Voor jou · komende 3 weken',
+              'For you · next 3 weeks'
+            )}
+          >
+            {railForYou.map((r) => (
+              <RailEventCard
+                key={r.id}
+                event={r.event}
+                occurrenceId={
+                  r.occurrence.id.endsWith('::next')
+                    ? undefined
+                    : r.occurrence.id
+                }
+                occurrenceStartsAt={r.occurrence.startsAt}
+                occurrenceEndsAt={r.occurrence.endsAt}
+                showDate
+              />
+            ))}
+          </Rail>
+          </View>
+        )}
 
         {/* Hero — divider + "{dag} {datum}" met datum in accent. */}
         <View style={[styles.heroDivider, { backgroundColor: roles.bgChip }]} />
