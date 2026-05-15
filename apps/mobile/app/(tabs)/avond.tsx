@@ -1765,10 +1765,10 @@ const styles = StyleSheet.create({
   heroDivider: {
     marginHorizontal: 22,
     marginTop: 0,
-    marginBottom: 14,
+    marginBottom: 22,
     height: StyleSheet.hairlineWidth,
   },
-  hero: { paddingHorizontal: 22, paddingBottom: 12 },
+  hero: { paddingHorizontal: 22, paddingBottom: 0 },
   heroLine: {
     fontFamily: fontFamily.display,
     fontSize: 26,
