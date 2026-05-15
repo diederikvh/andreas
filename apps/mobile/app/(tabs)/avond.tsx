@@ -1334,16 +1334,14 @@ function OpGevoelBanner() {
         { backgroundColor: roles.bgLift, borderColor: roles.bgChip },
       ]}
     >
-      <View style={styles.shortcutHeader}>
-        <MaterialCommunityIcons
-          name="cards-outline"
-          size={24}
-          color={roles.accent}
-        />
-        <Text style={[styles.shortcutKicker, { color: roles.fgMuted }]}>
-          {t('Vibes', 'Vibes')}
-        </Text>
-      </View>
+      <MaterialCommunityIcons
+        name="cards-outline"
+        size={36}
+        color={roles.accent}
+      />
+      <Text style={[styles.shortcutKicker, { color: roles.fgMuted }]}>
+        {t('Vibes', 'Vibes')}
+      </Text>
       <Text style={[styles.shortcutTitle, { color: roles.fg }]}>
         {t(
           'Swipe en kies wat je leuk vindt.',
@@ -1365,12 +1363,10 @@ function KaartBanner() {
         { backgroundColor: roles.bgLift, borderColor: roles.bgChip },
       ]}
     >
-      <View style={styles.shortcutHeader}>
-        <Ionicons name="map-outline" size={24} color={roles.accent} />
-        <Text style={[styles.shortcutKicker, { color: roles.fgMuted }]}>
-          {t('Kaart', 'Map')}
-        </Text>
-      </View>
+      <Ionicons name="map-outline" size={36} color={roles.accent} />
+      <Text style={[styles.shortcutKicker, { color: roles.fgMuted }]}>
+        {t('Kaart', 'Map')}
+      </Text>
       <Text style={[styles.shortcutTitle, { color: roles.fg }]}>
         {t(
           'Zie wat er nu speelt in de buurt.',
@@ -2121,11 +2117,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   shortcutBody: { gap: 2 },
-  shortcutHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
   shortcutKicker: {
     fontFamily: fontFamily.monoMedium,
     fontSize: 10,
