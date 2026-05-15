@@ -36,6 +36,29 @@ export const savesVisibility = pgEnum('saves_visibility', [
   'friends',
   'private',
 ]);
+/** Aparte zichtbaarheids-flag voor de smaak-spiegel (top venues / genres
+    / activity-timeline) op het publieke `u/[handle]`-profiel. Los van
+    `savesVisibility` zodat een gebruiker hun saves wel met vrienden kan
+    delen maar hun spiegel privé kan houden, of vice-versa. */
+export const mirrorVisibility = pgEnum('mirror_visibility', [
+  'friends',
+  'private',
+]);
+/** Bron-attributie voor een save: welk scherm of welke route leverde de
+    save op? Wordt gezet op het moment van saven, niet retro-fillable.
+    Voedt de "discovery-trail"-breakdown op de persoonlijke spiegel. */
+export const saveSource = pgEnum('save_source', [
+  'venue',
+  'friend',
+  'search',
+  'op-gevoel',
+  'avond',
+  'agenda',
+  'kaart',
+  'series',
+  'gered',
+  'other',
+]);
 export const venueFollowState = pgEnum('venue_follow_state', [
   'volgen',
   'blokken',
@@ -112,6 +135,11 @@ export const users = pgTable(
     /** Mogen vrienden zien welke events ik heb opgeslagen (friend-pills,
         events-lijst op friend-detail)? Default `friends` (open). */
     savesVisibility: savesVisibility().notNull().default('friends'),
+    /** Mogen vrienden mijn smaak-spiegel zien op `u/[handle]` (top venues,
+        top genres, activity-timeline)? Apart van `savesVisibility` zodat
+        beide flags onafhankelijk te kiezen zijn. Default `private` — opt-
+        in voordat dit publiek wordt. */
+    mirrorVisibility: mirrorVisibility().notNull().default('private'),
     /** Verschijn ik in `/users/search` voor mensen die mij nog niet
         kennen? Default `true`. Bestaande vrienden + verzoek-flow blijven
         werken ongeacht deze flag. */
@@ -398,10 +426,45 @@ export const saves = pgTable(
     createdAt: timestamp({ withTimezone: true })
       .notNull()
       .default(sql`now()`),
+    /** Welk scherm of route leverde deze save op? Gezet op het moment
+        van saven, voedt de discovery-trail-breakdown op de persoonlijke
+        spiegel. Nullable voor rijen van vóór de attributie-introductie
+        (mei 2026); 'other' voor nieuwe call-sites die expliciet "weet ik
+        niet" willen aangeven. */
+    source: saveSource(),
   },
   (t) => [
     primaryKey({ columns: [t.userId, t.occurrenceId] }),
     index('saves_occurrence_idx').on(t.occurrenceId),
+  ]
+);
+
+/**
+ * Wegswipets: events die de gebruiker actief heeft afgewezen op het
+ * `/op-gevoel`-swipescherm (links-swipe). Gebruikt om dezelfde
+ * occurrence niet opnieuw te tonen in toekomstige sessies, en als input
+ * voor het smaak-profiel (welke patronen wijst de gebruiker af).
+ */
+export const dismisses = pgTable(
+  'dismisses',
+  {
+    userId: text()
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    occurrenceId: text()
+      .notNull()
+      .references(() => occurrences.id, { onDelete: 'cascade' }),
+    createdAt: timestamp({ withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+    /** Net als bij saves: welk scherm leverde de dismiss op? Default
+        'op-gevoel' want dat is het enige scherm met een dismiss-gebaar,
+        maar het veld is uitbreidbaar voor toekomstige plekken. */
+    source: saveSource().notNull().default('op-gevoel'),
+  },
+  (t) => [
+    primaryKey({ columns: [t.userId, t.occurrenceId] }),
+    index('dismisses_occurrence_idx').on(t.occurrenceId),
   ]
 );
 

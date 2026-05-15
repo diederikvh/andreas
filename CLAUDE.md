@@ -4,12 +4,14 @@ Briefing voor elke nieuwe Claude Code-sessie in dit project. Lees dit eerst, daa
 
 ## Wat is Andreas
 
-Een anti-algoritme uitgaansapp voor Amsterdam. Geen oneindige feed, geen aanbevelingen op gedrag — alleen wat vrienden(-van-vrienden) hebben gered en de programmering van venues die jij volgt. Twee modi:
+Een uitgaansapp voor Amsterdam die leert wat jij leuk vindt en helpt om dat sneller te vinden. Vrienden, gevolgde venues en je eigen saves zijn de input; persoonlijke spiegel en relevante voorstellen zijn de output. Twee modi:
 
 - **Nacht** — donker, noir/acid-geel. "Wat doe ik nu?"
 - **Dag** — paperachtig, cream/karmijn. "Wat plan ik?"
 
 Modus is een bewuste keuze van de gebruiker, geen tijd-gebaseerde toggle. De toggle zit in de app-header (de dn-switch).
+
+> **Eerdere positionering**: Andreas is opgezet als "anti-algoritme" (geen feed, geen aanbevelingen op gedrag). Diederik heeft die positie expliciet losgelaten (mei 2026). Personalisatie, profiling en aanbevelingen zijn nu actief in scope, mits ze "goed worden ingezet" — transparant, gebruikersvriendelijk, niet engagement-maximizing tot het walgelijk wordt. Letterboxd / Spotify Wrapped / Strava year-in-sport zijn de referenties, niet TikTok For You.
 
 ## Repo-structuur
 

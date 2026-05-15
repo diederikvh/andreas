@@ -88,19 +88,48 @@ savesRoute.get('/', async (c) => {
   return c.json({ events });
 });
 
+const SAVE_SOURCES = [
+  'venue',
+  'friend',
+  'search',
+  'op-gevoel',
+  'avond',
+  'agenda',
+  'kaart',
+  'series',
+  'gered',
+  'other',
+] as const;
+type SaveSource = (typeof SAVE_SOURCES)[number];
+
+function parseSaveSource(raw: unknown): SaveSource | null {
+  return typeof raw === 'string' && (SAVE_SOURCES as readonly string[]).includes(raw)
+    ? (raw as SaveSource)
+    : null;
+}
+
 /**
  * Toggle save voor een occurrence. Idempotent: bestond de save al? dan
- * deletet 'ie. Anders insert. Body: `{ occurrenceId }`.
+ * deletet 'ie. Anders insert. Body: `{ occurrenceId, source? }`.
+ *
+ * `source` is optioneel maar elke client-call zou 'm moeten meegeven —
+ * het voedt de discovery-trail op de persoonlijke spiegel ("via welke
+ * route vond je dit?"). Onbekend → null, niet 'other', zodat we per
+ * scherm kunnen meten of het call-site z'n attributie meestuurt.
  */
 savesRoute.post('/', async (c) => {
   const userId = await requireUserId(c);
   if (typeof userId !== 'string') return userId;
 
-  const body = (await c.req.json()) as { occurrenceId?: string };
+  const body = (await c.req.json()) as {
+    occurrenceId?: string;
+    source?: string;
+  };
   const occurrenceId = body.occurrenceId;
   if (!occurrenceId) {
     return c.json({ error: 'occurrenceId is verplicht' }, 400);
   }
+  const source = parseSaveSource(body.source);
 
   const existing = await db
     .select()
@@ -133,6 +162,6 @@ savesRoute.post('/', async (c) => {
     .limit(1);
   if (!occ) return c.json({ error: 'occurrence niet gevonden' }, 404);
 
-  await db.insert(schema.saves).values({ userId, occurrenceId });
+  await db.insert(schema.saves).values({ userId, occurrenceId, source });
   return c.json({ saved: true });
 });
