@@ -173,7 +173,7 @@ export default function Social() {
           />
         )}
       </ScrollView>
-      <AppHeader solid title={t('Sociaal', 'Social')}>
+      <AppHeader title={t('Sociaal', 'Social')} showContentMode>
         <SubTabs sub={sub} onChange={setSub} inboxCount={inboxCount} />
       </AppHeader>
     </View>
