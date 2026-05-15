@@ -378,10 +378,7 @@ function FriendsPanel({
     <Animated.View entering={FadeIn.duration(180)}>
       {invites && invites.length > 0 && (
         <>
-          <SectionHead
-            label={t('Uitnodigingen', 'Invitations')}
-            count={invites.length}
-          />
+          <SectionHead label={t('Uitnodigingen', 'Invitations')} />
           {invites.map((inv) => (
             <InviteRow key={inv.id} invite={inv} />
           ))}
@@ -389,10 +386,7 @@ function FriendsPanel({
       )}
       {requests && requests.length > 0 && (
         <>
-          <SectionHead
-            label={t('Aanvragen', 'Requests')}
-            count={requests.length}
-          />
+          <SectionHead label={t('Aanvragen', 'Requests')} />
           {requests.map((r) => (
             <RequestRow
               key={r.id}
@@ -408,7 +402,6 @@ function FriendsPanel({
         <>
           <SectionHead
             label={t('Vrienden', 'Friends')}
-            count={friends?.length}
             action={t('Toevoegen', 'Add')}
             onAction={() => router.push('/add-friend')}
           />
@@ -417,10 +410,7 @@ function FriendsPanel({
       )}
       {hasOutgoing && (
         <>
-          <SectionHead
-            label={t('Aangevraagd', 'Pending')}
-            count={outgoing?.length}
-          />
+          <SectionHead label={t('Aangevraagd', 'Pending')} />
           {outgoing?.map((o) => <PendingRow key={o.id} user={o} />)}
         </>
       )}
@@ -540,26 +530,18 @@ function PlanningPanel({
 
 function SectionHead({
   label,
-  count,
   action,
   onAction,
 }: {
   label: string;
-  count?: number;
   action?: string;
   onAction?: () => void;
 }) {
   const roles = useRoles();
   return (
     <View style={styles.sectionHead}>
-      <Text style={[styles.sectionLabel, { color: roles.fgMuted }]}>
+      <Text style={[styles.sectionLabel, { color: roles.fg }]}>
         {label}
-        {count !== undefined && (
-          <Text style={[styles.sectionCount, { color: roles.fgPlaceholder }]}>
-            {' · '}
-            {count}
-          </Text>
-        )}
       </Text>
       {action && (
         <Pressable
@@ -1047,16 +1029,13 @@ const styles = StyleSheet.create({
     paddingTop: 18,
     paddingBottom: 10,
   },
+  // Display-style heading — zelfde behandeling als Rail-kickers op
+  // de Vandaag-pagina ("Vannacht in de clubs" enz.). Maakt de "+"
+  // ernaast ook direct als CTA leesbaar.
   sectionLabel: {
-    fontFamily: fontFamily.mono,
-    fontSize: 11,
-    letterSpacing: 1.4,
-    textTransform: 'uppercase',
-  },
-  sectionCount: {
-    fontFamily: fontFamily.mono,
-    fontSize: 11,
-    letterSpacing: 1.4,
+    fontFamily: fontFamily.display,
+    fontSize: 18,
+    letterSpacing: -0.36,
   },
   // Ronde primaire knop (bv. "+") in een section-header. Accent-bg
   // zodat 'm direct als CTA leest tegen de muted-section-labels.
