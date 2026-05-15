@@ -736,14 +736,12 @@ export default function Avond() {
           </View>
         )}
 
-        {/* Kaart-CTA — in beide modes. Voor 'uit' zie je clubs/podia
-            in de buurt; voor 'expo' lopende musea/galleries in de
-            buurt — beide zijn ruimtelijke verkenning waard. */}
-        <KaartBanner />
-
-        {/* Op-gevoel-CTA — speelse Tinder-stijl swipe-stack om snel
-            door komend aanbod te bladeren. Right = save, left = skip. */}
-        <OpGevoelBanner />
+        {/* Twee shortcut-CTAs naast elkaar: Kaart (ruimtelijke verkenning
+            in de buurt) en Vibes (Tinder-stijl swipe-stack). */}
+        <View style={styles.shortcutRow}>
+          <KaartBanner />
+          <OpGevoelBanner />
+        </View>
 
         {/* Hero — divider + "{dag} {datum}" met datum in accent. */}
         <View style={[styles.heroDivider, { backgroundColor: roles.bgChip }]} />
@@ -1332,36 +1330,18 @@ function OpGevoelBanner() {
     <Pressable
       onPress={() => router.push('/op-gevoel' as never)}
       style={[
-        styles.kaartBanner,
-        {
-          backgroundColor: roles.bgLift,
-          borderColor: roles.bgChip,
-          // Extra adem voor de hero-divider die direct hieronder volgt.
-          marginBottom: 18,
-        },
+        styles.shortcutBtn,
+        { backgroundColor: roles.bgLift, borderColor: roles.bgChip },
       ]}
     >
       <MaterialCommunityIcons
         name="cards-outline"
-        size={22}
+        size={20}
         color={roles.accent}
       />
-      <View style={styles.kaartBody}>
-        <Text style={[styles.kaartKicker, { color: roles.fgMuted }]}>
-          {t('Vibes', 'Vibes')}
-        </Text>
-        <Text style={[styles.kaartTitle, { color: roles.fg }]}>
-          {t(
-            'Swipe en kies wat je leuk vindt.',
-            'Swipe and pick what you like.'
-          )}
-        </Text>
-      </View>
-      <Ionicons
-        name="chevron-forward"
-        size={18}
-        color={roles.fgPlaceholder}
-      />
+      <Text style={[styles.shortcutLabel, { color: roles.fg }]}>
+        {t('Vibes', 'Vibes')}
+      </Text>
     </Pressable>
   );
 }
@@ -1373,30 +1353,14 @@ function KaartBanner() {
     <Pressable
       onPress={() => router.push('/kaart' as never)}
       style={[
-        styles.kaartBanner,
-        {
-          backgroundColor: roles.bgLift,
-          borderColor: roles.bgChip,
-        },
+        styles.shortcutBtn,
+        { backgroundColor: roles.bgLift, borderColor: roles.bgChip },
       ]}
     >
-      <Ionicons name="map-outline" size={22} color={roles.accent} />
-      <View style={styles.kaartBody}>
-        <Text style={[styles.kaartKicker, { color: roles.fgMuted }]}>
-          {t('Kaart', 'Map')}
-        </Text>
-        <Text style={[styles.kaartTitle, { color: roles.fg }]}>
-          {t(
-            'Zie wat er nu speelt in de buurt.',
-            'See what’s on around you right now.'
-          )}
-        </Text>
-      </View>
-      <Ionicons
-        name="chevron-forward"
-        size={18}
-        color={roles.fgPlaceholder}
-      />
+      <Ionicons name="map-outline" size={20} color={roles.accent} />
+      <Text style={[styles.shortcutLabel, { color: roles.fg }]}>
+        {t('Kaart', 'Map')}
+      </Text>
     </Pressable>
   );
 }
@@ -2121,31 +2085,28 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
 
-  // Kaart-banner — accent-getinte vlakke pill. Geen border, geen
-  // ronde icon-tile; kicker + zin direct naast het map-icoon en
-  // dicht op elkaar. Beide regels in bold.
-  kaartBanner: {
+  // Twee shortcut-buttons (Kaart + Vibes) naast elkaar boven de hero
+  // divider. Marginbottom geeft adem voor de divider eronder.
+  shortcutRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginHorizontal: 22,
+    marginBottom: 18,
+  },
+  shortcutBtn: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    marginHorizontal: 22,
-    marginBottom: 8,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
+    justifyContent: 'center',
+    gap: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
     borderRadius: 14,
     borderWidth: 1,
   },
-  kaartBody: { flex: 1, minWidth: 0 },
-  kaartKicker: {
-    fontFamily: fontFamily.monoMedium,
-    fontSize: 10,
-    letterSpacing: 1.4,
-    textTransform: 'uppercase',
-  },
-  kaartTitle: {
+  shortcutLabel: {
     fontFamily: fontFamily.bold,
     fontSize: 14,
-    lineHeight: 18,
     letterSpacing: -0.14,
   },
 
