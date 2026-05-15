@@ -3,7 +3,14 @@ import * as Haptics from 'expo-haptics';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  forwardRef,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import {
   Pressable,
   ScrollView,
@@ -58,6 +65,12 @@ type StackEvent = {
   endsAt: string | null;
 };
 
+type SwipeCardHandle = {
+  swipeLeft: () => void;
+  swipeRight: () => void;
+  openDetail: () => void;
+};
+
 export default function OpGevoel() {
   const insets = useSafeAreaInsets();
   const t = useT();
@@ -79,6 +92,9 @@ export default function OpGevoel() {
   // stack-memo via stackRefreshKey-bump.
   const seenIdsRef = useRef<Set<string>>(new Set());
   const [stackRefreshKey, setStackRefreshKey] = useState(0);
+  // Imperative handle naar de top-card zodat de legenda-knoppen
+  // dezelfde fly-out animatie kunnen triggeren als een swipe.
+  const topCardRef = useRef<SwipeCardHandle>(null);
 
   // Bouw één keer een random stack van 12 events. Filtert:
   //  - long-running (>7d) — die zijn doorlopend, niet vandaag-vibey
@@ -198,8 +214,13 @@ export default function OpGevoel() {
               onCommit={onSwipeCommit}
               windowWidth={windowWidth}
               locale={locale}
+              topCardRef={topCardRef}
             />
-            <SwipeLegend />
+            <SwipeLegend
+              onSkip={() => topCardRef.current?.swipeLeft()}
+              onMoreInfo={() => topCardRef.current?.openDetail()}
+              onLike={() => topCardRef.current?.swipeRight()}
+            />
           </>
         )}
         {done && (
@@ -245,12 +266,14 @@ function SwipeStack({
   onCommit,
   windowWidth,
   locale,
+  topCardRef,
 }: {
   stack: StackEvent[];
   currentIndex: number;
   onCommit: (dir: 'left' | 'right', item: StackEvent) => void;
   windowWidth: number;
   locale: Locale;
+  topCardRef: React.RefObject<SwipeCardHandle | null>;
 }) {
   // Render de huidige kaart + de twee daaronder voor diepte. Sleutel
   // per index zodat React de juiste mount/unmount-volgorde houdt.
@@ -266,6 +289,7 @@ function SwipeStack({
           return (
             <SwipeCard
               key={`${item.event.id}-${item.occurrenceId}-${currentIndex + depth}`}
+              ref={isTop ? topCardRef : undefined}
               item={item}
               depth={depth}
               isTop={isTop}
@@ -279,28 +303,30 @@ function SwipeStack({
   );
 }
 
-function SwipeCard({
-  item,
-  depth,
-  isTop,
-  onCommit,
-  windowWidth,
-  locale,
-}: {
-  item: StackEvent;
-  depth: number;
-  isTop: boolean;
-  onCommit?: (dir: 'left' | 'right', item: StackEvent) => void;
-  windowWidth: number;
-  locale: Locale;
-}) {
+const SwipeCard = forwardRef<
+  SwipeCardHandle,
+  {
+    item: StackEvent;
+    depth: number;
+    isTop: boolean;
+    onCommit?: (dir: 'left' | 'right', item: StackEvent) => void;
+    windowWidth: number;
+    locale: Locale;
+  }
+>(function SwipeCard(
+  { item, depth, isTop, onCommit, windowWidth, locale },
+  ref
+) {
   const roles = useRoles();
   const mode = useMode();
   const isNacht = mode === 'nacht';
-  const t = useT();
   const translateX = useSharedValue(0);
   const translateY = useSharedValue(0);
   const threshold = windowWidth * 0.32;
+  // Guard tegen dubbele commits — wanneer de fly-out animatie loopt
+  // mag een tweede tap of swipe niet nogmaals onCommit triggeren
+  // (zou de index dubbel laten doorlopen → kaart overgeslagen).
+  const isFlyingRef = useRef(false);
   // Animated depth — laat de scale + offset soepel transitioneren
   // wanneer de top-card wegvliegt en deze kaart van depth=1 naar
   // depth=0 schuift. Zonder dit ploppen de achterste cards in een
@@ -324,6 +350,28 @@ function SwipeCard({
       `/event/${item.event.id}?o=${item.occurrenceId}` as never
     );
   };
+
+  // Programmatische fly-out — dezelfde animatie als een swipe over de
+  // threshold. Wordt aangeroepen door de legenda-knoppen (skip / like).
+  const flyOut = (dir: 'left' | 'right') => {
+    if (isFlyingRef.current) return;
+    isFlyingRef.current = true;
+    translateX.value = withTiming(
+      dir === 'right' ? windowWidth * 1.5 : -windowWidth * 1.5,
+      { duration: 220 },
+      () => {
+        if (onCommit) runOnJS(onCommit)(dir, item);
+      }
+    );
+    translateY.value = withTiming(0, { duration: 220 });
+  };
+
+  useImperativeHandle(ref, () => ({
+    swipeLeft: () => flyOut('left'),
+    swipeRight: () => flyOut('right'),
+    openDetail,
+  }));
+
   const pan = Gesture.Pan()
     .enabled(isTop)
     .onUpdate((e) => {
@@ -412,10 +460,7 @@ function SwipeCard({
       <Animated.View
         style={[
           styles.card,
-          {
-            backgroundColor: isNacht ? palette.noir2 : palette.paper2,
-            borderColor: isNacht ? '#2a2a2d' : palette.paper,
-          },
+          { backgroundColor: isNacht ? palette.noir2 : palette.paper2 },
           cardStyle,
         ]}
       >
@@ -487,31 +532,42 @@ function SwipeCard({
       </Animated.View>
     </GestureDetector>
   );
-}
+});
 
-function SwipeLegend() {
+function SwipeLegend({
+  onSkip,
+  onMoreInfo,
+  onLike,
+}: {
+  onSkip: () => void;
+  onMoreInfo: () => void;
+  onLike: () => void;
+}) {
   const roles = useRoles();
   const t = useT();
+  // hitSlop maakt de tikzone royaler dan de visuele label-tekst, zonder
+  // de strip zelf groter te tekenen.
+  const slop = { top: 16, bottom: 16, left: 12, right: 12 };
   return (
     <View style={styles.swipeLegend}>
-      <View style={styles.legendItem}>
+      <Pressable onPress={onSkip} hitSlop={slop} style={styles.legendItem}>
         <Ionicons name="arrow-back" size={14} color={roles.fgMuted} />
         <Text style={[styles.legendLabel, { color: roles.fgMuted }]}>
           {t('nog niet', 'not yet')}
         </Text>
-      </View>
-      <View style={styles.legendItem}>
+      </Pressable>
+      <Pressable onPress={onMoreInfo} hitSlop={slop} style={styles.legendItem}>
         <Ionicons name="arrow-up" size={14} color={roles.fgMuted} />
         <Text style={[styles.legendLabel, { color: roles.fgMuted }]}>
           {t('meer info', 'more info')}
         </Text>
-      </View>
-      <View style={styles.legendItem}>
+      </Pressable>
+      <Pressable onPress={onLike} hitSlop={slop} style={styles.legendItem}>
         <Text style={[styles.legendLabel, { color: roles.fgMuted }]}>
           {t('leuk', 'like')}
         </Text>
         <Ionicons name="arrow-forward" size={14} color={roles.fgMuted} />
-      </View>
+      </Pressable>
     </View>
   );
 }
@@ -691,7 +747,6 @@ const styles = StyleSheet.create({
     width: '100%',
     aspectRatio: 0.72,
     borderRadius: 22,
-    borderWidth: 1,
     overflow: 'hidden',
   },
   cardPhoto: {
