@@ -91,7 +91,9 @@ Voor pressed feedback: `onPressIn`/`onPressOut` met state, of `<TouchableOpacity
 Per scherm één file, met types die toekomstige API responses 1-op-1 dekken. Bij wijzigingen in een scherm: pas de types aan, vul nieuwe velden in alle items, daarna laat de UI consumeren via die types. Niet ad-hoc inlinen in de component.
 
 ### Friends-pill
-"Roos & Milan gaan ook" / "Roos +2 ook" — gestapelde 18px avatars + label in tone-color. Patroon zit in `EventListRow.tsx` (helper `friendsLabel`). Optioneel veld in alle list-mocks (`feed.ts`, `agenda.ts`, `gered.ts`, `kaart.ts`).
+"Roos" / "Roos & Milan" / "Roos +2" — gestapelde 18px avatars + label in tone-color. Geen "ook"/"too"-suffix: een save is een interesse-signaal, geen belofte-om-te-gaan. Patroon zit in `EventListRow.tsx` (helper `friendsLabel`).
+
+`friendsSaved` zit op **occurrence-niveau**, niet event-niveau. Filteren op `event.friendsSaved` over-includeert (5 voorstellingen tonen omdat 1 vriend de woensdag heeft gered). Gebruik `occurrence.friendsSaved` voor per-voorstelling-pills.
 
 ## Werkflow
 
@@ -115,3 +117,50 @@ Hij waardeert het als je **memory bijhoudt** voor terugkerende valkuilen (zoals 
 - **Niet de `welkom` modal openen op een ander tijdstip dan via expliciete user-actie**. Hij zit op een just-in-time route, niet meer in de onboarding.
 - **Niet `react-native-svg` introduceren tenzij echt nodig** — view-based primitives (zoals `Cross.tsx`) hebben de voorkeur.
 - **Niet de Andreas-X branding wijzigen** zonder vragen. De wordmark is "Andreas" in de UI, het kruis (✕) staat ernaast als logo.
+
+## Domain-valkuilen
+
+Dingen die we al een keer hebben gefiksd en niet meer terug willen.
+
+### Multi-day events — span-based, niet kalenderdag
+Gebruik `isMultiDay(startsAt, endsAt)` (span ≥ 24h) i.p.v. kalender-dag-vergelijking. Een 22:00 → 03:00 event passeert middernacht maar is geen multi-day — het is een single-night-event met cross-midnight overflow. `isLongRunning` (> 7d) onderscheidt doorlopende exhibitions van weekend-festivals.
+
+### Logische dag wisselt om 06:00
+Events vóór 06:00 horen bij de avond/nacht ervoor. `groupOccurrenceRowsByDay` en `todayWindow` shiften daarop — clubs die 02:00 op zaterdag nog draaien groeperen onder vrijdag. Constante: `LOGICAL_DAY_BOUNDARY_HOUR = 6` in [`eventDisplay.ts`](apps/mobile/lib/eventDisplay.ts).
+
+### Daytime cutoff: zowel start- als eindtijd
+`isDaytimeOccurrence` checkt start ≥ 06:00 ÉN start < 18:00 ÉN end < 20:00 zelfde dag. Een 16:00 → 02:00 event passeert de start-check maar valt af op de eindtijd — terecht, want primair een avond-event.
+
+### Cmode is puur tijd-gestuurd, niet cat-gestuurd
+Op Vandaag bepaalt `cmode` welke rails worden gerenderd (uit = clubs/podia/theater/film, expo = overdag + musea/galleries). Per-rij filters draaien op tijd én cat, niet op cmode. Op Agenda is cmode puur cosmetisch — alle 5 cats zijn altijd beschikbaar als filter, geen mode-gating.
+
+### Genre-filters bestaan niet meer
+Search-veld (`query`) zoekt ook in `event.genres`. Geen genre-chip-UI in filter-sheets. `activeGenres`-state is uit alle stores verwijderd; `gn`-veld op SavedSearch blijft als legacy (lege array).
+
+## Component-valkuilen
+
+### EventListRow padding-collision
+`EventListRow` heeft eigen `paddingHorizontal: 22`. Parents die ook 22 padding hebben (bv. de body van een page) verdubbelen naar 44 → rijen worden te smal. Fix met `marginHorizontal: -22` op de lijst-container om de parent-padding te canceleren.
+
+### AppHeader-uitlijning
+AppHeader's logo-row heeft `paddingHorizontal: 18`. Sub-labels die onder de "Andreas"-wordmark moeten uitlijnen (zoals het maand-label op de Agenda day-strip) gebruiken óók `paddingHorizontal: 18`, niet de 22 die voor chip-gutters geldt.
+
+### KeyboardAvoidingView werkt niet voor absolute kinderen
+KAV `behavior='padding'` shrinkt z'n eigen contentArea via padding-bottom — dat duwt normale flex-children omhoog, maar `position: absolute` children blijven plakken aan de oude bottom. Voor sticky docks: listen direct op `Keyboard` events en zet `bottom: keyboardHeight` op de dock-View.
+
+### `automaticallyAdjustKeyboardInsets` scrollt te weinig
+Deze prop zorgt dat het focused `TextInput` zichtbaar wordt — maar niet wat eronder staat (Accept/Decline-knoppen onder een veld). Voor zulke composities: `measureInWindow` op de wrapper-View, en `scrollRef.current?.scrollTo` zodat de hele banner boven het keyboard staat.
+
+### useMemo deps op `events` reshuffelt op elke refetch
+React Query geeft bij refetch een nieuwe array-reference terug, zelfs als de content identiek is. Een `useMemo` met `events` in deps + een Fisher-Yates shuffle erin = stack-flits bij elke focus/refresh. Gebruik een stable string-key (`stackKey = 'have-' + cmode + '-' + refreshKey`) of een refresh-counter om expliciet te bepalen wanneer een memo opnieuw draait.
+
+## Scraper-valkuilen
+
+### HTML-entities op title-niveau
+Scrapers die uit WP REST / sitemap-HTML lezen krijgen rauwe entities binnen (`&amp;`, `&#8211;`, `&#x27;`, `&nbsp;`, `&#xE9;`). Iedere scraper heeft een `decodeEntities`-helper — pas 'm toe op **álle user-facing strings**, niet alleen description. Helper moet decimal (`&#nnn;`), hex (`&#xNNN;`) én named entities (`&amp;` etc.) afhandelen.
+
+### Multi-locale sites — check `<html lang>`
+Concertgebouw exposeert dezelfde voorstelling op zowel `/concerten/<nl-slug>` als `/concerten/<en-slug>` in z'n sitemap. URL-pattern-matching pakt beide. Lees na de fetch `<html lang="...">` en skip alles dat niet met `nl` begint. Pattern zit in [`theater.ts`](apps/api/src/scrapers/theater.ts).
+
+### Migrations: `psql` voor one-off, niet `drizzle-kit push`
+`pnpm db:push` doet een schema-diff over de hele DB en vraagt interactief over álle changes (vaak ongerelateerd aan jouw migration). Voor één-kolom-toevoegingen: schrijf het SQL-bestand in `apps/api/src/db/migrations/` én voer 'm direct uit met `psql "$DATABASE_URL" -c "ALTER TABLE ..."`. Gebruik `IF NOT EXISTS` voor idempotentie.
