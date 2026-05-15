@@ -1517,8 +1517,8 @@ function AgendaRow({
   // omdat die geen echte server-side ID is.
   const isSynthetic = occurrence.id.endsWith('::next');
   const path = isSynthetic
-    ? `/event/${event.id}`
-    : `/event/${event.id}?o=${occurrence.id}`;
+    ? `/event/${event.id}?source=agenda`
+    : `/event/${event.id}?source=agenda&o=${occurrence.id}`;
   // Venue krijgt een tone-pill (eerste in tag-row) op basis van
   // venue.type — categorie-tag komt erna. Voor venues zonder type
   // valt de pill weg en blijft venue in de subline staan. Pill is

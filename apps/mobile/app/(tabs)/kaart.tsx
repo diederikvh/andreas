@@ -814,7 +814,7 @@ function SheetRow({ mapEvent }: { mapEvent: MapEvent }) {
 
   return (
     <Pressable
-      onPress={() => router.push(`/event/${mapEvent.event.id}`)}
+      onPress={() => router.push(`/event/${mapEvent.event.id}?source=kaart`)}
       style={[styles.sheetRow, { borderColor: roles.bgChip }]}
     >
       <View style={styles.sheetMin}>
@@ -892,7 +892,7 @@ function DrawerCard({
   const transportIcon = transport === 'walk' ? 'walk-outline' : 'bicycle-outline';
   return (
     <Pressable
-      onPress={() => router.push(`/event/${mapEvent.event.id}`)}
+      onPress={() => router.push(`/event/${mapEvent.event.id}?source=kaart`)}
       style={styles.cardWrap}
     >
       <View style={styles.cardTop}>

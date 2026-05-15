@@ -30,9 +30,14 @@ import {
   sendFriendRequest,
   sendInvites,
   setVenueFollow,
+  toggleDismiss,
   toggleSave,
+  getMyDismisses,
+  getMyMirror,
   type ApiMe,
   type EventsFilter,
+  type Mirror,
+  type SaveSource,
   type SavedApiEvent,
   type VenueCategory,
   type VenueFollowState,
@@ -44,6 +49,8 @@ export const queryKeys = {
   events: (filter: EventsFilter = {}) => ['events', filter] as const,
   event: (id: string) => ['event', id] as const,
   eventGenres: () => ['event-genres'] as const,
+  mirror: () => ['mirror', 'me'] as const,
+  dismisses: () => ['dismisses'] as const,
   venue: (slug: string) => ['venue', slug] as const,
   venues: (input: { q?: string; category?: string } = {}) =>
     ['venues', input.q ?? '', input.category ?? ''] as const,
@@ -190,11 +197,20 @@ export function useMySaves(opts: { enabled?: boolean } = {}) {
   });
 }
 
+type ToggleSaveInput = { occurrenceId: string; source?: SaveSource | null };
+
 export function useToggleSave() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (occurrenceId: string) => toggleSave(occurrenceId),
-    onMutate: async (occurrenceId) => {
+    mutationFn: (input: ToggleSaveInput | string) => {
+      const occurrenceId =
+        typeof input === 'string' ? input : input.occurrenceId;
+      const source = typeof input === 'string' ? null : input.source;
+      return toggleSave(occurrenceId, source);
+    },
+    onMutate: async (input) => {
+      const occurrenceId =
+        typeof input === 'string' ? input : input.occurrenceId;
       await qc.cancelQueries({ queryKey: queryKeys.saves() });
       const prev = qc.getQueryData<SavedApiEvent[]>(queryKeys.saves());
       // Optimistic: verwijder als aanwezig (op occurrence-id), anders
@@ -208,14 +224,59 @@ export function useToggleSave() {
       }
       return { prev };
     },
-    onError: (_err, _id, ctx) => {
+    onError: (_err, _input, ctx) => {
       if (ctx?.prev) qc.setQueryData(queryKeys.saves(), ctx.prev);
     },
     onSettled: () => {
       qc.invalidateQueries({ queryKey: queryKeys.saves() });
+      qc.invalidateQueries({ queryKey: queryKeys.mirror() });
     },
   });
 }
+
+export function useToggleDismiss() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (occurrenceId: string) => toggleDismiss(occurrenceId),
+    onMutate: async (occurrenceId) => {
+      await qc.cancelQueries({ queryKey: queryKeys.dismisses() });
+      const prev = qc.getQueryData<string[]>(queryKeys.dismisses()) ?? [];
+      // Optimistic: voeg toe als 'ie nog niet in de lijst staat,
+      // verwijder anders (toggle).
+      const next = prev.includes(occurrenceId)
+        ? prev.filter((id) => id !== occurrenceId)
+        : [...prev, occurrenceId];
+      qc.setQueryData<string[]>(queryKeys.dismisses(), next);
+      return { prev };
+    },
+    onError: (_err, _id, ctx) => {
+      if (ctx?.prev) qc.setQueryData(queryKeys.dismisses(), ctx.prev);
+    },
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.dismisses() });
+      qc.invalidateQueries({ queryKey: queryKeys.mirror() });
+    },
+  });
+}
+
+export function useMyDismisses(opts: { enabled?: boolean } = {}) {
+  return useQuery({
+    queryKey: queryKeys.dismisses(),
+    queryFn: () => getMyDismisses(),
+    enabled: opts.enabled ?? true,
+  });
+}
+
+export function useMyMirror(opts: { enabled?: boolean } = {}) {
+  return useQuery({
+    queryKey: queryKeys.mirror(),
+    queryFn: () => getMyMirror(),
+    staleTime: 60_000,
+    enabled: opts.enabled ?? true,
+  });
+}
+
+export type { Mirror };
 
 export function useFriends(opts: { enabled?: boolean } = {}) {
   return useQuery({

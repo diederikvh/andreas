@@ -803,7 +803,7 @@ function ProgramRow({
       featured={event.featured}
       tick={CATEGORY_TICK[event.category]}
       dateAbove
-      onPress={() => router.push(`/event/${event.id}`)}
+      onPress={() => router.push(`/event/${event.id}?source=venue`)}
     />
   );
 }

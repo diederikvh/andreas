@@ -46,7 +46,13 @@ import {
 } from '@/lib/eventDisplay';
 import { EventListRow } from '@/components/EventListRow';
 import { useLocale, useT, type Locale } from '@/lib/i18n';
-import { useEvents, useMySaves, useToggleSave } from '@/lib/queries';
+import {
+  useEvents,
+  useMyDismisses,
+  useMySaves,
+  useToggleDismiss,
+  useToggleSave,
+} from '@/lib/queries';
 import { useContentMode } from '@/store/contentMode';
 import { useMode, useRoles } from '@/store/mode';
 import { fontFamily, palette } from '@/theme/tokens';
@@ -85,7 +91,9 @@ export default function OpGevoel() {
     from: new Date(new Date().setHours(0, 0, 0, 0)).toISOString(),
   });
   const { data: saves } = useMySaves();
+  const { data: dismissedIds } = useMyDismisses();
   const toggleSave = useToggleSave();
+  const toggleDismiss = useToggleDismiss();
   // Sessie-geheugen: alle events die de gebruiker dit bezoek al heeft
   // gezien (ja én nee). Een ref zodat het bijwerken geen re-render
   // veroorzaakt — alleen op "Verder swipen" lezen we de set in de
@@ -117,6 +125,7 @@ export default function OpGevoel() {
   const stack = useMemo<StackEvent[]>(() => {
     if (!events) return [];
     const savedOccIds = new Set((saves ?? []).map((s) => s.occurrenceId));
+    const dismissedOccIds = new Set(dismissedIds ?? []);
     const horizonMs = Date.now() + 31 * 24 * 60 * 60 * 1000;
     // Bouw eerst de complete pool (alleen permanente filters), daarna
     // pas filteren op seen — anders kunnen we niet detecteren of de
@@ -128,6 +137,7 @@ export default function OpGevoel() {
       const occ = e.occurrencesInRange?.[0];
       if (!occ) continue;
       if (savedOccIds.has(occ.id)) continue;
+      if (dismissedOccIds.has(occ.id)) continue;
       const startMs = new Date(occ.startsAt).getTime();
       if (startMs > horizonMs) continue;
       const isDay = isDaytimeOccurrence(occ.startsAt, occ.endsAt);
@@ -168,11 +178,17 @@ export default function OpGevoel() {
     seenIdsRef.current.add(item.event.id);
     if (dir === 'right') {
       setLikes((prev) => [...prev, item]);
-      toggleSave.mutate(item.occurrenceId);
+      toggleSave.mutate({
+        occurrenceId: item.occurrenceId,
+        source: 'op-gevoel',
+      });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(
         () => {}
       );
     } else {
+      // Left-swipe = persistente dismiss. Komt niet terug in latere
+      // sessies en voedt het smaak-profiel ("welke patronen wijs ik af").
+      toggleDismiss.mutate(item.occurrenceId);
       Haptics.selectionAsync().catch(() => {});
     }
     setIndex((i) => i + 1);

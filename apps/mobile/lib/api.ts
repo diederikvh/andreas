@@ -398,6 +398,9 @@ export type ApiMe = {
   avatarUrl: string | null;
   modePreference: 'nacht' | 'dag';
   savesVisibility: 'friends' | 'private';
+  /** Apart van savesVisibility — controleert of de smaak-spiegel (top
+      venues/genres/wijken) zichtbaar is voor vrienden op u/[handle]. */
+  mirrorVisibility: 'friends' | 'private';
   discoverable: boolean;
   createdAt: string;
 };
@@ -505,6 +508,7 @@ export async function updateMe(input: {
   name?: string;
   handle?: string;
   savesVisibility?: 'friends' | 'private';
+  mirrorVisibility?: 'friends' | 'private';
   discoverable?: boolean;
 }): Promise<ApiMe> {
   const { user } = await authedRequest<{ user: ApiMe }>('/me', {
@@ -531,13 +535,74 @@ export async function getMySaves(): Promise<SavedApiEvent[]> {
   return events;
 }
 
+/** Bron-attributie voor een save — welk scherm of route leverde 'm op.
+    Backend heeft een matching enum (`save_source`); waarden moeten 1-op-1
+    overeenkomen. Voedt de discovery-trail op de persoonlijke spiegel. */
+export type SaveSource =
+  | 'venue'
+  | 'friend'
+  | 'search'
+  | 'op-gevoel'
+  | 'avond'
+  | 'agenda'
+  | 'kaart'
+  | 'series'
+  | 'gered'
+  | 'other';
+
 export async function toggleSave(
-  occurrenceId: string
+  occurrenceId: string,
+  source?: SaveSource | null
 ): Promise<{ saved: boolean }> {
   return await authedRequest<{ saved: boolean }>('/saves', {
     method: 'POST',
+    body: JSON.stringify({ occurrenceId, source: source ?? undefined }),
+  });
+}
+
+export async function toggleDismiss(
+  occurrenceId: string
+): Promise<{ dismissed: boolean }> {
+  return await authedRequest<{ dismissed: boolean }>('/dismisses', {
+    method: 'POST',
     body: JSON.stringify({ occurrenceId }),
   });
+}
+
+export async function getMyDismisses(): Promise<string[]> {
+  const { occurrenceIds } = await authedRequest<{ occurrenceIds: string[] }>(
+    '/dismisses'
+  );
+  return occurrenceIds;
+}
+
+/** Persoonlijke smaak-spiegel — top venues/genres/wijken/timeline en
+    discovery-mix. Geaggregeerd over de eigen saves van de ingelogde
+    user. Backend: GET /mirror/me. */
+export type MirrorVenue = {
+  id: string;
+  slug: string;
+  name: string;
+  type: string | null;
+  wijk: string | null;
+  count: number;
+  isFollowed: boolean;
+};
+
+export type Mirror = {
+  totals: { saves: number; venuesFollowed: number };
+  topVenues: MirrorVenue[];
+  topGenres: { genre: string; count: number }[];
+  wijken: { wijk: string | null; count: number }[];
+  venueTypes: { type: string | null; count: number }[];
+  categories: { category: string | null; count: number }[];
+  discovery: { source: string | null; count: number }[];
+  monthlyTimeline: { ym: string; count: number }[];
+  weekday: { weekday: number; count: number }[];
+};
+
+export async function getMyMirror(): Promise<Mirror> {
+  return await authedRequest<Mirror>('/mirror/me');
 }
 
 // ─── Friends ──────────────────────────────────────────────────────────

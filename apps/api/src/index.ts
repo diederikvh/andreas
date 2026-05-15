@@ -83,6 +83,7 @@ app.patch('/me', async (c) => {
     name?: string;
     handle?: string;
     savesVisibility?: 'friends' | 'private';
+    mirrorVisibility?: 'friends' | 'private';
     discoverable?: boolean;
   };
 
@@ -120,6 +121,13 @@ app.patch('/me', async (c) => {
       return c.json({ error: 'savesVisibility moet "friends" of "private" zijn.' }, 400);
     }
     updates.savesVisibility = body.savesVisibility;
+  }
+
+  if (body.mirrorVisibility !== undefined) {
+    if (body.mirrorVisibility !== 'friends' && body.mirrorVisibility !== 'private') {
+      return c.json({ error: 'mirrorVisibility moet "friends" of "private" zijn.' }, 400);
+    }
+    updates.mirrorVisibility = body.mirrorVisibility;
   }
 
   if (body.discoverable !== undefined) {

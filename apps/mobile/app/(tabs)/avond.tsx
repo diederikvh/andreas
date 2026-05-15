@@ -1060,10 +1060,9 @@ export default function Avond() {
  * het pad puur op event-id.
  */
 function eventPathFor(row: OccurrenceRow): string {
-  if (row.occurrence.id.endsWith('::next')) {
-    return `/event/${row.event.id}`;
-  }
-  return `/event/${row.event.id}?o=${row.occurrence.id}`;
+  const base = `/event/${row.event.id}?source=avond`;
+  if (row.occurrence.id.endsWith('::next')) return base;
+  return `${base}&o=${row.occurrence.id}`;
 }
 
 function ListState({

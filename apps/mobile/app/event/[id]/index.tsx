@@ -33,7 +33,12 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ProfileAvatar } from '@/components/ProfileAvatar';
 import { SpinningCross } from '@/components/SpinningCross';
-import type { ApiEvent, ApiLineupEntry, ApiOccurrence } from '@/lib/api';
+import type {
+  ApiEvent,
+  ApiLineupEntry,
+  ApiOccurrence,
+  SaveSource,
+} from '@/lib/api';
 import { useSession } from '@/lib/authClient';
 import {
   dowMixed,
@@ -64,17 +69,45 @@ import { fontFamily, palette } from '@/theme/tokens';
 
 const HERO_HEIGHT = 420;
 
+const VALID_SAVE_SOURCES: readonly SaveSource[] = [
+  'venue',
+  'friend',
+  'search',
+  'op-gevoel',
+  'avond',
+  'agenda',
+  'kaart',
+  'series',
+  'gered',
+  'other',
+];
+function isValidSaveSource(raw: unknown): raw is SaveSource {
+  return (
+    typeof raw === 'string' &&
+    (VALID_SAVE_SOURCES as readonly string[]).includes(raw)
+  );
+}
+
 /**
  * Event detail screen — fetches via GET /events/:id. Until lineup,
  * photo strip and friends bestaan in de DB blijven die secties leeg.
  */
 export default function EventDetail() {
-  const { id: rawId, o: rawOcc } = useLocalSearchParams<{ id: string; o?: string }>();
+  const {
+    id: rawId,
+    o: rawOcc,
+    source: rawSource,
+  } = useLocalSearchParams<{ id: string; o?: string; source?: string }>();
   const id = rawId ?? '';
   // ?o=<occurrenceId> — Agenda/Avond geven aan welk specifiek moment de
   // gebruiker getapt heeft, zodat we de meta-rij + invite-CTA op die
   // avond focussen ipv automatisch op de eerstvolgende.
   const targetOccurrenceId = typeof rawOcc === 'string' ? rawOcc : null;
+  // ?source=<screen> — welk scherm leverde deze view op? Voedt de
+  // discovery-trail in de persoonlijke spiegel via /saves POST.
+  // Callers (avond/agenda/kaart/social/venue/friend/series/search)
+  // moeten 'm meegeven; ontbreken = null → backend laat 'm leeg.
+  const navSource = isValidSaveSource(rawSource) ? rawSource : null;
   const mode = useMode();
   const roles = useRoles();
   const insets = useSafeAreaInsets();
@@ -430,7 +463,10 @@ export default function EventDetail() {
             </Text>
           </Animated.View>
           <View style={styles.heroActions}>
-            <HeartButton occurrenceId={selectedOccurrenceId} />
+            <HeartButton
+              occurrenceId={selectedOccurrenceId}
+              saveSource={navSource}
+            />
             <ShareButton event={event} />
           </View>
         </View>
@@ -1184,7 +1220,13 @@ function ShareButton({ event }: { event: ApiEvent }) {
   );
 }
 
-function HeartButton({ occurrenceId }: { occurrenceId: string | null }) {
+function HeartButton({
+  occurrenceId,
+  saveSource,
+}: {
+  occurrenceId: string | null;
+  saveSource: SaveSource | null;
+}) {
   const mode = useMode();
   const { data: session } = useSession();
   const authed = Boolean(session?.user?.id);
@@ -1215,7 +1257,7 @@ function HeartButton({ occurrenceId }: { occurrenceId: string | null }) {
     } else {
       Haptics.selectionAsync();
     }
-    toggleMutation.mutate(occurrenceId);
+    toggleMutation.mutate({ occurrenceId, source: saveSource });
   };
 
   const iconName = isSaved ? 'heart' : 'heart-outline';

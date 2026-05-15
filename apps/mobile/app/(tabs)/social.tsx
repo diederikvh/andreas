@@ -799,7 +799,7 @@ function SavedRow({ event, dim = false }: { event: ApiEvent; dim?: boolean }) {
         genreLabel={event.genres?.[0]}
         friends={friends && friends.length > 0 ? friends : undefined}
         tick={tone}
-        onPress={() => router.push(`/event/${event.id}`)}
+        onPress={() => router.push(`/event/${event.id}?source=friend`)}
       />
     </View>
   );
@@ -847,7 +847,7 @@ function FeedRow({ entry }: { entry: ApiFeedEvent }) {
       genreLabel={entry.genres[0]}
       friends={friends.length > 0 ? friends : undefined}
       tick={tone}
-      onPress={() => router.push(`/event/${entry.eventId}`)}
+      onPress={() => router.push(`/event/${entry.eventId}?source=friend`)}
     />
   );
 }

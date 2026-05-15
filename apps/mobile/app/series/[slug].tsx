@@ -255,7 +255,7 @@ function ProgramRow({ event }: { event: ApiEvent }) {
         },
       ]}
       tick={CATEGORY_TICK[event.category]}
-      onPress={() => router.push(`/event/${event.id}`)}
+      onPress={() => router.push(`/event/${event.id}?source=series`)}
     />
   );
 }

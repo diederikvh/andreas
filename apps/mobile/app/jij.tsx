@@ -31,10 +31,12 @@ import { getMe, updateMe, uploadAvatar } from '@/lib/api';
 import { authClient, useSession } from '@/lib/authClient';
 import {
   type LocalePreference,
+  useLocale,
   useLocalePreference,
   useLocaleStore,
   useT,
 } from '@/lib/i18n';
+import { useMyMirror, type Mirror } from '@/lib/queries';
 import {
   Notifications,
   registerForPushNotificationsAsync,
@@ -674,6 +676,7 @@ export default function Jij() {
           {error && <Text style={styles.error}>{error}</Text>}
         </View>
 
+        {me && <MirrorSection authed={authedAndOnboarded} />}
         {me && <NotificationsSection />}
         {me && <PrivacySection me={me} onUpdated={refetchMe} />}
         <LanguageSection />
@@ -844,6 +847,333 @@ function SectionHead({
           </Text>
         </Pressable>
       )}
+    </View>
+  );
+}
+
+/* ────────────────────────────────────────────────────────────────────
+ * Spiegel — geaggregeerde readback van je eigen saves: top venues,
+ * top genres, wijken, frequency-rhythm, monthly timeline, en
+ * discovery-mix (via welk scherm vond je events). Strikt reflectie,
+ * geen aanbevelingen.
+ * ────────────────────────────────────────────────────────────────── */
+
+const WIJK_LABEL: Record<string, { nl: string; en: string }> = {
+  centrum: { nl: 'Centrum', en: 'Centrum' },
+  noord: { nl: 'Noord', en: 'Noord' },
+  oost: { nl: 'Oost', en: 'Oost' },
+  west: { nl: 'West', en: 'West' },
+  zuid: { nl: 'Zuid', en: 'Zuid' },
+  zuidoost: { nl: 'Zuidoost', en: 'Zuidoost' },
+  'nieuw-west': { nl: 'Nieuw-West', en: 'Nieuw-West' },
+};
+
+const SOURCE_LABEL: Record<string, { nl: string; en: string }> = {
+  venue: { nl: 'via venue', en: 'via venue' },
+  friend: { nl: 'via vriend', en: 'via friend' },
+  search: { nl: 'via zoeken', en: 'via search' },
+  'op-gevoel': { nl: 'op gevoel', en: 'on a hunch' },
+  avond: { nl: 'avond', en: 'tonight' },
+  agenda: { nl: 'agenda', en: 'agenda' },
+  kaart: { nl: 'kaart', en: 'map' },
+  series: { nl: 'serie', en: 'series' },
+  gered: { nl: 'gered', en: 'saved' },
+  other: { nl: 'anders', en: 'other' },
+};
+
+const WEEKDAY_SHORT_NL = ['Zo', 'Ma', 'Di', 'Wo', 'Do', 'Vr', 'Za'];
+const WEEKDAY_SHORT_EN = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+function buildIdentitySentence(m: Mirror, locale: 'nl' | 'en'): string | null {
+  if (m.totals.saves < 3) return null;
+  const venue = m.topVenues[0];
+  const genre = m.topGenres[0]?.genre;
+  const wijk = m.wijken.find((w) => w.wijk)?.wijk;
+  const peakWeekday = [...m.weekday].sort((a, b) => b.count - a.count)[0];
+  const allZero = m.weekday.every((d) => d.count === 0);
+  const peakWeekdayLabel =
+    peakWeekday && !allZero
+      ? locale === 'nl'
+        ? WEEKDAY_SHORT_NL[peakWeekday.weekday]
+        : WEEKDAY_SHORT_EN[peakWeekday.weekday]
+      : null;
+
+  const parts: string[] = [];
+  if (venue) {
+    parts.push(
+      locale === 'nl' ? `Vooral op ${venue.name}` : `Mostly at ${venue.name}`
+    );
+  }
+  if (genre) {
+    parts.push(locale === 'nl' ? `${genre}` : `${genre}`);
+  }
+  if (wijk) {
+    const label = WIJK_LABEL[wijk]?.[locale] ?? wijk;
+    parts.push(locale === 'nl' ? `in ${label}` : `in ${label}`);
+  }
+  if (peakWeekdayLabel) {
+    parts.push(
+      locale === 'nl' ? `vaak op ${peakWeekdayLabel}` : `often on ${peakWeekdayLabel}`
+    );
+  }
+  if (parts.length === 0) return null;
+  return parts.join(' · ') + '.';
+}
+
+function MirrorSection({ authed }: { authed: boolean }) {
+  const t = useT();
+  const locale = useLocale();
+  const roles = useRoles();
+  const { data, isLoading } = useMyMirror({ enabled: authed });
+  if (!authed || isLoading || !data) return null;
+
+  const total = data.totals.saves;
+  if (total === 0) {
+    return (
+      <>
+        <SectionHead label={t('Spiegel', 'Mirror')} />
+        <View style={styles.privacyWrap}>
+          <Text style={[styles.privacySub, { color: roles.fgMuted }]}>
+            {t(
+              'Zodra je events redt, vind je hier je top-venues, genres en plekken.',
+              'Once you save events, you’ll find your top venues, genres and places here.'
+            )}
+          </Text>
+        </View>
+      </>
+    );
+  }
+
+  const identity = buildIdentitySentence(data, locale);
+  const followedCount = data.totals.venuesFollowed;
+  const weekdayMax = Math.max(...data.weekday.map((d) => d.count), 1);
+  const monthlyMax = Math.max(...data.monthlyTimeline.map((m) => m.count), 1);
+  const wijkenTotal = data.wijken.reduce((s, w) => s + w.count, 0);
+  const discoveryTotal = data.discovery.reduce((s, d) => s + d.count, 0);
+
+  return (
+    <>
+      <SectionHead label={t('Spiegel', 'Mirror')} count={total} />
+      <View style={styles.mirrorWrap}>
+        {identity && (
+          <Text style={[styles.mirrorIdentity, { color: roles.fg }]}>
+            {identity}
+          </Text>
+        )}
+        <Text style={[styles.mirrorMeta, { color: roles.fgMuted }]}>
+          {t(
+            `${total} ${total === 1 ? 'save' : 'saves'} · ${followedCount} ${followedCount === 1 ? 'venue gevolgd' : 'venues gevolgd'}`,
+            `${total} ${total === 1 ? 'save' : 'saves'} · following ${followedCount} ${followedCount === 1 ? 'venue' : 'venues'}`
+          )}
+        </Text>
+
+        {data.topVenues.length > 0 && (
+          <MirrorBlock title={t('Top venues', 'Top venues')}>
+            {data.topVenues.map((v) => (
+              <Pressable
+                key={v.id}
+                onPress={() => router.push(`/venue/${v.slug}` as never)}
+                style={styles.mirrorRow}
+              >
+                <Text
+                  style={[styles.mirrorRowLabel, { color: roles.fg }]}
+                  numberOfLines={1}
+                >
+                  {v.name}
+                </Text>
+                <Text style={[styles.mirrorRowCount, { color: roles.fgMuted }]}>
+                  {v.isFollowed ? '· ' : ''}
+                  {v.count}×
+                </Text>
+              </Pressable>
+            ))}
+          </MirrorBlock>
+        )}
+
+        {data.topGenres.length > 0 && (
+          <MirrorBlock title={t('Genres', 'Genres')}>
+            <View style={styles.mirrorChipsRow}>
+              {data.topGenres.map((g) => (
+                <View
+                  key={g.genre}
+                  style={[
+                    styles.mirrorChip,
+                    { backgroundColor: roles.bgChip },
+                  ]}
+                >
+                  <Text
+                    style={[styles.mirrorChipLabel, { color: roles.fg }]}
+                  >
+                    {g.genre}
+                  </Text>
+                  <Text
+                    style={[styles.mirrorChipCount, { color: roles.fgMuted }]}
+                  >
+                    {g.count}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          </MirrorBlock>
+        )}
+
+        {wijkenTotal > 0 && (
+          <MirrorBlock title={t('Wijken', 'Neighbourhoods')}>
+            {data.wijken
+              .filter((w) => w.wijk)
+              .slice(0, 5)
+              .map((w) => {
+                const pct = Math.round((w.count / wijkenTotal) * 100);
+                const label =
+                  (w.wijk && WIJK_LABEL[w.wijk]?.[locale]) ?? w.wijk ?? '?';
+                return (
+                  <View key={w.wijk ?? 'none'} style={styles.mirrorBarRow}>
+                    <Text
+                      style={[styles.mirrorBarLabel, { color: roles.fg }]}
+                      numberOfLines={1}
+                    >
+                      {label}
+                    </Text>
+                    <View
+                      style={[styles.mirrorBarTrack, { backgroundColor: roles.bgChip }]}
+                    >
+                      <View
+                        style={[
+                          styles.mirrorBarFill,
+                          { width: `${pct}%`, backgroundColor: roles.accent },
+                        ]}
+                      />
+                    </View>
+                    <Text
+                      style={[styles.mirrorBarCount, { color: roles.fgMuted }]}
+                    >
+                      {pct}%
+                    </Text>
+                  </View>
+                );
+              })}
+          </MirrorBlock>
+        )}
+
+        <MirrorBlock title={t('Weekdagen', 'Weekdays')}>
+          <View style={styles.weekdayRow}>
+            {data.weekday.map((d) => {
+              const h = Math.max(4, (d.count / weekdayMax) * 36);
+              return (
+                <View key={d.weekday} style={styles.weekdayCol}>
+                  <View
+                    style={[
+                      styles.weekdayBar,
+                      {
+                        height: h,
+                        backgroundColor:
+                          d.count === 0 ? roles.bgChip : roles.accent,
+                      },
+                    ]}
+                  />
+                  <Text
+                    style={[styles.weekdayLabel, { color: roles.fgMuted }]}
+                  >
+                    {locale === 'nl'
+                      ? WEEKDAY_SHORT_NL[d.weekday]
+                      : WEEKDAY_SHORT_EN[d.weekday]}
+                  </Text>
+                </View>
+              );
+            })}
+          </View>
+        </MirrorBlock>
+
+        {data.monthlyTimeline.length > 1 && (
+          <MirrorBlock title={t('Per maand', 'By month')}>
+            <View style={styles.monthlyRow}>
+              {data.monthlyTimeline.slice(-12).map((m) => {
+                const h = Math.max(3, (m.count / monthlyMax) * 32);
+                return (
+                  <View key={m.ym} style={styles.monthlyCol}>
+                    <View
+                      style={[
+                        styles.monthlyBar,
+                        {
+                          height: h,
+                          backgroundColor:
+                            m.count === 0 ? roles.bgChip : roles.accent,
+                        },
+                      ]}
+                    />
+                    <Text
+                      style={[styles.monthlyLabel, { color: roles.fgMuted }]}
+                    >
+                      {m.ym.slice(5)}
+                    </Text>
+                  </View>
+                );
+              })}
+            </View>
+          </MirrorBlock>
+        )}
+
+        {discoveryTotal > 0 && (
+          <MirrorBlock title={t('Hoe vond je dit', 'How you found it')}>
+            {data.discovery
+              .filter((d) => d.source)
+              .map((d) => {
+                const pct = Math.round((d.count / discoveryTotal) * 100);
+                const label =
+                  (d.source && SOURCE_LABEL[d.source]?.[locale]) ??
+                  d.source ??
+                  '?';
+                return (
+                  <View key={d.source ?? 'none'} style={styles.mirrorBarRow}>
+                    <Text
+                      style={[styles.mirrorBarLabel, { color: roles.fg }]}
+                      numberOfLines={1}
+                    >
+                      {label}
+                    </Text>
+                    <View
+                      style={[styles.mirrorBarTrack, { backgroundColor: roles.bgChip }]}
+                    >
+                      <View
+                        style={[
+                          styles.mirrorBarFill,
+                          { width: `${pct}%`, backgroundColor: roles.accent },
+                        ]}
+                      />
+                    </View>
+                    <Text
+                      style={[styles.mirrorBarCount, { color: roles.fgMuted }]}
+                    >
+                      {pct}%
+                    </Text>
+                  </View>
+                );
+              })}
+          </MirrorBlock>
+        )}
+
+        <Text style={[styles.mirrorFootnote, { color: roles.fgPlaceholder }]}>
+          {t('Dit is wat je hebt gedaan.', 'This is what you’ve done.')}
+        </Text>
+      </View>
+    </>
+  );
+}
+
+function MirrorBlock({
+  title,
+  children,
+}: {
+  title: string;
+  children: React.ReactNode;
+}) {
+  const roles = useRoles();
+  return (
+    <View style={styles.mirrorBlock}>
+      <Text style={[styles.mirrorBlockTitle, { color: roles.fgMuted }]}>
+        {title}
+      </Text>
+      {children}
     </View>
   );
 }
@@ -1048,12 +1378,16 @@ function PrivacySection({
   const [savesPrivate, setSavesPrivate] = useState(
     me.savesVisibility === 'private'
   );
+  const [mirrorPrivate, setMirrorPrivate] = useState(
+    me.mirrorVisibility === 'private'
+  );
   const [discoverable, setDiscoverable] = useState(me.discoverable);
 
   useEffect(() => {
     setSavesPrivate(me.savesVisibility === 'private');
+    setMirrorPrivate(me.mirrorVisibility === 'private');
     setDiscoverable(me.discoverable);
-  }, [me.savesVisibility, me.discoverable]);
+  }, [me.savesVisibility, me.mirrorVisibility, me.discoverable]);
 
   const trackOn = roles.accent;
   const trackOff = isNacht ? '#2a2a2d' : palette.paper;
@@ -1067,6 +1401,17 @@ function PrivacySection({
       onUpdated();
     } catch {
       setSavesPrivate(prev);
+    }
+  };
+
+  const onMirrorToggle = async (next: boolean) => {
+    const prev = mirrorPrivate;
+    setMirrorPrivate(next);
+    try {
+      await updateMe({ mirrorVisibility: next ? 'private' : 'friends' });
+      onUpdated();
+    } catch {
+      setMirrorPrivate(prev);
     }
   };
 
@@ -1106,6 +1451,30 @@ function PrivacySection({
             // 'friends'.
             value={!savesPrivate}
             onValueChange={(v) => onSavesToggle(!v)}
+            trackColor={{ true: trackOn, false: trackOff }}
+            thumbColor={thumb}
+            ios_backgroundColor={trackOff}
+          />
+        </View>
+        <View style={[styles.privacyDivider, { backgroundColor: roles.bgChip }]} />
+        <View style={styles.privacyRow}>
+          <View style={styles.privacyBody}>
+            <Text style={[styles.privacyLabel, { color: roles.fg }]}>
+              {t(
+                'Vrienden zien mijn spiegel',
+                'Friends see my mirror'
+              )}
+            </Text>
+            <Text style={[styles.privacySub, { color: roles.fgMuted }]}>
+              {t(
+                'Top venues en genres zichtbaar op je profiel. Geen aantallen.',
+                'Top venues and genres visible on your profile. No counts.'
+              )}
+            </Text>
+          </View>
+          <Switch
+            value={!mirrorPrivate}
+            onValueChange={(v) => onMirrorToggle(!v)}
             trackColor={{ true: trackOn, false: trackOff }}
             thumbColor={thumb}
             ios_backgroundColor={trackOff}
@@ -1537,6 +1906,145 @@ const styles = StyleSheet.create({
     lineHeight: 18.5,
     textAlign: 'center',
     marginTop: 8,
+  },
+
+  // Spiegel
+  mirrorWrap: { paddingHorizontal: 22, paddingTop: 4, gap: 14 },
+  mirrorIdentity: {
+    fontFamily: fontFamily.display,
+    fontSize: 21,
+    lineHeight: 26,
+    letterSpacing: -0.4,
+  },
+  mirrorMeta: {
+    fontFamily: fontFamily.mono,
+    fontSize: 10,
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
+    marginTop: -8,
+  },
+  mirrorBlock: { gap: 8 },
+  mirrorBlockTitle: {
+    fontFamily: fontFamily.mono,
+    fontSize: 10,
+    letterSpacing: 1.4,
+    textTransform: 'uppercase',
+  },
+  mirrorRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    paddingVertical: 6,
+    gap: 8,
+  },
+  mirrorRowLabel: {
+    flex: 1,
+    fontFamily: fontFamily.medium,
+    fontSize: 14.5,
+    letterSpacing: -0.14,
+  },
+  mirrorRowCount: {
+    fontFamily: fontFamily.mono,
+    fontSize: 11,
+    letterSpacing: 0.8,
+  },
+  mirrorChipsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  mirrorChip: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    gap: 6,
+  },
+  mirrorChipLabel: {
+    fontFamily: fontFamily.medium,
+    fontSize: 13,
+    letterSpacing: -0.1,
+  },
+  mirrorChipCount: {
+    fontFamily: fontFamily.mono,
+    fontSize: 11,
+    letterSpacing: 0.6,
+  },
+  mirrorBarRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 4,
+  },
+  mirrorBarLabel: {
+    width: 80,
+    fontFamily: fontFamily.medium,
+    fontSize: 13,
+    letterSpacing: -0.1,
+  },
+  mirrorBarTrack: {
+    flex: 1,
+    height: 6,
+    borderRadius: 3,
+    overflow: 'hidden',
+  },
+  mirrorBarFill: {
+    height: '100%',
+    borderRadius: 3,
+  },
+  mirrorBarCount: {
+    width: 36,
+    textAlign: 'right',
+    fontFamily: fontFamily.mono,
+    fontSize: 11,
+    letterSpacing: 0.6,
+  },
+  weekdayRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: 6,
+    height: 56,
+  },
+  weekdayCol: {
+    flex: 1,
+    alignItems: 'center',
+    gap: 6,
+  },
+  weekdayBar: {
+    width: '100%',
+    borderRadius: 3,
+  },
+  weekdayLabel: {
+    fontFamily: fontFamily.mono,
+    fontSize: 9,
+    letterSpacing: 0.8,
+  },
+  monthlyRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: 4,
+    height: 52,
+  },
+  monthlyCol: {
+    flex: 1,
+    alignItems: 'center',
+    gap: 4,
+  },
+  monthlyBar: {
+    width: '100%',
+    borderRadius: 2,
+  },
+  monthlyLabel: {
+    fontFamily: fontFamily.mono,
+    fontSize: 8.5,
+    letterSpacing: 0.6,
+  },
+  mirrorFootnote: {
+    fontFamily: fontFamily.mono,
+    fontSize: 10,
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
+    paddingTop: 4,
   },
 
   // Privacy

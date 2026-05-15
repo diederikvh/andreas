@@ -231,7 +231,7 @@ function FriendSavedRow({ event }: { event: ApiEvent }) {
       seriesLabel={event.series?.[0]?.name}
       genreLabel={event.genres?.[0]}
       tick={CATEGORY_TICK[event.category]}
-      onPress={() => router.push(`/event/${event.id}`)}
+      onPress={() => router.push(`/event/${event.id}?source=friend`)}
     />
   );
 }

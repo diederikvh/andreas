@@ -182,7 +182,7 @@ function ExhibitionCard({
     .join(' · ');
   return (
     <Pressable
-      onPress={() => router.push(`/event/${event.id}` as never)}
+      onPress={() => router.push(`/event/${event.id}?source=avond` as never)}
       style={[
         styles.card,
         wide && styles.cardWide,
