@@ -70,6 +70,25 @@ app.get('/me', async (c) => {
     .from(schema.users)
     .where(eq(schema.users.id, session.user.id))
     .limit(1);
+
+  // Activity-tracking: noteer `lastSeenAt` voor DAU/WAU/MAU. Throttled
+  // tot 1× per uur per user — bij intense polling-burst niet meer dan
+  // één write. Fire-and-forget (geen await) zodat de response-latency
+  // niet meebeweegt.
+  if (row) {
+    const lastSeen = row.lastSeenAt as Date | null;
+    const stale =
+      !lastSeen || Date.now() - lastSeen.getTime() > 60 * 60 * 1000;
+    if (stale) {
+      db.update(schema.users)
+        .set({ lastSeenAt: new Date() })
+        .where(eq(schema.users.id, session.user.id))
+        .catch(() => {
+          // Throttle-update is non-essentieel — log niet.
+        });
+    }
+  }
+
   return c.json({ user: row ?? session.user });
 });
 

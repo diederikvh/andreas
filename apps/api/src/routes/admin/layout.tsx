@@ -145,6 +145,16 @@ export const Layout: FC<PropsWithChildren<{ title: string; active?: string }>> =
             </a>
           </li>
           <li>
+            <a
+              href="/admin/insights"
+              role="button"
+              class={active === 'insights' ? '' : 'outline'}
+              aria-current={active === 'insights' ? 'page' : undefined}
+            >
+              Insights
+            </a>
+          </li>
+          <li>
             <form method="post" action="/admin/logout">
               <button type="submit" class="secondary outline">Uitloggen</button>
             </form>

@@ -58,6 +58,7 @@ export default function FriendDetail() {
   const setFavorite = useSetFriendFavorite(id);
   const [tab, setTab] = useState<Tab>('aankomend');
   const [menuOpen, setMenuOpen] = useState(false);
+  const [avatarOpen, setAvatarOpen] = useState(false);
 
   const handle = data?.user.handle ?? null;
   // Als alleen de spiegel gedeeld wordt (en saves dus niet), forceer
@@ -173,11 +174,16 @@ export default function FriendDetail() {
 
         <View style={styles.head}>
           {user.avatarUrl ? (
-            <Image
-              source={{ uri: user.avatarUrl }}
-              style={[styles.avatar, { borderColor: roles.bgChip }]}
-              contentFit="cover"
-            />
+            <Pressable
+              onPress={() => setAvatarOpen(true)}
+              accessibilityLabel={t('Foto vergroten', 'Zoom photo')}
+            >
+              <Image
+                source={{ uri: user.avatarUrl }}
+                style={[styles.avatar, { borderColor: roles.bgChip }]}
+                contentFit="cover"
+              />
+            </Pressable>
           ) : (
             <View
               style={[
@@ -222,7 +228,7 @@ export default function FriendDetail() {
           <>
             {upcomingDays.length === 0 && (
               <Text style={[styles.empty, { color: roles.fgMuted }]}>
-                {t('Niks aankomends opgeslagen.', 'Nothing upcoming saved.')}
+                {t('Nog niks geliket.', 'Nothing liked yet.')}
               </Text>
             )}
             {upcomingDays.map((day) => (
@@ -245,6 +251,28 @@ export default function FriendDetail() {
           />
         )}
       </ScrollView>
+
+      {user.avatarUrl ? (
+        <Modal
+          visible={avatarOpen}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setAvatarOpen(false)}
+          statusBarTranslucent
+        >
+          <Pressable
+            onPress={() => setAvatarOpen(false)}
+            style={styles.lightboxBackdrop}
+            accessibilityLabel={t('Sluiten', 'Close')}
+          >
+            <Image
+              source={{ uri: user.avatarUrl }}
+              style={styles.lightboxImage}
+              contentFit="contain"
+            />
+          </Pressable>
+        </Modal>
+      ) : null}
 
       <RelationDrawer
         open={menuOpen}
@@ -548,12 +576,12 @@ function FriendSubTabs({
           ]}
         />
         <SwitchBtn
-          label={t('Aankomend', 'Upcoming')}
+          label={t('Liked', 'Liked')}
           active={tab === 'aankomend'}
           onPress={() => onChange('aankomend')}
         />
         <SwitchBtn
-          label={t('Spiegel', 'Mirror')}
+          label={t('Profielinzicht', 'Profile insight')}
           active={tab === 'spiegel'}
           onPress={() => onChange('spiegel')}
         />
@@ -606,8 +634,8 @@ function MirrorPane({
     return (
       <Text style={[styles.empty, { color: roles.fgMuted }]}>
         {t(
-          `${firstName} deelt z'n spiegel niet.`,
-          `${firstName} doesn’t share their mirror.`
+          `${firstName} deelt z'n profielinzicht niet.`,
+          `${firstName} doesn’t share their profile insight.`
         )}
       </Text>
     );
@@ -626,20 +654,19 @@ function MirrorPane({
           <Text style={[styles.mirrorBlockTitle, { color: roles.fg }]}>
             {t('Top venues', 'Top venues')}
           </Text>
-          {data.topVenues.map((v) => (
-            <Pressable
-              key={v.id}
-              onPress={() => router.push(`/venue/${v.slug}` as never)}
-              style={styles.mirrorRow}
-            >
-              <Text
-                style={[styles.mirrorRowLabel, { color: roles.fg }]}
-                numberOfLines={1}
+          <View style={styles.mirrorChipsRow}>
+            {data.topVenues.map((v) => (
+              <Pressable
+                key={v.id}
+                onPress={() => router.push(`/venue/${v.slug}` as never)}
+                style={[styles.mirrorChip, { backgroundColor: roles.bgTag }]}
               >
-                {v.name}
-              </Text>
-            </Pressable>
-          ))}
+                <Text style={[styles.mirrorChipLabel, { color: roles.fg }]}>
+                  {v.name}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
         </View>
       )}
       {data.topGenres.length > 0 && (
@@ -649,14 +676,20 @@ function MirrorPane({
           </Text>
           <View style={styles.mirrorChipsRow}>
             {data.topGenres.map((g) => (
-              <View
+              <Pressable
                 key={g.genre}
+                onPress={() =>
+                  router.push({
+                    pathname: '/(tabs)/agenda',
+                    params: { q: g.genre },
+                  })
+                }
                 style={[styles.mirrorChip, { backgroundColor: roles.bgTag }]}
               >
                 <Text style={[styles.mirrorChipLabel, { color: roles.fg }]}>
                   {g.genre}
                 </Text>
-              </View>
+              </Pressable>
             ))}
           </View>
         </View>
@@ -719,6 +752,18 @@ const styles = StyleSheet.create({
   topBar: {
     paddingHorizontal: 18,
     paddingBottom: 8,
+  },
+  lightboxBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.92)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+  },
+  lightboxImage: {
+    width: '100%',
+    aspectRatio: 1,
+    borderRadius: 12,
   },
   relationBtn: {
     marginTop: 10,

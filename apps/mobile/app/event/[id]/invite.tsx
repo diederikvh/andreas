@@ -100,19 +100,26 @@ export default function InviteModal() {
     type Row = {
       user: ApiPublicUser;
       friendshipPending: boolean;
+      favorite: boolean;
     };
     const list: Row[] = [];
     for (const f of friends ?? []) {
-      list.push({ user: f, friendshipPending: false });
+      list.push({
+        user: f,
+        friendshipPending: false,
+        favorite: Boolean(f.favorite),
+      });
     }
     for (const o of outgoing ?? []) {
-      list.push({ user: o, friendshipPending: true });
+      list.push({ user: o, friendshipPending: true, favorite: false });
     }
     return list.sort((a, b) => {
-      // Geaccepteerde vrienden bovenaan, pending eronder, dan op naam.
+      // Bevriend vóór pending; binnen bevriend: favorieten eerst; daarna
+      // alfabetisch op naam.
       if (a.friendshipPending !== b.friendshipPending) {
         return a.friendshipPending ? 1 : -1;
       }
+      if (a.favorite !== b.favorite) return a.favorite ? -1 : 1;
       return a.user.name.localeCompare(b.user.name);
     });
   }, [friends, outgoing]);
@@ -190,18 +197,26 @@ export default function InviteModal() {
           },
         ]}
       >
-        <Pressable
-          onPress={() => safeBack()}
-          hitSlop={8}
-          style={[
-            styles.closeBtn,
-            { backgroundColor: isNacht ? palette.noir2 : palette.paper2 },
-          ]}
-        >
-          <Cross size={14} thickness={2.6} color={roles.fg} />
-        </Pressable>
-        <Text style={[styles.topTitle, { color: roles.fg }]}>Uitnodigen</Text>
-        <View style={styles.topBarSpacer} />
+        {Platform.OS === 'ios' ? (
+          // iOS pageSheet: enkel een visuele drag-handle bovenaan;
+          // swipe-down dismist sheet native.
+          <View style={styles.dragHandleRow}>
+            <View
+              style={[styles.dragHandle, { backgroundColor: roles.bgChip }]}
+            />
+          </View>
+        ) : (
+          <Pressable
+            onPress={() => safeBack()}
+            hitSlop={8}
+            style={[
+              styles.closeBtn,
+              { backgroundColor: isNacht ? palette.noir2 : palette.paper2 },
+            ]}
+          >
+            <Cross size={14} thickness={2.6} color={roles.fg} />
+          </Pressable>
+        )}
       </View>
 
       <ScrollView
@@ -257,6 +272,7 @@ export default function InviteModal() {
           <FriendCheckRow
             key={r.user.id}
             friend={r.user}
+            favorite={r.favorite}
             checked={selected.has(r.user.id)}
             existingStatus={inviteByUser.get(r.user.id)?.status}
             friendshipPending={r.friendshipPending}
@@ -389,12 +405,14 @@ function formatTargetDate(
 
 function FriendCheckRow({
   friend,
+  favorite,
   checked,
   existingStatus,
   friendshipPending,
   onPress,
 }: {
   friend: ApiPublicUser;
+  favorite?: boolean;
   checked: boolean;
   existingStatus?: ApiEventInviteRecord['status'];
   friendshipPending?: boolean;
@@ -434,9 +452,19 @@ function FriendCheckRow({
         </View>
       )}
       <View style={styles.rowBody}>
-        <Text numberOfLines={1} style={[styles.rowName, { color: roles.fg }]}>
-          {friend.name}
-        </Text>
+        <View
+          style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}
+        >
+          <Text
+            numberOfLines={1}
+            style={[styles.rowName, { color: roles.fg, flexShrink: 1 }]}
+          >
+            {friend.name}
+          </Text>
+          {favorite ? (
+            <Ionicons name="star" size={13} color={roles.accent} />
+          ) : null}
+        </View>
         {friend.handle && (
           <Text
             numberOfLines={1}
@@ -523,6 +551,17 @@ const styles = StyleSheet.create({
     fontSize: 14,
     letterSpacing: -0.21,
     textAlign: 'center',
+  },
+  dragHandleRow: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dragHandle: {
+    width: 44,
+    height: 5,
+    borderRadius: 2.5,
+    opacity: 0.7,
   },
   topBarSpacer: { width: 36, height: 36 },
 

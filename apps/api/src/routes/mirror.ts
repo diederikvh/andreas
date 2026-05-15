@@ -241,7 +241,7 @@ mirrorRoute.get('/u/:handle', async (c) => {
   // Eigen profiel altijd zichtbaar. Anders gate op visibility-keuze.
   if (target.id !== me) {
     if (target.mirrorVisibility === 'private') {
-      return c.json({ error: 'spiegel niet gedeeld' }, 403);
+      return c.json({ error: 'profielinzicht niet gedeeld' }, 403);
     }
     const [friendship] = await db
       .select({ status: schema.friendships.status })
@@ -276,7 +276,7 @@ mirrorRoute.get('/u/:handle', async (c) => {
           )
         )
         .limit(1);
-      if (!fav) return c.json({ error: 'spiegel niet gedeeld' }, 403);
+      if (!fav) return c.json({ error: 'profielinzicht niet gedeeld' }, 403);
     }
   }
 

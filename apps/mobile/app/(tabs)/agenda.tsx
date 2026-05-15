@@ -164,8 +164,10 @@ export default function Agenda() {
 
   // Deeplink-merge: Vandaag's "Meer →"-knop pusht naar /agenda?cat=X.
   // Bij eerste arrival mergen we die in de store (en wissen de URL-param
-  // zodat-ie niet bij elke heractivatie opnieuw triggert).
-  const params = useLocalSearchParams<{ cat?: string }>();
+  // zodat-ie niet bij elke heractivatie opnieuw triggert). Daarnaast
+  // accepteren we `?q=<term>` zodat genre-chips op een vriend-profiel
+  // direct kunnen filteren ("tap techno" → agenda met search=techno).
+  const params = useLocalSearchParams<{ cat?: string; q?: string }>();
   useEffect(() => {
     const incoming = (params.cat ?? '')
       .split(',')
@@ -178,6 +180,13 @@ export default function Agenda() {
     router.setParams({ cat: undefined });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params.cat]);
+  useEffect(() => {
+    const q = (params.q ?? '').trim();
+    if (q.length === 0) return;
+    setQuery(q);
+    router.setParams({ q: undefined });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params.q]);
 
   // Cmode-flip wist géén filters meer: in Agenda is dag/nacht puur
   // cosmetisch (kleur-thema), niet content-bepalend. Alle 5 cats zijn

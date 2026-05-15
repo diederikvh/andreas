@@ -153,6 +153,12 @@ export const users = pgTable(
     updatedAt: timestamp({ withTimezone: true })
       .notNull()
       .default(sql`now()`),
+    /** Laatste keer dat deze user een authed API-call deed (via GET /me
+        op app-launch + tab-focus). Throttled tot 1× per uur in de
+        endpoint zelf om DB-writes te beperken. Voedt DAU/WAU/MAU op
+        het admin-insights-dashboard. Null voor users die nooit hebben
+        ingelogd sinds de feature is geïntroduceerd. */
+    lastSeenAt: timestamp({ withTimezone: true }),
   },
   (t) => [
     uniqueIndex('users_phone_number_idx').on(t.phoneNumber),

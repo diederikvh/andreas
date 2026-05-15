@@ -23,6 +23,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { BackButton } from '@/components/BackButton';
 import { Cross } from '@/components/Cross';
 import { ProfileAvatar } from '@/components/ProfileAvatar';
 import { SpinningCross } from '@/components/SpinningCross';
@@ -446,138 +447,182 @@ export default function Jij() {
 
   // ─── Profile-onboarding view ────────────────────────────────────────
 
-  if (stage === 'profile') {
-    const isEditing = Boolean(me?.handle);
-    const onChangeName = (next: string) => {
-      setName(next);
-      if (!handleTouched) setHandle(deriveHandle(next));
-    };
-    const onChangeHandle = (next: string) => {
-      setHandleTouched(true);
-      setHandle(next.toLowerCase().replace(/[^a-z0-9_]/g, ''));
-    };
+  // Stage 'profile' splitsen in twee gevallen:
+  //  - Onboarding (geen handle nog): vol scherm, push-style.
+  //  - Bewerken bestaand profiel: Modal-overlay over de authed-view zodat
+  //    /jij zelf gewoon een normaal scherm blijft.
+  const isEditingExisting = stage === 'profile' && Boolean(me?.handle);
+  const isOnboardingProfile = stage === 'profile' && !me?.handle;
+  const onChangeName = (next: string) => {
+    setName(next);
+    if (!handleTouched) setHandle(deriveHandle(next));
+  };
+  const onChangeHandle = (next: string) => {
+    setHandleTouched(true);
+    setHandle(next.toLowerCase().replace(/[^a-z0-9_]/g, ''));
+  };
 
-    return (
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        style={[styles.root, { backgroundColor: roles.bg }]}
+  // Gedeelde JSX van het profiel-formulier — gebruikt in beide rendering-
+  // paths (onboarding full-screen + bewerken-modal).
+  const editProfileBody = (
+    <KeyboardAvoidingView
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      style={[styles.root, { backgroundColor: roles.bg }]}
+    >
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        contentContainerStyle={{
+          paddingTop: modalTopInset + 56,
+          paddingBottom: insets.bottom + 96,
+          paddingHorizontal: 22,
+        }}
       >
-        <ScrollView
-          showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
-          contentContainerStyle={{
-            paddingTop: modalTopInset + 56,
-            paddingBottom: insets.bottom + 96,
-            paddingHorizontal: 22,
-          }}
-        >
-          <Text style={[styles.title, { color: roles.fg }]}>
-            {isEditing
-              ? t('Profiel', 'Profile')
-              : t('Hoe heet je\neigenlijk?', 'What’s your\nname?')}
+        <Text style={[styles.title, { color: roles.fg }]}>
+          {isEditingExisting
+            ? t('Profiel', 'Profile')
+            : t('Hoe heet je\neigenlijk?', 'What’s your\nname?')}
+        </Text>
+
+        <View style={styles.fieldGroup}>
+          <Text style={[styles.label, { color: roles.fgMuted }]}>
+            {t('NAAM', 'NAME')}
           </Text>
-
-          <View style={styles.fieldGroup}>
-            <Text style={[styles.label, { color: roles.fgMuted }]}>
-              {t('NAAM', 'NAME')}
-            </Text>
-            <View
-              style={[
-                styles.field,
-                styles.fieldRow,
-                authFieldStyle(isNacht),
-              ]}
-            >
-              <TextInput
-                key="name"
-                value={name}
-                onChangeText={onChangeName}
-                placeholder={t('bv. Johan Cruijff', 'e.g. Johan Cruijff')}
-                placeholderTextColor={roles.fgPlaceholder}
-                autoFocus
-                autoCapitalize="words"
-                autoCorrect={false}
-                style={[styles.input, { color: roles.fg }]}
-                returnKeyType="next"
-              />
-            </View>
-          </View>
-
-          <View style={styles.fieldGroup}>
-            <Text style={[styles.label, { color: roles.fgMuted }]}>HANDLE</Text>
-            <View
-              style={[
-                styles.field,
-                styles.fieldRow,
-                authFieldStyle(isNacht),
-              ]}
-            >
-              <Text style={[styles.prefix, { color: roles.fgMuted }]}>@</Text>
-              <TextInput
-                key="handle"
-                value={handle}
-                onChangeText={onChangeHandle}
-                placeholder="johan14"
-                placeholderTextColor={roles.fgPlaceholder}
-                autoCapitalize="none"
-                autoCorrect={false}
-                maxLength={20}
-                style={[styles.input, { color: roles.fg }]}
-                returnKeyType="done"
-                onSubmitEditing={saveProfile}
-              />
-            </View>
-            <Text style={[styles.hint, { color: roles.fgPlaceholder }]}>
-              {t(
-                '3–20 kleine letters, cijfers of underscore. Vrienden vinden je hierop.',
-                '3–20 lowercase letters, digits or underscore. This is how friends find you.'
-              )}
-            </Text>
-          </View>
-
-          {error && <Text style={styles.error}>{error}</Text>}
-
-          <Pressable
-            onPress={saveProfile}
-            disabled={busy}
+          <View
             style={[
-              styles.actionBtn,
+              styles.field,
+              styles.fieldRow,
+              authFieldStyle(isNacht),
+            ]}
+          >
+            <TextInput
+              key="name"
+              value={name}
+              onChangeText={onChangeName}
+              placeholder={t('bv. Johan Cruijff', 'e.g. Johan Cruijff')}
+              placeholderTextColor={roles.fgPlaceholder}
+              autoFocus={isOnboardingProfile}
+              autoCapitalize="words"
+              autoCorrect={false}
+              style={[styles.input, { color: roles.fg }]}
+              returnKeyType="next"
+            />
+          </View>
+        </View>
+
+        <View style={styles.fieldGroup}>
+          <Text style={[styles.label, { color: roles.fgMuted }]}>HANDLE</Text>
+          <View
+            style={[
+              styles.field,
+              styles.fieldRow,
+              authFieldStyle(isNacht),
+            ]}
+          >
+            <Text style={[styles.prefix, { color: roles.fgMuted }]}>@</Text>
+            <TextInput
+              key="handle"
+              value={handle}
+              onChangeText={onChangeHandle}
+              placeholder="johan14"
+              placeholderTextColor={roles.fgPlaceholder}
+              autoCapitalize="none"
+              autoCorrect={false}
+              maxLength={20}
+              style={[styles.input, { color: roles.fg }]}
+              returnKeyType="done"
+              onSubmitEditing={saveProfile}
+            />
+          </View>
+          <Text style={[styles.hint, { color: roles.fgPlaceholder }]}>
+            {t(
+              '3–20 kleine letters, cijfers of underscore. Vrienden vinden je hierop.',
+              '3–20 lowercase letters, digits or underscore. This is how friends find you.'
+            )}
+          </Text>
+        </View>
+
+        {error && <Text style={styles.error}>{error}</Text>}
+
+        <Pressable
+          onPress={saveProfile}
+          disabled={busy}
+          style={[
+            styles.actionBtn,
+            {
+              backgroundColor: isNacht ? palette.acid : palette.red,
+              marginTop: 16,
+              opacity: busy ? 0.5 : 1,
+            },
+          ]}
+        >
+          <Text
+            style={[
+              styles.actionBtnText,
+              { color: isNacht ? palette.noir : palette.paper3 },
+            ]}
+          >
+            {busy
+              ? t('Bezig…', 'Working…')
+              : isEditingExisting
+                ? t('Opslaan', 'Save')
+                : t('Doorgaan', 'Continue')}
+          </Text>
+        </Pressable>
+        {/* Instellingen — alleen zichtbaar als de gebruiker een
+            bestaand profiel bewerkt (niet tijdens onboarding-eerste-
+            keer-vullen). Marge-cancel om de ScrollView's
+            paddingHorizontal: 22 te neutraliseren zodat SectionHead's
+            eigen padding weer klopt. */}
+        {isEditingExisting && me && (
+          <View style={{ marginHorizontal: -22, marginTop: 24 }}>
+            <NotificationsSection />
+            <PrivacySection me={me} onUpdated={refetchMe} />
+            <LanguageSection />
+          </View>
+        )}
+      </ScrollView>
+      {isEditingExisting ? (
+        Platform.OS === 'ios' ? (
+          // iOS pageSheet: visuele drag-handle bovenaan, swipe-down
+          // dismist het sheet native.
+          <View
+            pointerEvents="none"
+            style={[styles.modalDragWrap, { top: 8 }]}
+          >
+            <View
+              style={[
+                styles.modalDragHandle,
+                { backgroundColor: roles.bgChip },
+              ]}
+            />
+          </View>
+        ) : (
+          // Android: expliciete sluit-knop links, 36×36, zelfde stijl
+          // als invite-modal voor consistentie.
+          <Pressable
+            onPress={onCancelProfileEdit}
+            hitSlop={8}
+            accessibilityLabel="Sluiten"
+            style={[
+              styles.modalCloseLeft,
               {
-                backgroundColor: isNacht ? palette.acid : palette.red,
-                marginTop: 16,
-                opacity: busy ? 0.5 : 1,
+                top: insets.top + 8,
+                backgroundColor: isNacht ? palette.noir2 : palette.paper2,
               },
             ]}
           >
-            <Text
-              style={[
-                styles.actionBtnText,
-                { color: isNacht ? palette.noir : palette.paper3 },
-              ]}
-            >
-              {busy
-                ? t('Bezig…', 'Working…')
-                : isEditing
-                  ? t('Opslaan', 'Save')
-                  : t('Doorgaan', 'Continue')}
-            </Text>
+            <Cross size={14} thickness={2.6} color={roles.fg} />
           </Pressable>
-          {/* Instellingen — alleen zichtbaar als de gebruiker een
-              bestaand profiel bewerkt (niet tijdens onboarding-eerste-
-              keer-vullen). Marge-cancel om de ScrollView's
-              paddingHorizontal: 22 te neutraliseren zodat SectionHead's
-              eigen padding weer klopt. */}
-          {isEditing && me && (
-            <View style={{ marginHorizontal: -22, marginTop: 24 }}>
-              <NotificationsSection />
-              <PrivacySection me={me} onUpdated={refetchMe} />
-              <LanguageSection />
-            </View>
-          )}
-        </ScrollView>
+        )
+      ) : (
         <ModalCloseBtn />
-      </KeyboardAvoidingView>
-    );
+      )}
+    </KeyboardAvoidingView>
+  );
+
+  if (isOnboardingProfile) {
+    return editProfileBody;
   }
 
   // ─── Authed Jij ─────────────────────────────────────────────────────
@@ -588,11 +633,28 @@ export default function Jij() {
 
   return (
     <View style={[styles.root, { backgroundColor: roles.bg }]}>
+      {/* Top-left back-button — /jij is een normaal pushed scherm, niet
+          meer een modal. iOS swipe-from-edge + Android hardware-back
+          werken ook, deze knop maakt de affordance zichtbaar. */}
+      <View
+        style={{
+          position: 'absolute',
+          top: insets.top + 8,
+          left: 18,
+          zIndex: 30,
+        }}
+      >
+        <BackButton size={36} />
+      </View>
       <ScrollView
         ref={scrollRef}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{
-          paddingTop: modalTopInset + 56,
+          // /jij is een pushed scherm (geen modal-presentation meer),
+          // dus de safe-area-top is onze eigen verantwoordelijkheid.
+          // BackButton zit op insets.top + 8 (36px hoog) → content
+          // begint daaronder met extra adem-pauze.
+          paddingTop: insets.top + 56,
           paddingBottom: insets.bottom + 96,
         }}
       >
@@ -728,7 +790,17 @@ export default function Jij() {
           </View>
         )}
       </ScrollView>
-      <ModalCloseBtn />
+      {/* Edit-profile modal-overlay — wordt gepresenteerd als pageSheet
+          op iOS (swipe-down dismisses) en als full-screen Modal op
+          Android (hardware-back triggert onRequestClose → close). */}
+      <Modal
+        visible={isEditingExisting}
+        presentationStyle="pageSheet"
+        animationType="slide"
+        onRequestClose={onCancelProfileEdit}
+      >
+        {editProfileBody}
+      </Modal>
     </View>
   );
 }
@@ -782,7 +854,7 @@ function authFieldStyle(isNacht: boolean) {
  * rechtsboven; iOS-modals zitten al onder de status-bar (top: 12),
  * Android-modals moeten safe-area aanhouden (top: insets.top + 12).
  */
-function ModalCloseBtn() {
+function ModalCloseBtn({ onPress }: { onPress?: () => void }) {
   const mode = useMode();
   const roles = useRoles();
   const insets = useSafeAreaInsets();
@@ -792,7 +864,7 @@ function ModalCloseBtn() {
     <Pressable
       accessibilityRole="button"
       accessibilityLabel="Sluiten"
-      onPress={() => router.back()}
+      onPress={onPress ?? (() => router.back())}
       hitSlop={8}
       style={[
         styles.modalCloseBtn,
@@ -955,24 +1027,27 @@ function MirrorSection({ authed }: { authed: boolean }) {
 
         {data.topVenues.length > 0 && (
           <MirrorBlock title={t('Top venues', 'Top venues')}>
-            {data.topVenues.map((v) => (
-              <Pressable
-                key={v.id}
-                onPress={() => router.push(`/venue/${v.slug}` as never)}
-                style={styles.mirrorRow}
-              >
-                <Text
-                  style={[styles.mirrorRowLabel, { color: roles.fg }]}
-                  numberOfLines={1}
+            <View style={styles.mirrorChipsRow}>
+              {data.topVenues.map((v) => (
+                <Pressable
+                  key={v.id}
+                  onPress={() => router.push(`/venue/${v.slug}` as never)}
+                  style={[
+                    styles.mirrorChip,
+                    { backgroundColor: roles.bgTag },
+                  ]}
                 >
-                  {v.name}
-                </Text>
-                <Text style={[styles.mirrorRowCount, { color: roles.fgMuted }]}>
-                  {v.isFollowed ? '· ' : ''}
-                  {v.count}×
-                </Text>
-              </Pressable>
-            ))}
+                  <Text style={[styles.mirrorChipLabel, { color: roles.fg }]}>
+                    {v.name}
+                  </Text>
+                  <Text
+                    style={[styles.mirrorChipCount, { color: roles.fgMuted }]}
+                  >
+                    {v.count}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
           </MirrorBlock>
         )}
 
@@ -980,8 +1055,14 @@ function MirrorSection({ authed }: { authed: boolean }) {
           <MirrorBlock title={t('Genres', 'Genres')}>
             <View style={styles.mirrorChipsRow}>
               {data.topGenres.map((g) => (
-                <View
+                <Pressable
                   key={g.genre}
+                  onPress={() =>
+                    router.push({
+                      pathname: '/(tabs)/agenda',
+                      params: { q: g.genre },
+                    })
+                  }
                   style={[
                     styles.mirrorChip,
                     { backgroundColor: roles.bgTag },
@@ -997,7 +1078,7 @@ function MirrorSection({ authed }: { authed: boolean }) {
                   >
                     {g.count}
                   </Text>
-                </View>
+                </Pressable>
               ))}
             </View>
           </MirrorBlock>
@@ -1421,7 +1502,10 @@ function PrivacySection({
 
         <View style={styles.privacyBlock}>
           <Text style={[styles.privacyLabel, { color: roles.fg }]}>
-            {t('Wie ziet mijn spiegel', 'Who sees my mirror')}
+            {t(
+              'Wie ziet mijn profielinzicht',
+              'Who sees my profile insight'
+            )}
           </Text>
           <Text style={[styles.privacySub, { color: roles.fgMuted }]}>
             {t(
@@ -1514,6 +1598,34 @@ const styles = StyleSheet.create({
     height: 28,
     borderRadius: 999,
     borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 20,
+  },
+  // Drag-handle voor de profiel-bewerken Modal (replace voor de
+  // sluit-knop in editing-mode). Pure affordance — dismiss gebeurt
+  // door iOS pageSheet swipe-down of Android hardware-back.
+  modalDragWrap: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    zIndex: 20,
+  },
+  modalDragHandle: {
+    width: 44,
+    height: 5,
+    borderRadius: 2.5,
+    opacity: 0.7,
+  },
+  // Android-variant van de modal-sluit-knop: 36×36 cirkel linksboven,
+  // zelfde footprint als de invite-modal close-btn voor consistentie.
+  modalCloseLeft: {
+    position: 'absolute',
+    left: 18,
+    width: 36,
+    height: 36,
+    borderRadius: 999,
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 20,

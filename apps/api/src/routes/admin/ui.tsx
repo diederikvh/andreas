@@ -2377,3 +2377,751 @@ form.addEventListener('submit', async (e) => {
     </Layout>,
   );
 });
+
+/* ═══════════════════════════════════════════════════════════════════════
+ * /admin/insights — geaggregeerde inzichten voor het Andreas-team.
+ * Quick wins eerst: discovery-channel mix, trending events + venues,
+ * genre/cat-trends per maand. Slow cadence (refresh op page-load,
+ * geen realtime). Privacy: alleen totals + counts, geen user-IDs.
+ * ═══════════════════════════════════════════════════════════════════ */
+
+const NL_MONTHS_SHORT = [
+  'jan', 'feb', 'mrt', 'apr', 'mei', 'jun',
+  'jul', 'aug', 'sep', 'okt', 'nov', 'dec',
+];
+
+function ymToLabel(ym: string): string {
+  // ym = "2026-05"
+  const [y, m] = ym.split('-');
+  const mi = Math.max(0, Math.min(11, Number(m) - 1));
+  return `${NL_MONTHS_SHORT[mi]} '${y.slice(2)}`;
+}
+
+adminUi.get('/insights', async (c) => {
+  // ─── 0. Growth — DAU / WAU / MAU ──────────────────────────────────
+  // Aantal users actief in de afgelopen 24h / 7d / 30d, op basis van
+  // `users.last_seen_at`. NULL = nooit gezien sinds tracking begon.
+  const [growth] = (
+    await db.execute(sql`
+      SELECT
+        COUNT(*)::int AS total,
+        COUNT(*) FILTER (
+          WHERE last_seen_at >= NOW() - INTERVAL '24 hours'
+        )::int AS dau,
+        COUNT(*) FILTER (
+          WHERE last_seen_at >= NOW() - INTERVAL '7 days'
+        )::int AS wau,
+        COUNT(*) FILTER (
+          WHERE last_seen_at >= NOW() - INTERVAL '30 days'
+        )::int AS mau
+      FROM users
+    `)
+  ).rows as Array<{ total: number; dau: number; wau: number; mau: number }>;
+
+  // Nieuwe signups en saves per dag — 30 dagen terug. Generate_series
+  // vult lege dagen met 0 zodat de tabel monotoon scrollt.
+  const dailyActivityRows = await db.execute(sql`
+    WITH days AS (
+      SELECT generate_series(
+        DATE_TRUNC('day', NOW() - INTERVAL '29 days'),
+        DATE_TRUNC('day', NOW()),
+        INTERVAL '1 day'
+      )::date AS day
+    ),
+    signups AS (
+      SELECT DATE_TRUNC('day', created_at)::date AS day, COUNT(*)::int AS n
+      FROM users
+      WHERE created_at >= NOW() - INTERVAL '30 days'
+      GROUP BY day
+    ),
+    saves_daily AS (
+      SELECT DATE_TRUNC('day', created_at)::date AS day, COUNT(*)::int AS n
+      FROM saves
+      WHERE created_at >= NOW() - INTERVAL '30 days'
+      GROUP BY day
+    )
+    SELECT
+      d.day::text AS day,
+      COALESCE(s.n, 0) AS signups,
+      COALESCE(sd.n, 0) AS saves
+    FROM days d
+    LEFT JOIN signups s ON s.day = d.day
+    LEFT JOIN saves_daily sd ON sd.day = d.day
+    ORDER BY d.day DESC
+  `);
+  const dailyActivity = dailyActivityRows.rows as Array<{
+    day: string;
+    signups: number;
+    saves: number;
+  }>;
+  const maxSignups = Math.max(1, ...dailyActivity.map((r) => r.signups));
+  const maxSaves = Math.max(1, ...dailyActivity.map((r) => r.saves));
+
+  // ─── 1. Discovery-channel mix ─────────────────────────────────────
+  // Per save-source: hoeveel saves zijn er via dat scherm gemaakt?
+  // Legacy saves (vóór source-attributie, mei 2026) tellen we apart als
+  // "onbekend" zodat de mix transparant is.
+  const discoveryRows = await db.execute(sql`
+    SELECT
+      COALESCE(source::text, 'onbekend') AS source,
+      COUNT(*)::int AS n
+    FROM saves
+    GROUP BY source
+    ORDER BY n DESC
+  `);
+  const discovery = discoveryRows.rows as Array<{
+    source: string;
+    n: number;
+  }>;
+  const discoveryTotal = discovery.reduce((s, r) => s + r.n, 0);
+
+  // ─── 2. Trending events (laatste 7 dagen) ─────────────────────────
+  // Save-velocity: events met meeste saves in de laatste 7 dagen, plus
+  // hoeveel unieke users + of er nog upcoming occurrences zijn (zodat
+  // de redactie weet of 't actionable is om te pushen).
+  const trendingEventsRows = await db.execute(sql`
+    WITH recent AS (
+      SELECT
+        e.id,
+        e.title,
+        e.category::text AS category,
+        v.name AS venue_name,
+        v.slug AS venue_slug,
+        COUNT(*)::int AS recent_saves,
+        COUNT(DISTINCT s.user_id)::int AS unique_users
+      FROM saves s
+      JOIN occurrences o ON o.id = s.occurrence_id
+      JOIN events e ON e.id = o.event_id
+      JOIN venues v ON v.id = e.venue_id
+      WHERE s.created_at >= NOW() - INTERVAL '7 days'
+        AND e.published = true
+        AND v.published = true
+      GROUP BY e.id, e.title, e.category, v.name, v.slug
+    )
+    SELECT
+      r.*,
+      EXISTS (
+        SELECT 1 FROM occurrences o2
+        WHERE o2.event_id = r.id
+          AND COALESCE(o2.ends_at, o2.starts_at + INTERVAL '4 hours') >= NOW()
+          AND o2.status <> 'cancelled'
+      ) AS has_upcoming
+    FROM recent r
+    ORDER BY recent_saves DESC, unique_users DESC
+    LIMIT 25
+  `);
+  const trendingEvents = trendingEventsRows.rows as Array<{
+    id: string;
+    title: string;
+    category: string;
+    venue_name: string;
+    venue_slug: string;
+    recent_saves: number;
+    unique_users: number;
+    has_upcoming: boolean;
+  }>;
+
+  // ─── 3. Trending venues ───────────────────────────────────────────
+  // Follower-groei (30d) + save-conversion (saves-totaal / followers-
+  // totaal). Een hoge ratio = volgers zetten hun follow vaak om in een
+  // concrete save. Lage ratio = followers maar weinig conversie.
+  const trendingVenuesRows = await db.execute(sql`
+    WITH followers AS (
+      SELECT
+        venue_id,
+        COUNT(*)::int AS total_followers,
+        COUNT(*) FILTER (WHERE created_at >= NOW() - INTERVAL '30 days')::int
+          AS new_30d
+      FROM venue_follows
+      WHERE state = 'volgen'
+      GROUP BY venue_id
+    ),
+    venue_saves AS (
+      SELECT e.venue_id, COUNT(*)::int AS total_saves
+      FROM saves s
+      JOIN occurrences o ON o.id = s.occurrence_id
+      JOIN events e ON e.id = o.event_id
+      GROUP BY e.venue_id
+    )
+    SELECT
+      v.id, v.name, v.slug, v.type::text AS type,
+      COALESCE(f.total_followers, 0) AS followers,
+      COALESCE(f.new_30d, 0) AS new_followers_30d,
+      COALESCE(vs.total_saves, 0) AS total_saves
+    FROM venues v
+    LEFT JOIN followers f ON f.venue_id = v.id
+    LEFT JOIN venue_saves vs ON vs.venue_id = v.id
+    WHERE v.published = true
+      AND (COALESCE(f.total_followers, 0) > 0
+           OR COALESCE(vs.total_saves, 0) > 0)
+    ORDER BY new_followers_30d DESC, total_saves DESC, followers DESC
+    LIMIT 25
+  `);
+  const trendingVenues = trendingVenuesRows.rows as Array<{
+    id: string;
+    name: string;
+    slug: string;
+    type: string | null;
+    followers: number;
+    new_followers_30d: number;
+    total_saves: number;
+  }>;
+
+  // ─── 4. Genre/cat-trends per maand (6 maanden) ────────────────────
+  // Per kalender-maand totaal saves per category. UI rendert als grid:
+  // rij = maand, kolom = category. Mensen zien zo direct welke cat
+  // bovenkomt seizoen-op-seizoen.
+  const catTrendsRows = await db.execute(sql`
+    SELECT
+      TO_CHAR(DATE_TRUNC('month', s.created_at), 'YYYY-MM') AS month,
+      e.category::text AS category,
+      COUNT(*)::int AS n
+    FROM saves s
+    JOIN occurrences o ON o.id = s.occurrence_id
+    JOIN events e ON e.id = o.event_id
+    WHERE s.created_at >= DATE_TRUNC('month', NOW()) - INTERVAL '5 months'
+    GROUP BY DATE_TRUNC('month', s.created_at), e.category
+    ORDER BY month DESC, n DESC
+  `);
+  const catTrends = catTrendsRows.rows as Array<{
+    month: string;
+    category: string;
+    n: number;
+  }>;
+  // Pivot: months × categories
+  const monthsSet = new Set<string>();
+  const catSet = new Set<string>();
+  const cellMap = new Map<string, number>(); // key `${month}|${cat}` → n
+  for (const r of catTrends) {
+    monthsSet.add(r.month);
+    catSet.add(r.category);
+    cellMap.set(`${r.month}|${r.category}`, r.n);
+  }
+  const months = [...monthsSet].sort().reverse(); // newest first
+  const cats = [...catSet].sort();
+
+  // ─── 5. Wijken-heatmap — saves per stadsdeel per maand ────────────
+  // Beleids-/cureer-input: welke stadsdelen worden meer of minder
+  // bezocht over tijd. Venues zonder wijk vallen weg (NULL).
+  const wijkRows = await db.execute(sql`
+    SELECT
+      TO_CHAR(DATE_TRUNC('month', s.created_at), 'YYYY-MM') AS month,
+      v.wijk::text AS wijk,
+      COUNT(*)::int AS n
+    FROM saves s
+    JOIN occurrences o ON o.id = s.occurrence_id
+    JOIN events e ON e.id = o.event_id
+    JOIN venues v ON v.id = e.venue_id
+    WHERE s.created_at >= DATE_TRUNC('month', NOW()) - INTERVAL '5 months'
+      AND v.wijk IS NOT NULL
+    GROUP BY DATE_TRUNC('month', s.created_at), v.wijk
+    ORDER BY month DESC, n DESC
+  `);
+  const wijkData = wijkRows.rows as Array<{
+    month: string;
+    wijk: string;
+    n: number;
+  }>;
+  const wijkMonthsSet = new Set<string>();
+  const wijkSet = new Set<string>();
+  const wijkCellMap = new Map<string, number>();
+  let wijkMaxCell = 0;
+  for (const r of wijkData) {
+    wijkMonthsSet.add(r.month);
+    wijkSet.add(r.wijk);
+    wijkCellMap.set(`${r.month}|${r.wijk}`, r.n);
+    if (r.n > wijkMaxCell) wijkMaxCell = r.n;
+  }
+  const wijkMonths = [...wijkMonthsSet].sort().reverse();
+  // Wijken in vaste volgorde: centrum / noord / oost / west / zuid /
+  // zuidoost / nieuw-west / outer (zelfde als enum-definitie).
+  const WIJK_ORDER = [
+    'centrum',
+    'noord',
+    'oost',
+    'west',
+    'zuid',
+    'zuidoost',
+    'nieuw-west',
+    'diemen',
+    'amstelveen',
+    'haarlem',
+    'zaandam',
+    'haarlemmermeer',
+  ];
+  const wijken = WIJK_ORDER.filter((w) => wijkSet.has(w)).concat(
+    [...wijkSet].filter((w) => !WIJK_ORDER.includes(w))
+  );
+
+  // ─── 6. Editorial radar — niet-clique-saves ────────────────────────
+  // Events met ≥5 saves in 7d waar de savers in ≥3 verschillende
+  // vriend-clusters zitten. Hoog cluster-aantal = breed signaal (niet
+  // één vriend-groep die elkaar napt) → kandidaat voor newsletter-pickup.
+  const radarCandidatesRows = await db.execute(sql`
+    SELECT
+      e.id,
+      e.title,
+      e.category::text AS category,
+      v.name AS venue_name,
+      v.slug AS venue_slug,
+      ARRAY_AGG(DISTINCT s.user_id) AS user_ids
+    FROM saves s
+    JOIN occurrences o ON o.id = s.occurrence_id
+    JOIN events e ON e.id = o.event_id
+    JOIN venues v ON v.id = e.venue_id
+    WHERE s.created_at >= NOW() - INTERVAL '7 days'
+      AND e.published = true
+      AND v.published = true
+    GROUP BY e.id, e.title, e.category, v.name, v.slug
+    HAVING COUNT(DISTINCT s.user_id) >= 5
+  `);
+  const radarCandidates = radarCandidatesRows.rows as Array<{
+    id: string;
+    title: string;
+    category: string;
+    venue_name: string;
+    venue_slug: string;
+    user_ids: string[];
+  }>;
+
+  // Verzamel alle unieke savers en hun friendships in één query.
+  const allSavers = new Set<string>();
+  for (const c of radarCandidates) {
+    for (const id of c.user_ids) allSavers.add(id);
+  }
+  type Edge = { a: string; b: string };
+  const friendEdges: Edge[] = [];
+  if (allSavers.size > 0) {
+    const friendsRows = await db.execute(sql`
+      SELECT from_user_id, to_user_id
+      FROM friendships
+      WHERE status = 'accepted'
+        AND from_user_id = ANY(${sql.raw(`ARRAY['${[...allSavers].join("','")}']::text[]`)})
+        AND to_user_id   = ANY(${sql.raw(`ARRAY['${[...allSavers].join("','")}']::text[]`)})
+    `);
+    for (const f of friendsRows.rows as Array<{
+      from_user_id: string;
+      to_user_id: string;
+    }>) {
+      friendEdges.push({ a: f.from_user_id, b: f.to_user_id });
+    }
+  }
+
+  // Per kandidaat: bouw friend-graph op subset van savers, tel
+  // connected components via union-find.
+  function countComponents(userIds: string[]): number {
+    const parent = new Map<string, string>();
+    for (const u of userIds) parent.set(u, u);
+    const find = (x: string): string => {
+      let cur = x;
+      while (parent.get(cur) !== cur) cur = parent.get(cur)!;
+      // path compression
+      let p = x;
+      while (parent.get(p) !== cur) {
+        const next = parent.get(p)!;
+        parent.set(p, cur);
+        p = next;
+      }
+      return cur;
+    };
+    const union = (a: string, b: string) => {
+      const ra = find(a);
+      const rb = find(b);
+      if (ra !== rb) parent.set(ra, rb);
+    };
+    const userSet = new Set(userIds);
+    for (const e of friendEdges) {
+      if (userSet.has(e.a) && userSet.has(e.b)) union(e.a, e.b);
+    }
+    const roots = new Set<string>();
+    for (const u of userIds) roots.add(find(u));
+    return roots.size;
+  }
+
+  const radar = radarCandidates
+    .map((c) => ({
+      ...c,
+      saves: c.user_ids.length,
+      components: countComponents(c.user_ids),
+    }))
+    .filter((c) => c.components >= 3)
+    .sort((a, b) => {
+      if (b.components !== a.components) return b.components - a.components;
+      return b.saves - a.saves;
+    })
+    .slice(0, 20);
+
+  return c.html(
+    <Layout title="Insights" active="insights">
+      <h2>Insights</h2>
+      <p style="opacity:0.7;margin-top:-0.5rem;font-size:13px;">
+        Snapshot van vandaag. Aggregaten over alle users — geen persoonlijke
+        identifiers.
+      </p>
+
+      {/* ── Growth ── */}
+      <section style="margin-top:1.5rem;">
+        <h3>Growth</h3>
+        <p style="opacity:0.7;font-size:13px;">
+          Actieve users op basis van laatste app-launch / tab-focus.
+          `lastSeenAt` wordt 1× per uur per user bijgewerkt.
+        </p>
+        <div class="grid-3" style="grid-template-columns:repeat(4,1fr);">
+          <div class="stat">
+            <small>DAU · 24h</small>
+            <strong>{growth?.dau ?? 0}</strong>
+          </div>
+          <div class="stat">
+            <small>WAU · 7d</small>
+            <strong>{growth?.wau ?? 0}</strong>
+          </div>
+          <div class="stat">
+            <small>MAU · 30d</small>
+            <strong>{growth?.mau ?? 0}</strong>
+          </div>
+          <div class="stat">
+            <small>Totaal users</small>
+            <strong>{growth?.total ?? 0}</strong>
+          </div>
+        </div>
+        <details style="margin-top:1rem;">
+          <summary style="font-size:13px;opacity:0.7;">
+            Dagelijkse activiteit · laatste 30 dagen
+          </summary>
+          <table style="margin-top:0.75rem;">
+            <thead>
+              <tr>
+                <th>Dag</th>
+                <th style="text-align:right;">Signups</th>
+                <th style="width:30%;">Signups bar</th>
+                <th style="text-align:right;">Saves</th>
+                <th style="width:30%;">Saves bar</th>
+              </tr>
+            </thead>
+            <tbody>
+              {dailyActivity.map((r) => (
+                <tr>
+                  <td style="font-family:monospace;font-size:12px;">{r.day}</td>
+                  <td style="text-align:right;">
+                    {r.signups > 0 ? r.signups : (
+                      <span style="opacity:0.3;">·</span>
+                    )}
+                  </td>
+                  <td>
+                    {r.signups > 0 && (
+                      <div
+                        style={`background:#5a8a5a;height:8px;border-radius:4px;width:${(r.signups / maxSignups) * 100}%;min-width:2px;`}
+                      />
+                    )}
+                  </td>
+                  <td style="text-align:right;">
+                    {r.saves > 0 ? r.saves : (
+                      <span style="opacity:0.3;">·</span>
+                    )}
+                  </td>
+                  <td>
+                    {r.saves > 0 && (
+                      <div
+                        style={`background:#7c6cd2;height:8px;border-radius:4px;width:${(r.saves / maxSaves) * 100}%;min-width:2px;`}
+                      />
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </details>
+      </section>
+
+      {/* ── Discovery-channel mix ── */}
+      <section style="margin-top:2rem;">
+        <h3>Discovery-channel mix</h3>
+        <p style="opacity:0.7;font-size:13px;">
+          Welk scherm levert saves op? Onbekend = saves van vóór de
+          source-attributie (mei 2026).
+        </p>
+        {discoveryTotal === 0 ? (
+          <p style="opacity:0.6;">Nog geen saves.</p>
+        ) : (
+          <table>
+            <thead>
+              <tr>
+                <th>Source</th>
+                <th style="text-align:right;">Saves</th>
+                <th style="text-align:right;">Aandeel</th>
+              </tr>
+            </thead>
+            <tbody>
+              {discovery.map((d) => (
+                <tr>
+                  <td>{d.source}</td>
+                  <td style="text-align:right;">{d.n}</td>
+                  <td style="text-align:right;">
+                    {((d.n / discoveryTotal) * 100).toFixed(0)}%
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </section>
+
+      {/* ── Trending events (7d) ── */}
+      <section style="margin-top:2rem;">
+        <h3>Trending events · laatste 7 dagen</h3>
+        <p style="opacity:0.7;font-size:13px;">
+          Events met de meeste saves in de laatste 7 dagen. ✓ = nog
+          upcoming occurrence, actionable om te featuren.
+        </p>
+        {trendingEvents.length === 0 ? (
+          <p style="opacity:0.6;">Nog geen saves deze week.</p>
+        ) : (
+          <table>
+            <thead>
+              <tr>
+                <th></th>
+                <th>Event</th>
+                <th>Venue</th>
+                <th>Cat</th>
+                <th style="text-align:right;">Saves</th>
+                <th style="text-align:right;">Uniek</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {trendingEvents.map((e, i) => (
+                <tr>
+                  <td style="opacity:0.5;">{i + 1}</td>
+                  <td>
+                    <a href={`/admin/events/${e.id}`}>{e.title}</a>
+                  </td>
+                  <td>
+                    <a href={`/admin/venues/${e.venue_slug}`}>{e.venue_name}</a>
+                  </td>
+                  <td>
+                    <small>{e.category}</small>
+                  </td>
+                  <td style="text-align:right;">
+                    <strong>{e.recent_saves}</strong>
+                  </td>
+                  <td style="text-align:right;">{e.unique_users}</td>
+                  <td>
+                    {e.has_upcoming ? (
+                      <span class="pill pill-pub">✓ live</span>
+                    ) : (
+                      <span class="pill pill-unpub">voorbij</span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </section>
+
+      {/* ── Trending venues ── */}
+      <section style="margin-top:2rem;">
+        <h3>Trending venues</h3>
+        <p style="opacity:0.7;font-size:13px;">
+          Nieuwe volgers in de laatste 30 dagen + cumulatieve save-conversion
+          (saves/volger).
+        </p>
+        {trendingVenues.length === 0 ? (
+          <p style="opacity:0.6;">Nog geen volgers of saves.</p>
+        ) : (
+          <table>
+            <thead>
+              <tr>
+                <th></th>
+                <th>Venue</th>
+                <th>Type</th>
+                <th style="text-align:right;">Volgers</th>
+                <th style="text-align:right;">+30d</th>
+                <th style="text-align:right;">Saves</th>
+                <th style="text-align:right;">Saves/volger</th>
+              </tr>
+            </thead>
+            <tbody>
+              {trendingVenues.map((v, i) => {
+                const ratio =
+                  v.followers > 0
+                    ? (v.total_saves / v.followers).toFixed(1)
+                    : '—';
+                return (
+                  <tr>
+                    <td style="opacity:0.5;">{i + 1}</td>
+                    <td>
+                      <a href={`/admin/venues/${v.slug}`}>{v.name}</a>
+                    </td>
+                    <td>
+                      <small>{v.type ?? '—'}</small>
+                    </td>
+                    <td style="text-align:right;">{v.followers}</td>
+                    <td style="text-align:right;">
+                      {v.new_followers_30d > 0 ? (
+                        <strong>+{v.new_followers_30d}</strong>
+                      ) : (
+                        <span style="opacity:0.4;">0</span>
+                      )}
+                    </td>
+                    <td style="text-align:right;">{v.total_saves}</td>
+                    <td style="text-align:right;">{ratio}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+      </section>
+
+      {/* ── Genre/cat-trends per maand ── */}
+      <section style="margin-top:2rem;">
+        <h3>Cat-trends · laatste 6 maanden</h3>
+        <p style="opacity:0.7;font-size:13px;">
+          Saves per category per kalender-maand. Bovenste rij = huidige
+          maand (loopt nog).
+        </p>
+        {months.length === 0 ? (
+          <p style="opacity:0.6;">Geen saves in de laatste 6 maanden.</p>
+        ) : (
+          <table>
+            <thead>
+              <tr>
+                <th>Maand</th>
+                {cats.map((c) => (
+                  <th style="text-align:right;">{c}</th>
+                ))}
+                <th style="text-align:right;">Totaal</th>
+              </tr>
+            </thead>
+            <tbody>
+              {months.map((m) => {
+                const row = cats.map((cat) => cellMap.get(`${m}|${cat}`) ?? 0);
+                const total = row.reduce((s, n) => s + n, 0);
+                return (
+                  <tr>
+                    <td>{ymToLabel(m)}</td>
+                    {row.map((n) => (
+                      <td style="text-align:right;">
+                        {n > 0 ? n : <span style="opacity:0.3;">·</span>}
+                      </td>
+                    ))}
+                    <td style="text-align:right;">
+                      <strong>{total}</strong>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+      </section>
+
+      {/* ── Wijken-heatmap ── */}
+      <section style="margin-top:2rem;">
+        <h3>Wijken · laatste 6 maanden</h3>
+        <p style="opacity:0.7;font-size:13px;">
+          Saves per stadsdeel per maand. Cellen kleuren met intensiteit
+          relatief aan de hoogste cel in de matrix.
+        </p>
+        {wijkMonths.length === 0 ? (
+          <p style="opacity:0.6;">Nog geen saves bij venues met wijk.</p>
+        ) : (
+          <table>
+            <thead>
+              <tr>
+                <th>Maand</th>
+                {wijken.map((w) => (
+                  <th style="text-align:right;font-size:11px;">{w}</th>
+                ))}
+                <th style="text-align:right;">Totaal</th>
+              </tr>
+            </thead>
+            <tbody>
+              {wijkMonths.map((m) => {
+                const row = wijken.map((w) => wijkCellMap.get(`${m}|${w}`) ?? 0);
+                const total = row.reduce((s, n) => s + n, 0);
+                return (
+                  <tr>
+                    <td>{ymToLabel(m)}</td>
+                    {row.map((n) => {
+                      const intensity = wijkMaxCell > 0 ? n / wijkMaxCell : 0;
+                      // 0 → transparant, 1 → vol acid-tint. Pico-dark
+                      // achtergrond is #131316, dus we overlay'en met
+                      // een halftransparante acid.
+                      const bg = intensity > 0
+                        ? `rgba(212,255,58,${(0.08 + intensity * 0.35).toFixed(2)})`
+                        : 'transparent';
+                      return (
+                        <td
+                          style={`text-align:right;background:${bg};`}
+                        >
+                          {n > 0 ? n : (
+                            <span style="opacity:0.25;">·</span>
+                          )}
+                        </td>
+                      );
+                    })}
+                    <td style="text-align:right;">
+                      <strong>{total}</strong>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+      </section>
+
+      {/* ── Editorial radar ── */}
+      <section style="margin-top:2rem;">
+        <h3>Editorial radar</h3>
+        <p style="opacity:0.7;font-size:13px;">
+          Events met ≥5 saves in 7d waarvan de savers in ≥3 verschillende
+          vriend-clusters zitten. Hoog clusters-getal = breed signaal, geen
+          echo-kamer-effect. Kandidaten om editorial op te pikken.
+        </p>
+        {radar.length === 0 ? (
+          <p style="opacity:0.6;">
+            Geen events met breed signaal deze week.
+          </p>
+        ) : (
+          <table>
+            <thead>
+              <tr>
+                <th></th>
+                <th>Event</th>
+                <th>Venue</th>
+                <th>Cat</th>
+                <th style="text-align:right;">Clusters</th>
+                <th style="text-align:right;">Saves</th>
+              </tr>
+            </thead>
+            <tbody>
+              {radar.map((r, i) => (
+                <tr>
+                  <td style="opacity:0.5;">{i + 1}</td>
+                  <td>
+                    <a href={`/admin/events/${r.id}`}>{r.title}</a>
+                  </td>
+                  <td>
+                    <a href={`/admin/venues/${r.venue_slug}`}>
+                      {r.venue_name}
+                    </a>
+                  </td>
+                  <td>
+                    <small>{r.category}</small>
+                  </td>
+                  <td style="text-align:right;">
+                    <strong>{r.components}</strong>
+                  </td>
+                  <td style="text-align:right;">{r.saves}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </section>
+    </Layout>,
+  );
+});

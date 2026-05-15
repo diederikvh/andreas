@@ -2,7 +2,7 @@
 
 Live status van het project. Cross-checken met `HANDOFF.md` voor de oorspronkelijke briefing en met de huidige codebase voor de waarheid. Per open punt staat genoeg context om een agent zelfstandig te laten werken.
 
-Laatste sync: 2026-05-15 · branch `main`.
+Laatste sync: 2026-05-16 · branch `main`.
 
 ## Stand
 
@@ -94,13 +94,13 @@ Laatste sync: 2026-05-15 · branch `main`.
 - ✅ **App Store knop activatie** — `APPLE_APP_ID=6765957164` + `APP_STORE_URL=https://apps.apple.com/nl/app/andreas/id6765957164` als Fly secrets. Alle download-buttons + smart-app-banner (`apple-itunes-app` meta) wijzen nu naar de echte App Store ID.
 - ✅ **Google Search Console** geactiveerd via CNAME-DNS-verificatie. Submit `sitemap.xml` in Search Console nog open (zie post-launch sectie).
 
-**Fase 8 — Smaak-spiegel + personalisatie** (sessie 2026-05-15): in uitvoering. Plan-bestand: `/Users/vanhuijstee/.claude/plans/even-een-totaal-andere-smooth-frog.md`. **Belangrijk**: deze fase markeert een directionele wijziging weg van het "anti-algoritme"-frame uit de oorspronkelijke briefing — Andreas mag nu personaliseren, profileren en aanbevelen, mits transparant + niet engagement-maximizing. CLAUDE.md is op dat punt al bijgewerkt.
+**Fase 8 — Profielinzicht + personalisatie + admin-insights** (sessies 2026-05-15 / 2026-05-16): in uitvoering. Plan-bestand: `/Users/vanhuijstee/.claude/plans/even-een-totaal-andere-smooth-frog.md`. **Belangrijk**: deze fase markeert een directionele wijziging weg van het "anti-algoritme"-frame uit de oorspronkelijke briefing — Andreas mag nu personaliseren, profileren en aanbevelen, mits transparant + niet engagement-maximizing. CLAUDE.md is op dat punt al bijgewerkt. UI-label is "Profielinzicht" / "Profile insight" (intern in de code nog `mirror*` om refactor-churn te voorkomen).
 
 - ✅ **Schema-uitbreidingen** — `saves.source` enum (`venue`/`friend`/`search`/`op-gevoel`/`avond`/`agenda`/`kaart`/`series`/`gered`/`other`), `dismisses` tabel (left-swipes uit /op-gevoel persistent), `users.mirrorVisibility` enum, `friend_favorites(userId, friendId)` tabel. Beide visibility-enums uitgebreid met `'favorites'`-waarde. Migrations 0024–0026.
 - ✅ **Source-attributie** — `toggleSave` accepteert source-string; alle 9 call-sites (avond/agenda/kaart/social/venue/friend/series/op-gevoel/RunningStrip) sturen het door via `?source=` URL-param naar `/event/[id]`. Heartbutton op event-detail leest source uit URL.
-- ✅ **`GET /mirror/me` endpoint** — geaggregeerde data: top venues + isFollowed, top genres, wijken, venueTypes, categories, discovery-mix, monthly timeline, weekday-histogram, totals.
+- ✅ **`GET /mirror/me` endpoint** — geaggregeerde data: top venues + isFollowed, top genres, wijken, venueTypes, categories, discovery-mix, monthly timeline, weekday-histogram, totals. (URL-pad nog `/mirror/*` voor compat met live mobile.)
 - ✅ **`GET /mirror/u/:handle` endpoint** — vriend-zichtbare subset (top 3 venues + genres, géén counts) met privacy-gate (accepted friendship + `mirrorVisibility='friends'`, of `'favorites'` + target heeft mij gefavoreerd).
-- ✅ **Spiegel-sectie op `/jij`** — identity-zin (template, geen LLM), top venues (klikbaar), top genres (chips in `bgTag`), wijken-bar (percentages), weekday-histogram, monthly timeline-bar, discovery-mix, micro-copy "Dit is wat je hebt gedaan." Empty-state als nog geen saves. Kopjes in display-stijl (rails-look), 18pt, `roles.fg`.
+- ✅ **Profielinzicht-sectie op `/jij`** — identity-zin (template, geen LLM), top venues (klikbaar), top genres (chips in `bgTag`), wijken-bar (percentages), weekday-histogram, monthly timeline-bar, discovery-mix, micro-copy "Dit is wat je hebt gedaan." Empty-state als nog geen saves. Kopjes in display-stijl (rails-look), 18pt, `roles.fg`.
 - ✅ **Persistent dismisses** — left-swipes op `/op-gevoel` → `POST /dismisses` (toggle). Filtert toekomstige stack-builds én scoring in `/events/for-you`.
 - ✅ **`GET /events/for-you` scoring** — linear-weighted (+1 per genre-overlap-save, +2 per venue-overlap-save, +5 bonus voor gevolgde venue). Filters: al-gesavede events, dismisses, geblokte venues, score=0, geen occurrence in komende 21 dagen. Cap 30. Sort: score desc, dan eerstvolgende occurrence asc.
 - ✅ **"Voor jou"-rail op Avond** — `useForYouEvents()` hook, rail boven heroDivider (omdat range 3 weken is, niet alleen vandaag). Kicker "Voor jou · komende 3 weken". Cards met `showDate` zodat dow + datum + tijd zichtbaar zijn ("Za 31 mei · 21:00"). Rail verbergt zichzelf bij lege data.
@@ -111,16 +111,32 @@ Laatste sync: 2026-05-15 · branch `main`.
   - Taal — Automatisch / Nederlands / English
 - ✅ **Favorieten-systeem** — `PUT /friends/:id/favorite { favorite }` toggle endpoint. Friend-list (`GET /friends`) include `favorite: boolean`, sorteert favorieten eerst (alfabetisch), rest erna (alfabetisch). Ster (`Ionicons star` in accent) naast naam in sociaal-tab.
 - ✅ **Visibility-gates op 'favorites'** — `allowedViewerIds()` helper in `_helpers.ts`. Gate-logic toegepast in `buildFriendsByOccurrence` (friend-pills), `/social/feed` (sociaal-feed), `/friends/:id` (savesPrivate + mirrorShared booleans), `/mirror/u/:handle`. `'favorites'` = alleen vrienden die mij in `friend_favorites` hebben.
-- ✅ **Friend-detail vernieuwd** — RelationButton onder handle (state-label "Volgend" / "Favoriet" + chevron). Tap → custom bottom-drawer (Modal `transparent` + `animationType="fade"`) met drie rijen (`★ Favoriet` / `👤 Volgend` / hairline / `🚫 Niet meer volgen`), checkmark op actieve state, dark backdrop tap-to-close. Segmented tabs (Aankomend / Spiegel) bovenaan, zelfde animated-blob look als Sociaal. Tabs alleen tonen als beide gedeeld worden; alleen-mirror of alleen-saves toont direct die pane; geen-van-beide toont "X deelt niks."
+- ✅ **Friend-detail vernieuwd** — RelationButton onder handle (state-label "Volgend" / "Favoriet" + chevron). Tap → custom bottom-drawer (Modal `transparent` + `animationType="fade"`) met drie rijen (`★ Favoriet` / `👤 Volgend` / hairline / `🚫 Niet meer volgen`), checkmark op actieve state, dark backdrop tap-to-close. Segmented tabs (Aankomend / Profielinzicht) bovenaan, zelfde animated-blob look als Sociaal. Tabs alleen tonen als beide gedeeld worden; alleen-mirror of alleen-saves toont direct die pane; geen-van-beide toont "X deelt niks."
+- ✅ **Admin-insights dashboard** — `/admin/insights` achter admin-auth, server-rendered (Pico.css + hono/jsx), via Insights-tab in admin-nav. Zes secties:
+  - **Growth** — DAU / WAU / MAU / totaal-users stat-tiles op basis van `users.lastSeenAt` (nieuw veld, migration 0027; throttled-update 1×/u in GET /me). Uitklap-detail: dagelijkse signups + saves over 30 dagen met inline bar-visualisatie.
+  - **Discovery-channel mix** — saves per source (venue/friend/op-gevoel/avond/...) met aandeel %. Legacy saves vóór attributie = "onbekend".
+  - **Trending events · 7d** — top 25 op save-velocity, met uniek-user-count + ✓-pill als er nog upcoming occurrences zijn.
+  - **Trending venues** — volgers, +30d nieuwe volgers, totaal saves, saves/volger ratio.
+  - **Cat-trends · 6 maanden** — pivot maand × category.
+  - **Wijken-heatmap · 6 maanden** — pivot maand × wijk met halftransparante acid-tint per cel (intensiteit relatief aan max).
+  - **Editorial radar** — events met ≥5 saves in 7d waarvan savers in ≥3 verschillende vriend-clusters zitten (union-find op friendship-edges). Sorteert op clusters desc, dan saves desc. Top 20.
+- ✅ **UI-polish ronde (2026-05-16)**:
+  - `/jij` is nu een normaal pushed scherm (geen modal-presentation meer); BackButton top-left. Edit-profile is een echte `<Modal presentationStyle="pageSheet">` overlay. Onboarding-stages blijven full-page.
+  - Modal-chrome consistent: iOS toont een drag-handle bovenaan (44×5 pill), Android een 36×36 ✕-knop linksboven. Toegepast op zowel edit-profile als de invite-modal. Invite-modal titel "Uitnodigen" verwijderd uit header.
+  - `/jij` MirrorSection: top venues nu chips (i.p.v. rijen), tikbaar naar venue-detail. Genres ook tikbaar → `/agenda?q=<genre>` (agenda accepteert `?q=` URL-param als nieuwe deeplink-merge). Top venues op friend-detail Profielinzicht ook chips.
+  - Friend-detail avatar tap opent lightbox-modal (donkere backdrop, foto contain-fit, tap-anywhere-to-close).
+  - "Aankomend"-tab op friend-detail hernoemd naar **"Liked"** (NL + EN); empty-state "Nog niks geliket." / "Nothing liked yet."
+  - Invite-modal vrienden-lijst sorteert nu favorieten eerst (alfabetisch) met ⭐-icoon naast naam; daarna rest alfabetisch; pending-requests onderaan.
+  - "Spiegel"/"Mirror"-naam in UI vervangen door "Profielinzicht"/"Profile insight" (interne code-identifiers blijven `mirror*` om refactor-churn te voorkomen).
+  - Bewerk-profielknop compact (pill + ✏️ pencil-icoon), zelfde footprint als de Volgend/Favoriet-knop op vriend-profielen.
 - ⬜ **"Voor jou" op Agenda** — copy van Avond-rail of natuurlijker geïntegreerd in tijdslijn. Plan noemde "/avond of /agenda".
 - ⬜ **"Omdat je X volgt..."-venue-suggesties** — light collaborative filtering op venue-follows (welke venues hebben overlap met jouw save-patroon). Apart endpoint `/venues/for-you` of als sectie op Avond/Jij.
 - ⬜ **Push voor matches** — match-logic + scheduler. Alleen voor events die hoog scoren tegen jouw profiel, en alleen bij gevolgde venues of genres met N≥3 saves. Géén "deze week speelt er..."-broadcast. `push_tokens` tabel bestaat al.
 - ⬜ **Email digest** — wekelijks/maandelijks. Custom header-block met top-3 voorgestelde events, daarna editorial keuzes. Vereist mail-provider (Resend/Postmark) + cron.
-- ⬜ **Reactivation-flow** — `users.lastSeenAt`-veld + cron-scan na 2+ weken inactief. Stille trigger naar push of digest gebaseerd op profiel.
-- ⬜ **Dag/nacht-split op spiegel** — was open designer-keuze uit het plan; bewust geparkeerd ("geen filter op de spiegel nodig nu").
+- ⬜ **Reactivation-flow** — cron-scan op `users.lastSeenAt` na 2+ weken inactief. Stille trigger naar push of digest gebaseerd op profiel.
+- ⬜ **Dag/nacht-split op profielinzicht** — was open designer-keuze uit het plan; bewust geparkeerd ("geen filter op de spiegel nodig nu").
 - ⬜ **Wrapped-pagina** (uit plan-fase 4) — jaarlijkse terugblik in dag-mode paper-stijl, lange print-achtige scroll. Geen viral-mechanisme; rustig.
-- ⬜ **Fase 3 — Founder/team learning loop** — private `/admin/insights` dashboard met DAU/WAU/MAU, save-throughput per dag, trending events (save-velocity, dedup over friend-clusters), trending venues (groeicurve + save-conversion), genre/cat-trends per maand, newsletter-bron-attributie (events.id ↔ n8n batch-id), discovery-channel mix, wijken-heatmap, editorial radar voor newsletter-redactie (events met 5+ saves van non-bevriende users in laatste 7 dagen).
-- ⬜ **Fase 4 — Sociaal & viraal** — friend-profile spiegel-uitbreiding ("samen gered" sectie), year-in-review export, "crossings" als één bericht in social feed ("5 vrienden hebben dit gered"), publiek `/deze-week`-dashboard op andreas.amsterdam (wekelijks bevroren top-saves, SEO/GEO + pers-stakeholder).
+- ⬜ **Fase 4 — Sociaal & viraal** — friend-profile profielinzicht-uitbreiding ("samen gered" sectie), year-in-review export, "crossings" als één bericht in social feed ("5 vrienden hebben dit gered"), publiek `/deze-week`-dashboard op andreas.amsterdam (wekelijks bevroren top-saves, SEO/GEO + pers-stakeholder).
 
 ---
 
