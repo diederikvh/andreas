@@ -1,4 +1,4 @@
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation, useScrollToTop } from '@react-navigation/native';
 import { Image } from 'expo-image';
 import { router } from 'expo-router';
@@ -741,6 +741,10 @@ export default function Avond() {
             buurt — beide zijn ruimtelijke verkenning waard. */}
         <KaartBanner />
 
+        {/* Op-gevoel-CTA — speelse Tinder-stijl swipe-stack om snel
+            door komend aanbod te bladeren. Right = save, left = skip. */}
+        <OpGevoelBanner />
+
         {/* Hero — divider + "{dag} {datum}" met datum in accent. */}
         <View style={[styles.heroDivider, { backgroundColor: roles.bgChip }]} />
         <View style={styles.hero}>
@@ -1321,6 +1325,47 @@ function FeaturedCard({
   );
 }
 
+function OpGevoelBanner() {
+  const roles = useRoles();
+  const t = useT();
+  return (
+    <Pressable
+      onPress={() => router.push('/op-gevoel' as never)}
+      style={[
+        styles.kaartBanner,
+        {
+          backgroundColor: roles.bgLift,
+          borderColor: roles.bgChip,
+          // Extra adem voor de hero-divider die direct hieronder volgt.
+          marginBottom: 18,
+        },
+      ]}
+    >
+      <MaterialCommunityIcons
+        name="cards-outline"
+        size={22}
+        color={roles.accent}
+      />
+      <View style={styles.kaartBody}>
+        <Text style={[styles.kaartKicker, { color: roles.fgMuted }]}>
+          {t('Vibes', 'Vibes')}
+        </Text>
+        <Text style={[styles.kaartTitle, { color: roles.fg }]}>
+          {t(
+            'Swipe en kies wat je leuk vindt.',
+            'Swipe and pick what you like.'
+          )}
+        </Text>
+      </View>
+      <Ionicons
+        name="chevron-forward"
+        size={18}
+        color={roles.fgPlaceholder}
+      />
+    </Pressable>
+  );
+}
+
 function KaartBanner() {
   const roles = useRoles();
   const t = useT();
@@ -1335,10 +1380,10 @@ function KaartBanner() {
         },
       ]}
     >
-      <Ionicons name="map-outline" size={22} color={roles.fgMuted} />
+      <Ionicons name="map-outline" size={22} color={roles.accent} />
       <View style={styles.kaartBody}>
         <Text style={[styles.kaartKicker, { color: roles.fgMuted }]}>
-          {t('Op de kaart', 'On the map')}
+          {t('Kaart', 'Map')}
         </Text>
         <Text style={[styles.kaartTitle, { color: roles.fg }]}>
           {t(

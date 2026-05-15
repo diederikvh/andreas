@@ -75,7 +75,9 @@ import {
 } from '@/store/savedSearches';
 import { fontFamily, palette } from '@/theme/tokens';
 
+const MONTH_LABEL_HEIGHT = 14;
 const DAYSTRIP_HEIGHT = 76;
+const DAYSTRIP_INNER_HEIGHT = DAYSTRIP_HEIGHT - MONTH_LABEL_HEIGHT;
 const CHIPROW_HEIGHT = 60;
 
 const CATEGORIES: ApiEvent['category'][] = [
@@ -307,8 +309,10 @@ export default function Agenda() {
     }
   }, [days, selected]);
 
+  // -8 om de day-strip + chip-row 8px omhoog te trekken, dichter
+  // tegen de "Andreas" wordmark aan (zie marginTop op de strip-wrapper).
   const stickyOffset =
-    insets.top + HEADER_HEIGHT + DAYSTRIP_HEIGHT + CHIPROW_HEIGHT;
+    insets.top + HEADER_HEIGHT + DAYSTRIP_HEIGHT + CHIPROW_HEIGHT - 8;
 
   // Sections voor de SectionList — `data` is een gemengde lijst van
   // cat-headers + rows: binnen elke dag groeperen we events op
@@ -557,7 +561,7 @@ export default function Agenda() {
         initialNumToRender={12}
       />
       <AppHeader title={t('Agenda', 'Agenda')} showContentMode>
-        <View style={{ height: DAYSTRIP_HEIGHT }}>
+        <View style={{ height: DAYSTRIP_HEIGHT, marginTop: -8 }}>
           {days.length > 0 && selected && (
             <DayStrip
               days={days}
@@ -1324,9 +1328,16 @@ function DayStrip({
   selectedId: string;
   onSelect: (id: string) => void;
 }) {
+  const roles = useRoles();
   const scrollRef = useRef<ScrollView>(null);
   const chipLayouts = useRef<Record<string, { x: number; width: number }>>({});
   const viewport = useRef(0);
+  // Toon de maand van wat er nu in het midden van de strip te zien
+  // is. Updated via onScroll (horizontaal door de strip) en via
+  // selectedId (tap of vertical-scroll selectie).
+  const initialMonth =
+    days.find((d) => d.id === selectedId)?.month ?? days[0]?.month ?? '';
+  const [visibleMonth, setVisibleMonth] = useState(initialMonth);
 
   // Whenever the selection changes (click OR vertical scroll), bring
   // the active chip into view — centred when possible.
@@ -1338,28 +1349,62 @@ function DayStrip({
     scrollRef.current.scrollTo({ x: targetX, animated: true });
   }, [selectedId]);
 
+  // Sync visibleMonth wanneer een nieuwe day geselecteerd wordt (tap
+  // of vertical-scroll van de lijst) — anders blijft 't oude maand
+  // staan totdat de gebruiker zelf horizontaal scrollt.
+  useEffect(() => {
+    const day = days.find((d) => d.id === selectedId);
+    if (day && day.month !== visibleMonth) setVisibleMonth(day.month);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedId]);
+
+  const onHorizontalScroll = (
+    e: NativeSyntheticEvent<NativeScrollEvent>
+  ) => {
+    const scrollX = e.nativeEvent.contentOffset.x;
+    const vp = viewport.current;
+    if (vp === 0) return;
+    const center = scrollX + vp / 2;
+    for (const [id, layout] of Object.entries(chipLayouts.current)) {
+      if (layout.x <= center && center <= layout.x + layout.width) {
+        const day = days.find((d) => d.id === id);
+        if (day && day.month !== visibleMonth) {
+          setVisibleMonth(day.month);
+        }
+        return;
+      }
+    }
+  };
+
   return (
-    <ScrollView
-      ref={scrollRef}
-      horizontal
-      showsHorizontalScrollIndicator={false}
-      contentContainerStyle={styles.dayStrip}
-      onLayout={(e) => {
-        viewport.current = e.nativeEvent.layout.width;
-      }}
-    >
-      {days.map((day) => (
-        <DayChip
-          key={day.id}
-          day={day}
-          active={day.id === selectedId}
-          onPress={() => onSelect(day.id)}
-          onLayout={(x, width) => {
-            chipLayouts.current[day.id] = { x, width };
-          }}
-        />
-      ))}
-    </ScrollView>
+    <View>
+      <Text style={[styles.monthLabel, { color: roles.fg }]}>
+        {visibleMonth}
+      </Text>
+      <ScrollView
+        ref={scrollRef}
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.dayStrip}
+        onLayout={(e) => {
+          viewport.current = e.nativeEvent.layout.width;
+        }}
+        onScroll={onHorizontalScroll}
+        scrollEventThrottle={64}
+      >
+        {days.map((day) => (
+          <DayChip
+            key={day.id}
+            day={day}
+            active={day.id === selectedId}
+            onPress={() => onSelect(day.id)}
+            onLayout={(x, width) => {
+              chipLayouts.current[day.id] = { x, width };
+            }}
+          />
+        ))}
+      </ScrollView>
+    </View>
   );
 }
 
@@ -1532,19 +1577,32 @@ const styles = StyleSheet.create({
   dayStrip: {
     gap: 6,
     paddingHorizontal: 22,
-    paddingVertical: 5,
+    paddingVertical: 2,
     alignItems: 'center',
-    height: DAYSTRIP_HEIGHT,
+    height: DAYSTRIP_INNER_HEIGHT,
+  },
+  monthLabel: {
+    height: MONTH_LABEL_HEIGHT,
+    // Lijnt links uit met de "Andreas" wordmark in AppHeader
+    // (paddingHorizontal: 18) — niet met de 22px-gutter van de chips.
+    paddingHorizontal: 18,
+    // Archivo_900Black voor maximum gewicht — anchor moet duidelijk
+    // leesbaar zijn in een snel-scrollende strip.
+    fontFamily: fontFamily.display,
+    fontSize: 11,
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
+    lineHeight: MONTH_LABEL_HEIGHT,
   },
   dayChip: {
-    minWidth: 56,
-    height: 66,
+    minWidth: 54,
+    height: 54,
     paddingHorizontal: 4,
-    paddingVertical: 10,
-    borderRadius: 14,
+    paddingVertical: 6,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 4,
+    gap: 2,
   },
   dayChipDow: {
     fontFamily: fontFamily.mono,
@@ -1554,9 +1612,9 @@ const styles = StyleSheet.create({
   },
   dayChipNum: {
     fontFamily: fontFamily.display,
-    fontSize: 24,
-    letterSpacing: -0.48,
-    lineHeight: 24,
+    fontSize: 22,
+    letterSpacing: -0.44,
+    lineHeight: 22,
   },
 
   // Categorie sub-kop binnen een dag — kleinere display dan de
