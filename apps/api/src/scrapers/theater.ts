@@ -313,6 +313,15 @@ export async function scrapeTheater(options?: {
         const html = await fetchHtml(url, !!cfg.useGooglebotUA);
         if (!html) { result.skipped++; return; }
 
+        // Skip non-NL pagina's. Concertgebouw (en mogelijk andere
+        // venues) exposeert dezelfde voorstelling op zowel
+        // `/concerten/<nl-slug>` als `/concerten/<en-slug>` — beide
+        // passen het URL-pattern, dus we filteren hier op
+        // `<html lang>`. Geen lang-attribuut? Doorgaan (default).
+        const langMatch = html.match(/<html[^>]*\slang=["']([^"']+)["']/i);
+        const lang = langMatch ? langMatch[1].toLowerCase() : null;
+        if (lang && !lang.startsWith('nl')) { result.skipped++; return; }
+
         const evs = extractEvents(html);
         if (evs.length === 0) { result.skipped++; return; }
 

@@ -519,6 +519,8 @@ function Recap({
   onContinue: () => void;
 }) {
   const roles = useRoles();
+  const mode = useMode();
+  const isNacht = mode === 'nacht';
   const t = useT();
   // Groepeer de likes per kalenderdag — net als Agenda toont 'n
   // datum-header boven elke groep zodat de rotated time-cell rechts
@@ -578,14 +580,35 @@ function Recap({
           ))}
         </ScrollView>
       )}
-      <Pressable
-        onPress={onContinue}
-        style={[styles.recapBtn, { backgroundColor: roles.accent }]}
-      >
-        <Text style={[styles.recapBtnText, { color: roles.onAccent }]}>
-          {t('Verder swipen', 'Keep swiping')}
-        </Text>
-      </Pressable>
+      <View style={styles.recapBtnStack}>
+        <Pressable
+          onPress={onContinue}
+          style={[styles.recapBtn, { backgroundColor: roles.accent }]}
+        >
+          <Text style={[styles.recapBtnText, { color: roles.onAccent }]}>
+            {t('Verder swipen', 'Keep swiping')}
+          </Text>
+        </Pressable>
+        <Pressable
+          onPress={() => router.back()}
+          style={[
+            styles.recapBtn,
+            {
+              backgroundColor: isNacht ? palette.noir2 : palette.paper2,
+              borderColor: isNacht ? '#2a2a2d' : palette.paper,
+              borderWidth: 1,
+              // 1px border bovenkant + 1px onderkant = 2px extra hoogte;
+              // padding 1px omlaag om gelijk te trekken met de
+              // border-loze "Verder swipen"-button.
+              paddingVertical: 15,
+            },
+          ]}
+        >
+          <Text style={[styles.recapBtnText, { color: roles.fg }]}>
+            {t('Sluit', 'Close')}
+          </Text>
+        </Pressable>
+      </View>
     </View>
   );
 }
@@ -774,8 +797,11 @@ const styles = StyleSheet.create({
     paddingTop: 16,
     paddingBottom: 4,
   },
-  recapBtn: {
+  recapBtnStack: {
     marginTop: 'auto',
+    gap: 10,
+  },
+  recapBtn: {
     alignSelf: 'stretch',
     paddingVertical: 16,
     borderRadius: 14,

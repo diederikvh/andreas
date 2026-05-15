@@ -187,7 +187,12 @@ export default function EventDetail() {
         // Extra scroll-ruimte onderaan zodat de InviteBanner zich
         // boven het keyboard kan positioneren wanneer 'ie zelf
         // scroll-on-focus triggert.
-        contentContainerStyle={{ paddingBottom: insets.bottom + 32 + 360 }}
+        contentContainerStyle={{
+          // Extra ruimte alleen wanneer er een invite-banner is — die
+          // moet boven het keyboard kunnen scrollen. Zonder banner geen
+          // overbodige leegte onderaan.
+          paddingBottom: insets.bottom + 32 + (pendingInvite ? 360 : 0),
+        }}
       >
         {/* Transparent hero spacer with the tag + title at the bottom.
             Scrolls with content; the body covers it on scroll-up. */}
