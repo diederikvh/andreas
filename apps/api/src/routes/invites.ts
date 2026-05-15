@@ -180,10 +180,10 @@ invitesRoute.post('/', async (c) => {
     await sendPushToUsers(fresh, {
       title: 'Uitnodiging',
       body: `${display} nodigt je uit voor ${eventTitle}`,
-      // Tap opent de Social-tab (sub-tab Vrienden); de uitnodiging
-      // staat daar bovenaan en de gebruiker kan accepteren/decline'n
-      // vóór ze naar het event gaan.
-      data: { url: '/(tabs)/social' },
+      // Tap opent direct het event op de juiste occurrence. De
+      // accept/decline-banner verschijnt daar tussen meta-rij en
+      // description — beslissing met volledige event-context.
+      data: { url: `/event/${occ.eventId}?o=${occurrenceId}` },
     });
   } catch (err) {
     console.error('[invites] push failed', err);
@@ -197,6 +197,21 @@ invitesRoute.post('/:id/accept', async (c) => {
   if (typeof me !== 'string') return me;
 
   const id = c.req.param('id');
+  // Optioneel reply-bericht — one-shot reactie naar de inviter. Lege
+  // body of geen JSON is OK; we slaan dan gewoon NULL op.
+  let replyMessage: string | null = null;
+  try {
+    const body = (await c.req.json().catch(() => null)) as
+      | { replyMessage?: unknown }
+      | null;
+    if (body && typeof body.replyMessage === 'string') {
+      const trimmed = body.replyMessage.trim().slice(0, 280);
+      replyMessage = trimmed.length > 0 ? trimmed : null;
+    }
+  } catch {
+    // negeer parse-errors — reply is altijd optioneel
+  }
+
   const [row] = await db
     .select({
       id: schema.invites.id,
@@ -223,7 +238,7 @@ invitesRoute.post('/:id/accept', async (c) => {
 
   await db
     .update(schema.invites)
-    .set({ status: 'accepted' })
+    .set({ status: 'accepted', replyMessage })
     .where(eq(schema.invites.id, id));
 
   // Bij accept ook automatisch deze occurrence saven zodat 'ie in Gered
@@ -247,7 +262,8 @@ invitesRoute.post('/:id/accept', async (c) => {
       .values({ userId: me, occurrenceId: row.occurrenceId });
   }
 
-  // Push de oorspronkelijke uitnodiger ("X gaat met je mee naar [event]").
+  // Push de oorspronkelijke uitnodiger. Met reply: "{naam}: '{reply}'"
+  // — persoonlijke reactie. Zonder reply: kale "{naam} gaat met je mee".
   try {
     const [meUser] = await db
       .select({ name: schema.users.name, handle: schema.users.handle })
@@ -257,9 +273,12 @@ invitesRoute.post('/:id/accept', async (c) => {
     const display =
       meUser?.name?.trim() ||
       (meUser?.handle ? `@${meUser.handle}` : 'Iemand');
+    const body = replyMessage
+      ? `${display}: ‘${replyMessage}’`
+      : `${display} gaat met je mee naar ${row.eventTitle}`;
     await sendPushToUser(row.fromUserId, {
       title: 'Uitnodiging geaccepteerd',
-      body: `${display} gaat met je mee naar ${row.eventTitle}`,
+      body,
       data: { url: `/event/${row.eventId}?o=${row.occurrenceId}` },
     });
   } catch (err) {
@@ -278,15 +297,73 @@ invitesRoute.post('/:id/decline', async (c) => {
   if (typeof me !== 'string') return me;
 
   const id = c.req.param('id');
-  await db
-    .update(schema.invites)
-    .set({ status: 'declined' })
+  // Optioneel reply-bericht — one-shot reactie naar de inviter.
+  let replyMessage: string | null = null;
+  try {
+    const body = (await c.req.json().catch(() => null)) as
+      | { replyMessage?: unknown }
+      | null;
+    if (body && typeof body.replyMessage === 'string') {
+      const trimmed = body.replyMessage.trim().slice(0, 280);
+      replyMessage = trimmed.length > 0 ? trimmed : null;
+    }
+  } catch {
+    // negeer
+  }
+
+  const [row] = await db
+    .select({
+      id: schema.invites.id,
+      fromUserId: schema.invites.fromUserId,
+      occurrenceId: schema.invites.occurrenceId,
+      eventId: schema.occurrences.eventId,
+      eventTitle: schema.events.title,
+    })
+    .from(schema.invites)
+    .innerJoin(
+      schema.occurrences,
+      eq(schema.occurrences.id, schema.invites.occurrenceId)
+    )
+    .innerJoin(schema.events, eq(schema.events.id, schema.occurrences.eventId))
     .where(
       and(
         eq(schema.invites.id, id),
         eq(schema.invites.toUserId, me),
         eq(schema.invites.status, 'pending')
       )
-    );
+    )
+    .limit(1);
+  if (!row) return c.json({ ok: true });
+
+  await db
+    .update(schema.invites)
+    .set({ status: 'declined', replyMessage })
+    .where(eq(schema.invites.id, id));
+
+  // Push naar de inviter — alleen wanneer er een reply is. Zonder
+  // reply houden we 't stil; een kale "decline" voelt onnodig hard
+  // als notificatie. Met reply is de afwijzing een persoonlijk
+  // bericht ("sorry kan niet, ga naar X") en dat hoort wél door te
+  // komen.
+  if (replyMessage) {
+    try {
+      const [meUser] = await db
+        .select({ name: schema.users.name, handle: schema.users.handle })
+        .from(schema.users)
+        .where(eq(schema.users.id, me))
+        .limit(1);
+      const display =
+        meUser?.name?.trim() ||
+        (meUser?.handle ? `@${meUser.handle}` : 'Iemand');
+      await sendPushToUser(row.fromUserId, {
+        title: 'Reactie op uitnodiging',
+        body: `${display}: ‘${replyMessage}’`,
+        data: { url: `/event/${row.eventId}?o=${row.occurrenceId}` },
+      });
+    } catch (err) {
+      console.error('[invites] decline push failed', err);
+    }
+  }
+
   return c.json({ ok: true });
 });

@@ -359,7 +359,10 @@ export function useSendInvites() {
 export function useAcceptInvite() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => acceptInvite(id),
+    mutationFn: (input: string | { id: string; replyMessage?: string }) => {
+      if (typeof input === 'string') return acceptInvite(input);
+      return acceptInvite(input.id, input.replyMessage);
+    },
     onSettled: (data) => {
       qc.invalidateQueries({ queryKey: queryKeys.invites() });
       qc.invalidateQueries({ queryKey: queryKeys.saves() });
@@ -413,7 +416,10 @@ export function useSetVenueFollow() {
 export function useDeclineInvite() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => declineInvite(id),
+    mutationFn: (input: string | { id: string; replyMessage?: string }) => {
+      if (typeof input === 'string') return declineInvite(input);
+      return declineInvite(input.id, input.replyMessage);
+    },
     onSettled: () => {
       qc.invalidateQueries({ queryKey: queryKeys.invites() });
       // Inviter's myInvites wordt geüpdatet bij de volgende fetch van

@@ -50,9 +50,7 @@ import {
 import { useLocale, useT } from '@/lib/i18n';
 import {
   useAcceptFriendRequest,
-  useAcceptInvite,
   useDeclineFriendRequest,
-  useDeclineInvite,
   useFriendRequests,
   useFriends,
   useInvites,
@@ -102,8 +100,6 @@ export default function Social() {
 
   const acceptReq = useAcceptFriendRequest();
   const declineReq = useDeclineFriendRequest();
-  const acceptInv = useAcceptInvite();
-  const declineInv = useDeclineInvite();
 
   const [refreshing, setRefreshing] = useState(false);
   const onRefresh = useCallback(async () => {
@@ -157,10 +153,7 @@ export default function Social() {
             outgoing={outgoing}
             onAcceptReq={(id) => acceptReq.mutate(id)}
             onDeclineReq={(id) => declineReq.mutate(id)}
-            onAcceptInv={(id) => acceptInv.mutate(id)}
-            onDeclineInv={(id) => declineInv.mutate(id)}
             busyReq={acceptReq.isPending || declineReq.isPending}
-            busyInv={acceptInv.isPending || declineInv.isPending}
           />
         )}
         {sub === 'feed' && (
@@ -320,10 +313,7 @@ function FriendsPanel({
   outgoing,
   onAcceptReq,
   onDeclineReq,
-  onAcceptInv,
-  onDeclineInv,
   busyReq,
-  busyInv,
 }: {
   authed: boolean;
   requests: ApiFriendRequest[] | undefined;
@@ -332,10 +322,7 @@ function FriendsPanel({
   outgoing: ApiFriendRequest[] | undefined;
   onAcceptReq: (id: string) => void;
   onDeclineReq: (id: string) => void;
-  onAcceptInv: (id: string) => void;
-  onDeclineInv: (id: string) => void;
   busyReq: boolean;
-  busyInv: boolean;
 }) {
   const roles = useRoles();
   const t = useT();
@@ -396,13 +383,7 @@ function FriendsPanel({
             count={invites.length}
           />
           {invites.map((inv) => (
-            <InviteRow
-              key={inv.id}
-              invite={inv}
-              onAccept={() => onAcceptInv(inv.id)}
-              onDecline={() => onDeclineInv(inv.id)}
-              busy={busyInv}
-            />
+            <InviteRow key={inv.id} invite={inv} />
           ))}
         </>
       )}
@@ -648,17 +629,7 @@ function RequestRow({
   );
 }
 
-function InviteRow({
-  invite,
-  onAccept,
-  onDecline,
-  busy,
-}: {
-  invite: ApiInvite;
-  onAccept: () => void;
-  onDecline: () => void;
-  busy: boolean;
-}) {
+function InviteRow({ invite }: { invite: ApiInvite }) {
   const roles = useRoles();
   const t = useT();
   const locale = useLocale();
@@ -695,35 +666,6 @@ function InviteRow({
         >
           {dateLabel} · {invite.event.venueName}
         </Text>
-        {invite.message && (
-          <Text
-            numberOfLines={2}
-            style={[styles.inviteMessage, { color: roles.fgMuted }]}
-          >
-            “{invite.message}”
-          </Text>
-        )}
-      </View>
-      <View style={styles.twin}>
-        <Pressable
-          onPress={onDecline}
-          disabled={busy}
-          hitSlop={6}
-          style={[styles.twinBtn, { borderColor: roles.fgPlaceholder }]}
-        >
-          <Cross size={16} thickness={3.2} color={roles.fgMuted} />
-        </Pressable>
-        <Pressable
-          onPress={onAccept}
-          disabled={busy}
-          hitSlop={6}
-          style={[
-            styles.twinBtn,
-            { backgroundColor: roles.accent, borderColor: roles.accent },
-          ]}
-        >
-          <Ionicons name="checkmark" size={18} color={roles.onAccent} />
-        </Pressable>
       </View>
     </Pressable>
   );
@@ -1154,13 +1096,6 @@ const styles = StyleSheet.create({
     lineHeight: 19,
   },
   inviteEm: { fontFamily: fontFamily.bold },
-  inviteMessage: {
-    fontFamily: fontFamily.body,
-    fontSize: 13,
-    lineHeight: 18,
-    marginTop: 6,
-    fontStyle: 'italic',
-  },
 
   twin: { flexDirection: 'row', gap: 8 },
   twinBtn: {

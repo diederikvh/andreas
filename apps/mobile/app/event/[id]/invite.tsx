@@ -2,9 +2,9 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { Image } from 'expo-image';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
-  KeyboardAvoidingView,
+  Keyboard,
   Platform,
   Pressable,
   ScrollView,
@@ -47,6 +47,25 @@ export default function InviteModal() {
   const mode = useMode();
   const roles = useRoles();
   const insets = useSafeAreaInsets();
+  // Track exact keyboard-height en gebruik 'm om de dock op `bottom:
+  // keyboardHeight` te pinnen. KAV en automaticallyAdjustKeyboardInsets
+  // bleken in praktijk te onbetrouwbaar binnen een modal-context op
+  // iOS — handmatige tracking levert pixel-perfect positionering.
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const subShow = Keyboard.addListener(showEvent, (e) => {
+      setKeyboardHeight(e.endCoordinates?.height ?? 0);
+    });
+    const subHide = Keyboard.addListener(hideEvent, () => setKeyboardHeight(0));
+    return () => {
+      subShow.remove();
+      subHide.remove();
+    };
+  }, []);
+  const keyboardOpen = keyboardHeight > 0;
+  const dockBottomPadding = keyboardOpen ? 12 : Math.max(insets.bottom, 12);
   const isNacht = mode === 'nacht';
   const t = useT();
   const locale = useLocale();
@@ -159,10 +178,7 @@ export default function InviteModal() {
   };
 
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      style={[styles.root, { backgroundColor: roles.bg }]}
-    >
+    <View style={[styles.root, { backgroundColor: roles.bg }]}>
       <View
         style={[
           styles.topBar,
@@ -191,13 +207,10 @@ export default function InviteModal() {
       <ScrollView
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
-        // Scroll de focused input automatisch boven het keyboard +
-        // dock — anders verdwijnt 'ie achter de absolute dock-balk.
-        automaticallyAdjustKeyboardInsets
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{
           paddingBottom: hasSelectable
-            ? insets.bottom + 260
+            ? insets.bottom + 260 + keyboardHeight
             : insets.bottom + 24,
         }}
       >
@@ -296,7 +309,8 @@ export default function InviteModal() {
         style={[
           styles.dock,
           {
-            paddingBottom: Math.max(insets.bottom, 12),
+            bottom: keyboardHeight,
+            paddingBottom: dockBottomPadding,
             backgroundColor: roles.bg,
             borderTopColor: roles.bgChip,
           },
@@ -356,7 +370,7 @@ export default function InviteModal() {
         </Pressable>
       </View>
       )}
-    </KeyboardAvoidingView>
+    </View>
   );
 }
 
@@ -649,7 +663,6 @@ const styles = StyleSheet.create({
 
   dock: {
     position: 'absolute',
-    bottom: 0,
     left: 0,
     right: 0,
     paddingHorizontal: 22,

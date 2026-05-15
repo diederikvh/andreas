@@ -342,6 +342,36 @@ eventsRoute.get('/:id', async (c) => {
           .orderBy(asc(schema.invites.createdAt))
       : [];
 
+  // Inkomende uitnodigingen die ik geaccepteerd heb — voor de
+  // "connection"-markering op de event-detail crew-lijst. Toont aan
+  // welke vrienden mij hebben uitgenodigd voor occurrences van dit
+  // event waar ik op 'accepteren' heb getikt; dat is een verbinding
+  // naast de spontane heart.
+  const incomingAcceptedInvites =
+    me && occurrenceIdsAll.length > 0
+      ? await db
+          .select({
+            id: schema.invites.id,
+            occurrenceId: schema.invites.occurrenceId,
+            fromUserId: schema.users.id,
+            fromName: schema.users.name,
+            fromHandle: schema.users.handle,
+            fromAvatarUrl: schema.users.avatarUrl,
+          })
+          .from(schema.invites)
+          .innerJoin(
+            schema.users,
+            eq(schema.users.id, schema.invites.fromUserId)
+          )
+          .where(
+            and(
+              eq(schema.invites.toUserId, me),
+              eq(schema.invites.status, 'accepted'),
+              inArray(schema.invites.occurrenceId, occurrenceIdsAll)
+            )
+          )
+      : [];
+
   const isExhibition = row.kind === 'exhibition';
   // Per occurrence z'n eigen friendsSaved injecteren zodat de mobile-UI
   // bij een `?o=` switch direct de juiste pill toont zonder extra fetch.
@@ -392,6 +422,16 @@ eventsRoute.get('/:id', async (c) => {
           name: i.toName,
           handle: i.toHandle,
           avatarUrl: i.toAvatarUrl,
+        },
+      })),
+      incomingAcceptedInvites: incomingAcceptedInvites.map((i) => ({
+        id: i.id,
+        occurrenceId: i.occurrenceId,
+        from: {
+          id: i.fromUserId,
+          name: i.fromName,
+          handle: i.fromHandle,
+          avatarUrl: i.fromAvatarUrl,
         },
       })),
     },

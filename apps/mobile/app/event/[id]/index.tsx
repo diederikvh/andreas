@@ -6,8 +6,19 @@ import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, useLocalSearchParams } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
-import { useMemo } from 'react';
-import { Linking, Platform, Pressable, Share, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  Keyboard,
+  Linking,
+  Platform,
+  Pressable,
+  Share,
+  StyleSheet,
+  Text,
+  TextInput,
+  useWindowDimensions,
+  View,
+} from 'react-native';
 import Animated, {
   Extrapolation,
   interpolate,
@@ -20,6 +31,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { ProfileAvatar } from '@/components/ProfileAvatar';
 import { SpinningCross } from '@/components/SpinningCross';
 import type { ApiEvent, ApiLineupEntry, ApiOccurrence } from '@/lib/api';
 import { useSession } from '@/lib/authClient';
@@ -38,7 +50,15 @@ import {
 } from '@/lib/eventDisplay';
 import { useLocale, useT, type Locale } from '@/lib/i18n';
 import { safeBack } from '@/lib/navigation';
-import { useEvent, useMySaves, useToggleSave } from '@/lib/queries';
+import {
+  useAcceptInvite,
+  useDeclineInvite,
+  useEvent,
+  useInvites,
+  useMySaves,
+  useToggleSave,
+} from '@/lib/queries';
+import type { ApiInvite } from '@/lib/api';
 import { useMode, useRoles } from '@/store/mode';
 import { fontFamily, palette } from '@/theme/tokens';
 
@@ -84,12 +104,24 @@ export default function EventDetail() {
   });
 
   const { data: event, isLoading, error } = useEvent(id);
+  const { data: invites } = useInvites();
 
   const selectedOccurrenceId =
     targetOccurrenceId &&
     event?.occurrences?.find((o) => o.id === targetOccurrenceId)
       ? targetOccurrenceId
       : event?.occurrences?.[0]?.id ?? null;
+
+  // Vind een openstaande invite die exact bij dit event + de huidige
+  // occurrence hoort. Een event kan meerdere occurrences hebben en de
+  // invite is altijd voor één specifieke voorstelling — dus matchen
+  // alleen op event.id is niet genoeg (zou banner laten verschijnen op
+  // andere data dan waarvoor je uitgenodigd was).
+  const pendingInvite =
+    invites?.find(
+      (inv) =>
+        inv.event.id === id && inv.occurrence.id === selectedOccurrenceId
+    ) ?? null;
   // Pulse-animatie op de Datum-cell is uitgeschakeld — Reanimated
   // worklets met transform: scale waren de waarschijnlijke trigger
   // van een setViewToSnapshot-crash in react-native-screens 4.x bij
@@ -150,7 +182,12 @@ export default function EventDetail() {
       <Animated.ScrollView
         ref={scrollRef}
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: insets.bottom + 32 }}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+        // Extra scroll-ruimte onderaan zodat de InviteBanner zich
+        // boven het keyboard kan positioneren wanneer 'ie zelf
+        // scroll-on-focus triggert.
+        contentContainerStyle={{ paddingBottom: insets.bottom + 32 + 360 }}
       >
         {/* Transparent hero spacer with the tag + title at the bottom.
             Scrolls with content; the body covers it on scroll-up. */}
@@ -275,6 +312,14 @@ export default function EventDetail() {
               />
             </View>
           </View>
+
+          {pendingInvite && (
+            <InviteBanner
+              invite={pendingInvite}
+              scrollRef={scrollRef}
+              scrollY={scrollY}
+            />
+          )}
 
           {view.description && (
             <Text style={[styles.bodyText, { color: roles.fgRead }]}>
@@ -405,6 +450,162 @@ type CrewRow = {
  * invite-CTA onderin met rounded bottom, hairline-scheiding ertussen,
  * dezelfde border-kleur over de hele rand.
  */
+/**
+ * Banner op de event-detail wanneer er een openstaande invite is voor
+ * dít event én déze occurrence. Toont wie 'm gestuurd heeft + eventueel
+ * bericht, plus Accept/Decline-knoppen. Na actie verdwijnt 'ie (de
+ * accept-mutation updatet useInvites, waardoor de match wegvalt).
+ */
+function InviteBanner({
+  invite,
+  scrollRef,
+  scrollY,
+}: {
+  invite: ApiInvite;
+  scrollRef: ReturnType<typeof useAnimatedRef<Animated.ScrollView>>;
+  scrollY: ReturnType<typeof useScrollViewOffset>;
+}) {
+  const mode = useMode();
+  const roles = useRoles();
+  const isNacht = mode === 'nacht';
+  const t = useT();
+  const accept = useAcceptInvite();
+  const decline = useDeclineInvite();
+  const busy = accept.isPending || decline.isPending;
+  const [reply, setReply] = useState('');
+  const bannerRef = useRef<View>(null);
+  const { height: windowHeight } = useWindowDimensions();
+
+  // Wanneer het keyboard opent (door tap op het reply-veld), scroll
+  // de banner zo dat z'n onderkant — én dus de Accept/Decline-knoppen
+  // — boven het keyboard staat. Geen `automaticallyAdjustKeyboardInsets`
+  // gebruiken: die scrollt alleen genoeg voor het input-veld, niet
+  // voor de knoppen eronder.
+  useEffect(() => {
+    const showEvent =
+      Platform.OS === 'ios' ? 'keyboardDidShow' : 'keyboardDidShow';
+    const sub = Keyboard.addListener(showEvent, (e) => {
+      const kbHeight = e.endCoordinates?.height ?? 0;
+      if (kbHeight <= 0) return;
+      bannerRef.current?.measureInWindow((_x, y, _w, height) => {
+        const bannerBottom = y + height;
+        const desiredBottom = windowHeight - kbHeight - 20;
+        const overflow = bannerBottom - desiredBottom;
+        if (overflow > 0 && scrollRef.current) {
+          scrollRef.current.scrollTo({
+            y: scrollY.value + overflow,
+            animated: true,
+          });
+        }
+      });
+    });
+    return () => sub.remove();
+  }, [windowHeight, scrollRef, scrollY]);
+  const fromName =
+    invite.from.name?.trim() ||
+    (invite.from.handle ? `@${invite.from.handle}` : t('Iemand', 'Someone'));
+
+  const onAccept = () => {
+    if (busy) return;
+    accept.mutate({ id: invite.id, replyMessage: reply.trim() || undefined });
+  };
+  const onDecline = () => {
+    if (busy) return;
+    decline.mutate({ id: invite.id, replyMessage: reply.trim() || undefined });
+  };
+
+  return (
+    <View
+      ref={bannerRef}
+      style={[
+        styles.inviteBanner,
+        {
+          backgroundColor: isNacht ? palette.noir2 : palette.paper2,
+          borderColor: isNacht ? '#2a2a2d' : palette.paper,
+        },
+      ]}
+    >
+      <View style={styles.inviteHead}>
+        <ProfileAvatar
+          avatarUrl={invite.from.avatarUrl ?? null}
+          name={fromName}
+          size={36}
+        />
+        <View style={styles.inviteHeadText}>
+          <Text style={[styles.inviteKicker, { color: roles.fgMuted }]}>
+            {t('UITGENODIGD DOOR', 'INVITED BY')}
+          </Text>
+          <Text style={[styles.inviteName, { color: roles.fg }]}>
+            {fromName}
+          </Text>
+        </View>
+      </View>
+      {invite.message && invite.message.length > 0 && (
+        <Text style={[styles.inviteMessage, { color: roles.fgRead }]}>
+          “{invite.message}”
+        </Text>
+      )}
+      <View
+        style={[
+          styles.inviteReplyField,
+          {
+            backgroundColor: isNacht ? palette.noir : palette.paper3,
+            borderColor: isNacht ? '#2a2a2d' : palette.paper,
+          },
+        ]}
+      >
+        <TextInput
+          value={reply}
+          onChangeText={setReply}
+          placeholder={t(
+            'kort antwoord (optioneel)',
+            'short reply (optional)'
+          )}
+          placeholderTextColor={roles.fgPlaceholder}
+          multiline
+          maxLength={280}
+          editable={!busy}
+          style={[styles.inviteReplyInput, { color: roles.fg }]}
+        />
+      </View>
+      <View style={styles.inviteActions}>
+        <Pressable
+          onPress={onAccept}
+          disabled={busy}
+          style={[
+            styles.inviteBtn,
+            {
+              backgroundColor: roles.accent,
+              opacity: busy ? 0.5 : 1,
+            },
+          ]}
+        >
+          <Text style={[styles.inviteBtnText, { color: roles.onAccent }]}>
+            {accept.isPending
+              ? t('Bezig…', 'Working…')
+              : t('Accepteren', 'Accept')}
+          </Text>
+        </Pressable>
+        <Pressable
+          onPress={onDecline}
+          disabled={busy}
+          style={[
+            styles.inviteBtn,
+            {
+              backgroundColor: isNacht ? palette.noir3 : palette.paper,
+              opacity: busy ? 0.5 : 1,
+            },
+          ]}
+        >
+          <Text style={[styles.inviteBtnText, { color: roles.fg }]}>
+            {t('Afwijzen', 'Decline')}
+          </Text>
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
 function CrewAndInvite({
   event,
   selectedOccurrence,
@@ -430,17 +631,43 @@ function CrewAndInvite({
           (inv) => inv.occurrenceId === selectedOccurrence.id
         )
       : (event.myInvites ?? []);
+    const incomingAccepted = selectedOccurrence
+      ? (event.incomingAcceptedInvites ?? []).filter(
+          (inv) => inv.occurrenceId === selectedOccurrence.id
+        )
+      : (event.incomingAcceptedInvites ?? []);
     const map = new Map<string, CrewRow>();
     for (const f of occFriends) {
       map.set(f.id, { user: f, saved: true });
     }
+    // Mijn-uitgaande invites: voegt status toe (pending/accepted/declined).
     for (const inv of myOccInvites) {
       const existing = map.get(inv.to.id);
       if (existing) existing.inviteStatus = inv.status;
       else map.set(inv.to.id, { user: inv.to, saved: false, inviteStatus: inv.status });
     }
-    const order = (r: CrewRow) =>
-      r.saved ? 0 : r.inviteStatus === 'pending' ? 1 : 2;
+    // Vrienden die mij hebben uitgenodigd én wiens invite ik heb
+    // geaccepteerd: zelfde "Gaat mee"-status — connection-flag i.p.v.
+    // hearted-only.
+    for (const inv of incomingAccepted) {
+      const existing = map.get(inv.from.id);
+      if (existing) existing.inviteStatus = 'accepted';
+      else
+        map.set(inv.from.id, {
+          user: inv.from,
+          saved: true,
+          inviteStatus: 'accepted',
+        });
+    }
+    // Sort: 'connected' (accepted invite in welke richting dan ook)
+    // bovenaan, daarna hearted-only, daarna pending invites van mij,
+    // tot slot declined. Alfabetisch binnen elke groep.
+    const order = (r: CrewRow): number => {
+      if (r.inviteStatus === 'accepted') return 0;
+      if (!r.inviteStatus && r.saved) return 1;
+      if (r.inviteStatus === 'pending') return 2;
+      return 3;
+    };
     return Array.from(map.values()).sort(
       (a, b) => order(a) - order(b) || a.user.name.localeCompare(b.user.name)
     );
@@ -448,6 +675,7 @@ function CrewAndInvite({
     selectedOccurrence,
     event.friendsSaved,
     event.myInvites,
+    event.incomingAcceptedInvites,
   ]);
 
   const hasCrew = rows.length > 0;
@@ -552,10 +780,10 @@ function CrewRowItem({ row, first }: { row: CrewRow; first: boolean }) {
 function CrewStatusBadge({ row }: { row: CrewRow }) {
   const roles = useRoles();
   const t = useT();
-  // "Gaat mee" alleen tonen als ik 'm heb uitgenodigd én ze hebben
-  // geaccepteerd — dan is het mijn beslissing die zichtbaar wordt.
-  // Spontaan-saved vrienden krijgen geen badge: hun aanwezigheid in
-  // de lijst zegt al genoeg.
+  // "Gaat mee" voor connection-rows: ik heb 'm uitgenodigd én ze
+  // hebben geaccepteerd, OF zij hebben mij uitgenodigd én ik heb
+  // geaccepteerd. Beide zijn een echte verbinding via invite — de
+  // pill markeert ze t.o.v. spontaan-gehearte vrienden (geen badge).
   if (row.saved && row.inviteStatus !== 'accepted') return null;
   const label =
     row.inviteStatus === 'accepted'
@@ -1199,6 +1427,69 @@ const styles = StyleSheet.create({
     fontSize: 14.5,
     lineHeight: 20.8,
     marginBottom: 12,
+  },
+
+  // Invite-banner — verschijnt tussen meta-rij en description wanneer
+  // er een openstaande uitnodiging is voor dit event + occurrence.
+  inviteBanner: {
+    borderRadius: 14,
+    borderWidth: 1,
+    padding: 14,
+    gap: 12,
+    marginBottom: 14,
+  },
+  inviteHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  inviteHeadText: { flex: 1, minWidth: 0, gap: 2 },
+  inviteKicker: {
+    fontFamily: fontFamily.mono,
+    fontSize: 10,
+    letterSpacing: 1.2,
+  },
+  inviteName: {
+    fontFamily: fontFamily.bold,
+    fontSize: 15,
+    letterSpacing: -0.23,
+  },
+  inviteMessage: {
+    fontFamily: fontFamily.body,
+    fontSize: 14,
+    lineHeight: 20,
+    fontStyle: 'italic',
+  },
+  inviteReplyField: {
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    minHeight: 60,
+  },
+  inviteReplyInput: {
+    fontFamily: fontFamily.body,
+    fontSize: 14,
+    lineHeight: 20,
+    padding: 0,
+    minHeight: 40,
+    textAlignVertical: 'top',
+  },
+  inviteActions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  inviteBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  inviteBtnText: {
+    fontFamily: fontFamily.medium,
+    fontSize: 14,
+    letterSpacing: -0.07,
   },
 
   genreRow: {

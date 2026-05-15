@@ -422,6 +422,11 @@ export const invites = pgTable(
       .notNull()
       .references(() => occurrences.id, { onDelete: 'cascade' }),
     message: text(),
+    /** Optioneel reply-bericht dat de invitee meestuurt bij accept of
+        decline. One-shot — geen thread of follow-up. Wordt in de
+        push naar de inviter meegeleverd zodat ze een persoonlijke
+        reactie terug zien ("Yes, ben er!" / "Sorry, kan niet"). */
+    replyMessage: text(),
     status: inviteStatus().notNull().default('pending'),
     createdAt: timestamp({ withTimezone: true })
       .notNull()

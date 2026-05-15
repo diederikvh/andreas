@@ -103,6 +103,9 @@ export type ApiEvent = {
   friendsSavedCount?: number;
   /** Door mij verstuurde invites voor dit event (alleen op detail). */
   myInvites?: ApiEventInviteRecord[];
+  /** Uitnodigingen aan mij verstuurd die ik geaccepteerd heb — voor de
+      "connection"-markering in de crew-lijst op event-detail. */
+  incomingAcceptedInvites?: ApiIncomingAcceptedInvite[];
   /** Volg ik de venue van dit event? Mobile groepeert hierop. */
   venueFollowed?: boolean;
   /** Series waar dit event onderdeel van is (bv. ADE, Lenteballet). */
@@ -138,6 +141,15 @@ export type ApiEventInviteRecord = {
   /** Welke specifieke occurrence heb ik deze invitee voor uitgenodigd. */
   occurrenceId: string;
   occurrenceStartsAt: string;
+};
+
+/** Inkomende invite die ik geaccepteerd heb — voor de "Gaat mee"-pill
+ *  op vrienden die mij hebben uitgenodigd én wiens uitnodiging ik
+ *  geaccepteerd heb. */
+export type ApiIncomingAcceptedInvite = {
+  id: string;
+  occurrenceId: string;
+  from: ApiPublicUser;
 };
 
 export type EventsFilter = {
@@ -660,18 +672,28 @@ export async function sendInvites(input: {
 }
 
 export async function acceptInvite(
-  id: string
+  id: string,
+  replyMessage?: string
 ): Promise<{ status: 'accepted'; eventId: string; occurrenceId: string }> {
   return await authedRequest<{
     status: 'accepted';
     eventId: string;
     occurrenceId: string;
-  }>(`/invites/${id}/accept`, { method: 'POST' });
+  }>(`/invites/${id}/accept`, {
+    method: 'POST',
+    body: JSON.stringify({ replyMessage: replyMessage ?? null }),
+    headers: { 'content-type': 'application/json' },
+  });
 }
 
-export async function declineInvite(id: string): Promise<{ ok: true }> {
+export async function declineInvite(
+  id: string,
+  replyMessage?: string
+): Promise<{ ok: true }> {
   return await authedRequest<{ ok: true }>(`/invites/${id}/decline`, {
     method: 'POST',
+    body: JSON.stringify({ replyMessage: replyMessage ?? null }),
+    headers: { 'content-type': 'application/json' },
   });
 }
 
