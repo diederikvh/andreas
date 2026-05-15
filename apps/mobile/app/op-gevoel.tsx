@@ -353,17 +353,19 @@ const SwipeCard = forwardRef<
 
   // Programmatische fly-out — dezelfde animatie als een swipe over de
   // threshold. Wordt aangeroepen door de legenda-knoppen (skip / like).
+  // Iets langzamer dan de gesture-variant (360 vs 220ms) zodat een tap
+  // niet als een harde "klik" voelt maar als een rustige weg-glide.
   const flyOut = (dir: 'left' | 'right') => {
     if (isFlyingRef.current) return;
     isFlyingRef.current = true;
     translateX.value = withTiming(
       dir === 'right' ? windowWidth * 1.5 : -windowWidth * 1.5,
-      { duration: 220 },
+      { duration: 360 },
       () => {
         if (onCommit) runOnJS(onCommit)(dir, item);
       }
     );
-    translateY.value = withTiming(0, { duration: 220 });
+    translateY.value = withTiming(0, { duration: 360 });
   };
 
   useImperativeHandle(ref, () => ({
