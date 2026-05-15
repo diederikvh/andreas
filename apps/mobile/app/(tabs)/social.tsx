@@ -60,7 +60,7 @@ import {
   useSocialFeed,
 } from '@/lib/queries';
 import { useMode, useRoles } from '@/store/mode';
-import { fontFamily, palette } from '@/theme/tokens';
+import { fontFamily } from '@/theme/tokens';
 
 const SUB_TAB_HEIGHT = 60;
 
@@ -217,12 +217,9 @@ function SubTabs({
       <View
         style={[
           styles.switchTrack,
-          {
-            // Zelfde border-tint als de Filter-knop op Agenda zodat
-            // de twee pills visueel familie zijn — iets lichter dan
-            // roles.bgChip.
-            borderColor: mode === 'nacht' ? '#2a2a2d' : palette.paper,
-          },
+          // Subtiele tint die matcht met de Filter-chips elders — was
+          // hier eerder iets sterker, voelde donkerder dan de rest.
+          { borderColor: roles.bgChip },
         ]}
         onLayout={(e) => setTrackW(e.nativeEvent.layout.width)}
       >
@@ -960,6 +957,9 @@ const styles = StyleSheet.create({
   switchBtnText: {
     fontFamily: fontFamily.medium,
     fontSize: 14,
+    // Vaste lineHeight (= badge-hoogte) zorgt dat de pill-hoogte
+    // niet verspringt wanneer de badge er wel/niet bij staat.
+    lineHeight: 20,
     letterSpacing: -0.06,
   },
   switchBadge: {
