@@ -48,8 +48,16 @@ function stripHtml(s: string | null | undefined): string {
   if (!s) return '';
   return s
     .replace(/<[^>]+>/g, '')
+    // Numerieke entities (decimal én hex) — bv. &#8211; = en-dash,
+    // &#8217; = right-single-quote, &#x27; = apostrofe. WordPress
+    // koppelt deze er rijkelijk in.
+    .replace(/&#(\d+);/g, (_, c) => String.fromCodePoint(parseInt(c, 10)))
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, c) =>
+      String.fromCodePoint(parseInt(c, 16))
+    )
     .replace(/&amp;/g, '&')
-    .replace(/&#039;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
     .replace(/&quot;/g, '"')
     .replace(/&nbsp;/g, ' ')
     .replace(/\s+/g, ' ')

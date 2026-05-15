@@ -332,7 +332,7 @@ export async function scrapeTheater(options?: {
         // alias is voor `loes-luca-the-ramblers`), gebruiken we die
         // voor de slug zodat alle alias-pages naar één event mergen.
         const head = evs[0];
-        const title = head.name?.trim();
+        const title = head.name ? decodeEntities(head.name).trim() : '';
         if (!title) { result.skipped++; return; }
         const canonicalUrl =
           typeof head.url === 'string' && head.url.length > 0 ? head.url : url;

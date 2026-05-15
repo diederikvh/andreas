@@ -56,6 +56,9 @@ async function discoverEventUrls(): Promise<string[]> {
 function decodeEntities(s: string): string {
   return s
     .replace(/&#(\d+);/g, (_, c) => String.fromCodePoint(parseInt(c, 10)))
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, c) =>
+      String.fromCodePoint(parseInt(c, 16))
+    )
     .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
     .replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&nbsp;/g, ' ');
 }
@@ -195,9 +198,10 @@ export async function scrapeConcertgemaal(options?: {
       }
 
       // Nieuw event — Claude enrich + image-mirror.
+      const title = decodeEntities(ev.name);
       const description = ev.description ? decodeEntities(ev.description) : null;
       const enriched = await enrichEvent({
-        title: ev.name,
+        title,
         description,
         venueName: venue.name,
         venueCategory,
@@ -215,7 +219,7 @@ export async function scrapeConcertgemaal(options?: {
         await tx.insert(schema.events).values({
           id: eventId,
           venueId: venue.id,
-          title: ev.name,
+          title,
           description: enriched.cleanedDescription ?? description,
           kind: refinedKind,
           imageUrl,

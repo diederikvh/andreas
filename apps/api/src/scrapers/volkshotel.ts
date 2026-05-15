@@ -123,8 +123,15 @@ function buildEndDate(start: Date, timeText: string | null): Date {
 function stripHtml(s: string): string {
   return s
     .replace(/<[^>]+>/g, '')
+    // Numerieke entities (decimal én hex) — Volkshotel's CMS spuugt
+    // &#038; (= &) en consorten uit op title-niveau.
+    .replace(/&#(\d+);/g, (_, c) => String.fromCodePoint(parseInt(c, 10)))
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, c) =>
+      String.fromCodePoint(parseInt(c, 16))
+    )
     .replace(/&amp;/g, '&')
-    .replace(/&#039;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
     .replace(/&quot;/g, '"')
     .replace(/&nbsp;/g, ' ')
     .replace(/\s+/g, ' ')
