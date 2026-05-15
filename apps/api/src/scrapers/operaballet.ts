@@ -260,9 +260,16 @@ export async function scrapeOperaballet(options?: {
       for (const a of activities?.results ?? []) {
         const dt = parseDutchDate(a.date, a.time, meta.startDate ?? meta.endDate);
         if (!dt) continue;
+        // Operaballet's API geeft soms `link: ""` voor events die nog
+        // niet in verkoop zijn, regio-tours, of voorverkoop. Trim eerst
+        // en val terug op de detail-pagina op operaballet.nl zodat de
+        // gebruiker tenminste naar de juiste info wordt gestuurd i.p.v.
+        // een lege ticket-knop.
+        const rawLink = (a.link ?? '').trim();
+        const ticketUrl = rawLink.length > 0 ? rawLink : meta.url;
         slots.push({
           startsAt: dt,
-          ticketUrl: a.link ?? null,
+          ticketUrl,
           status: a.status === 'sold-out' ? 'sold_out' : 'scheduled',
         });
       }
