@@ -1,6 +1,6 @@
 import * as Updates from 'expo-updates';
-import { useEffect, useState } from 'react';
-import { Pressable, StyleSheet, Text } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { AppState, Pressable, StyleSheet, Text } from 'react-native';
 import Animated, {
   Easing,
   useAnimatedStyle,
@@ -26,6 +26,30 @@ export function UpdateBanner() {
   const t = useT();
   const { isUpdatePending } = Updates.useUpdates();
   const [restarting, setRestarting] = useState(false);
+  const lastCheck = useRef(0);
+
+  // Standaard checkt expo-updates alleen bij cold-start. Voor gebruikers
+  // die de app altijd in background hebben staan zou dat betekenen dat
+  // ze de update nooit zien. Daarom bij elke foreground-resume opnieuw
+  // checken (geknepen op 60s om server-spam te voorkomen).
+  useEffect(() => {
+    if (!Updates.isEnabled) return;
+    const sub = AppState.addEventListener('change', async (state) => {
+      if (state !== 'active') return;
+      const now = Date.now();
+      if (now - lastCheck.current < 60_000) return;
+      lastCheck.current = now;
+      try {
+        const result = await Updates.checkForUpdateAsync();
+        if (result.isAvailable) {
+          await Updates.fetchUpdateAsync();
+        }
+      } catch {
+        // Netwerk-fail, time-out, etc. — volgende resume probeert opnieuw.
+      }
+    });
+    return () => sub.remove();
+  }, []);
 
   const visible = Updates.isEnabled && isUpdatePending && !restarting;
 
