@@ -3417,6 +3417,15 @@ adminUi.get('/social/:id', async (c) => {
         </article>
       )}
 
+      {post.status === 'approved' && (
+        <p
+          style="background:#1d4d2c;color:#b6f3c8;padding:0.6rem 0.9rem;border-radius:6px;font-size:13px;"
+        >
+          Publiceert automatisch op {fmtDate(post.scheduledFor)} via de
+          publish-cron. "Nu publiceren" forceert direct.
+        </p>
+      )}
+
       <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-bottom:1.5rem;">
         {post.status === 'draft' && (
           <>
@@ -3440,9 +3449,9 @@ adminUi.get('/social/:id', async (c) => {
             method="post"
             action={`/admin/social/${post.id}/publish`}
             style="margin:0;"
-            onsubmit="return confirm('Nu publiceren naar Instagram?');"
+            onsubmit="return confirm('Direct publiceren (in plaats van wachten op de geplande tijd)?');"
           >
-            <button type="submit">Publiceer naar Instagram</button>
+            <button type="submit" class="outline">Nu publiceren</button>
           </form>
         )}
         {post.status === 'posted' && post.meta?.permalink && (

@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { and, desc, eq, gte, isNotNull, lt, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, isNotNull, lt, lte, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 
 import { db, schema } from '../../db/index.js';
@@ -800,6 +800,54 @@ adminSocial.post('/posts/:id/publish', async (c) => {
   } catch (e) {
     return c.json({ error: (e as Error).message }, 500);
   }
+});
+
+/**
+ * Publiceer alle approved posts waarvan de geplande tijd verstreken
+ * is. Gebruikt door de scheduler-cron (elke 15 min) zodat Diederik
+ * 's ochtends in 1x kan approven en de posts vanzelf op de juiste
+ * tijd verschijnen.
+ *
+ * Sequentieel om Meta-rate-limits te respecteren en om bij 1 fout
+ * niet de andere kapot te maken (foutmelding per post terug).
+ */
+adminSocial.post('/publish-due', async (c) => {
+  const now = new Date();
+  const due = (await db
+    .select()
+    .from(schema.socialPosts)
+    .where(
+      and(
+        eq(schema.socialPosts.status, 'approved'),
+        lte(schema.socialPosts.scheduledFor, now),
+      ),
+    )
+    .orderBy(asc(schema.socialPosts.scheduledFor))) as Array<{
+    id: string;
+    scheduledFor: Date;
+  }>;
+
+  const results: Array<{
+    id: string;
+    ok: boolean;
+    igMediaId?: string;
+    error?: string;
+  }> = [];
+  for (const post of due) {
+    try {
+      const { igMediaId } = await runPublish(post.id);
+      results.push({ id: post.id, ok: true, igMediaId });
+    } catch (e) {
+      results.push({ id: post.id, ok: false, error: (e as Error).message });
+    }
+  }
+  return c.json({
+    now: now.toISOString(),
+    count: due.length,
+    published: results.filter((r) => r.ok).length,
+    failed: results.filter((r) => !r.ok).length,
+    results,
+  });
 });
 
 /** Regenerate — vervangt slides + caption + scheduled_for op bestaande

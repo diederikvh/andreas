@@ -1,0 +1,29 @@
+name: Publish scheduled IG-posts
+
+# Elke 15 min op de live API kijken of er approved posts zijn waarvan
+# de scheduled_for-tijd verstreken is. Zo ja: publiceren naar IG. Dit
+# is de motor achter "approven 's ochtends, publiceren door de dag
+# heen op vaste slot-tijden (09/14/19 Amsterdam)".
+#
+# GitHub-Actions schedules zijn niet exact — er kan een paar minuten
+# vertraging zitten. Voor IG-posts is dat geen probleem.
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: POST /admin/api/social/publish-due
+        run: |
+          HTTP=$(curl --silent --show-error --max-time 540 \
+            -X POST "https://api.andreas.amsterdam/admin/api/social/publish-due" \
+            -H "Authorization: Bearer ${{ secrets.ANDREAS_ADMIN_API_KEY }}" \
+            -o response.json \
+            -w "%{http_code}")
+          echo "── HTTP $HTTP ──"
+          python3 -m json.tool < response.json 2>/dev/null || cat response.json
+          [ "$HTTP" -ge 400 ] && exit 1 || exit 0
