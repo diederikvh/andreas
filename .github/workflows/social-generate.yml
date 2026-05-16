@@ -1,36 +1,44 @@
-name: Generate social-post draft
+name: Generate social-post drafts
 
-# Dagelijks om 11:00 UTC = 13:00 Amsterdam zomertijd (12:00 wintertijd).
-# Genereert een concept-carousel voor de avond-slot. Diederik krijgt 'm
-# klaar in /admin/social om handmatig goed te keuren en publiceren.
+# Dagelijks om 06:00 UTC = 08:00 Amsterdam zomertijd (07:00 winter)
+# genereren we drie carousel-drafts in één run: ochtend-, middag- en
+# avond-slot. Diederik kiest 's ochtends welke hij approveert en
+# publiceert via /admin/social.
 #
-# GitHub Actions cron-tijden zijn vast in UTC — bij wintertijd schuift
-# het naar 12:00 lokaal. Acceptabel: er staat dan gewoon een uur eerder
-# een draft klaar.
+# Matrix met `fail-fast: false` zodat een mislukking van één slot de
+# andere niet meeneemt — een ochtend zonder overdag-events laat
+# middag/avond gewoon draaien.
 on:
   schedule:
-    - cron: '0 11 * * *'
+    - cron: '0 6 * * *'
   workflow_dispatch:
     inputs:
       slot:
-        description: 'Slot om te genereren (morning/afternoon/evening)'
+        description: 'Specifiek slot (leeg = alle drie)'
         required: false
-        default: 'afternoon'
+        default: ''
 
 jobs:
   generate:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        slot: [morning, afternoon, evening]
     steps:
-      - name: POST /admin/api/social/generate
+      - name: POST /admin/api/social/generate?slot=${{ matrix.slot }}
+        # Skip andere slots als de manual-trigger één specifiek slot
+        # noemt; bij scheduled-run is `inputs.slot` leeg en draaien
+        # we alle drie.
+        if: ${{ inputs.slot == '' || inputs.slot == matrix.slot }}
         run: |
-          SLOT="${{ inputs.slot || 'afternoon' }}"
           HTTP=$(curl --silent --show-error --max-time 540 \
-            -X POST "https://api.andreas.amsterdam/admin/api/social/generate?slot=$SLOT" \
+            -X POST "https://api.andreas.amsterdam/admin/api/social/generate?slot=${{ matrix.slot }}" \
             -H "Authorization: Bearer ${{ secrets.ANDREAS_ADMIN_API_KEY }}" \
             -H "Content-Type: application/json" \
             -o response.json \
             -w "%{http_code}")
-          echo "── HTTP $HTTP ── slot=$SLOT"
+          echo "── HTTP $HTTP ── slot=${{ matrix.slot }}"
           python3 -m json.tool < response.json 2>/dev/null || cat response.json
           [ "$HTTP" -ge 400 ] && exit 1 || exit 0
