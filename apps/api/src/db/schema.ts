@@ -746,6 +746,8 @@ export const socialPosts = pgTable(
       scoreBreakdown?: Record<string, number>;
       templateVersion?: string;
       occurrenceIds?: string[];
+      skippedEventIds?: string[];
+      permalink?: string;
     }>(),
     createdAt: timestamp({ withTimezone: true })
       .notNull()

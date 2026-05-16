@@ -1,7 +1,10 @@
-import { and, eq, gte, isNotNull, lt, sql } from 'drizzle-orm';
+import { randomBytes } from 'node:crypto';
+import { and, desc, eq, gte, isNotNull, lt, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 
 import { db, schema } from '../../db/index.js';
+import { generateCaption } from '../../social/caption.js';
+import { publishCarousel } from '../../social/publisher.js';
 import { renderCarousel, type CarouselPick } from '../../social/render.js';
 import { uploadToBunny } from '../../storage/bunny.js';
 import { requireAdminAny } from './auth.js';
@@ -23,10 +26,23 @@ export const adminSocial = new Hono();
 
 adminSocial.use('*', requireAdminAny);
 
-type Slot = 'morning' | 'afternoon' | 'evening';
-const SLOTS: readonly Slot[] = ['morning', 'afternoon', 'evening'];
+export type Slot = 'morning' | 'afternoon' | 'evening';
+export const SLOTS: readonly Slot[] = ['morning', 'afternoon', 'evening'];
 
 const DEDUP_DAYS = 14;
+
+/** Publicatie-tijd per slot (in Europe/Amsterdam local hours, op de
+    dag van generatie). De cron die approved posts publiceert pakt
+    alles waar scheduled_for valt in een venster rond deze tijd. */
+const SLOT_PUBLISH_HOUR: Record<Slot, number> = {
+  morning: 9,
+  afternoon: 14,
+  evening: 19,
+};
+
+function shortId(): string {
+  return randomBytes(6).toString('hex');
+}
 const SCENE_WEIGHT: Record<string, number> = {
   mainstream: 0.6,
   alternatief: 0.8,
@@ -181,21 +197,26 @@ function parseSkipParam(raw: string | undefined): Set<string> {
   );
 }
 
-adminSocial.get('/picks', async (c) => {
-  const slotParam = (c.req.query('slot') ?? 'evening') as string;
-  if (!(SLOTS as readonly string[]).includes(slotParam)) {
-    return c.json({ error: 'invalid slot' }, 400);
-  }
-  const slot = slotParam as Slot;
-  const limit = Math.max(1, Math.min(10, Number(c.req.query('limit') ?? '3')));
-  const debug = c.req.query('debug') === '1';
-  const skipIds = parseSkipParam(c.req.query('skip'));
+interface SelectResult {
+  picks: ScoredCandidate[];
+  candidateCount: number;
+  window: { start: Date; end: Date };
+  dedupExcluded: number;
+}
 
-  const now = new Date();
+/**
+ * Gedeelde selectie-pipeline: dedup, kandidaten ophalen, scoren,
+ * greedy spread. Gebruikt door /picks (JSON), /preview (debug-HTML) en
+ * /generate (DB-write).
+ */
+async function selectPicksForSlot(
+  slot: Slot,
+  options: { limit: number; skipIds: Set<string>; now: Date }
+): Promise<SelectResult> {
+  const { limit, skipIds, now } = options;
   const window = computeWindow(slot, now);
   const dedupSince = new Date(now.getTime() - DEDUP_DAYS * 24 * 60 * 60 * 1000);
 
-  // Welke event-ids hebben we de laatste DEDUP_DAYS al gepost?
   const recentlyPosted = await db
     .select({ eventIds: schema.socialPosts.eventIds })
     .from(schema.socialPosts)
@@ -208,9 +229,6 @@ adminSocial.get('/picks', async (c) => {
   const dedupSet = new Set(recentlyPosted.flatMap((r) => r.eventIds));
   for (const id of skipIds) dedupSet.add(id);
 
-  // Kandidaten ophalen — alle occurrences in window met published
-  // event + venue, met imageUrl, status='scheduled'. Saves-count als
-  // correlated subquery (snel genoeg voor < 200 candidates).
   const rows = (await db
     .select({
       occurrenceId: schema.occurrences.id,
@@ -243,7 +261,6 @@ adminSocial.get('/picks', async (c) => {
     )
     .orderBy(schema.occurrences.startsAt)) as Candidate[];
 
-  // Eén occurrence per event (vroegste = al gesorteerd op startsAt).
   const seen = new Set<string>();
   const perEvent: Candidate[] = [];
   for (const row of rows) {
@@ -253,15 +270,39 @@ adminSocial.get('/picks', async (c) => {
     perEvent.push(row);
     seen.add(row.eventId);
   }
-
   const scored = perEvent.map(scoreCandidate);
   const picks = pickWithSpread(scored, limit);
+
+  return {
+    picks,
+    candidateCount: perEvent.length,
+    window,
+    dedupExcluded: dedupSet.size,
+  };
+}
+
+adminSocial.get('/picks', async (c) => {
+  const slotParam = (c.req.query('slot') ?? 'evening') as string;
+  if (!(SLOTS as readonly string[]).includes(slotParam)) {
+    return c.json({ error: 'invalid slot' }, 400);
+  }
+  const slot = slotParam as Slot;
+  const limit = Math.max(1, Math.min(10, Number(c.req.query('limit') ?? '3')));
+  const debug = c.req.query('debug') === '1';
+  const skipIds = parseSkipParam(c.req.query('skip'));
+
+  const now = new Date();
+  const { picks, candidateCount, window, dedupExcluded } = await selectPicksForSlot(slot, {
+    limit,
+    skipIds,
+    now,
+  });
 
   return c.json({
     slot,
     window: { start: window.start.toISOString(), end: window.end.toISOString() },
     generatedAt: now.toISOString(),
-    candidateCount: perEvent.length,
+    candidateCount,
     picks: picks.map((p) => ({
       occurrenceId: p.occurrenceId,
       eventId: p.eventId,
@@ -276,8 +317,51 @@ adminSocial.get('/picks', async (c) => {
       score: Number(p.score.toFixed(3)),
       ...(debug ? { breakdown: p.breakdown } : {}),
     })),
-    ...(debug ? { dedupExcluded: dedupSet.size } : {}),
+    ...(debug ? { dedupExcluded } : {}),
   });
+});
+
+// ─── Caption ─────────────────────────────────────────────────────────────
+
+adminSocial.post('/caption', async (c) => {
+  const body = (await c.req.json().catch(() => null)) as
+    | { picks?: unknown; date?: string }
+    | null;
+  if (!body || !Array.isArray(body.picks) || body.picks.length === 0) {
+    return c.json({ error: 'invalid body: { picks: [...] } required' }, 400);
+  }
+  const date = body.date ? new Date(body.date) : new Date();
+  if (isNaN(date.getTime())) return c.json({ error: 'invalid date' }, 400);
+
+  // Picks lichtgewicht valideren — alleen velden die caption nodig heeft.
+  const captionPicks = body.picks
+    .map((p: unknown) => {
+      if (typeof p !== 'object' || p === null) return null;
+      const o = p as Record<string, unknown>;
+      if (typeof o.title !== 'string' || typeof o.venueName !== 'string') return null;
+      const startsAt =
+        typeof o.startsAt === 'string'
+          ? new Date(o.startsAt)
+          : o.startsAt instanceof Date
+            ? o.startsAt
+            : null;
+      if (!startsAt || isNaN(startsAt.getTime())) return null;
+      return {
+        title: o.title,
+        venueName: o.venueName,
+        venueType: typeof o.venueType === 'string' ? o.venueType : null,
+        category: typeof o.category === 'string' ? o.category : '',
+        startsAt,
+      };
+    })
+    .filter((p): p is NonNullable<typeof p> => p !== null);
+
+  if (captionPicks.length === 0) {
+    return c.json({ error: 'no valid picks' }, 400);
+  }
+
+  const result = await generateCaption({ picks: captionPicks, date });
+  return c.json(result);
 });
 
 // ─── Render ──────────────────────────────────────────────────────────────
@@ -350,68 +434,39 @@ adminSocial.get('/preview', async (c) => {
   const slot = slotParam as Slot;
   const skipIds = parseSkipParam(c.req.query('skip'));
   const now = new Date();
-  const window = computeWindow(slot, now);
-
-  // Hergebruik dezelfde query als /picks (kortere variant — geen
-  // saves-count nodig voor preview-rendering).
-  const rows = (await db
-    .select({
-      occurrenceId: schema.occurrences.id,
-      startsAt: schema.occurrences.startsAt,
-      endsAt: schema.occurrences.endsAt,
-      eventId: schema.events.id,
-      title: schema.events.title,
-      description: schema.events.description,
-      imageUrl: schema.events.imageUrl,
-      category: schema.events.category,
-      featured: schema.events.featured,
-      venueId: schema.venues.id,
-      venueName: schema.venues.name,
-      venueScene: schema.venues.scene,
-      venueType: schema.venues.type,
-      savesCount: sql<number>`0`.as('saves_count'),
-    })
-    .from(schema.occurrences)
-    .innerJoin(schema.events, eq(schema.events.id, schema.occurrences.eventId))
-    .innerJoin(schema.venues, eq(schema.venues.id, schema.events.venueId))
-    .where(
-      and(
-        eq(schema.events.published, true),
-        eq(schema.venues.published, true),
-        isNotNull(schema.events.imageUrl),
-        eq(schema.occurrences.status, 'scheduled'),
-        gte(schema.occurrences.startsAt, window.start),
-        lt(schema.occurrences.startsAt, window.end)
-      )
-    )
-    .orderBy(schema.occurrences.startsAt)) as Candidate[];
-
-  const seen = new Set<string>();
-  const perEvent: Candidate[] = [];
-  for (const row of rows) {
-    if (seen.has(row.eventId)) continue;
-    if (skipIds.has(row.eventId)) continue;
-    if (!row.imageUrl) continue;
-    perEvent.push(row);
-    seen.add(row.eventId);
-  }
-  const picks = pickWithSpread(perEvent.map(scoreCandidate), 3);
+  const { picks, window } = await selectPicksForSlot(slot, {
+    limit: 3,
+    skipIds,
+    now,
+  });
   if (picks.length === 0) {
     return c.html(`<p>geen picks voor slot=${slot} in window ${window.start.toISOString()}–${window.end.toISOString()}</p>`);
   }
 
-  const slides = await renderCarousel(
-    picks.map((p) => ({
-      imageUrl: p.imageUrl,
-      title: p.title,
-      venueName: p.venueName,
-      category: p.category,
-      venueType: p.venueType,
-      startsAt: p.startsAt,
-      endsAt: p.endsAt,
-    })),
-    { date: now }
-  );
+  const [slides, captionResult] = await Promise.all([
+    renderCarousel(
+      picks.map((p) => ({
+        imageUrl: p.imageUrl,
+        title: p.title,
+        venueName: p.venueName,
+        category: p.category,
+        venueType: p.venueType,
+        startsAt: p.startsAt,
+        endsAt: p.endsAt,
+      })),
+      { date: now }
+    ),
+    generateCaption({
+      date: now,
+      picks: picks.map((p) => ({
+        title: p.title,
+        venueName: p.venueName,
+        venueType: p.venueType,
+        category: p.category,
+        startsAt: p.startsAt,
+      })),
+    }),
+  ]);
 
   const imgTags = slides
     .map((buf, i) => {
@@ -432,6 +487,17 @@ adminSocial.get('/preview', async (c) => {
       ? `<span style="font-size:13px;color:#5a4e3f">· ${skipIds.size} geskipt · <a href="?slot=${slot}" style="color:#c9453a">reset</a></span>`
       : '';
 
+  const escapeHtml = (s: string) =>
+    s.replace(/[&<>"']/g, (c) =>
+      c === '&' ? '&amp;' : c === '<' ? '&lt;' : c === '>' ? '&gt;' : c === '"' ? '&quot;' : '&#39;'
+    );
+
+  const captionBlock = `
+<section class="caption">
+  <h2>Caption <small>(${captionResult.source})</small></h2>
+  <pre>${escapeHtml(captionResult.caption)}</pre>
+</section>`;
+
   return c.html(`<!doctype html>
 <html><head><meta charset="utf-8"><title>social preview — ${slot}</title>
 <style>
@@ -441,6 +507,10 @@ adminSocial.get('/preview', async (c) => {
   header span { font-size:13px; color:#5a4e3f }
   .grid { display:flex; flex-wrap:wrap; gap:24px; align-items:flex-start }
   figure a:hover { color:#c9453a !important }
+  .caption { margin:0 0 28px 0; padding:20px 24px; background:#f5f1e8; border-radius:12px; max-width:720px }
+  .caption h2 { margin:0 0 12px 0; font-size:15px; font-weight:600; letter-spacing:0.5px; text-transform:uppercase; color:#5a4e3f }
+  .caption h2 small { font-weight:500; letter-spacing:0; text-transform:none; color:#a89c84; margin-left:6px }
+  .caption pre { margin:0; font:15px/1.45 ui-sans-serif,system-ui; white-space:pre-wrap; color:#1a1410 }
 </style>
 </head><body>
 <header>
@@ -448,6 +518,284 @@ adminSocial.get('/preview', async (c) => {
   <span>${picks.length} picks · window ${window.start.toLocaleString('nl-NL', { timeZone: 'Europe/Amsterdam' })} → ${window.end.toLocaleString('nl-NL', { timeZone: 'Europe/Amsterdam' })}</span>
   ${skipLinks}
 </header>
+${captionBlock}
 <div class="grid">${imgTags}</div>
 </body></html>`);
+});
+
+// ─── Posts (DB-backed drafts) ────────────────────────────────────────────
+//
+// Generate / approve / skip / regenerate flow voor mens-in-de-loop
+// publicatie. `/generate` is de zware operatie (selectie + render +
+// upload + caption), de andere zijn light state-transities.
+
+/** Bouwt de scheduled_for-Date voor een slot op een gegeven dag in
+    Europe/Amsterdam (= het tijdstip waarop de publish-cron 'm oppakt). */
+function computeScheduledFor(slot: Slot, now: Date): Date {
+  const { year, month, day } = amsterdamYMD(now);
+  return inAmsterdamTz(year, month, day, SLOT_PUBLISH_HOUR[slot], 0);
+}
+
+interface PersistedPost {
+  id: string;
+  slot: Slot;
+  status: string;
+  scheduledFor: Date;
+  createdAt: Date;
+  updatedAt: Date;
+  postedAt: Date | null;
+  caption: string | null;
+  imageUrls: string[];
+  eventIds: string[];
+  igMediaId: string | null;
+  error: string | null;
+  meta: {
+    occurrenceIds?: string[];
+    templateVersion?: string;
+    scoreBreakdown?: Record<string, number>;
+    skippedEventIds?: string[];
+    permalink?: string;
+  } | null;
+}
+
+export async function runGenerate(
+  slot: Slot,
+  options: { skipIds?: Set<string>; existingId?: string } = {}
+): Promise<{ post: PersistedPost; warnings: string[] }> {
+  const warnings: string[] = [];
+  const now = new Date();
+  const { picks } = await selectPicksForSlot(slot, {
+    limit: 3,
+    skipIds: options.skipIds ?? new Set(),
+    now,
+  });
+  if (picks.length === 0) {
+    throw new Error(`geen picks voor slot=${slot} in huidig window`);
+  }
+
+  // 1. Render slides
+  const slides = await renderCarousel(
+    picks.map((p) => ({
+      imageUrl: p.imageUrl,
+      title: p.title,
+      venueName: p.venueName,
+      category: p.category,
+      venueType: p.venueType,
+      startsAt: p.startsAt,
+      endsAt: p.endsAt,
+    })),
+    { date: now }
+  );
+
+  // 2. Upload elke slide naar Bunny — pad bevat een generatie-marker (epoch in base36)
+  //    zodat regenerates verse URLs opleveren en de browser-cache niet de
+  //    oude PNG blijft tonen. Pad: media/social/YYYY-MM-DD/<id>-<gen>-<n>.png
+  const ymd = now.toISOString().slice(0, 10);
+  const postId = options.existingId ?? `sp-${shortId()}`;
+  const generation = now.getTime().toString(36);
+  const imageUrls = await Promise.all(
+    slides.map((buf, i) =>
+      uploadToBunny(
+        `media/social/${ymd}/${postId}-${generation}-${i}.png`,
+        buf,
+        'image/png'
+      )
+    )
+  );
+
+  // 3. Caption parallel ophalen
+  const captionResult = await generateCaption({
+    date: now,
+    picks: picks.map((p) => ({
+      title: p.title,
+      venueName: p.venueName,
+      venueType: p.venueType,
+      category: p.category,
+      startsAt: p.startsAt,
+    })),
+  });
+  if (captionResult.source === 'fallback') {
+    warnings.push('caption gebruikt fallback-template (Claude niet bereikt)');
+  }
+
+  const scheduledFor = computeScheduledFor(slot, now);
+  const eventIds = picks.map((p) => p.eventId);
+
+  const skippedEventIds = options.skipIds ? [...options.skipIds] : [];
+
+  // 4. Persist — INSERT of UPDATE
+  if (options.existingId) {
+    await db
+      .update(schema.socialPosts)
+      .set({
+        eventIds,
+        imageUrls,
+        caption: captionResult.caption,
+        scheduledFor,
+        status: 'draft',
+        error: null,
+        meta: {
+          occurrenceIds: picks.map((p) => p.occurrenceId),
+          templateVersion: '1',
+          skippedEventIds,
+        },
+        updatedAt: now,
+      })
+      .where(eq(schema.socialPosts.id, options.existingId));
+  } else {
+    await db.insert(schema.socialPosts).values({
+      id: postId,
+      slot,
+      eventIds,
+      imageUrls,
+      caption: captionResult.caption,
+      scheduledFor,
+      status: 'draft',
+      meta: {
+        occurrenceIds: picks.map((p) => p.occurrenceId),
+        templateVersion: '1',
+        skippedEventIds,
+      },
+      createdAt: now,
+      updatedAt: now,
+    });
+  }
+
+  const [persisted] = await db
+    .select()
+    .from(schema.socialPosts)
+    .where(eq(schema.socialPosts.id, postId));
+
+  return {
+    post: persisted as PersistedPost,
+    warnings,
+  };
+}
+
+/** Genereer een nieuw concept-post voor een slot. */
+adminSocial.post('/generate', async (c) => {
+  const slotParam = (c.req.query('slot') ?? 'evening') as string;
+  if (!(SLOTS as readonly string[]).includes(slotParam)) {
+    return c.json({ error: 'invalid slot' }, 400);
+  }
+  const slot = slotParam as Slot;
+  try {
+    const { post, warnings } = await runGenerate(slot);
+    return c.json({ post, warnings });
+  } catch (e) {
+    return c.json({ error: (e as Error).message }, 500);
+  }
+});
+
+/** Lijst alle posts (newest first, paginated). */
+adminSocial.get('/posts', async (c) => {
+  const limit = Math.max(1, Math.min(100, Number(c.req.query('limit') ?? '50')));
+  const rows = await db
+    .select()
+    .from(schema.socialPosts)
+    .orderBy(desc(schema.socialPosts.createdAt))
+    .limit(limit);
+  return c.json({ posts: rows });
+});
+
+/** Approve een draft. */
+adminSocial.post('/posts/:id/approve', async (c) => {
+  const id = c.req.param('id');
+  const [updated] = await db
+    .update(schema.socialPosts)
+    .set({ status: 'approved', updatedAt: new Date() })
+    .where(and(eq(schema.socialPosts.id, id), eq(schema.socialPosts.status, 'draft')))
+    .returning();
+  if (!updated) return c.json({ error: 'not found or not draft' }, 404);
+  return c.json({ post: updated });
+});
+
+/**
+ * Publiceert een approved post naar Instagram. Updatet status naar
+ * 'posted' bij succes (met ig_media_id + posted_at), naar 'failed' bij
+ * fout (met error-message). Idempotent: een al-geposte post wordt
+ * niet opnieuw gepubliceerd.
+ */
+export async function runPublish(
+  id: string,
+): Promise<{ post: PersistedPost; igMediaId: string }> {
+  const [post] = await db
+    .select()
+    .from(schema.socialPosts)
+    .where(eq(schema.socialPosts.id, id));
+  if (!post) throw new Error('post niet gevonden');
+  if (post.status === 'posted') {
+    throw new Error('post is al gepubliceerd (ig_media_id=' + post.igMediaId + ')');
+  }
+  if (post.status !== 'approved') {
+    throw new Error(`alleen goedgekeurde posts kunnen worden gepubliceerd (status=${post.status})`);
+  }
+  if (!post.caption) throw new Error('post heeft geen caption');
+  if (post.imageUrls.length === 0) throw new Error('post heeft geen slides');
+
+  try {
+    const { igMediaId, permalink } = await publishCarousel({
+      imageUrls: post.imageUrls,
+      caption: post.caption,
+    });
+    const now = new Date();
+    const mergedMeta = {
+      ...(post.meta ?? {}),
+      ...(permalink ? { permalink } : {}),
+    };
+    const [updated] = await db
+      .update(schema.socialPosts)
+      .set({
+        status: 'posted',
+        igMediaId,
+        postedAt: now,
+        error: null,
+        meta: mergedMeta,
+        updatedAt: now,
+      })
+      .where(eq(schema.socialPosts.id, id))
+      .returning();
+    return { post: updated as PersistedPost, igMediaId };
+  } catch (e) {
+    const msg = (e as Error).message;
+    await db
+      .update(schema.socialPosts)
+      .set({ status: 'failed', error: msg, updatedAt: new Date() })
+      .where(eq(schema.socialPosts.id, id));
+    throw e;
+  }
+}
+
+adminSocial.post('/posts/:id/publish', async (c) => {
+  const id = c.req.param('id');
+  try {
+    const result = await runPublish(id);
+    return c.json(result);
+  } catch (e) {
+    return c.json({ error: (e as Error).message }, 500);
+  }
+});
+
+/** Regenerate — vervangt slides + caption + scheduled_for op bestaande
+    post (alleen toegestaan in draft-status). */
+adminSocial.post('/posts/:id/regenerate', async (c) => {
+  const id = c.req.param('id');
+  const skipIds = parseSkipParam(c.req.query('skip'));
+  const [existing] = await db
+    .select()
+    .from(schema.socialPosts)
+    .where(eq(schema.socialPosts.id, id));
+  if (!existing) return c.json({ error: 'not found' }, 404);
+  if (existing.status !== 'draft') {
+    return c.json({ error: 'alleen drafts kunnen regenerated worden' }, 400);
+  }
+  try {
+    const { post, warnings } = await runGenerate(existing.slot as Slot, {
+      skipIds,
+      existingId: id,
+    });
+    return c.json({ post, warnings });
+  } catch (e) {
+    return c.json({ error: (e as Error).message }, 500);
+  }
 });

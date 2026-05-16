@@ -1,0 +1,36 @@
+name: Generate social-post draft
+
+# Dagelijks om 11:00 UTC = 13:00 Amsterdam zomertijd (12:00 wintertijd).
+# Genereert een concept-carousel voor de avond-slot. Diederik krijgt 'm
+# klaar in /admin/social om handmatig goed te keuren en publiceren.
+#
+# GitHub Actions cron-tijden zijn vast in UTC — bij wintertijd schuift
+# het naar 12:00 lokaal. Acceptabel: er staat dan gewoon een uur eerder
+# een draft klaar.
+on:
+  schedule:
+    - cron: '0 11 * * *'
+  workflow_dispatch:
+    inputs:
+      slot:
+        description: 'Slot om te genereren (morning/afternoon/evening)'
+        required: false
+        default: 'afternoon'
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: POST /admin/api/social/generate
+        run: |
+          SLOT="${{ inputs.slot || 'afternoon' }}"
+          HTTP=$(curl --silent --show-error --max-time 540 \
+            -X POST "https://api.andreas.amsterdam/admin/api/social/generate?slot=$SLOT" \
+            -H "Authorization: Bearer ${{ secrets.ANDREAS_ADMIN_API_KEY }}" \
+            -H "Content-Type: application/json" \
+            -o response.json \
+            -w "%{http_code}")
+          echo "── HTTP $HTTP ── slot=$SLOT"
+          python3 -m json.tool < response.json 2>/dev/null || cat response.json
+          [ "$HTTP" -ge 400 ] && exit 1 || exit 0

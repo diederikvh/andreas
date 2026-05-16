@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { and, asc, count, eq, gte, inArray, sql } from 'drizzle-orm';
+import { and, asc, count, desc, eq, gte, inArray, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 
 import { db, schema } from '../../db/index.js';
@@ -17,6 +17,8 @@ import {
   fromDateTimeLocal,
   toDateTimeLocal,
 } from './layout.js';
+import { generateCaption } from '../../social/caption.js';
+import { SLOTS, runGenerate, runPublish, type Slot } from './social.js';
 
 function shortId(): string {
   return randomBytes(5).toString('hex');
@@ -3124,4 +3126,659 @@ adminUi.get('/insights', async (c) => {
       </section>
     </Layout>,
   );
+});
+
+/* ═══════════════════════════════════════════════════════════════════════
+ * /admin/social — IG-post-generator, draft-overzicht, approve-flow.
+ *
+ * Mens-in-de-loop voor de eerste week: genereer een draft, bekijk
+ * caption + slides, approve of skip. De cron-publisher pakt later
+ * alleen wat status='approved' is.
+ *
+ * Geen full preview hier — voor de tijdelijke debug-page zie
+ * /admin/api/social/preview?slot=evening (Bearer/cookie auth).
+ * ═══════════════════════════════════════════════════════════════════ */
+
+const SLOT_LABEL: Record<Slot, string> = {
+  morning: 'Ochtend (09:00)',
+  afternoon: 'Middag (14:00)',
+  evening: 'Avond (19:00)',
+};
+
+const SOCIAL_STATUS_LABEL: Record<string, string> = {
+  draft: 'concept',
+  approved: 'klaar voor publicatie',
+  posted: 'gepost',
+  skipped: 'overgeslagen',
+  failed: 'mislukt',
+};
+
+function socialStatusPillStyle(status: string): string {
+  const base = 'display:inline-block;padding:0.15rem 0.55rem;border-radius:999px;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;';
+  switch (status) {
+    case 'draft':
+      return base + 'background:#3a3a1d;color:#f3eab6;';
+    case 'approved':
+      return base + 'background:#1d4d2c;color:#b6f3c8;';
+    case 'posted':
+      return base + 'background:#1d3a4d;color:#b6d8f3;';
+    case 'skipped':
+      return base + 'background:#2a2a2e;color:#9a9a94;';
+    case 'failed':
+      return base + 'background:#4d1d1d;color:#f3b6b6;';
+    default:
+      return base + 'background:#2a2a2e;color:#9a9a94;';
+  }
+}
+
+interface SocialPostRow {
+  id: string;
+  slot: string;
+  status: string;
+  scheduledFor: Date;
+  createdAt: Date;
+  postedAt: Date | null;
+  caption: string | null;
+  imageUrls: string[];
+  eventIds: string[];
+  igMediaId: string | null;
+  error: string | null;
+  meta: {
+    occurrenceIds?: string[];
+    templateVersion?: string;
+    scoreBreakdown?: Record<string, number>;
+    skippedEventIds?: string[];
+    permalink?: string;
+  } | null;
+}
+
+adminUi.get('/social', async (c) => {
+  const flash = c.req.query('flash');
+  const error = c.req.query('error');
+
+  const rows = (await db
+    .select()
+    .from(schema.socialPosts)
+    .orderBy(desc(schema.socialPosts.createdAt))
+    .limit(50)) as SocialPostRow[];
+
+  return c.html(
+    <Layout title="Social" active="social">
+      <div class="toolbar">
+        <h2>Social — IG-posts</h2>
+      </div>
+
+      {flash && (
+        <p
+          style="background:#1d4d2c;color:#b6f3c8;padding:0.6rem 0.9rem;border-radius:6px;font-size:13px;margin-bottom:1rem;"
+        >
+          {flash}
+        </p>
+      )}
+      {error && (
+        <p
+          style="background:#4d1d1d;color:#f3b6b6;padding:0.6rem 0.9rem;border-radius:6px;font-size:13px;margin-bottom:1rem;"
+        >
+          {error}
+        </p>
+      )}
+
+      <article style="margin-bottom:2rem;">
+        <h3 style="margin-top:0;">Nieuwe carousel genereren</h3>
+        <p style="font-size:13px;color:var(--pico-muted-color);margin-bottom:0.75rem;">
+          Selecteert 3 picks voor het gekozen slot, rendert de slides, uploadt naar Bunny en
+          vraagt Claude een caption. Resultaat verschijnt als concept onderin.
+        </p>
+        <div style="display:flex;gap:0.5rem;flex-wrap:wrap;">
+          {SLOTS.map((slot) => (
+            <form method="post" action="/admin/social/generate" style="margin:0;">
+              <input type="hidden" name="slot" value={slot} />
+              <button type="submit" class="secondary">
+                Genereer {SLOT_LABEL[slot]}
+              </button>
+            </form>
+          ))}
+        </div>
+      </article>
+
+      {rows.length === 0 ? (
+        <p style="color:var(--pico-muted-color);">
+          Nog geen posts. Klik hierboven op een slot om je eerste carousel te genereren.
+        </p>
+      ) : (
+        <table>
+          <thead>
+            <tr>
+              <th style="width:90px;">Status</th>
+              <th>Slot · gepland</th>
+              <th style="width:120px;">Slides</th>
+              <th>Caption</th>
+              <th style="width:240px;">Acties</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((post) => {
+              const slotLabel = SLOT_LABEL[post.slot as Slot] ?? post.slot;
+              const statusLabel = SOCIAL_STATUS_LABEL[post.status] ?? post.status;
+              const captionPreview = post.caption
+                ? post.caption.length > 140
+                  ? post.caption.slice(0, 140) + '…'
+                  : post.caption
+                : '—';
+              const firstImage = post.imageUrls[0];
+              return (
+                <tr>
+                  <td>
+                    <span style={socialStatusPillStyle(post.status)}>{statusLabel}</span>
+                    {post.error && (
+                      <div
+                        style="font-size:11px;color:#f3b6b6;margin-top:4px;max-width:200px;"
+                        title={post.error}
+                      >
+                        {post.error.length > 50 ? post.error.slice(0, 50) + '…' : post.error}
+                      </div>
+                    )}
+                  </td>
+                  <td>
+                    <strong>{slotLabel}</strong>
+                    <br />
+                    <small style="color:var(--pico-muted-color);">
+                      {fmtDate(post.scheduledFor)}
+                    </small>
+                    {post.postedAt && (
+                      <>
+                        <br />
+                        <small style="color:#b6d8f3;">
+                          gepost {fmtDate(post.postedAt)}
+                        </small>
+                      </>
+                    )}
+                  </td>
+                  <td>
+                    {firstImage ? (
+                      <a
+                        href={`/admin/social/${post.id}`}
+                        title={`${post.imageUrls.length} slides`}
+                      >
+                        <img
+                          src={firstImage}
+                          alt=""
+                          style="width:60px;height:75px;object-fit:cover;border-radius:4px;display:block;"
+                        />
+                      </a>
+                    ) : (
+                      <small style="color:var(--pico-muted-color);">geen slides</small>
+                    )}
+                    <small style="display:block;color:var(--pico-muted-color);margin-top:2px;font-size:11px;">
+                      {post.imageUrls.length} slides · {post.eventIds.length} events
+                    </small>
+                  </td>
+                  <td style="font-size:13px;max-width:340px;">
+                    <pre style="margin:0;font-family:inherit;white-space:pre-wrap;font-size:12px;line-height:1.4;">
+                      {captionPreview}
+                    </pre>
+                  </td>
+                  <td class="actions">
+                    <a
+                      href={`/admin/social/${post.id}`}
+                      role="button"
+                      class="outline"
+                      style="padding:0.25rem 0.6rem;font-size:12px;"
+                    >
+                      Bekijk
+                    </a>
+                    {post.status === 'draft' && (
+                      <>
+                        <form
+                          method="post"
+                          action={`/admin/social/${post.id}/approve`}
+                        >
+                          <button type="submit">Goedkeuren</button>
+                        </form>
+                        <form
+                          method="post"
+                          action={`/admin/social/${post.id}/regenerate`}
+                          onsubmit="return confirm('Slides + caption opnieuw genereren? Dit overschrijft de huidige.');"
+                        >
+                          <button type="submit" class="secondary outline">
+                            Opnieuw
+                          </button>
+                        </form>
+                      </>
+                    )}
+                    {post.status === 'approved' && (
+                      <form
+                        method="post"
+                        action={`/admin/social/${post.id}/publish`}
+                        onsubmit="return confirm('Nu publiceren naar Instagram?');"
+                      >
+                        <button type="submit">Publiceer</button>
+                      </form>
+                    )}
+                    {post.status !== 'posted' && (
+                      <form
+                        method="post"
+                        action={`/admin/social/${post.id}/delete`}
+                        onsubmit="return confirm('Deze post definitief verwijderen?');"
+                      >
+                        <button type="submit" class="secondary outline">
+                          Verwijder
+                        </button>
+                      </form>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      )}
+    </Layout>,
+  );
+});
+
+adminUi.get('/social/:id', async (c) => {
+  const id = c.req.param('id');
+  const [post] = (await db
+    .select()
+    .from(schema.socialPosts)
+    .where(eq(schema.socialPosts.id, id))) as SocialPostRow[];
+  if (!post) {
+    return c.html(
+      <Layout title="Social — niet gevonden" active="social">
+        <p>Post niet gevonden. <a href="/admin/social">Terug</a></p>
+      </Layout>,
+      404,
+    );
+  }
+  const slotLabel = SLOT_LABEL[post.slot as Slot] ?? post.slot;
+  const statusLabel = SOCIAL_STATUS_LABEL[post.status] ?? post.status;
+  return c.html(
+    <Layout title={`Social · ${slotLabel}`} active="social">
+      <div class="toolbar">
+        <h2>
+          {slotLabel}{' '}
+          <span style={socialStatusPillStyle(post.status)}>{statusLabel}</span>
+        </h2>
+        <a href="/admin/social" role="button" class="outline">
+          Terug
+        </a>
+      </div>
+
+      <p style="color:var(--pico-muted-color);font-size:13px;margin-top:-0.5rem;">
+        ID <code>{post.id}</code> · gepland {fmtDate(post.scheduledFor)} · aangemaakt{' '}
+        {fmtDate(post.createdAt)}
+        {post.postedAt && <> · gepost {fmtDate(post.postedAt)}</>}
+      </p>
+
+      {post.error && (
+        <article style="background:#4d1d1d;color:#f3b6b6;">
+          <strong>Fout:</strong> {post.error}
+        </article>
+      )}
+
+      <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-bottom:1.5rem;">
+        {post.status === 'draft' && (
+          <>
+            <form method="post" action={`/admin/social/${post.id}/approve`} style="margin:0;">
+              <button type="submit">Goedkeuren</button>
+            </form>
+            <form
+              method="post"
+              action={`/admin/social/${post.id}/regenerate`}
+              style="margin:0;"
+              onsubmit="return confirm('Slides + caption opnieuw genereren? Dit overschrijft de huidige.');"
+            >
+              <button type="submit" class="secondary outline">
+                Opnieuw genereren
+              </button>
+            </form>
+          </>
+        )}
+        {post.status === 'approved' && (
+          <form
+            method="post"
+            action={`/admin/social/${post.id}/publish`}
+            style="margin:0;"
+            onsubmit="return confirm('Nu publiceren naar Instagram?');"
+          >
+            <button type="submit">Publiceer naar Instagram</button>
+          </form>
+        )}
+        {post.status === 'posted' && post.meta?.permalink && (
+          <a
+            href={post.meta.permalink}
+            role="button"
+            class="outline"
+            target="_blank"
+            rel="noreferrer"
+          >
+            Bekijk op Instagram ↗
+          </a>
+        )}
+        {post.status !== 'posted' && (
+          <form
+            method="post"
+            action={`/admin/social/${post.id}/delete`}
+            style="margin:0;"
+            onsubmit="return confirm('Deze post definitief verwijderen?');"
+          >
+            <button type="submit" class="secondary outline">
+              Verwijderen
+            </button>
+          </form>
+        )}
+      </div>
+
+      {post.status === 'posted' && post.igMediaId && (
+        <p style="color:var(--pico-muted-color);font-size:13px;">
+          IG media-id: <code>{post.igMediaId}</code>
+        </p>
+      )}
+
+      <div style="display:flex;align-items:center;gap:0.75rem;margin-top:0.5rem;">
+        <h3 style="margin:0;">Caption</h3>
+        {post.status === 'draft' && (
+          <form
+            method="post"
+            action={`/admin/social/${post.id}/regenerate-caption`}
+            style="margin:0;"
+          >
+            <button
+              type="submit"
+              class="secondary outline"
+              style="padding:0.2rem 0.55rem;font-size:12px;margin:0;"
+            >
+              Probeer een alternatief
+            </button>
+          </form>
+        )}
+      </div>
+      <pre style="background:#0a0a0b;padding:1rem;border-radius:6px;white-space:pre-wrap;font-family:inherit;font-size:14px;line-height:1.5;">
+        {post.caption ?? '(geen caption)'}
+      </pre>
+
+      <h3 style="margin-top:1.5rem;">Slides ({post.imageUrls.length})</h3>
+      <div style="display:flex;flex-wrap:wrap;gap:16px;">
+        {post.imageUrls.map((url, i) => (
+          <figure style="margin:0;">
+            <img
+              src={url}
+              alt={`slide ${i + 1}`}
+              style="width:260px;height:325px;object-fit:cover;border-radius:8px;display:block;background:#0a0a0b;"
+            />
+            <figcaption style="font-size:11px;color:var(--pico-muted-color);text-align:center;margin-top:4px;">
+              slide {i + 1}
+            </figcaption>
+          </figure>
+        ))}
+      </div>
+
+      <h3 style="margin-top:1.5rem;">Events ({post.eventIds.length})</h3>
+      <ul style="list-style:none;padding:0;">
+        {post.eventIds.map((eid) => (
+          <li style="display:flex;align-items:center;gap:0.75rem;padding:0.4rem 0;border-bottom:1px solid var(--pico-muted-border-color);">
+            <a href={`/admin/events/${eid}`} style="flex:1;">
+              <code>{eid}</code>
+            </a>
+            {post.status === 'draft' && (
+              <form
+                method="post"
+                action={`/admin/social/${post.id}/regenerate`}
+                style="margin:0;"
+                onsubmit="return confirm('Dit event skippen en een alternatief kiezen?');"
+              >
+                <input type="hidden" name="skip" value={eid} />
+                <button
+                  type="submit"
+                  class="secondary outline"
+                  style="padding:0.25rem 0.6rem;font-size:12px;margin:0;"
+                >
+                  Skip & probeer alternatief
+                </button>
+              </form>
+            )}
+          </li>
+        ))}
+      </ul>
+
+      {(post.meta?.skippedEventIds?.length ?? 0) > 0 && (
+        <section style="margin-top:1.25rem;padding:0.75rem 1rem;background:#1a1a1d;border-radius:6px;">
+          <strong style="font-size:13px;">
+            Eerder geskipt ({post.meta?.skippedEventIds?.length})
+          </strong>
+          <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:0.5rem;">
+            {(post.meta?.skippedEventIds ?? []).map((eid) => (
+              <a
+                href={`/admin/events/${eid}`}
+                style="font-size:11px;font-family:ui-monospace,Menlo,monospace;background:#2a2a2e;color:#9a9a94;padding:0.15rem 0.5rem;border-radius:4px;text-decoration:none;"
+              >
+                {eid}
+              </a>
+            ))}
+          </div>
+          {post.status === 'draft' && (
+            <form
+              method="post"
+              action={`/admin/social/${post.id}/regenerate`}
+              style="margin:0.75rem 0 0 0;"
+              onsubmit="return confirm('Skip-lijst wissen en alle events weer mogelijk maken?');"
+            >
+              <input type="hidden" name="reset" value="1" />
+              <button
+                type="submit"
+                class="secondary outline"
+                style="padding:0.25rem 0.6rem;font-size:12px;margin:0;"
+              >
+                Skip-lijst wissen
+              </button>
+            </form>
+          )}
+        </section>
+      )}
+    </Layout>,
+  );
+});
+
+adminUi.post('/social/generate', async (c) => {
+  const form = await c.req.parseBody();
+  const slotRaw = String(form.slot ?? '');
+  if (!(SLOTS as readonly string[]).includes(slotRaw)) {
+    return c.redirect('/admin/social?error=' + encodeURIComponent('Ongeldig slot'));
+  }
+  const slot = slotRaw as Slot;
+  try {
+    const { post, warnings } = await runGenerate(slot);
+    const flash =
+      `Concept aangemaakt voor ${SLOT_LABEL[slot]}.` +
+      (warnings.length > 0 ? ' Let op: ' + warnings.join('; ') : '');
+    return c.redirect(
+      `/admin/social/${post.id}?flash=${encodeURIComponent(flash)}`,
+    );
+  } catch (e) {
+    return c.redirect(
+      '/admin/social?error=' + encodeURIComponent((e as Error).message),
+    );
+  }
+});
+
+adminUi.post('/social/:id/approve', async (c) => {
+  const id = c.req.param('id');
+  const [updated] = await db
+    .update(schema.socialPosts)
+    .set({ status: 'approved', updatedAt: new Date() })
+    .where(
+      and(
+        eq(schema.socialPosts.id, id),
+        eq(schema.socialPosts.status, 'draft'),
+      ),
+    )
+    .returning();
+  if (!updated) {
+    return c.redirect(
+      '/admin/social?error=' +
+        encodeURIComponent('Alleen concepten kunnen worden goedgekeurd'),
+    );
+  }
+  return c.redirect(
+    '/admin/social?flash=' + encodeURIComponent('Goedgekeurd — wacht op publish-cron'),
+  );
+});
+
+adminUi.post('/social/:id/publish', async (c) => {
+  const id = c.req.param('id');
+  try {
+    const { igMediaId } = await runPublish(id);
+    return c.redirect(
+      `/admin/social/${id}?flash=` +
+        encodeURIComponent(`Gepubliceerd op Instagram (media-id ${igMediaId})`),
+    );
+  } catch (e) {
+    return c.redirect(
+      `/admin/social/${id}?error=` + encodeURIComponent((e as Error).message),
+    );
+  }
+});
+
+adminUi.post('/social/:id/delete', async (c) => {
+  const id = c.req.param('id');
+  const [existing] = await db
+    .select({ status: schema.socialPosts.status })
+    .from(schema.socialPosts)
+    .where(eq(schema.socialPosts.id, id));
+  if (!existing) {
+    return c.redirect('/admin/social?error=' + encodeURIComponent('Niet gevonden'));
+  }
+  if (existing.status === 'posted') {
+    return c.redirect(
+      '/admin/social?error=' +
+        encodeURIComponent('Geposte berichten kunnen niet worden verwijderd'),
+    );
+  }
+  await db.delete(schema.socialPosts).where(eq(schema.socialPosts.id, id));
+  return c.redirect('/admin/social?flash=' + encodeURIComponent('Verwijderd'));
+});
+
+/** Alleen de caption opnieuw vragen aan Claude — slides en picks blijven. */
+adminUi.post('/social/:id/regenerate-caption', async (c) => {
+  const id = c.req.param('id');
+  const [existing] = (await db
+    .select()
+    .from(schema.socialPosts)
+    .where(eq(schema.socialPosts.id, id))) as SocialPostRow[];
+  if (!existing) {
+    return c.redirect('/admin/social?error=' + encodeURIComponent('Niet gevonden'));
+  }
+  if (existing.status !== 'draft') {
+    return c.redirect(
+      `/admin/social/${id}?error=` +
+        encodeURIComponent('Alleen concepten kunnen worden aangepast'),
+    );
+  }
+  const occurrenceIds = existing.meta?.occurrenceIds ?? [];
+  if (occurrenceIds.length === 0) {
+    return c.redirect(
+      `/admin/social/${id}?error=` +
+        encodeURIComponent('Geen occurrence-IDs opgeslagen voor deze post'),
+    );
+  }
+
+  const rows = await db
+    .select({
+      occurrenceId: schema.occurrences.id,
+      startsAt: schema.occurrences.startsAt,
+      title: schema.events.title,
+      category: schema.events.category,
+      venueName: schema.venues.name,
+      venueType: schema.venues.type,
+    })
+    .from(schema.occurrences)
+    .innerJoin(schema.events, eq(schema.events.id, schema.occurrences.eventId))
+    .innerJoin(schema.venues, eq(schema.venues.id, schema.events.venueId))
+    .where(inArray(schema.occurrences.id, occurrenceIds));
+
+  // Herstel oorspronkelijke volgorde uit meta zodat Claude dezelfde lijst ziet
+  const ordered = occurrenceIds
+    .map((oid) => rows.find((r) => r.occurrenceId === oid))
+    .filter((r): r is NonNullable<typeof r> => r != null);
+
+  if (ordered.length === 0) {
+    return c.redirect(
+      `/admin/social/${id}?error=` +
+        encodeURIComponent('Bijbehorende events kunnen niet meer worden gevonden'),
+    );
+  }
+
+  try {
+    const result = await generateCaption({
+      date: existing.scheduledFor,
+      picks: ordered.map((r) => ({
+        title: r.title,
+        venueName: r.venueName,
+        venueType: r.venueType,
+        category: r.category,
+        startsAt: r.startsAt,
+      })),
+    });
+    await db
+      .update(schema.socialPosts)
+      .set({ caption: result.caption, updatedAt: new Date() })
+      .where(eq(schema.socialPosts.id, id));
+    const flashText =
+      result.source === 'fallback'
+        ? 'Caption ververst (fallback — Claude niet bereikt)'
+        : 'Caption ververst';
+    return c.redirect(`/admin/social/${id}?flash=` + encodeURIComponent(flashText));
+  } catch (e) {
+    return c.redirect(
+      `/admin/social/${id}?error=` + encodeURIComponent((e as Error).message),
+    );
+  }
+});
+
+adminUi.post('/social/:id/regenerate', async (c) => {
+  const id = c.req.param('id');
+  const form = await c.req.parseBody();
+  const skipParam = String(form.skip ?? '').trim();
+  const resetSkips = String(form.reset ?? '') === '1';
+
+  const [existing] = await db
+    .select()
+    .from(schema.socialPosts)
+    .where(eq(schema.socialPosts.id, id));
+  if (!existing) {
+    return c.redirect('/admin/social?error=' + encodeURIComponent('Niet gevonden'));
+  }
+  if (existing.status !== 'draft') {
+    return c.redirect(
+      '/admin/social?error=' +
+        encodeURIComponent('Alleen concepten kunnen worden regenererd'),
+    );
+  }
+
+  const accumulated = new Set<string>(
+    resetSkips ? [] : (existing.meta?.skippedEventIds ?? []),
+  );
+  for (const raw of skipParam.split(',').map((s) => s.trim()).filter(Boolean)) {
+    accumulated.add(raw);
+  }
+
+  try {
+    await runGenerate(existing.slot as Slot, {
+      existingId: id,
+      skipIds: accumulated,
+    });
+    const flashText = resetSkips
+      ? 'Skip-lijst gewist en opnieuw gegenereerd'
+      : skipParam
+        ? `Event geskipt, alternatief gekozen`
+        : 'Opnieuw gegenereerd';
+    return c.redirect(
+      `/admin/social/${id}?flash=` + encodeURIComponent(flashText),
+    );
+  } catch (e) {
+    return c.redirect(
+      `/admin/social/${id}?error=` + encodeURIComponent((e as Error).message),
+    );
+  }
 });
