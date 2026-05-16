@@ -3700,6 +3700,7 @@ adminUi.post('/social/:id/regenerate-caption', async (c) => {
       category: schema.events.category,
       venueName: schema.venues.name,
       venueType: schema.venues.type,
+      venueInstagram: schema.venues.instagram,
     })
     .from(schema.occurrences)
     .innerJoin(schema.events, eq(schema.events.id, schema.occurrences.eventId))
@@ -3725,6 +3726,7 @@ adminUi.post('/social/:id/regenerate-caption', async (c) => {
         title: r.title,
         venueName: r.venueName,
         venueType: r.venueType,
+        venueInstagram: r.venueInstagram,
         category: r.category,
         startsAt: r.startsAt,
       })),

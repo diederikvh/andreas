@@ -24,18 +24,19 @@ Strikte regels:
 - Geen kapstok-openingszin die de hele avond samenvat ("Drie zalen die…", "Vanavond voor wie…")
 - Het woord "drie" niet gebruiken — laat de carrousel het volume tonen
 - Geen vragen, geen uitroeptekens, geen verkooppraat ("vergeet niet", "mis dit niet")
+- Als je een venue noemt in de hoofdtekst en die heeft een IG-handle (staat tussen ronde haken in de input als "@handle"), gebruik dan die @-mention i.p.v. de gewone naam. Max één @-mention per caption — meer voelt spammy.
 - Hashtags op laatste regel: lowercase, exact 2-3 stuks, altijd #andreas en #amsterdam
 
 Voorbeelden (fictief, alleen voor de stem):
 
 ---
-Zaterdag, late shift. OT301 is voor na elven.
+Zaterdag, late shift. @ot301 is voor na elven.
 #andreas #amsterdam
 ---
 ART speelt vanavond in het Badhuis. Klassieker.
 #andreas #amsterdam #theater
 ---
-Iron Maiden in Melkweg. Niet de band, een film.
+Iron Maiden in @melkweg. Niet de band, een film.
 #andreas #amsterdam
 ---
 Een vrijdag waar niemand om zes uur al klaar is.
@@ -49,6 +50,9 @@ export interface CaptionPickInput {
   title: string;
   venueName: string;
   venueType: string | null;
+  /** IG-handle van het venue zonder @ (bv. "paradiso"). Wordt aan Claude
+      meegegeven zodat 'ie er @-mentions van kan maken. */
+  venueInstagram: string | null;
   category: string;
   startsAt: Date;
 }
@@ -93,7 +97,10 @@ function formatPickForPrompt(p: CaptionPickInput): string {
     .map((s) => s!.toLowerCase())
     .filter((v, i, arr) => arr.indexOf(v) === i);
   const typeStr = typeBits.length > 0 ? ` (${typeBits.join(' / ')})` : '';
-  return `- ${p.title} — ${p.venueName}, ${time}${typeStr}`;
+  const venueLabel = p.venueInstagram
+    ? `${p.venueName} (@${p.venueInstagram})`
+    : p.venueName;
+  return `- ${p.title} — ${venueLabel}, ${time}${typeStr}`;
 }
 
 export async function generateCaption(

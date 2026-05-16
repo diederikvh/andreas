@@ -132,6 +132,7 @@ interface Candidate {
   venueName: string;
   venueScene: string | null;
   venueType: string | null;
+  venueInstagram: string | null;
   savesCount: number;
 }
 
@@ -244,6 +245,7 @@ async function selectPicksForSlot(
       venueName: schema.venues.name,
       venueScene: schema.venues.scene,
       venueType: schema.venues.type,
+      venueInstagram: schema.venues.instagram,
       savesCount: sql<number>`(SELECT COUNT(*)::int FROM saves WHERE saves.occurrence_id = ${schema.occurrences.id})`.as('saves_count'),
     })
     .from(schema.occurrences)
@@ -350,6 +352,8 @@ adminSocial.post('/caption', async (c) => {
         title: o.title,
         venueName: o.venueName,
         venueType: typeof o.venueType === 'string' ? o.venueType : null,
+        venueInstagram:
+          typeof o.venueInstagram === 'string' ? o.venueInstagram : null,
         category: typeof o.category === 'string' ? o.category : '',
         startsAt,
       };
@@ -462,6 +466,7 @@ adminSocial.get('/preview', async (c) => {
         title: p.title,
         venueName: p.venueName,
         venueType: p.venueType,
+        venueInstagram: p.venueInstagram,
         category: p.category,
         startsAt: p.startsAt,
       })),
@@ -610,6 +615,7 @@ export async function runGenerate(
       title: p.title,
       venueName: p.venueName,
       venueType: p.venueType,
+      venueInstagram: p.venueInstagram,
       category: p.category,
       startsAt: p.startsAt,
     })),
