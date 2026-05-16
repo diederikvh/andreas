@@ -706,6 +706,61 @@ export const pushTokens = pgTable(
   (t) => [index('push_tokens_user_idx').on(t.userId)]
 );
 
+/**
+ * Sociale automatisering — IG-posts gegenereerd uit het event-aanbod.
+ * Eén rij = één post (single of carousel). Cron-job genereert 's
+ * ochtends een concept (status 'draft'), admin keurt goed via de
+ * `/admin/social`-UI (→ 'approved'), tweede cron 's middags publiceert
+ * naar IG (→ 'posted' of 'failed' + error). 'skipped' = handmatig
+ * overgeslagen door admin.
+ *
+ * `eventIds` is een array zodat een carousel-post met 3 events in
+ * één rij past. Voor single-posts is het 1-elements. `imageUrls` volgt
+ * dezelfde shape — cover- en outro-slides tellen mee als extra
+ * elementen (`imageUrls.length` kan dus > `eventIds.length` zijn).
+ *
+ * `meta` is een vrije JSONB voor per-post debug-info: score-breakdown
+ * van de selectie, template-versie, etc. Niet gebruikt door publieke
+ * endpoints, alleen door de admin-UI.
+ */
+export const socialPosts = pgTable(
+  'social_posts',
+  {
+    id: text().primaryKey(),
+    slot: text().notNull(), // 'morning' | 'afternoon' | 'evening' — check constraint in SQL
+    eventIds: text()
+      .array()
+      .notNull()
+      .default(sql`ARRAY[]::text[]`),
+    imageUrls: text()
+      .array()
+      .notNull()
+      .default(sql`ARRAY[]::text[]`),
+    caption: text(),
+    igMediaId: text(),
+    scheduledFor: timestamp({ withTimezone: true }).notNull(),
+    postedAt: timestamp({ withTimezone: true }),
+    status: text().notNull().default('draft'), // 'draft' | 'approved' | 'posted' | 'skipped' | 'failed'
+    error: text(),
+    meta: jsonb().$type<{
+      scoreBreakdown?: Record<string, number>;
+      templateVersion?: string;
+      occurrenceIds?: string[];
+    }>(),
+    createdAt: timestamp({ withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+    updatedAt: timestamp({ withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+  },
+  (t) => [
+    index('social_posts_status_idx').on(t.status),
+    index('social_posts_scheduled_for_idx').on(t.scheduledFor),
+    index('social_posts_posted_at_idx').on(t.postedAt),
+  ]
+);
+
 export const verification = pgTable('verification', {
   id: text().primaryKey(),
   identifier: text().notNull(),

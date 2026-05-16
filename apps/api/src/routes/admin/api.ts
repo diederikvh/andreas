@@ -7,6 +7,7 @@ import { extractFromUrl } from '../../scrapers/extract-from-url.js';
 import { scrapers, type ScraperName } from '../../scrapers/index.js';
 import { uploadToBunny } from '../../storage/bunny.js';
 import { requireAdminAny } from './auth.js';
+import { adminSocial } from './social.js';
 
 /**
  * JSON API voor admin-acties — bedoeld voor n8n-agents en
@@ -175,6 +176,13 @@ function parseOccurrence(input: unknown): OccurrenceInput | null {
 export const adminApi = new Hono();
 
 adminApi.use('*', requireAdminAny);
+
+// ─── Sociale automatisering (IG-posts) ──────────────────────────────────
+//
+// Selectie + (binnenkort) render + caption + publish. Onder /admin/api/social/*
+// zodat de bestaande Bearer-auth voor n8n/cron-triggers gewoon werkt.
+
+adminApi.route('/social', adminSocial);
 
 // ─── Uploads ────────────────────────────────────────────────────────────
 //

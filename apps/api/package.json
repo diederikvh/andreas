@@ -17,14 +17,17 @@
   "dependencies": {
     "@andreas/shared": "workspace:*",
     "@better-auth/expo": "^1.6.9",
+    "@expo-google-fonts/archivo": "^0.4.2",
     "@hono/node-server": "^1.13.7",
     "@neondatabase/serverless": "^0.10.4",
+    "@resvg/resvg-js": "^2.6.2",
     "better-auth": "^1.6.9",
     "drizzle-orm": "^0.45.2",
     "expo-server-sdk": "^6.1.0",
     "hono": "^4.6.14",
     "playwright": "^1.59.1",
     "qrcode-generator": "^2.0.4",
+    "satori": "^0.26.0",
     "ws": "^8.18.0",
     "zod": "^4.0.0"
   },
