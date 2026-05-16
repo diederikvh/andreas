@@ -19,6 +19,7 @@ import { pushRoute } from './routes/push.js';
 import { savesRoute } from './routes/saves.js';
 import { seoFeedsRoute } from './routes/seo-feeds.js';
 import { seriesRoute } from './routes/series.js';
+import { getAppRoute } from './routes/get-app.js';
 import { shareRoute } from './routes/share.js';
 import { socialRoute } from './routes/social.js';
 import { venueFollowsRoute } from './routes/venue-follows.js';
@@ -264,6 +265,9 @@ app.route('/', seoFeedsRoute);
 // shareRoute zodat de specifieke slugs voorrang krijgen op de
 // catchall-routes (geen die nu bestaan, maar future-safe).
 app.route('/', hubsRoute);
+// Install-link voor IG-bio / CTA's — `/get` doet UA-detect en
+// stuurt door naar App Store / Play Store / web-landing.
+app.route('/get', getAppRoute);
 app.route('/', shareRoute);
 
 const port = Number(process.env.PORT ?? 8787);
