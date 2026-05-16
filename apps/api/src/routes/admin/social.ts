@@ -4,7 +4,7 @@ import { Hono } from 'hono';
 
 import { db, schema } from '../../db/index.js';
 import { generateCaption } from '../../social/caption.js';
-import { publishCarousel } from '../../social/publisher.js';
+import { ensureFreshToken, publishCarousel } from '../../social/publisher.js';
 import { renderCarousel, type CarouselPick } from '../../social/render.js';
 import { uploadToBunny } from '../../storage/bunny.js';
 import { requireAdminAny } from './auth.js';
@@ -765,6 +765,32 @@ export async function runPublish(
     throw e;
   }
 }
+
+/**
+ * IG token refresh-check. Veilig dagelijks aan te roepen — refresht
+ * alleen als 't binnen 7d vervalt. `force=1` forceert hoe dan ook
+ * (alleen handig voor handmatige debugging).
+ *
+ * Wordt aangeroepen door de GitHub Actions cron als veiligheidsnet —
+ * de publisher zelf doet ook al lazy refresh-on-use.
+ */
+adminSocial.post('/refresh-token', async (c) => {
+  const force = c.req.query('force') === '1';
+  try {
+    const row = await ensureFreshToken({ force });
+    const daysLeft = Math.round(
+      (row.expiresAt.getTime() - Date.now()) / (24 * 60 * 60 * 1000),
+    );
+    return c.json({
+      ok: true,
+      expiresAt: row.expiresAt.toISOString(),
+      refreshedAt: row.refreshedAt.toISOString(),
+      daysLeft,
+    });
+  } catch (e) {
+    return c.json({ ok: false, error: (e as Error).message }, 500);
+  }
+});
 
 adminSocial.post('/posts/:id/publish', async (c) => {
   const id = c.req.param('id');

@@ -763,6 +763,26 @@ export const socialPosts = pgTable(
   ]
 );
 
+/**
+ * Single-row tabel met de huidige Instagram Graph API access-token.
+ * IG long-lived tokens vervallen na ~60 dagen en moeten worden
+ * verlengd via `graph.instagram.com/refresh_access_token`. Door de
+ * token in DB te houden i.p.v. een Fly secret kunnen we 'm
+ * programmatisch vernieuwen (zonder app-restart). Primary key is een
+ * vaste sentinel 'main'.
+ */
+export const igTokens = pgTable('ig_tokens', {
+  id: text().primaryKey(),
+  accessToken: text().notNull(),
+  expiresAt: timestamp({ withTimezone: true }).notNull(),
+  refreshedAt: timestamp({ withTimezone: true })
+    .notNull()
+    .default(sql`now()`),
+  createdAt: timestamp({ withTimezone: true })
+    .notNull()
+    .default(sql`now()`),
+});
+
 export const verification = pgTable('verification', {
   id: text().primaryKey(),
   identifier: text().notNull(),
