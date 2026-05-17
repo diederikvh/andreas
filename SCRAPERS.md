@@ -194,7 +194,7 @@ Musea programmeren tentoonstellingen (`kind=exhibition`), niet point-in-time eve
 - ✅ **Ru Paré** (alternatief/klein/nieuw-west) — 3 events · `ical`
 - ✅ **Pakhuis de Zwijger** (mainstream/groot/centrum) — 52 events · `dezwijger` (custom HTML, paginated /agenda; events categorized als 'Lezing')
 - ✅ **De Balie** (mainstream/middel/centrum) — 38 events · `debalie` (WP REST `vo-programme`, date in permalink, categorized als 'Lezing')
-- ✅ **De Ceuvel** (alternatief/middel/noord) — 27 events · `deceuvel` (server-rendered tile-listing + month-headers; geen images op site)
+- ✅ **De Ceuvel** (alternatief/middel/noord) — 17 events (26 occurrences) · `deceuvel` (server-rendered tile-listing + month-headers, canonical-slug dedup, hi-res image via detail-page `data-original`)
 - ✅ **Felix Meritis** (mainstream/middel/centrum) — 9 events · `felixmeritis` (WP REST `vo-event` + detail-fetch voor datum/tijd, default 'Literatuur')
 - ✅ **NDSM Loods** (alternatief/groot/noord) — 2 events · `theater`
 - ✅ **Rijksakademie van beeldende kunsten** (alternatief/middel/centrum) — 1 event · `rijksakademie` (listing-page met YYYY-MM-DD in URL, og:meta voor description/image)
@@ -260,7 +260,7 @@ Volgorde op verwachte event-impact + scrape-effort.
 - ⬜ Allard Pierson, ARCAM, Artis, Embassy of the Free Mind, Het Scheepvaartmuseum, Hollandsche Schouwburg, Hortus Botanicus, Joods Museum, Moco, Rembrandthuis, Het Schip, Van Loon, NEMO, Holocaustmuseum, Solder
 
 **Ruimtes probes (30+):**
-- ⬜ De Ateliers, De Balie, De Ceuvel, Felix Meritis, LIMA, NieuwLand, Rijksakademie, en 22 alternatieve plekken (vooral underground/fringe AA-venues)
+- ⬜ De Ateliers, NieuwLand, en 22 alternatieve plekken (vooral underground/fringe AA-venues)
 
 **Galleries probes (35+):**
 - ⬜ De 35 galleries zonder feed. Realistisch: bulk-LLM-import via admin (zoals H'ART/Stedelijk), niet 35× dedicated scrapers.
