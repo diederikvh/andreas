@@ -77,7 +77,6 @@ Skill voor toevoegen van nieuwe scrapers: [.claude/skills/scraper-add/SKILL.md](
 - ✅ **Theater Amsterdam** (mainstream/groot/west) — 4 events · `ticketmaster`
 - ✅ **Bourbon Street** (alternatief/klein/centrum) — 2 events · `bourbonstreet`
 - ⬜ **Astarotheatro** — RSS in inventory; probe nodig
-- ⬜ **Het Veem House for Performance** — probe
 - ⬜ **Jazz Café Alto** — WP zonder custom event post-type
 - ⬜ **Perdu** — Ticketkantoor-platform; probe
 - ⬜ **Plein Theater** — probe
@@ -239,9 +238,6 @@ Musea programmeren tentoonstellingen (`kind=exhibition`), niet point-in-time eve
 ## Master TODO (alle ⬜ samengevat, op realistische prioriteit)
 
 Volgorde op verwachte event-impact + scrape-effort.
-
-**High-priority probes (groot publiek-programma of bekende platforms):**
-- ⬜ **Het Veem House for Performance** — dans
 
 **Blocked — extra infra nodig:**
 - 🟡 **SPUI25** — Cloudflare managed-challenge passeert geen plain Playwright. Vereist stealth-tooling (`playwright-extra` + `puppeteer-extra-plugin-stealth`-equivalent) of FlareSolverr. ~700 lezingen/jaar, dus de moeite waard zodra we 2+ Cloudflare-venues op één hoop hebben.
