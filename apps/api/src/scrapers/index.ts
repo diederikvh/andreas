@@ -4,6 +4,7 @@ import { scrapeAthenaeum, type AthenaeumResult } from './athenaeum.js';
 import { scrapeDeBalie, type DeBalieResult } from './debalie.js';
 import { scrapeDeCeuvel, type DeCeuvelResult } from './deceuvel.js';
 import { scrapeDeZwijger, type DeZwijgerResult } from './dezwijger.js';
+import { scrapeEventbrite, type EventbriteResult } from './eventbrite.js';
 import { scrapeFelixMeritis, type FelixMeritisResult } from './felixmeritis.js';
 import { scrapeLima, type LimaResult } from './lima.js';
 import { scrapeNieuweBoekhandel, type NieuweBoekhandelResult } from './nieuweboekhandel.js';
@@ -130,6 +131,7 @@ export const scrapers = {
   athenaeum: scrapeAthenaeum,
   perdu: scrapePerdu,
   nieuweboekhandel: scrapeNieuweBoekhandel,
+  eventbrite: scrapeEventbrite,
 } as const;
 
 export type ScraperName = keyof typeof scrapers;
@@ -195,4 +197,5 @@ export type ScraperResult =
   | LimaResult
   | AthenaeumResult
   | PerduResult
-  | NieuweBoekhandelResult;
+  | NieuweBoekhandelResult
+  | EventbriteResult;
