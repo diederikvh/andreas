@@ -2,7 +2,7 @@
 
 Volledige inventory: elke gepubliceerde venue in de DB hier zichtbaar met status. ✅ events live · ⬜ nog te doen · ❌ niet doen (met reden).
 
-**Stand (audit 2026-05-17)**: 83/198 gepubliceerde venues hebben momenteel toekomstige of lopende events (~4629 occurrences live). Lopende exhibitions (`starts_at` in verleden, `ends_at` in toekomst) tellen ook mee — dat is normaal voor musea.
+**Stand (audit 2026-05-17)**: 84/198 gepubliceerde venues hebben momenteel toekomstige of lopende events (~4667 occurrences live). Lopende exhibitions (`starts_at` in verleden, `ends_at` in toekomst) tellen ook mee — dat is normaal voor musea.
 
 Nieuwe event-categorie sinds 2026-05-17: **Lezing** (debat / talkshow / publieke-gesprek), apart van Literatuur. Eerste venue in deze categorie is Pakhuis de Zwijger.
 
@@ -195,6 +195,7 @@ Musea programmeren tentoonstellingen (`kind=exhibition`), niet point-in-time eve
 - ✅ **Plantagedok** (underground/klein/centrum) — 5 events · `ical`
 - ✅ **Ru Paré** (alternatief/klein/nieuw-west) — 3 events · `ical`
 - ✅ **Pakhuis de Zwijger** (mainstream/groot/centrum) — 52 events · `dezwijger` (custom HTML, paginated /agenda; events categorized als 'Lezing')
+- ✅ **De Balie** (mainstream/middel/centrum) — 38 events · `debalie` (WP REST `vo-programme`, date in permalink, categorized als 'Lezing')
 - ✅ **NDSM Loods** (alternatief/groot/noord) — 2 events · `theater`
 - ⬜ **A Lab** — probe
 - ⬜ **ADM Noord - Het Groene Veld** — probe
@@ -242,10 +243,9 @@ Volgorde op verwachte event-impact + scrape-effort.
 
 **High-priority probes (groot publiek-programma of bekende platforms):**
 - ⬜ **Eye Filmmuseum** — film, mainstream
-- ⬜ **SPUI25** — lezingen-programma
 - ⬜ **Pakhuis Wilhelmina** — multi-disciplinair podium
 - ⬜ **Het Veem House for Performance** — dans
-- ⬜ **De Balie** — debat/film
+- ⬜ **SPUI25** — Cloudflare-challenge blokkeert HTTP (403 zelfs met Googlebot UA), vereist Playwright (lokaal-only)
 
 **Quick-wins (platform al bekend, alleen config invullen):**
 - ⬜ **Cinema The Pulse** — eigen Webflow + FilmGenie (custom scraper schrijven)
