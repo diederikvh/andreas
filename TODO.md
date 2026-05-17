@@ -227,6 +227,10 @@ Geschat: ~150 regels backend, ~80 regels mobile, ~2-3u.
 
 ## Te fixen / technical debt
 
+- **Sentry — auth-token activeren** (2026-05-17). Wiring zit erin: `@sentry/react-native/expo` plugin in app.json met DSN hardcoded in `_layout.tsx` (release=app-version, dist=updateId), `SentryUserBinder` mount, Metro config via `getSentryExpoConfig`. API: `@sentry/node` v8 met `app.onError` + user-tagging, DSN hardcoded in `instrument.ts`, gated op `NODE_ENV === 'production'` (Dockerfile zet dat). Org `pluvo-bv` op EU-region, projects `andreas_amsterdam` (mobile) + API-project. Te doen:
+  - **OTA sourcemaps**: `export SENTRY_AUTH_TOKEN=sntrys_...` in shell-env (Auth Token uit Sentry → Settings → Auth Tokens, scopes `project:releases` + `project:read` + `org:read`). Wanneer aanwezig uploaden `eas update` en `eas build` automatisch de sourcemaps via de plugin. Zonder token werkt error-capture nog, maar krijg je geminified stacks i.p.v. mapped.
+  - **Native build secret**: `eas secret:create --scope project --name SENTRY_AUTH_TOKEN --value "sntrys_..."` zodat EAS Build sourcemaps uploadt voor native iOS/Android crashes.
+  - **Smoke-test**: tijdelijk een `throw new Error('sentry-test')` in een button-press in mobile + `throw new Error('sentry-test')` in een API-route. Check dat events binnenkomen in beide Sentry-projects met juiste user-id, release (1.1.0), en dist (updateId).
 - **Privacy-gates**: `buildFriendsByEvent` en `GET /friends/:id` zien alle saves van vrienden. Zodra users een privacy-flag krijgen ("vrienden mogen mijn saves zien" toggle) moeten beide endpoints daarop checken.
 - **Apple Maps mapType**: `mutedStandard` is alleen iOS — Android krijgt nog steeds standaard kaart. MapLibre swap voor echt-zwart Andreas-style staat als open punt.
 - **Lokale `apps/api/.env`** kan nog leeg zijn — productie draait alleen op Fly secrets. Voor lokaal werken: handmatig dezelfde keys overnemen of Bird key vrij laten (SMS-module logt OTP dan naar console).

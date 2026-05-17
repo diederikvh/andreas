@@ -112,7 +112,15 @@
       ],
       "expo-notifications",
       "expo-localization",
-      "@maplibre/maplibre-react-native"
+      "@maplibre/maplibre-react-native",
+      [
+        "@sentry/react-native/expo",
+        {
+          "url": "https://sentry.io/",
+          "project": "andreas_amsterdam",
+          "organization": "pluvo-bv"
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

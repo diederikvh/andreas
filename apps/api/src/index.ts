@@ -1,9 +1,12 @@
+// Sentry instrumenteert HTTP/DB — moet vóór alle andere imports laden.
+import './instrument.js';
+
 import { serve } from '@hono/node-server';
+import * as Sentry from '@sentry/node';
+import { eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { logger } from 'hono/logger';
-
-import { eq } from 'drizzle-orm';
 
 import { auth } from './auth.js';
 import { db, schema } from './db/index.js';
@@ -29,6 +32,30 @@ import { uploadToBunny } from './storage/bunny.js';
 const app = new Hono();
 
 app.use('*', logger());
+
+// Sentry — vang thrown errors via Hono's onError-hook. Bind user-id
+// uit de better-auth session zodat we per-user kunnen zien wie een
+// crash raakt. Bij ontbrekende DSN doet Sentry.* niets — geen overhead.
+app.onError(async (err, c) => {
+  if (process.env.NODE_ENV === 'production') {
+    try {
+      const session = await auth.api.getSession({ headers: c.req.raw.headers });
+      if (session?.user?.id) {
+        Sentry.setUser({ id: session.user.id });
+      }
+    } catch {
+      // session-lookup mag geen vervolg-crash veroorzaken.
+    }
+    Sentry.captureException(err, {
+      tags: {
+        method: c.req.method,
+        path: new URL(c.req.url).pathname,
+      },
+    });
+  }
+  console.error('[api] uncaught:', err);
+  return c.json({ error: 'internal_server_error' }, 500);
+});
 
 // CORS — prod-origins (web/share-pagina + Expo dev clients). In dev
 // laten we alles toe; in prod lijst we expliciet zodat het session-
