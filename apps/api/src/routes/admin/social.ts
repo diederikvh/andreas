@@ -462,7 +462,7 @@ adminSocial.get('/preview', async (c) => {
         startsAt: p.startsAt,
         endsAt: p.endsAt,
       })),
-      { date: now }
+      { date: now, slot }
     ),
     generateCaption({
       date: now,
@@ -593,7 +593,7 @@ export async function runGenerate(
       startsAt: p.startsAt,
       endsAt: p.endsAt,
     })),
-    { date: now }
+    { date: now, slot }
   );
 
   // 2. Upload elke slide naar Bunny — pad bevat een generatie-marker (epoch in base36)

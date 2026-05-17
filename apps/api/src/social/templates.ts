@@ -129,6 +129,9 @@ export interface CoverInput {
       de carousel zodat slide 1 → slide 2 visueel bindt. Donker overlay
       gradient zorgt dat de tekst leesbaar blijft. */
   heroImageUrl?: string | null;
+  /** "Tips voor vandaag" (ochtend) of "Tips voor vanavond" (avond) —
+      wordt onder de datum getoond. Caller bepaalt op basis van slot. */
+  tagline?: string;
 }
 
 export function coverSlide(input: CoverInput): VNode {
@@ -229,7 +232,7 @@ export function coverSlide(input: CoverInput): VNode {
             marginTop: 24,
           },
         },
-        'Tips voor vanavond'
+        input.tagline ?? 'Tips voor vandaag'
       )
     )
   );

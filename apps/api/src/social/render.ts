@@ -46,12 +46,15 @@ async function renderSlide(tree: unknown): Promise<Buffer> {
 
 export async function renderCarousel(
   picks: CarouselPick[],
-  options: { date?: Date } = {}
+  options: { date?: Date; slot?: 'morning' | 'evening' } = {}
 ): Promise<Buffer[]> {
   const date = options.date ?? new Date();
   if (picks.length === 0) {
     throw new Error('renderCarousel: minstens 1 pick vereist');
   }
+
+  const tagline =
+    options.slot === 'evening' ? 'Tips voor vanavond' : 'Tips voor vandaag';
 
   const slides: Buffer[] = [];
 
@@ -62,6 +65,7 @@ export async function renderCarousel(
         date,
         pickCount: picks.length,
         heroImageUrl: picks[0]?.imageUrl ?? null,
+        tagline,
       })
     )
   );
