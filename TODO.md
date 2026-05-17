@@ -129,6 +129,16 @@ Laatste sync: 2026-05-16 · branch `main`.
   - Invite-modal vrienden-lijst sorteert nu favorieten eerst (alfabetisch) met ⭐-icoon naast naam; daarna rest alfabetisch; pending-requests onderaan.
   - "Spiegel"/"Mirror"-naam in UI vervangen door "Profielinzicht"/"Profile insight" (interne code-identifiers blijven `mirror*` om refactor-churn te voorkomen).
   - Bewerk-profielknop compact (pill + ✏️ pencil-icoon), zelfde footprint als de Volgend/Favoriet-knop op vriend-profielen.
+
+**Fase 9 — Observability + groei** (sessie 2026-05-17): in uitvoering.
+
+- ✅ **Sentry error-tracking wired** — `@sentry/react-native` met Expo config plugin (org `pluvo-bv` op EU-region), init in `_layout.tsx` met release=app-version + dist=updateId, `SentryUserBinder` koppelt user-id via `useMe()`, Metro via `getSentryExpoConfig` voor debug-id stempeling. API: `@sentry/node` v8 met `app.onError` + better-auth user-tagging, gated op `NODE_ENV === 'production'`. Beide DSNs hardcoded. Werkt: eerste issue zichtbaar in Sentry-dashboard direct na deploy.
+- ✅ **Version bump 1.1.0 → 1.1.1 + native builds** — Sentry config plugin in `app.json` = native-config change → vereist `eas build` (niet OTA). iOS build #21 ingediend bij App Store Connect, Android AAB klaar voor download.
+- ⬜ **iOS TestFlight-distributie afronden** — Apple processed build 21 (~5-10 min na submit), daarna verschijnt 'ie in TestFlight. Op TestFlight-tab een korte release-note: "Crash-reporting via Sentry — als de app onverwacht crasht zien we 'm nu meteen." Internal-testers groep ongewijzigd; external-testers groep weet ik niet wat de status is.
+- ⬜ **Android Play Store submit** — AAB op `https://expo.dev/accounts/diederikvh/projects/andreas/builds/c70fb427-5e29-487a-ade6-b8dfceb89c00` handmatig naar Play Console, of `eas.json` aanvullen met submit-config (`submit.production.android.serviceAccountKeyPath` + Google Play API setup).
+- ⬜ **Sentry release-notes per OTA** — bij elke `eas update` automatisch de commit-SHA + message als Sentry-release tag setten zodat per OTA-bundle de groep gevonden wordt.
+- ⬜ **`/deze-week`-dashboard op andreas.amsterdam** (groei-prio, later) — publieke wekelijkse snapshot van top-saves van afgelopen 7 dagen (events + venues + genres). Cron-job vriest maandag 00:00 in; archief via `/deze-week/<jaar>-w<nr>`. Doel: pers-haakje (Parool, Subbacultcha, 3voor12), authority-signaal voor AI/Google ("wat was druk in Amsterdam?"), socially-shareable artefact, weekly fresh content voor SEO. Hergebruik `_seo.ts`-helpers. Voor: zie groei-checklist hieronder.
+
 - ⬜ **"Voor jou" op Agenda** — copy van Avond-rail of natuurlijker geïntegreerd in tijdslijn. Plan noemde "/avond of /agenda".
 - ⬜ **"Omdat je X volgt..."-venue-suggesties** — light collaborative filtering op venue-follows (welke venues hebben overlap met jouw save-patroon). Apart endpoint `/venues/for-you` of als sectie op Avond/Jij.
 - ⬜ **Push voor matches** — match-logic + scheduler. Alleen voor events die hoog scoren tegen jouw profiel, en alleen bij gevolgde venues of genres met N≥3 saves. Géén "deze week speelt er..."-broadcast. `push_tokens` tabel bestaat al.
@@ -227,10 +237,21 @@ Geschat: ~150 regels backend, ~80 regels mobile, ~2-3u.
 
 ## Te fixen / technical debt
 
-- **Sentry — auth-token activeren** (2026-05-17). Wiring zit erin: `@sentry/react-native/expo` plugin in app.json met DSN hardcoded in `_layout.tsx` (release=app-version, dist=updateId), `SentryUserBinder` mount, Metro config via `getSentryExpoConfig`. API: `@sentry/node` v8 met `app.onError` + user-tagging, DSN hardcoded in `instrument.ts`, gated op `NODE_ENV === 'production'` (Dockerfile zet dat). Org `pluvo-bv` op EU-region, projects `andreas_amsterdam` (mobile) + API-project. Te doen:
-  - **OTA sourcemaps**: `export SENTRY_AUTH_TOKEN=sntrys_...` in shell-env (Auth Token uit Sentry → Settings → Auth Tokens, scopes `project:releases` + `project:read` + `org:read`). Wanneer aanwezig uploaden `eas update` en `eas build` automatisch de sourcemaps via de plugin. Zonder token werkt error-capture nog, maar krijg je geminified stacks i.p.v. mapped.
-  - **Native build secret**: `eas secret:create --scope project --name SENTRY_AUTH_TOKEN --value "sntrys_..."` zodat EAS Build sourcemaps uploadt voor native iOS/Android crashes.
-  - **Smoke-test**: tijdelijk een `throw new Error('sentry-test')` in een button-press in mobile + `throw new Error('sentry-test')` in een API-route. Check dat events binnenkomen in beide Sentry-projects met juiste user-id, release (1.1.0), en dist (updateId).
+- **`Lezing`-categorie unhide zodra nieuwe native build live is** (gate-fix 2026-05-17, commit `b9075e7`). Achtergrond: de oude TestFlight bundle kent `'Lezing'` niet als event-category en crasht erop. We hebben Lezing tijdelijk weg-gemapt naar Literatuur — alle schema/UI-code voor Lezing staat klaar, alleen de DATA serveert nu Literatuur. Wanneer de nieuwe native build (met Lezing-aware bundle) live is op TestFlight en de App Store, doe:
+  1. **Code revert** in 2 files:
+     - `apps/api/src/scrapers/dezwijger.ts` — `venueCategory ?? 'Literatuur'` terug naar `'Lezing'` (zoek op `TODO(lezing-gate)`).
+     - `apps/api/src/scrapers/debalie.ts` — idem.
+  2. **enrich.ts opfrissen** zodat Claude's Lezing-output door komt: voeg `'Lezing'` toe aan zowel `type EventCategory` (rond regel 109) als `ALLOWED_CATEGORIES` (rond regel 126) in `apps/api/src/scrapers/enrich.ts`. (Nu filtert enrich.ts `'Lezing'` impliciet naar `null` → caller valt terug op venue-default; na deze fix krijgt Pakhuis/De Balie events de juiste Lezing-tag.)
+  3. **DB-restore**:
+     ```sql
+     UPDATE venues SET categories = ARRAY['Lezing']::event_category[] WHERE id IN ('pakhuis-de-zwijger','de-balie');
+     UPDATE events SET category = 'Lezing' WHERE venue_id IN ('pakhuis-de-zwijger','de-balie');
+     ```
+  4. **Fly deploy**: `fly deploy --config apps/api/fly.toml --dockerfile apps/api/Dockerfile`.
+  5. **Verifieer** in de nieuwe bundle: Pakhuis/De Balie events tonen cobalt-tone (i.p.v. saffron Literatuur), Lezing-tab is zichtbaar op Vandaag/Agenda, geen crashes op oudere bundles (die moeten dan geen oude bundles meer zijn).
+  6. Grep op `TODO(lezing-gate)` voor restant-markers en verwijder.
+
+- **Sentry — sourcemap mapping verifiëren** (2026-05-17). Wiring + auth-tokens (shell + EAS-secret) staan; eerste events stromen binnen op `pluvo-bv.sentry.io`. Te checken bij eerste issue: zijn de stack-frames mapped naar bron-bestanden, of nog geminified? Bij geminified → sourcemap-upload niet doorgekomen (token-scopes, of debug-ids niet meegekomen). Native build #21 (v1.1.1) heeft sourcemaps via EAS-secret; OTA's daarna moeten via shell-env-token uploaden.
 - **Privacy-gates**: `buildFriendsByEvent` en `GET /friends/:id` zien alle saves van vrienden. Zodra users een privacy-flag krijgen ("vrienden mogen mijn saves zien" toggle) moeten beide endpoints daarop checken.
 - **Apple Maps mapType**: `mutedStandard` is alleen iOS — Android krijgt nog steeds standaard kaart. MapLibre swap voor echt-zwart Andreas-style staat als open punt.
 - **Lokale `apps/api/.env`** kan nog leeg zijn — productie draait alleen op Fly secrets. Voor lokaal werken: handmatig dezelfde keys overnemen of Bird key vrij laten (SMS-module logt OTP dan naar console).
@@ -274,3 +295,5 @@ Geschat: ~150 regels backend, ~80 regels mobile, ~2-3u.
 - [app.html](app.html) — master-mockup, bron van waarheid voor copy + visual design. Lees per `phone-<naam>` blok.
 - [start-screen.html](start-screen.html) — splash + welkom-flow.
 - [CLAUDE.md](CLAUDE.md) — briefing voor elke nieuwe Claude-sessie.
+- [docs/groei-checklist.md](docs/groei-checklist.md) — 12 aspecten om bij elke product/strategie-keuze langs te lopen.
+- [docs/n8n.md](docs/n8n.md) — admin-API + Bunny-uploads voor n8n-flows.
