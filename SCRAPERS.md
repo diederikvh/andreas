@@ -76,6 +76,7 @@ Skill voor toevoegen van nieuwe scrapers: [.claude/skills/scraper-add/SKILL.md](
 - ✅ **Concertgemaal** (fringe/klein/noord) — 4 events · Wix Events JSON-LD
 - ✅ **Theater Amsterdam** (mainstream/groot/west) — 4 events · `ticketmaster`
 - ✅ **Bourbon Street** (alternatief/klein/centrum) — 2 events · `bourbonstreet`
+- ✅ **ZOJazz Stage** (alternatief/klein/zuidoost) — 5 events · `eventbrite` (organizer `70651461373`, jazz + wereldmuziek)
 - ⬜ **Astarotheatro** — RSS in inventory; probe nodig
 - ⬜ **Jazz Café Alto** — WP zonder custom event post-type
 - ✅ **Perdu** (underground/klein/centrum) — 10 events · `perdu` (WP REST `events` CPT, filter NL-versies, datum uit detail-text "DD maand om HH:MM")

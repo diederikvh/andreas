@@ -45,8 +45,9 @@ function decode(s: string): string {
 function parseOrganizerEvents(html: string): Array<{ slug: string; eventId: string }> {
   const seen = new Set<string>();
   const out: Array<{ slug: string; eventId: string }> = [];
-  // Pattern: eventbrite.com/e/{slug}-tickets-{event_id}
-  const re = /eventbrite\.com\/e\/([a-z0-9-]+)-tickets-(\d{10,})/gi;
+  // Pattern: eventbrite.{tld}/e/{slug}-tickets-{event_id} — venues kunnen op
+  // .com, .nl, .co.uk etc. zitten; we matchen elke 2-3 letter TLD.
+  const re = /eventbrite\.(?:com|nl|[a-z]{2,5})\/e\/([a-z0-9-]+)-tickets-(\d{10,})/gi;
   let m: RegExpExecArray | null;
   while ((m = re.exec(html)) !== null) {
     if (seen.has(m[2])) continue;
