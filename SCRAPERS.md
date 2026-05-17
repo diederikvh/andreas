@@ -225,10 +225,12 @@ Musea programmeren tentoonstellingen (`kind=exhibition`), niet point-in-time eve
 - ⬜ **Workship op de Ceuvel** — probe
 - ⬜ **[ woonruimte coöperatief ]** — private, probably skip
 
-## Boekhandel-cafés (4)
+## Boekhandel-cafés (6)
 
 - ✅ **Fort van Sjakoo** (underground/klein/centrum) — 1 event · `ical`
-- ⬜ **Athenaeum Boekhandel** — probe
+- ⬜ **Athenaeum Spui** (mainstream/klein/centrum) — Cloudflare-block (zie Blocked-sectie); agenda op `/agenda-spui`
+- ⬜ **Scheltema** (mainstream/groot/centrum) — Cloudflare-block; agenda op `/agenda-scheltema`
+- ⬜ **Athenaeum Zuidoost** (alternatief/middel/zuidoost) — Cloudflare-block; agenda op `/agenda-zuidoost`
 - ⬜ **Kanarie Club** — probe
 - ⬜ **Noon coffee & culture** — probe
 
@@ -238,8 +240,14 @@ Musea programmeren tentoonstellingen (`kind=exhibition`), niet point-in-time eve
 
 Volgorde op verwachte event-impact + scrape-effort.
 
-**Blocked — extra infra nodig:**
-- 🟡 **SPUI25** — Cloudflare managed-challenge passeert geen plain Playwright. Vereist stealth-tooling (`playwright-extra` + `puppeteer-extra-plugin-stealth`-equivalent) of FlareSolverr. ~700 lezingen/jaar, dus de moeite waard zodra we 2+ Cloudflare-venues op één hoop hebben.
+**Blocked — extra infra nodig (Cloudflare managed-challenge):**
+
+Vereist stealth-tooling (`playwright-extra` + `puppeteer-extra-plugin-stealth`-equivalent) of FlareSolverr. Met 4 venues nu op één hoop is dit de moeite waard.
+
+- 🟡 **SPUI25** — `/agenda` ~700 lezingen/jaar. Plain `fetch` → 403, headless Playwright `networkidle` timeout.
+- 🟡 **Athenaeum Spui** — `/agenda-spui` (boekpresentaties + literaire lezingen, het origineel sinds 1966)
+- 🟡 **Scheltema** — `/agenda-scheltema` (groot programma op Rokin)
+- 🟡 **Athenaeum Zuidoost** — `/agenda-zuidoost` (sinds 2022 op Bijlmerplein)
 
 **Quick-wins (platform al bekend, alleen config invullen):**
 - ⬜ **Eye Filmmuseum** — film, mainstream
@@ -266,7 +274,7 @@ Volgorde op verwachte event-impact + scrape-effort.
 - ⬜ De 35 galleries zonder feed. Realistisch: bulk-LLM-import via admin (zoals H'ART/Stedelijk), niet 35× dedicated scrapers.
 
 **Boekhandel-cafés:**
-- ⬜ Athenaeum Boekhandel, Kanarie Club, Noon coffee & culture
+- ⬜ Kanarie Club, Noon coffee & culture (Athenaeum Spui + Scheltema + Zuidoost: zie Blocked-sectie)
 
 ## ❌ Niet doen (met reden)
 
