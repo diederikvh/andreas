@@ -212,7 +212,7 @@ Musea programmeren tentoonstellingen (`kind=exhibition`), niet point-in-time eve
 - ⬜ **Huis te Vraag** — probe
 - ⬜ **KasKantine** — probe
 - ⬜ **Kostgewonnen** — probe
-- ⬜ **LIMA** — Gatsby-static site, `/article/{slug}` zonder datum in URL, slechts 1-2 toekomstige events tegelijk op homepage; disproportionele effort voor laag-volume bron
+- ✅ **LIMA** (alternatief/middel/centrum) — 0 events momenteel · `lima` (5 type-listings: talk/exhibition/screening/symposium/workshop; per article-tile DD-MM-YYYY + slug; og:meta voor description/image). 43 historische events geparsed, allemaal verleden — scraper wacht op nieuwe events. Default cat `Kunst`.
 - ⬜ **Loods 6** — voornamelijk verhuur + ateliers; events sporadisch
 - ⬜ **NieuwLand** — probe
 - ⬜ **Parknest** — probe
