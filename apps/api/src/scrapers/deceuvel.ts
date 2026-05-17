@@ -88,6 +88,7 @@ type Tile = {
   url: string;
   title: string;
   description: string | null;
+  imageSourceUrl: string | null;
   day: number;
   month: number;
   startHour: number;
@@ -184,8 +185,19 @@ function parseTileBlock(block: string, month: number): Tile | null {
     description = txt.length > 30 ? txt.slice(0, 800) : null;
   }
 
+  // Image: thumb (800×800) staat in de tile zelf via i0.wp.com
+  // (Jetpack-cache). Pak 'm as-is — fallback voor als de detail-page
+  // header-image faalt.
+  let imageSourceUrl: string | null = null;
+  const imgMatch = block.match(
+    /<img[^>]+src="(https?:\/\/i0\.wp\.com\/deceuvel\.nl\/wp-content\/uploads\/[^"]+)"/
+  );
+  if (imgMatch) {
+    imageSourceUrl = decode(imgMatch[1]);
+  }
+
   return {
-    slug, url, title, description,
+    slug, url, title, description, imageSourceUrl,
     day, month,
     startHour, startMinute, endHour, endMinute,
     room, priceNote,
@@ -195,9 +207,15 @@ function parseTileBlock(block: string, month: number): Tile | null {
 async function fetchDetailImage(url: string): Promise<string | null> {
   const html = await fetchHtml(url);
   if (!html) return null;
-  const m = html.match(/<meta[^>]+property="og:image"[^>]+content="([^"]+)"/);
-  if (!m) return null;
-  return decode(m[1]);
+  // Header-image: `<div class="background lazy" data-original="https://i0.wp.com/…">`.
+  // Geeft de full-res versie, beter dan de 800×800 tile-thumb.
+  const m = html.match(
+    /class="background lazy"[^>]*data-original="([^"]+)"/
+  );
+  if (m) return decode(m[1]);
+  // Fallback op og:image (zelden gezet bij De Ceuvel)
+  const og = html.match(/<meta[^>]+property="og:image"[^>]+content="([^"]+)"/);
+  return og ? decode(og[1]) : null;
 }
 
 async function mirrorImage(
@@ -321,7 +339,10 @@ export async function scrapeDeCeuvel(options?: {
           venueCategory,
         });
 
-        const sourceImage = await fetchDetailImage(meta.tile.url);
+        // Image: detail-page header (full-res via `data-original`) als
+        // primair, val terug op tile-thumb als detail-fetch faalt.
+        const sourceImage =
+          (await fetchDetailImage(meta.tile.url)) ?? meta.tile.imageSourceUrl;
         let imageUrl: string | null = null;
         if (sourceImage) {
           imageUrl = (await mirrorImage(sourceImage, canonical)) ?? sourceImage;
