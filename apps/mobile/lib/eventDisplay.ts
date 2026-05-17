@@ -208,7 +208,7 @@ const VENUE_TYPE_LABEL_NL: Record<VenueType, string> = {
   club: 'Club',
   galerie: 'Galerie',
   museum: 'Museum',
-  film: 'Film',
+  film: 'Filmhuis',
   ruimte: 'Ruimte',
   'boekhandel-cafe': 'Boekhandel',
 };
