@@ -79,7 +79,6 @@ Skill voor toevoegen van nieuwe scrapers: [.claude/skills/scraper-add/SKILL.md](
 - ⬜ **Astarotheatro** — RSS in inventory; probe nodig
 - ⬜ **Het Veem House for Performance** — probe
 - ⬜ **Jazz Café Alto** — WP zonder custom event post-type
-- ⬜ **Pakhuis Wilhelmina** — probe
 - ⬜ **Perdu** — Ticketkantoor-platform; probe
 - ⬜ **Plein Theater** — probe
 - ⬜ **Podium Vrijburcht** — probe
@@ -221,7 +220,7 @@ Musea programmeren tentoonstellingen (`kind=exhibition`), niet point-in-time eve
 - ⬜ **RijksHemelVaartDienst** — probe
 - ⬜ **Rijksakademie van beeldende kunsten** — probe
 - ⬜ **SEXYLAND World** — probe
-- ⬜ **SPUI25** — probe (lezingen-programma, kandidaat voor `eventscalendar` of `ical`)
+- ⬜ **SPUI25** — Cloudflare managed-challenge blokkeert alles. Geprobeerd 2026-05-17: directe `fetch` → 403 (ook met Googlebot/Bing/Yandex/DuckDuck UA), headless Chromium via Playwright → 60s timeout op `networkidle` (challenge wordt nooit doorlopen). Vereist `playwright-extra` + stealth-plugin óf een externe service (FlareSolverr / ScrapingBee). Voor één venue te veel infra-overhead; gepauzeerd tot we meer Cloudflare-venues hebben die het samen rechtvaardigen.
 - ⬜ **Steelhenge** — probe
 - ⬜ **Treehouse NDSM** — probe
 - ⬜ **Vondelbunker** — probe
@@ -242,12 +241,13 @@ Musea programmeren tentoonstellingen (`kind=exhibition`), niet point-in-time eve
 Volgorde op verwachte event-impact + scrape-effort.
 
 **High-priority probes (groot publiek-programma of bekende platforms):**
-- ⬜ **Eye Filmmuseum** — film, mainstream
-- ⬜ **Pakhuis Wilhelmina** — multi-disciplinair podium
 - ⬜ **Het Veem House for Performance** — dans
-- ⬜ **SPUI25** — Cloudflare-challenge blokkeert HTTP (403 zelfs met Googlebot UA), vereist Playwright (lokaal-only)
+
+**Blocked — extra infra nodig:**
+- 🟡 **SPUI25** — Cloudflare managed-challenge passeert geen plain Playwright. Vereist stealth-tooling (`playwright-extra` + `puppeteer-extra-plugin-stealth`-equivalent) of FlareSolverr. ~700 lezingen/jaar, dus de moeite waard zodra we 2+ Cloudflare-venues op één hoop hebben.
 
 **Quick-wins (platform al bekend, alleen config invullen):**
+- ⬜ **Eye Filmmuseum** — film, mainstream
 - ⬜ **Cinema The Pulse** — eigen Webflow + FilmGenie (custom scraper schrijven)
 - ⬜ **Kriterion** — JSON-LD kandidaat
 - ⬜ **FilmHallen / The Movies / Rialto / Studio/K / Lab111 / De Uitkijk / Cavia / FC Hyena** — film-venues, vergelijkbare aanpak
