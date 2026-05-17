@@ -19,8 +19,11 @@ dist/
 .tsbuildinfo
 *.tsbuildinfo
 
-# Claude Code local state
-.claude/
+# Claude Code local state — settings & cache negeren, skills/commands/agents wel delen.
+.claude/*
+!.claude/skills/
+!.claude/agents/
+!.claude/commands/
 
 # Stray root configs (eas/app.json belong in apps/mobile/)
 /eas.json

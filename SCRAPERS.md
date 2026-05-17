@@ -248,6 +248,58 @@ Andreas-night-modus targeted. 3 al gescrape'd (Doka 2, Lofi 16, Radion 22 = 40 e
 
 ---
 
+## Open cleanup (audit 2026-05-17)
+
+DB-audit over alle 51 actieve scrapers. Skill `scraper-add` werkt deze pijnpunten ook in voor nieuwe scrapers — zie [.claude/skills/scraper-add/SKILL.md](.claude/skills/scraper-add/SKILL.md).
+
+### 1. Recurring events nog niet gegroepeerd
+Akhnaton heeft canonical-slug grouping; Anita en clones nog niet. Top ongegroepeerde recurring titels per venue:
+- **De Nieuwe Anita** — Cinemanita & Fiber Factory (×10), Schrijfcafé Tussen de Regels (×6), Literanita (×3), Vrij Spel (×2), Comedy Queens (×2), Amsterdam Vinyl Club (×2), …
+- **Chin Chin Club** — Mémoire | 18+ (×5), F.A.M. | 18+ (×4), Dynasty | 21+ (×2), Fusion | 20+ (×2). Slugs hebben `-N` suffix net als Akhnaton.
+- **Theater Mascini** — Amsterdams Allooi (×4) — eigen pattern, geen `-N` maar `{id}-{slug}` met andere id per editie.
+- **Podium DE FLUX**, **Ruigoord**, **Internationaal Theater Amsterdam** ("Public tour (in English)", "Openbare rondleiding (in het Nederlands)"), **Concertgemaal**, **De Krakeling**, **Club NYX**, **Madam** — telkens 2-3 dupes per recurring titel.
+
+**Fix-patroon**: hergebruik de Akhnaton-aanpak — `canonicalKey(slug)` per scraper (strip `-N$` of `{id}-` prefix), group posts, één event-row, occurrence-row per editie.
+
+### 2. Cross-language dupes (NL/EN)
+- **Het Concertgebouw** heeft 1 bevestigde NL+EN-paar gevonden ("Samy Moussa & Poolse invloeden" / "Samy Moussa & Polish influences") — de `<html lang="nl">`-filter in `theater.ts` werkt grotendeels maar lekt soms. Andere "same-time"-paren zijn parallel Grote/Kleine Zaal, geen dupes.
+- **ITA** dito: "same-time"-paren zijn meestal Rabozaal vs Grote Zaal. NL+EN-paar gespot: "Public tour (in English)" / "Openbare rondleiding (in het Nederlands)" — die zijn niet hetzelfde event, dit zijn juist twee verschillende tour-formats. Geen actie.
+
+### 3. Image-bronnen die niet naar Bunny gemirroreerd zijn
+| Venue | n | Reden |
+|---|---|---|
+| Theater Mascini | 43 | Mirror-stap ontbreekt in `theatermascini.ts`. Source: `theatermascini.nl/_live_portrait_...` en `/media/a_Webshop/...`. |
+| Bourbon Street | 6 | Mirror-stap ontbreekt. Source: `bourbonstreet.nl/uploads/image/...-150x100.jpg`. Bonus: tile-thumb maat (150×100) is te klein — zoek native res of skip. |
+| Betty Asfalt | 2 | Mirror-stap ontbreekt. |
+| De Nieuwe Anita | 2 | Edge-case waar mirror faalt, fallback op source. |
+| Podium Mozaiek | 2 | Idem. |
+| Thuishaven | 1 | Idem. |
+
+**Fix**: alle scrapers moeten `uploadToBunny()` aanroepen vóór ze het URL in `events.imageUrl` zetten. Zie het patroon in `denieuweanita.ts` / `akhnaton.ts` (`mirrorImage` helper).
+
+### 4. Events met NULL image
+Top venues met events zonder enige image: OCCII (31), Melkweg (21), Lofi (20), nachbar (17), Tilla Tec (13), Radio Radio (12), Club NYX (11), Mediamatic (9), Het Sieraad (9). Sommige bronnen bieden simpelweg geen image per event (OCCII iCal, Sieraad event-row). Voor deze: venue.imageUrl als fallback op event-tile is een UX-fix, geen scraper-fix.
+
+### 5. Broken events (zonder occurrences)
+2 entries: Boom Chicago (1) + Museum Het Rembrandthuis (1). Verwaarloosbaar, maar handig om periodiek te draaien:
+
+```sql
+DELETE FROM events e
+WHERE NOT EXISTS (SELECT 1 FROM occurrences o WHERE o.event_id = e.id);
+```
+
+### 6. Scrapers in registry, niet in daily CI
+Wel `scrapers/index.ts`, niet `.github/workflows/scrape-stager.yml` matrix. Sommige bewust (Playwright-only, kunnen niet op Fly), andere vergeten:
+
+**Pure-HTTP, vergeten toe te voegen aan matrix:**
+denieuweanita, amsterdammuseum, arti, cbkzuidoost, cobramuseum, nieuwekerk, nxtmuseum, oudekerk, rijksmuseum, straatmuseum, vangoghmuseum, wereldmuseum, badhuistheater, bettyasfalt, bourbonstreet, brakkegrond, qfactory, theatermascini, thuishaven, weticket.
+
+**Playwright (bewust niet in matrix):** bimhuis, fourvenues, melkweg, muziekgebouw, ontheroof, paradiso, radioradio, foam — runnen lokaal via `pnpm scrape <name>`.
+
+### 7. 121 venues met 0 events
+121 van 204 gepubliceerde venues hebben nog geen events. Top podia/clubs/film zonder scraper (samenvatting):
+Astarotheatro, Café Café, Cavia, Cinema The Pulse, Cinetol, De Uitkijk, Escape, Eye Filmmuseum, FC Hyena, FilmHallen, Jazz Café Alto, Kriterion, Lab111, Perdu, Rialto, Sugarfactory, The Movies, Volta, Zaal 100, Studio/K, Pakhuis Wilhelmina — separate research per venue.
+
 ## Aantekeningen
 
 - "RSS in inventory" = WordPress site met `/feed/` endpoint, maar earlier check liet zien dat die feeds blog-posts mixen met events. Niet een echte quick-win — vereist Claude-filter per item. Rondom Phase 3 als groep aanpakken.
