@@ -78,7 +78,7 @@ Skill voor toevoegen van nieuwe scrapers: [.claude/skills/scraper-add/SKILL.md](
 - ✅ **Bourbon Street** (alternatief/klein/centrum) — 2 events · `bourbonstreet`
 - ⬜ **Astarotheatro** — RSS in inventory; probe nodig
 - ⬜ **Jazz Café Alto** — WP zonder custom event post-type
-- ⬜ **Perdu** — Ticketkantoor-platform; probe
+- ✅ **Perdu** (underground/klein/centrum) — 10 events · `perdu` (WP REST `events` CPT, filter NL-versies, datum uit detail-text "DD maand om HH:MM")
 - ⬜ **Plein Theater** — probe
 - ⬜ **Podium Vrijburcht** — probe
 - ⬜ **Salon de IJzerstaven** — probe
@@ -225,8 +225,9 @@ Musea programmeren tentoonstellingen (`kind=exhibition`), niet point-in-time eve
 - ⬜ **Workship op de Ceuvel** — probe
 - ⬜ **[ woonruimte coöperatief ]** — private, probably skip
 
-## Boekhandel-cafés (6)
+## Boekhandel-cafés (7)
 
+- ✅ **De Nieuwe Boekhandel** (alternatief/klein/west) — 16 events · `nieuweboekhandel` (server-rendered `event-card` tiles, ID-based URLs)
 - ✅ **Fort van Sjakoo** (underground/klein/centrum) — 1 event · `ical`
 - ✅ **Athenaeum Spui** (mainstream/klein/centrum) — 4 events · `athenaeum` (Playwright + stealth, lokaal-only)
 - ✅ **Scheltema** (mainstream/groot/centrum) — 4 events · `athenaeum` (zelfde scraper, `/agenda-scheltema`-pad)
