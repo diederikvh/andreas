@@ -61,6 +61,7 @@ const TONE = {
     plum: palette.plum,
     azure: palette.azure,
     saffron: palette.saffron,
+    cobalt: palette.cobalt,
   },
   dag: {
     acid: palette.red,
@@ -68,6 +69,7 @@ const TONE = {
     plum: palette.cobalt,
     azure: '#8a5b00',
     saffron: '#9d6008',
+    cobalt: '#1a3157',
   },
 } as const;
 

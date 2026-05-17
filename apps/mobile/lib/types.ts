@@ -4,7 +4,7 @@
  * maar er hangt geen mock-data meer aan; dus permanent hier.
  */
 
-export type BadgeTone = 'acid' | 'flare' | 'plum' | 'azure' | 'saffron';
+export type BadgeTone = 'acid' | 'flare' | 'plum' | 'azure' | 'saffron' | 'cobalt';
 
 export type Friend = {
   name: string;

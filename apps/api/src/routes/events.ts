@@ -14,7 +14,7 @@ import {
   getFollowedVenueIds,
 } from './venue-follows.js';
 
-const VALID_CATEGORIES = new Set(['Muziek', 'Theater', 'Literatuur', 'Film', 'Kunst']);
+const VALID_CATEGORIES = new Set(['Muziek', 'Theater', 'Literatuur', 'Film', 'Kunst', 'Lezing']);
 
 /**
  * Exhibitions hebben geen specifieke aanvangstijd — ze lopen tijdens
@@ -74,7 +74,7 @@ eventsRoute.get('/', async (c) => {
     eventConditions.push(
       eq(
         schema.events.category,
-        category as 'Muziek' | 'Theater' | 'Literatuur' | 'Film' | 'Kunst'
+        category as 'Muziek' | 'Theater' | 'Literatuur' | 'Film' | 'Kunst' | 'Lezing'
       )
     );
   }

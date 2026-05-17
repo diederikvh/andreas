@@ -158,7 +158,7 @@ export function useVenueSubtypes(types?: VenueType[]) {
 
 export function useVenues(input: {
   q?: string;
-  category?: 'Muziek' | 'Theater' | 'Literatuur' | 'Film' | 'Kunst';
+  category?: 'Muziek' | 'Theater' | 'Literatuur' | 'Film' | 'Kunst' | 'Lezing';
   type?:
     | 'galerie'
     | 'museum'

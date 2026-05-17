@@ -76,6 +76,9 @@ export const CATEGORY_TICK: Record<ApiEvent['category'], BadgeTone> = {
   Film: 'azure',
   // Kunst deelt `plum` met galleries/musea — zelfde curatorial-vibe.
   Kunst: 'plum',
+  // Lezing krijgt `cobalt` — diep blauw, los van Film's azure;
+  // suggereert civic/intellectueel debat (Pakhuis de Zwijger, De Balie).
+  Lezing: 'cobalt',
 };
 
 const CATEGORY_EN: Record<ApiEvent['category'], string> = {
@@ -84,6 +87,7 @@ const CATEGORY_EN: Record<ApiEvent['category'], string> = {
   Literatuur: 'Literature',
   Film: 'Film',
   Kunst: 'Art',
+  Lezing: 'Talk',
 };
 
 /** Mapping van content-mode → categorieën. 'uit' = avond/uitgaan-ritme
@@ -96,7 +100,7 @@ export const CONTENT_MODE_CATS: Record<
   ApiEvent['category'][]
 > = {
   uit: ['Muziek', 'Theater', 'Film'],
-  expo: ['Kunst', 'Literatuur'],
+  expo: ['Kunst', 'Lezing', 'Literatuur'],
 };
 
 /** Vóór dit uur (lokaal) telt een occurrence als 'overdag' (start). */
@@ -285,6 +289,9 @@ export const CATEGORY_DOT: Record<ApiEvent['category'], string> = {
   Literatuur: 'L',
   Film: 'F',
   Kunst: 'K',
+  // Lezing deelt z'n L met Literatuur — onderscheiden via 2 tekens
+  // zodat de map-marker direct leesbaar blijft.
+  Lezing: 'Lz',
 };
 
 /**

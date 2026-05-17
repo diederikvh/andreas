@@ -63,7 +63,7 @@ function jsonLdReplacer(_key: string, value: unknown): unknown {
 
 export type ApiEvent = {
   kind: 'show' | 'exhibition';
-  category: 'Muziek' | 'Theater' | 'Literatuur' | 'Film' | 'Kunst';
+  category: 'Muziek' | 'Theater' | 'Literatuur' | 'Film' | 'Kunst' | 'Lezing';
 };
 
 export type ApiVenue = {

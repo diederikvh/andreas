@@ -220,7 +220,7 @@ async function fetchVenueEvents(tmVenueId: string, apiKey: string, keyword?: str
   return all;
 }
 
-type EventCategory = 'Muziek' | 'Theater' | 'Literatuur' | 'Film' | 'Kunst';
+type EventCategory = 'Muziek' | 'Theater' | 'Literatuur' | 'Film' | 'Kunst' | 'Lezing';
 
 function inferCategory(ev: TmEvent, fallback: EventCategory): EventCategory {
   const segments = (ev.classifications ?? [])

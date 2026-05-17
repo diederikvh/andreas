@@ -101,6 +101,7 @@ const CATEGORIES_ORDER: ApiEvent['category'][] = [
   'Muziek',
   'Theater',
   'Kunst',
+  'Lezing',
   'Literatuur',
   'Film',
 ];
@@ -110,7 +111,7 @@ const CATEGORIES_ORDER: ApiEvent['category'][] = [
 // rijen eronder.
 const TONE: Record<
   'nacht' | 'dag',
-  Record<'acid' | 'flare' | 'plum' | 'azure' | 'saffron', string>
+  Record<'acid' | 'flare' | 'plum' | 'azure' | 'saffron' | 'cobalt', string>
 > = {
   nacht: {
     acid: palette.acid,
@@ -118,6 +119,7 @@ const TONE: Record<
     plum: palette.plum,
     azure: palette.azure,
     saffron: palette.saffron,
+    cobalt: palette.cobalt,
   },
   dag: {
     acid: palette.red,
@@ -125,6 +127,7 @@ const TONE: Record<
     plum: palette.cobalt,
     azure: '#8a5b00',
     saffron: '#9d6008',
+    cobalt: '#1a3157',
   },
 };
 

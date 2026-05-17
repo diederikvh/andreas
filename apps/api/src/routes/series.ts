@@ -27,7 +27,7 @@ import {
   getFollowedVenueIds,
 } from './venue-follows.js';
 
-const VALID_CATEGORIES = new Set(['Muziek', 'Theater', 'Literatuur', 'Film', 'Kunst']);
+const VALID_CATEGORIES = new Set(['Muziek', 'Theater', 'Literatuur', 'Film', 'Kunst', 'Lezing']);
 
 export const seriesRoute = new Hono();
 
@@ -67,7 +67,7 @@ seriesRoute.get('/', async (c) => {
   if (category && VALID_CATEGORIES.has(category)) {
     conditions.push(
       arrayContains(schema.series.categories, [
-        category as 'Muziek' | 'Theater' | 'Literatuur' | 'Film' | 'Kunst',
+        category as 'Muziek' | 'Theater' | 'Literatuur' | 'Film' | 'Kunst' | 'Lezing',
       ])
     );
   }

@@ -28,7 +28,7 @@ const SYSTEM_PROMPT =
   '- room: zaal binnen het venue (bv. "Grote Zaal", "Kleine Zaal", "Tomastheater") — alleen als zaal-naam expliciet vermeld. Adres of stad telt NIET. Bij twijfel: null.\n' +
   '- priceNote: ALLEEN als de tekst een notitie OVER PRIJS bevat: bv. "lidmaatschap vereist", "donatie", "pay-what-you-can", "CJP-korting", "studentenkorting beschikbaar", "vanaf €5". NIET voor leeftijdsgrenzen ("21+", "18+"), huisregels (geen telefoon, geen foto), of dresscode. Bij twijfel: null.\n' +
   '- kind: "show" voor concert/club/voorstelling/film/lezing/opening. "exhibition" voor doorlopende tentoonstelling. Default: "show".\n' +
-  '- category: kies altijd één van "Muziek" | "Theater" | "Literatuur" | "Film" | "Kunst" op basis van titel + beschrijving + venue-context. Geef je BESTE GOK — niet null tenzij er ECHT helemaal geen aanknopingspunt is. Heuristiek: tentoonstelling/installatie/galerie-opening = "Kunst". Concert/feest/dj-set/album launch = "Muziek". Theatervoorstelling/dans/cabaret/performance = "Theater". Film/screening/cinema = "Film". Lezing/boekpresentatie/poëzie/spoken word = "Literatuur". Een lezing op een kunstgalerie blijft "Literatuur" — kies op event, niet op venue.\n' +
+  '- category: kies altijd één van "Muziek" | "Theater" | "Literatuur" | "Film" | "Kunst" | "Lezing" op basis van titel + beschrijving + venue-context. Geef je BESTE GOK — niet null tenzij er ECHT helemaal geen aanknopingspunt is. Heuristiek: tentoonstelling/installatie/galerie-opening = "Kunst". Concert/feest/dj-set/album launch = "Muziek". Theatervoorstelling/dans/cabaret/performance = "Theater". Film/screening/cinema = "Film". Boekpresentatie/poëzie-avond/spoken word/literair = "Literatuur". Publiek debat/talkshow/lezing/college/in gesprek met/keynote = "Lezing" (Pakhuis de Zwijger, De Balie, SPUI25-stijl programma). Een lezing op een kunstgalerie blijft "Lezing" — kies op event, niet op venue.\n' +
   '- cleanedDescription: de description in plain text, zonder de lineup-block en zonder herhaalde meta-info (huisregels, ~~~~~~~ separators). NIET inkorten of herschrijven — alleen lineup-blok en boilerplate weghalen. Gebruik ECHTE newlines voor paragraph-breaks, NIET de literal 2 tekens backslash-n.';
 
 const TOOL_INPUT_SCHEMA = {
@@ -69,7 +69,7 @@ const TOOL_INPUT_SCHEMA = {
     },
     category: {
       type: ['string', 'null'],
-      enum: ['Muziek', 'Theater', 'Literatuur', 'Film', 'Kunst', null],
+      enum: ['Muziek', 'Theater', 'Literatuur', 'Film', 'Kunst', 'Lezing', null],
       description:
         'Andreas-categorie. Bij echte twijfel: null — caller valt dan terug op venue-default.',
     },

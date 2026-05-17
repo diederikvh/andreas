@@ -14,6 +14,7 @@ const TONE = {
     plum: palette.plum,
     azure: palette.azure,
     saffron: palette.saffron,
+    cobalt: palette.cobalt,
   },
   dag: {
     acid: palette.red,
@@ -23,6 +24,9 @@ const TONE = {
     // Donkerder amber voor cream-bg leesbaarheid; palette.saffron
     // (#e89b2e) is te licht op paper3.
     saffron: '#9d6008',
+    // Lezing — donkerder navy dan dag.plum (=cobalt) zodat Kunst en
+    // Lezing in dag-mode visueel uit elkaar blijven.
+    cobalt: '#1a3157',
   },
 } as const;
 
