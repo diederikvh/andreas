@@ -98,6 +98,14 @@ type Tile = {
   priceNote: string | null;
 };
 
+/** Strip recurring-suffix om dezelfde wekelijkse/maandelijkse show
+ *  te groeperen. Patronen: `-DD-MM`, `-N` (volgnummer). */
+function canonicalKey(slug: string): string {
+  return slug
+    .replace(/-\d{1,2}-\d{1,2}$/, '')
+    .replace(/-\d+$/, '');
+}
+
 function parseTiles(html: string): Tile[] {
   const out: Tile[] = [];
 
@@ -256,110 +264,132 @@ export async function scrapeDeCeuvel(options?: {
   const nowMonth = now.getMonth();
   const pastCutoff = now.getTime() - 24 * 60 * 60_000;
 
-  // Track seen slugs (zelfde event kan in twee maanden voorkomen bij
-  // jaar-overgang).
-  const seen = new Set<string>();
-
-  // Year inferentie: month < nowMonth → year+1
+  // Groepeer tiles per canonical-key zodat recurring events 1 event-row
+  // + N occurrence-rows krijgen (yoga-with-kasha-05-05/-11-05/-11-06 →
+  // canonical `yoga-with-kasha`).
+  const groups = new Map<string, Tile[]>();
   for (const tile of tiles) {
-    try {
-      // De-dupe op slug+date (zelfde recurring event op meerdere data
-      // krijgt aparte occurrence-ids via slug+isoDate).
+    const key = canonicalKey(tile.slug);
+    const arr = groups.get(key) ?? [];
+    arr.push(tile);
+    groups.set(key, arr);
+  }
+
+  for (const [canonical, items] of groups) {
+    // Bouw alle valid occurrences (filter past).
+    const occurrences: Array<{
+      tile: Tile;
+      startsAt: Date;
+      endsAt: Date | null;
+    }> = [];
+    for (const tile of items) {
       const year = tile.month < nowMonth ? nowYear + 1 : nowYear;
       const startsAt = shiftToLocalTime(
         year, tile.month, tile.day,
         tile.startHour, tile.startMinute
       );
-      if (startsAt.getTime() < pastCutoff) {
-        result.skipped++;
-        continue;
-      }
+      if (startsAt.getTime() < pastCutoff) continue;
       const endsAt = tile.endHour !== null && tile.endMinute !== null
         ? shiftToLocalTime(year, tile.month, tile.day, tile.endHour, tile.endMinute)
         : null;
+      occurrences.push({ tile, startsAt, endsAt });
+    }
+    if (occurrences.length === 0) {
+      result.skipped += items.length;
+      continue;
+    }
 
-      const isoDate = startsAt.toISOString().slice(0, 10);
-      const occurrenceKey = `${tile.slug}-${isoDate}`;
-      if (seen.has(occurrenceKey)) continue;
-      seen.add(occurrenceKey);
+    // Meta-bron: gebruik de earliest occurrence (komt eerst, meeste recent
+    // gedocumenteerde versie van title/description).
+    const meta = occurrences.reduce((a, b) =>
+      a.startsAt < b.startsAt ? a : b
+    );
 
-      const eventId = `evt-ceuvel-${tile.slug}`;
-      const occurrenceId = `occ-ceuvel-${occurrenceKey}`;
-      const ticketUrl = tile.url;
+    const eventId = `evt-ceuvel-${canonical}`;
+    const [existing] = await db
+      .select({ id: schema.events.id })
+      .from(schema.events)
+      .where(eq(schema.events.id, eventId))
+      .limit(1);
 
-      const [existing] = await db
-        .select({ id: schema.events.id })
-        .from(schema.events)
-        .where(eq(schema.events.id, eventId))
-        .limit(1);
+    try {
+      if (!existing) {
+        const enriched = await enrichEvent({
+          title: meta.tile.title,
+          description: meta.tile.description || null,
+          venueName: venue.name,
+          venueCategory,
+        });
 
-      if (existing) {
-        await db
-          .insert(schema.occurrences)
-          .values({
-            id: occurrenceId, eventId, startsAt, endsAt,
-            priceCents: null, priceNote: tile.priceNote, ticketUrl,
-            room: tile.room, lineup: null, status: 'scheduled',
-          })
-          .onConflictDoUpdate({
-            target: schema.occurrences.id,
-            set: {
-              startsAt, endsAt, ticketUrl,
-              priceNote: tile.priceNote, room: tile.room,
-            },
-          });
-        result.occurrencesUpserted++;
-        continue;
-      }
+        const sourceImage = await fetchDetailImage(meta.tile.url);
+        let imageUrl: string | null = null;
+        if (sourceImage) {
+          imageUrl = (await mirrorImage(sourceImage, canonical)) ?? sourceImage;
+        }
 
-      const enriched = await enrichEvent({
-        title: tile.title,
-        description: tile.description || null,
-        venueName: venue.name,
-        venueCategory,
-      });
+        const refinedKind = refineKindByDuration('show', meta.startsAt, meta.endsAt);
 
-      // Image: fetch og:image van detail (alleen voor 1e occurrence)
-      const sourceImage = await fetchDetailImage(tile.url);
-      let imageUrl: string | null = null;
-      if (sourceImage) {
-        imageUrl = (await mirrorImage(sourceImage, tile.slug)) ?? sourceImage;
-      }
-
-      const refinedKind = refineKindByDuration('show', startsAt, endsAt);
-
-      await db.transaction(async (tx) => {
-        await tx.insert(schema.events).values({
-          id: eventId, venueId: venue.id, title: tile.title,
-          description: enriched.cleanedDescription ?? tile.description ?? null,
+        await db.insert(schema.events).values({
+          id: eventId, venueId: venue.id, title: meta.tile.title,
+          description: enriched.cleanedDescription ?? meta.tile.description ?? null,
           kind: refinedKind, imageUrl,
           category: enriched.category ?? venueCategory,
           featured: false, genres: enriched.genres, published: true,
         });
         result.inserted++;
 
-        await tx
-          .insert(schema.occurrences)
-          .values({
-            id: occurrenceId, eventId, startsAt, endsAt,
-            priceCents: null,
-            priceNote: tile.priceNote ?? enriched.priceNote,
-            ticketUrl,
-            room: tile.room ?? enriched.room,
-            lineup: enriched.lineup, status: 'scheduled',
-          })
-          .onConflictDoUpdate({
-            target: schema.occurrences.id,
-            set: {
-              startsAt, endsAt, ticketUrl,
-              priceNote: tile.priceNote, room: tile.room,
-            },
-          });
-        result.occurrencesUpserted++;
-      });
+        for (const occ of occurrences) {
+          const isoDate = occ.startsAt.toISOString().slice(0, 10);
+          const occurrenceId = `occ-ceuvel-${canonical}-${isoDate}`;
+          await db
+            .insert(schema.occurrences)
+            .values({
+              id: occurrenceId, eventId,
+              startsAt: occ.startsAt, endsAt: occ.endsAt,
+              priceCents: null,
+              priceNote: occ.tile.priceNote ?? enriched.priceNote,
+              ticketUrl: occ.tile.url,
+              room: occ.tile.room ?? enriched.room,
+              lineup: enriched.lineup, status: 'scheduled',
+            })
+            .onConflictDoUpdate({
+              target: schema.occurrences.id,
+              set: {
+                startsAt: occ.startsAt, endsAt: occ.endsAt,
+                ticketUrl: occ.tile.url,
+                priceNote: occ.tile.priceNote, room: occ.tile.room,
+              },
+            });
+          result.occurrencesUpserted++;
+        }
+      } else {
+        // Event bestaat al: upsert alleen occurrences
+        for (const occ of occurrences) {
+          const isoDate = occ.startsAt.toISOString().slice(0, 10);
+          const occurrenceId = `occ-ceuvel-${canonical}-${isoDate}`;
+          await db
+            .insert(schema.occurrences)
+            .values({
+              id: occurrenceId, eventId,
+              startsAt: occ.startsAt, endsAt: occ.endsAt,
+              priceCents: null, priceNote: occ.tile.priceNote,
+              ticketUrl: occ.tile.url,
+              room: occ.tile.room, lineup: null, status: 'scheduled',
+            })
+            .onConflictDoUpdate({
+              target: schema.occurrences.id,
+              set: {
+                startsAt: occ.startsAt, endsAt: occ.endsAt,
+                ticketUrl: occ.tile.url,
+                priceNote: occ.tile.priceNote, room: occ.tile.room,
+              },
+            });
+          result.occurrencesUpserted++;
+        }
+      }
     } catch (e) {
-      result.errors.push(`${tile.slug}: ${(e as Error).message}`);
-      result.skipped++;
+      result.errors.push(`${canonical}: ${(e as Error).message}`);
+      result.skipped += occurrences.length;
     }
   }
 

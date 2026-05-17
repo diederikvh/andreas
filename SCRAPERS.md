@@ -2,7 +2,7 @@
 
 Volledige inventory: elke gepubliceerde venue in de DB hier zichtbaar met status. ✅ events live · ⬜ nog te doen · ❌ niet doen (met reden).
 
-**Stand (audit 2026-05-17)**: 84/198 gepubliceerde venues hebben momenteel toekomstige of lopende events (~4667 occurrences live). Lopende exhibitions (`starts_at` in verleden, `ends_at` in toekomst) tellen ook mee — dat is normaal voor musea.
+**Stand (audit 2026-05-17)**: 87/196 gepubliceerde venues hebben momenteel toekomstige of lopende events (~4731 occurrences live). Lopende exhibitions (`starts_at` in verleden, `ends_at` in toekomst) tellen ook mee — dat is normaal voor musea.
 
 Nieuwe event-categorie sinds 2026-05-17: **Lezing** (debat / talkshow / publieke-gesprek), apart van Literatuur. Eerste venue in deze categorie is Pakhuis de Zwijger.
 
@@ -194,30 +194,29 @@ Musea programmeren tentoonstellingen (`kind=exhibition`), niet point-in-time eve
 - ✅ **Ru Paré** (alternatief/klein/nieuw-west) — 3 events · `ical`
 - ✅ **Pakhuis de Zwijger** (mainstream/groot/centrum) — 52 events · `dezwijger` (custom HTML, paginated /agenda; events categorized als 'Lezing')
 - ✅ **De Balie** (mainstream/middel/centrum) — 38 events · `debalie` (WP REST `vo-programme`, date in permalink, categorized als 'Lezing')
+- ✅ **De Ceuvel** (alternatief/middel/noord) — 27 events · `deceuvel` (server-rendered tile-listing + month-headers; geen images op site)
+- ✅ **Felix Meritis** (mainstream/middel/centrum) — 9 events · `felixmeritis` (WP REST `vo-event` + detail-fetch voor datum/tijd, default 'Literatuur')
 - ✅ **NDSM Loods** (alternatief/groot/noord) — 2 events · `theater`
+- ✅ **Rijksakademie van beeldende kunsten** (alternatief/middel/centrum) — 1 event · `rijksakademie` (listing-page met YYYY-MM-DD in URL, og:meta voor description/image)
 - ⬜ **A Lab** — probe
 - ⬜ **ADM Noord - Het Groene Veld** — probe
 - ⬜ **AtelierWG Foundation** — probe
 - ⬜ **Buurtwerkplaats Noorderhof** — probe
 - ⬜ **De (Roze) Tanker** — probe
 - ⬜ **De Ateliers** — probe
-- ⬜ **De Balie** — probe
-- ⬜ **De Ceuvel** — probe
 - ⬜ **De Fabriek** — probe
 - ⬜ **De Hoop** (Zaandam) — probe
 - ⬜ **De Omleiding** — probe
 - ⬜ **De Sloot** — probe
-- ⬜ **Felix Meritis** — probe
 - ⬜ **Het Motorblok** (Zaandam) — Squarespace Events collection bestaat maar is leeg; nog te onderzoeken wanneer ze 'm vullen
 - ⬜ **Huis te Vraag** — probe
 - ⬜ **KasKantine** — probe
 - ⬜ **Kostgewonnen** — probe
-- ⬜ **LIMA** — probe
+- ⬜ **LIMA** — Gatsby-static site, `/article/{slug}` zonder datum in URL, slechts 1-2 toekomstige events tegelijk op homepage; disproportionele effort voor laag-volume bron
 - ⬜ **Loods 6** — voornamelijk verhuur + ateliers; events sporadisch
 - ⬜ **NieuwLand** — probe
 - ⬜ **Parknest** — probe
 - ⬜ **RijksHemelVaartDienst** — probe
-- ⬜ **Rijksakademie van beeldende kunsten** — probe
 - ⬜ **SEXYLAND World** — probe
 - ⬜ **SPUI25** — Cloudflare managed-challenge blokkeert alles. Geprobeerd 2026-05-17: directe `fetch` → 403 (ook met Googlebot/Bing/Yandex/DuckDuck UA), headless Chromium via Playwright → 60s timeout op `networkidle` (challenge wordt nooit doorlopen). Vereist `playwright-extra` + stealth-plugin óf een externe service (FlareSolverr / ScrapingBee). Voor één venue te veel infra-overhead; gepauzeerd tot we meer Cloudflare-venues hebben die het samen rechtvaardigen.
 - ⬜ **Steelhenge** — probe
@@ -261,7 +260,7 @@ Volgorde op verwachte event-impact + scrape-effort.
 - ⬜ Allard Pierson, ARCAM, Artis, Embassy of the Free Mind, Het Scheepvaartmuseum, Hollandsche Schouwburg, Hortus Botanicus, Joods Museum, Moco, Rembrandthuis, Het Schip, Van Loon, NEMO, Holocaustmuseum, Solder
 
 **Ruimtes probes (30+):**
-- ⬜ De Ateliers, De Balie, De Ceuvel, Felix Meritis, LIMA, NieuwLand, Rijksakademie, Pakhuis de Zwijger, SPUI25, en 22 alternatieve plekken (vooral underground/fringe AA-venues)
+- ⬜ De Ateliers, De Balie, De Ceuvel, Felix Meritis, LIMA, NieuwLand, Rijksakademie, en 22 alternatieve plekken (vooral underground/fringe AA-venues)
 
 **Galleries probes (35+):**
 - ⬜ De 35 galleries zonder feed. Realistisch: bulk-LLM-import via admin (zoals H'ART/Stedelijk), niet 35× dedicated scrapers.
