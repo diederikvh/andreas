@@ -334,6 +334,12 @@ export async function scrapeTheater(options?: {
         const head = evs[0];
         const title = head.name ? decodeEntities(head.name).trim() : '';
         if (!title) { result.skipped++; return; }
+        // Peppered SaaS theaters (De Omval, mogelijk anderen) exposen
+        // ticketing-flows als "/voorstellingen/tafel-reserveren-…" met
+        // JSON-LD Event — niet een echte voorstelling maar een restaurant-
+        // reservering. Skip op title-prefix; URL-pattern verfijnen per
+        // venue is fragieler.
+        if (/^tafel\s*reserveren\b/i.test(title)) { result.skipped++; return; }
         const canonicalUrl =
           typeof head.url === 'string' && head.url.length > 0 ? head.url : url;
         let showSlug = canonicalUrl
