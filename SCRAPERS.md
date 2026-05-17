@@ -81,11 +81,11 @@ Skill voor toevoegen van nieuwe scrapers: [.claude/skills/scraper-add/SKILL.md](
 - ⬜ **Jazz Café Alto** — WP zonder custom event post-type
 - ✅ **Perdu** (underground/klein/centrum) — 10 events · `perdu` (WP REST `events` CPT, filter NL-versies, datum uit detail-text "DD maand om HH:MM")
 - ✅ **Plein Theater** (alternatief/klein/oost) — 22 events · `aaservices` (AA services-API `venue=123`, één JSON-call)
-- ⬜ **Podium Vrijburcht** — probe
+- ✅ **Podium Vrijburcht** (alternatief/klein/oost) — 14 events · `vrijburcht` (custom WP-listing, canonical-slug merging voor recurring shows)
 - ⬜ **Salon de IJzerstaven** — probe
 - ⬜ **Space for Dance Art** — probe
 - ⬜ **Sugarfactory** — `/agenda/` 404, geen publieke events op site
-- ⬜ **Teatro Munganga** — RSS in inventory; probe
+- ✅ **Teatro Munganga** (alternatief/klein/zuid) — 37 events · `munganga` (WP REST product CPT, datum uit title, description uit content)
 - ⬜ **Volta** — probe
 - ⬜ **Zaal 100** — RSS in inventory; probe
 - ⬜ **ZID Theater** — RSS in inventory; probe

@@ -73,6 +73,53 @@ async function fetchItems(venueId: number): Promise<AaItem[]> {
   }
 }
 
+function stripTags(s: string): string {
+  return s.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+function decodeEntities(s: string): string {
+  return s
+    .replace(/&#(\d+);/g, (_, c) => String.fromCodePoint(parseInt(c, 10)))
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, c) => String.fromCodePoint(parseInt(c, 16)))
+    .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"').replace(/&#039;/g, "'").replace(/&#x27;/g, "'")
+    .replace(/&nbsp;/g, ' ').replace(/&ndash;/g, '–').replace(/&mdash;/g, '—')
+    .replace(/&euml;/g, 'ë').replace(/&euro;/g, '€')
+    .replace(/&egrave;/g, 'è').replace(/&eacute;/g, 'é')
+    .replace(/&iacute;/g, 'í').replace(/&oacute;/g, 'ó')
+    .replace(/&uacute;/g, 'ú').replace(/&aacute;/g, 'á')
+    .replace(/&iuml;/g, 'ï').replace(/&ouml;/g, 'ö')
+    .replace(/&auml;/g, 'ä').replace(/&rsquo;/g, '’')
+    .replace(/&lsquo;/g, '‘').replace(/&hellip;/g, '…');
+}
+
+/** Fetch venue's eigen detail-pagina (bv. plein-theater.nl/agenda/{id})
+ *  en pluk `item.text` uit het App()-init JSON blok. De AA-services
+ *  list-API geeft alleen titel + lineup, de detail-pagina heeft de
+ *  echte description. */
+async function fetchDetailDescription(siteUrl: string, eventId: number): Promise<string | null> {
+  try {
+    const url = `${siteUrl.replace(/\/$/, '')}/agenda/${eventId}`;
+    const r = await fetch(url, { headers: { 'user-agent': UA } });
+    if (!r.ok) return null;
+    const html = await r.text();
+    // `"text":"<h2>...<\/p>"` — JSON-encoded string. Match alleen het
+    // text-veld (niet greedy) en JSON.parse hem als string-literal.
+    const m = html.match(/"text":"((?:[^"\\]|\\.)*)"/);
+    if (!m) return null;
+    let rawHtml: string;
+    try {
+      rawHtml = JSON.parse('"' + m[1] + '"');
+    } catch {
+      return null;
+    }
+    const text = decodeEntities(stripTags(rawHtml));
+    return text.slice(0, 800) || null;
+  } catch {
+    return null;
+  }
+}
+
 async function mirrorImage(sourceUrl: string, slug: string): Promise<string | null> {
   try {
     const r = await fetch(sourceUrl, { headers: { 'user-agent': UA } });
@@ -211,15 +258,24 @@ export async function scrapeAaServices(options?: {
         if (!existing) {
           let imageUrl: string | null = null;
           if (head.header?.kind === 'image' && head.header.file) {
-            const src = `${MEDIA_BASE}/${head.header.file}`;
+            // AA serveert images alleen onder `{id}_small.jpg` en
+            // `{id}_large.jpg`, ongeacht de extensie die de API
+            // teruggeeft (`21045.png` bestaat niet — server geeft
+            // dan een HTML-redirect). Pak altijd `{id}_large.jpg`.
+            const headerId = head.header.file.replace(/\.[^.]+$/, '');
+            const src = `${MEDIA_BASE}/${headerId}_large.jpg`;
             imageUrl = (await mirrorImage(src, `${venue.id}-${titleSlug}`)) ?? src;
           }
 
-          // AA-feed heeft geen description. Lineup + type-label vormen
-          // de enige tekst-hint die we aan enrich kunnen geven.
-          const enrichDescription = head.lineup
-            ? `Line-up: ${head.lineup}`
-            : null;
+          // AA-list-API heeft geen description; als venue's eigen site
+          // geconfigureerd is, pluk 'm uit de detail-pagina. Fallback:
+          // lineup-string. enrich krijgt zo de richtste tekst-hint.
+          let detailDescription: string | null = null;
+          if (cfg.siteUrl) {
+            detailDescription = await fetchDetailDescription(cfg.siteUrl, head.id);
+          }
+          const enrichDescription = detailDescription
+            ?? (head.lineup ? `Line-up: ${head.lineup}` : null);
 
           try {
             enriched = await enrichEvent({
@@ -244,7 +300,7 @@ export async function scrapeAaServices(options?: {
               id: eventId,
               venueId: venue.id,
               title: head.title,
-              description: enriched?.cleanedDescription ?? null,
+              description: enriched?.cleanedDescription ?? enrichDescription,
               kind: eventKind,
               imageUrl,
               category: enriched?.category ?? mappedCategory,

@@ -292,7 +292,15 @@ export const venues = pgTable('venues', {
         OCCII, OT301, Splendor, Cinetol, ...). Config is enkel de
         numerieke `venueId` zoals AA hem intern hanteert (Plein
         Theater = 123). */
-    aaservices?: { venueId: number };
+    aaservices?: {
+      venueId: number;
+      /** Optionele venue-eigen site (bv. `https://www.plein-theater.nl`).
+          Als gezet fetcht de scraper `{siteUrl}/agenda/{aaEventId}` per
+          event om de full-text description uit de embedded App()-config
+          te halen. Zonder siteUrl heb je alleen titel+lineup uit de
+          AA-services list-API. */
+      siteUrl?: string;
+    };
     /** Generic theater-scraper: pakt show-URLs uit een sitemap, fetcht
         elke show-page en parseert JSON-LD `Event`-blokken óf
         `data-date` attributes. Gebruikt voor Carré, Meervaart, DeLaMar. */

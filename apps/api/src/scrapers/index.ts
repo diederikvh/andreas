@@ -8,8 +8,10 @@ import { scrapeDeZwijger, type DeZwijgerResult } from './dezwijger.js';
 import { scrapeEventbrite, type EventbriteResult } from './eventbrite.js';
 import { scrapeFelixMeritis, type FelixMeritisResult } from './felixmeritis.js';
 import { scrapeLima, type LimaResult } from './lima.js';
+import { scrapeMunganga, type MungangaResult } from './munganga.js';
 import { scrapeNieuweBoekhandel, type NieuweBoekhandelResult } from './nieuweboekhandel.js';
 import { scrapePerdu, type PerduResult } from './perdu.js';
+import { scrapeVrijburcht, type VrijburchtResult } from './vrijburcht.js';
 import { scrapeRijksakademie, type RijksakademieResult } from './rijksakademie.js';
 import { scrapeBadhuistheater, type BadhuistheaterResult } from './badhuistheater.js';
 import { scrapeBettyAsfalt, type BettyAsfaltResult } from './bettyasfalt.js';
@@ -134,6 +136,8 @@ export const scrapers = {
   nieuweboekhandel: scrapeNieuweBoekhandel,
   eventbrite: scrapeEventbrite,
   aaservices: scrapeAaServices,
+  vrijburcht: scrapeVrijburcht,
+  munganga: scrapeMunganga,
 } as const;
 
 export type ScraperName = keyof typeof scrapers;
@@ -201,4 +205,6 @@ export type ScraperResult =
   | PerduResult
   | NieuweBoekhandelResult
   | EventbriteResult
-  | AaServicesResult;
+  | AaServicesResult
+  | VrijburchtResult
+  | MungangaResult;
