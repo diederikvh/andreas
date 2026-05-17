@@ -225,14 +225,15 @@ Musea programmeren tentoonstellingen (`kind=exhibition`), niet point-in-time eve
 - ⬜ **Workship op de Ceuvel** — probe
 - ⬜ **[ woonruimte coöperatief ]** — private, probably skip
 
-## Boekhandel-cafés (7)
+## Boekhandel-cafés (8)
 
 - ✅ **De Nieuwe Boekhandel** (alternatief/klein/west) — 16 events · `nieuweboekhandel` (server-rendered `event-card` tiles, ID-based URLs)
 - ✅ **Fort van Sjakoo** (underground/klein/centrum) — 1 event · `ical`
 - ✅ **Athenaeum Spui** (mainstream/klein/centrum) — 4 events · `athenaeum` (Playwright + stealth, lokaal-only)
 - ✅ **Scheltema** (mainstream/groot/centrum) — 4 events · `athenaeum` (zelfde scraper, `/agenda-scheltema`-pad)
 - ✅ **Athenaeum Zuidoost** (alternatief/middel/zuidoost) — 4 events · `athenaeum` (zelfde scraper, `/agenda-zuidoost`-pad)
-- ⬜ **Kanarie Club** — WP zonder event-CPT, `/events/` is een marketing-pagina, homepage toont alleen sluitingsnotices. Events worden niet publiek via website aangekondigd (vermoedelijk Instagram).
+- ✅ **Boekhandel Van Rossum** (mainstream/klein/zuid) — 0 events momenteel · `athenaeum` (zelfde scraper, `/agenda-van-rossum`-pad; 2 tiles momenteel zichtbaar maar al gepasseerd)
+- ❌ **Kanarie Club** — geen scraper nodig. WP zonder event-CPT; events worden niet publiek via website aangekondigd (vermoedelijk Instagram / mond-tot-mond).
 - ⬜ **Noon coffee & culture** — gebruikt Eventbrite (`noon-coffee-culture-116347191961`). Organizer-pagina is momenteel leeg (0 events ook met Playwright+stealth); 1 specifieke event via knop op homepage. Pas relevant als ze hun Eventbrite-organizer vullen.
 
 ---
@@ -271,7 +272,7 @@ Volgorde op verwachte event-impact + scrape-effort.
 - ⬜ De 35 galleries zonder feed. Realistisch: bulk-LLM-import via admin (zoals H'ART/Stedelijk), niet 35× dedicated scrapers.
 
 **Boekhandel-cafés:**
-- ⬜ Kanarie Club, Noon coffee & culture (Athenaeum Spui + Scheltema + Zuidoost: zie Blocked-sectie)
+- ⬜ Noon coffee & culture (Kanarie Club ❌; Athenaeum Spui + Scheltema + Zuidoost ✅)
 
 ## ❌ Niet doen (met reden)
 

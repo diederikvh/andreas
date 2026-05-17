@@ -39,6 +39,7 @@ const FILIALEN: Array<{ venueId: string; path: string; prefix: string }> = [
   { venueId: 'athenaeum-spui', path: 'agenda-spui', prefix: 'aths' },
   { venueId: 'scheltema', path: 'agenda-scheltema', prefix: 'scht' },
   { venueId: 'athenaeum-zuidoost', path: 'agenda-zuidoost', prefix: 'athz' },
+  { venueId: 'van-rossum', path: 'agenda-van-rossum', prefix: 'vrss' },
 ];
 
 const NL_MONTHS: Record<string, number> = {
