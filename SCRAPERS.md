@@ -2,7 +2,9 @@
 
 Volledige inventory: elke gepubliceerde venue in de DB hier zichtbaar met status. ✅ events live · ⬜ nog te doen · ❌ niet doen (met reden).
 
-**Stand (audit 2026-05-17)**: 79/198 gepubliceerde venues hebben momenteel toekomstige events (~4577 occurrences live). 4 musea (Rijksmuseum, Wereldmuseum, Amsterdam Museum, Rembrandthuis) zijn ooit gescraped maar hebben nu alleen historisch materiaal — staan als ⬜ omdat een nieuwe scrape nodig is.
+**Stand (audit 2026-05-17)**: 80/198 gepubliceerde venues hebben momenteel toekomstige events (~4629 occurrences live). 4 musea (Rijksmuseum, Wereldmuseum, Amsterdam Museum, Rembrandthuis) zijn ooit gescraped maar hebben nu alleen historisch materiaal — staan als ⬜ omdat een nieuwe scrape nodig is.
+
+Nieuwe event-categorie sinds 2026-05-17: **Lezing** (debat / talkshow / publieke-gesprek), apart van Literatuur. Eerste venue in deze categorie is Pakhuis de Zwijger.
 
 Skill voor toevoegen van nieuwe scrapers: [.claude/skills/scraper-add/SKILL.md](.claude/skills/scraper-add/SKILL.md).
 
@@ -192,6 +194,7 @@ Musea programmeren tentoonstellingen (`kind=exhibition`), niet point-in-time eve
 - ✅ **Voedselpark Amsterdam** (fringe/klein/nieuw-west) — 8 events · `ical`
 - ✅ **Plantagedok** (underground/klein/centrum) — 5 events · `ical`
 - ✅ **Ru Paré** (alternatief/klein/nieuw-west) — 3 events · `ical`
+- ✅ **Pakhuis de Zwijger** (mainstream/groot/centrum) — 52 events · `dezwijger` (custom HTML, paginated /agenda; events categorized als 'Lezing')
 - ✅ **NDSM Loods** (alternatief/groot/noord) — 2 events · `theater`
 - ⬜ **A Lab** — probe
 - ⬜ **ADM Noord - Het Groene Veld** — probe
@@ -213,7 +216,6 @@ Musea programmeren tentoonstellingen (`kind=exhibition`), niet point-in-time eve
 - ⬜ **LIMA** — probe
 - ⬜ **Loods 6** — voornamelijk verhuur + ateliers; events sporadisch
 - ⬜ **NieuwLand** — probe
-- ⬜ **Pakhuis de Zwijger** — probe (groot publiek-programma, hoge prioriteit)
 - ⬜ **Parknest** — probe
 - ⬜ **RijksHemelVaartDienst** — probe
 - ⬜ **Rijksakademie van beeldende kunsten** — probe
@@ -239,7 +241,6 @@ Musea programmeren tentoonstellingen (`kind=exhibition`), niet point-in-time eve
 Volgorde op verwachte event-impact + scrape-effort.
 
 **High-priority probes (groot publiek-programma of bekende platforms):**
-- ⬜ **Pakhuis de Zwijger** — groot publieks-programma
 - ⬜ **Eye Filmmuseum** — film, mainstream
 - ⬜ **Rijksmuseum** — tentoonstellingen
 - ⬜ **Wereldmuseum Amsterdam** — JSON-LD detected, quick-win
