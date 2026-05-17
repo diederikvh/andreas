@@ -54,17 +54,22 @@ export async function renderCarousel(
   }
 
   const tagline =
-    options.slot === 'evening' ? 'Tips voor vanavond' : 'Tips voor vandaag';
+    options.slot === 'evening'
+      ? `${picks.length} tips voor vanavond`
+      : `${picks.length} tips voor vandaag`;
 
   const slides: Buffer[] = [];
 
-  // Cover — hero-foto van de eerste pick zodat slide 1 → slide 2 visueel bindt
+  // Cover — hero-foto van de LAATSTE pick zodat slide 1 → slide 2 ook
+  // visueel wisselt; anders zou de eerste swipe dezelfde foto twee keer
+  // tonen wat statisch oogt.
+  const coverHero = picks[picks.length - 1]?.imageUrl ?? null;
   slides.push(
     await renderSlide(
       coverSlide({
         date,
         pickCount: picks.length,
-        heroImageUrl: picks[0]?.imageUrl ?? null,
+        heroImageUrl: coverHero,
         tagline,
       })
     )
