@@ -27,6 +27,8 @@
     "expo-server-sdk": "^6.1.0",
     "hono": "^4.6.14",
     "playwright": "^1.59.1",
+    "playwright-extra": "^4.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2",
     "qrcode-generator": "^2.0.4",
     "satori": "^0.26.0",
     "ws": "^8.18.0",

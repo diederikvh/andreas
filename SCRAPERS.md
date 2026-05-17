@@ -228,9 +228,9 @@ Musea programmeren tentoonstellingen (`kind=exhibition`), niet point-in-time eve
 ## Boekhandel-cafés (6)
 
 - ✅ **Fort van Sjakoo** (underground/klein/centrum) — 1 event · `ical`
-- ⬜ **Athenaeum Spui** (mainstream/klein/centrum) — Cloudflare-block (zie Blocked-sectie); agenda op `/agenda-spui`
-- ⬜ **Scheltema** (mainstream/groot/centrum) — Cloudflare-block; agenda op `/agenda-scheltema`
-- ⬜ **Athenaeum Zuidoost** (alternatief/middel/zuidoost) — Cloudflare-block; agenda op `/agenda-zuidoost`
+- ✅ **Athenaeum Spui** (mainstream/klein/centrum) — 4 events · `athenaeum` (Playwright + stealth, lokaal-only)
+- ✅ **Scheltema** (mainstream/groot/centrum) — 4 events · `athenaeum` (zelfde scraper, `/agenda-scheltema`-pad)
+- ✅ **Athenaeum Zuidoost** (alternatief/middel/zuidoost) — 4 events · `athenaeum` (zelfde scraper, `/agenda-zuidoost`-pad)
 - ⬜ **Kanarie Club** — probe
 - ⬜ **Noon coffee & culture** — probe
 
@@ -242,12 +242,8 @@ Volgorde op verwachte event-impact + scrape-effort.
 
 **Blocked — extra infra nodig (Cloudflare managed-challenge):**
 
-Vereist stealth-tooling (`playwright-extra` + `puppeteer-extra-plugin-stealth`-equivalent) of FlareSolverr. Met 4 venues nu op één hoop is dit de moeite waard.
-
-- 🟡 **SPUI25** — `/agenda` ~700 lezingen/jaar. Plain `fetch` → 403, headless Playwright `networkidle` timeout.
-- 🟡 **Athenaeum Spui** — `/agenda-spui` (boekpresentaties + literaire lezingen, het origineel sinds 1966)
-- 🟡 **Scheltema** — `/agenda-scheltema` (groot programma op Rokin)
-- 🟡 **Athenaeum Zuidoost** — `/agenda-zuidoost` (sinds 2022 op Bijlmerplein)
+- 🟡 **SPUI25** — `/agenda` ~700 lezingen/jaar. Plain `fetch` → 403, headless Playwright `networkidle` timeout. **Stealth (playwright-extra + puppeteer-extra-plugin-stealth) is geprobeerd en passeerde Athenaeum prima, maar SPUI25 heeft een strictere challenge ("Even geduld...") die door stealth heen breekt. Volgende stap: FlareSolverr, of headed Chromium met menselijke interactie.**
+- ✅ ~~Athenaeum Spui / Scheltema / Zuidoost~~ — Stealth werkte; 12 events live. Zie Boekhandel-cafés sectie.
 
 **Quick-wins (platform al bekend, alleen config invullen):**
 - ⬜ **Eye Filmmuseum** — film, mainstream
