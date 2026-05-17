@@ -3507,13 +3507,13 @@ adminUi.get('/social/:id', async (c) => {
       </pre>
 
       <h3 style="margin-top:1.5rem;">Slides ({post.imageUrls.length})</h3>
-      <div style="display:flex;flex-wrap:wrap;gap:16px;">
+      <div style="display:flex;flex-wrap:wrap;gap:12px;">
         {post.imageUrls.map((url, i) => (
-          <figure style="margin:0;">
+          <figure style="margin:0;flex:0 0 auto;">
             <img
               src={url}
               alt={`slide ${i + 1}`}
-              style="width:260px;height:325px;object-fit:cover;border-radius:8px;display:block;background:#0a0a0b;"
+              style="width:min(260px,45vw);aspect-ratio:1080/1350;height:auto;object-fit:cover;border-radius:8px;display:block;background:#0a0a0b;"
             />
             <figcaption style="font-size:11px;color:var(--pico-muted-color);text-align:center;margin-top:4px;">
               slide {i + 1}

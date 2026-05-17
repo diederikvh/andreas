@@ -84,8 +84,83 @@ export const Layout: FC<PropsWithChildren<{ title: string; active?: string }>> =
         @media (max-width: 720px) { .grid-2, .grid-3 { grid-template-columns: 1fr; } }
         .stat { padding: 1rem; border: 1px solid var(--pico-muted-border-color); border-radius: 8px; }
         .stat strong { font-size: 28px; display: block; }
-        .toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
+        .toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; gap: 0.75rem; flex-wrap: wrap; }
         .toolbar h2 { margin: 0; }
+
+        /* ─── Mobile (< 720px) ─────────────────────────────────────── */
+        @media (max-width: 720px) {
+          :root { --pico-font-size: 14px; }
+          body {
+            margin: 0;
+            padding: 0.75rem 1rem 5rem;
+            border: none;
+            border-radius: 0;
+            max-width: 100%;
+          }
+          /* Nav: compacter en sticky bovenaan zodat tabs altijd bereikbaar
+             blijven. Logo eerste rij, buttons wrappen daaronder. */
+          nav {
+            margin-bottom: 1rem;
+            position: sticky;
+            top: 0;
+            background: #131316;
+            padding: 0.5rem 0;
+            z-index: 10;
+            margin-left: -1rem;
+            margin-right: -1rem;
+            padding-left: 1rem;
+            padding-right: 1rem;
+            border-bottom: 1px solid var(--pico-muted-border-color);
+          }
+          nav ul {
+            flex-wrap: wrap;
+            padding: 0;
+            margin: 0;
+          }
+          nav .brand { font-size: 1.1rem; }
+          nav .brand small { display: none; }
+          nav ul li a[role="button"],
+          nav ul li form button {
+            padding: 0.3rem 0.65rem;
+            font-size: 12px;
+          }
+
+          /* Tables omtoveren naar block-cards. Header verbergen, elke
+             rij wordt z'n eigen kaartje. */
+          table thead { display: none; }
+          table, table tbody, table tr, table td { display: block; width: 100%; }
+          table tr {
+            border: 1px solid var(--pico-muted-border-color);
+            border-radius: 8px;
+            margin-bottom: 0.75rem;
+            padding: 0.75rem 0.9rem;
+            background: rgba(255,255,255,0.02);
+          }
+          table td {
+            padding: 0.3rem 0;
+            border: none;
+            text-align: left !important;
+          }
+          /* Action-knoppen onder elkaar in plaats van inline */
+          td.actions { white-space: normal; }
+          td.actions form,
+          td.actions a[role="button"] {
+            display: block;
+            margin: 0.3rem 0 0 0;
+            width: 100%;
+          }
+          td.actions button,
+          td.actions a[role="button"] {
+            width: 100%;
+            text-align: center;
+            font-size: 13px;
+            padding: 0.45rem 0.6rem;
+          }
+
+          /* Form-input klikbaar groot genoeg */
+          input, select, textarea, button { font-size: 16px; }
+          button { padding: 0.55rem 0.9rem; }
+        }
       `}</style>
     </head>
     <body>
