@@ -80,7 +80,7 @@ Skill voor toevoegen van nieuwe scrapers: [.claude/skills/scraper-add/SKILL.md](
 - ⬜ **Astarotheatro** — RSS in inventory; probe nodig
 - ⬜ **Jazz Café Alto** — WP zonder custom event post-type
 - ✅ **Perdu** (underground/klein/centrum) — 10 events · `perdu` (WP REST `events` CPT, filter NL-versies, datum uit detail-text "DD maand om HH:MM")
-- ⬜ **Plein Theater** — probe
+- ✅ **Plein Theater** (alternatief/klein/oost) — 22 events · `aaservices` (AA services-API `venue=123`, één JSON-call)
 - ⬜ **Podium Vrijburcht** — probe
 - ⬜ **Salon de IJzerstaven** — probe
 - ⬜ **Space for Dance Art** — probe

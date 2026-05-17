@@ -26,7 +26,7 @@ jobs:
       # die zitten niet in de Dockerfile op Fly.
       fail-fast: false
       matrix:
-        scraper: [stager, ical, jsonld, ticketmaster, theater, boomchicago, concertgemaal, wptheatre, p60, patronaat, ziggodome, ita, operaballet, podiummozaiek, celebratix, weeztix, shelter, sieraad, garagenoord, krakeling, eventscalendar, volkshotel, akhnaton, dezwijger, debalie, felixmeritis, rijksakademie, deceuvel, lima, perdu, nieuweboekhandel, eventbrite]
+        scraper: [stager, ical, jsonld, ticketmaster, theater, boomchicago, concertgemaal, wptheatre, p60, patronaat, ziggodome, ita, operaballet, podiummozaiek, celebratix, weeztix, shelter, sieraad, garagenoord, krakeling, eventscalendar, volkshotel, akhnaton, dezwijger, debalie, felixmeritis, rijksakademie, deceuvel, lima, perdu, nieuweboekhandel, eventbrite, aaservices]
         # Niet in cron: bimhuis, ot301, fourvenues, radioradio (Playwright, niet in Fly Dockerfile)
     steps:
       - name: POST /admin/api/scrapers/run/${{ matrix.scraper }}

@@ -1,3 +1,4 @@
+import { scrapeAaServices, type AaServicesResult } from './aaservices.js';
 import { scrapeAkhnaton, type AkhnatonResult } from './akhnaton.js';
 import { scrapeArti, type ArtiResult } from './arti.js';
 import { scrapeAthenaeum, type AthenaeumResult } from './athenaeum.js';
@@ -132,6 +133,7 @@ export const scrapers = {
   perdu: scrapePerdu,
   nieuweboekhandel: scrapeNieuweBoekhandel,
   eventbrite: scrapeEventbrite,
+  aaservices: scrapeAaServices,
 } as const;
 
 export type ScraperName = keyof typeof scrapers;
@@ -198,4 +200,5 @@ export type ScraperResult =
   | AthenaeumResult
   | PerduResult
   | NieuweBoekhandelResult
-  | EventbriteResult;
+  | EventbriteResult
+  | AaServicesResult;

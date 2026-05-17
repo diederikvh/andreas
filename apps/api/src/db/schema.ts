@@ -287,6 +287,12 @@ export const venues = pgTable('venues', {
         We scrapen via Playwright omdat events client-side gerenderd
         worden. `slug` is het venue-handle in de URL. */
     fourvenues?: { slug: string };
+    /** Amsterdam Alternative services-API. Eén JSON-endpoint deelt
+        events voor een groep onafhankelijke venues (Plein Theater,
+        OCCII, OT301, Splendor, Cinetol, ...). Config is enkel de
+        numerieke `venueId` zoals AA hem intern hanteert (Plein
+        Theater = 123). */
+    aaservices?: { venueId: number };
     /** Generic theater-scraper: pakt show-URLs uit een sitemap, fetcht
         elke show-page en parseert JSON-LD `Event`-blokken óf
         `data-date` attributes. Gebruikt voor Carré, Meervaart, DeLaMar. */
