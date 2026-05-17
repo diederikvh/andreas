@@ -2,7 +2,7 @@
 
 Volledige inventory: elke gepubliceerde venue in de DB hier zichtbaar met status. ✅ events live · ⬜ nog te doen · ❌ niet doen (met reden).
 
-**Stand (audit 2026-05-17)**: 80/198 gepubliceerde venues hebben momenteel toekomstige events (~4629 occurrences live). 4 musea (Rijksmuseum, Wereldmuseum, Amsterdam Museum, Rembrandthuis) zijn ooit gescraped maar hebben nu alleen historisch materiaal — staan als ⬜ omdat een nieuwe scrape nodig is.
+**Stand (audit 2026-05-17)**: 83/198 gepubliceerde venues hebben momenteel toekomstige of lopende events (~4629 occurrences live). Lopende exhibitions (`starts_at` in verleden, `ends_at` in toekomst) tellen ook mee — dat is normaal voor musea.
 
 Nieuwe event-categorie sinds 2026-05-17: **Lezing** (debat / talkshow / publieke-gesprek), apart van Literatuur. Eerste venue in deze categorie is Pakhuis de Zwijger.
 
@@ -99,17 +99,17 @@ Musea programmeren tentoonstellingen (`kind=exhibition`), niet point-in-time eve
 - ✅ **STRAAT Museum** — 6 events · `straatmuseum`
 - ✅ **FOAM** — 5 events · `foam` (Playwright, lokaal-only)
 - ✅ **Oude Kerk** — 5 events · `oudekerk` (Next.js `__NEXT_DATA__`)
+- ✅ **Wereldmuseum Amsterdam** — 5 lopende exhibitions · `wereldmuseum`
 - ✅ **Nxt Museum** — 3 events · `nxtmuseum`
 - ✅ **Van Gogh Museum** — 3 events · `vangoghmuseum` (Playwright + selectors)
 - ✅ **Verzetsmuseum** — 3 events · LLM-import via admin
+- ✅ **Rijksmuseum** — 3 lopende exhibitions · `rijksmuseum` (Playwright + selectors)
+- ✅ **Amsterdam Museum** — 2 lopende exhibitions · `amsterdammuseum`
 - ✅ **H'ART Museum** — 2 events · LLM-import
 - ✅ **Huis Marseille** — 2 events · LLM-import
 - ✅ **Stedelijk Museum** — 2 events · LLM-import
 - ✅ **Cobra Museum** — 1 event · `cobramuseum`
 - ✅ **De Nieuwe Kerk** — 1 event · `nieuwekerk`
-- ⬜ **Amsterdam Museum** — `/zien-en-doen/agenda`, Next.js `__NEXT_DATA__`
-- ⬜ **Rijksmuseum** — `/en/whats-on?filter=exhibitions`, enterprise SSR
-- ⬜ **Wereldmuseum Amsterdam** — JSON-LD detected, jsonld-scraper kandidaat
 - ⬜ **ARCAM** — probe
 - ⬜ **Allard Pierson** — probe
 - ⬜ **Artis** — probe
@@ -242,9 +242,6 @@ Volgorde op verwachte event-impact + scrape-effort.
 
 **High-priority probes (groot publiek-programma of bekende platforms):**
 - ⬜ **Eye Filmmuseum** — film, mainstream
-- ⬜ **Rijksmuseum** — tentoonstellingen
-- ⬜ **Wereldmuseum Amsterdam** — JSON-LD detected, quick-win
-- ⬜ **Amsterdam Museum** — Next.js `__NEXT_DATA__`
 - ⬜ **SPUI25** — lezingen-programma
 - ⬜ **Pakhuis Wilhelmina** — multi-disciplinair podium
 - ⬜ **Het Veem House for Performance** — dans
