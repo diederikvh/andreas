@@ -231,8 +231,8 @@ Musea programmeren tentoonstellingen (`kind=exhibition`), niet point-in-time eve
 - ✅ **Athenaeum Spui** (mainstream/klein/centrum) — 4 events · `athenaeum` (Playwright + stealth, lokaal-only)
 - ✅ **Scheltema** (mainstream/groot/centrum) — 4 events · `athenaeum` (zelfde scraper, `/agenda-scheltema`-pad)
 - ✅ **Athenaeum Zuidoost** (alternatief/middel/zuidoost) — 4 events · `athenaeum` (zelfde scraper, `/agenda-zuidoost`-pad)
-- ⬜ **Kanarie Club** — probe
-- ⬜ **Noon coffee & culture** — probe
+- ⬜ **Kanarie Club** — WP zonder event-CPT, `/events/` is een marketing-pagina, homepage toont alleen sluitingsnotices. Events worden niet publiek via website aangekondigd (vermoedelijk Instagram).
+- ⬜ **Noon coffee & culture** — gebruikt Eventbrite (`noon-coffee-culture-116347191961`). Organizer-pagina is momenteel leeg (0 events ook met Playwright+stealth); 1 specifieke event via knop op homepage. Pas relevant als ze hun Eventbrite-organizer vullen.
 
 ---
 
