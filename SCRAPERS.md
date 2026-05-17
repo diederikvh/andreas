@@ -2,7 +2,7 @@
 
 Prioriteit-volgorde voor scraper-implementaties, op volgorde van impact (events × belang). Vink af zodra een venue events oplevert in DB.
 
-**Stand**: 38/50 done — ~2.467 events live. Phase 1 volledig + Phase 2 dekkende ronde + clubs (Thuishaven 24, BRET 15, Tilla Tec 14, Radio Radio 13, Doka 2, Lofi 16, Radion 22 = 106 club-events).
+**Stand (audit 2026-05-17)**: 83/198 gepubliceerde venues hebben events — ~4.577 toekomstige occurrences live.
 
 ---
 
@@ -48,12 +48,15 @@ Gegenereerd via `apps/api/scripts/_venue-report.ts` — alle gepubliceerde venue
 - ✅ **Frascati** (mainstream/groot/centrum) — 127 events · `theater`
 - ✅ **Tolhuistuin** (mainstream/groot/noord) — 109 events · via Paradiso routing
 - ✅ **Ziggo Dome** (mainstream/xl/zuidoost) — 95 events · direct JSON-API
+- ✅ **De Nieuwe Anita** (alternatief/klein/west) — 85 events · `denieuweanita` (WP REST)
 - ✅ **Meervaart** (mainstream/groot/nieuw-west) — 76 events · `theater`
 - ✅ **OT301** (underground/klein/west) — 66 events · Playwright
-- ✅ **De Krakeling** (mainstream/middel/centrum) — 59 events · pure-HTTP
+- ✅ **De Krakeling** (mainstream/middel/centrum) — 62 events · pure-HTTP
+- ✅ **Theater Mascini** (alternatief/klein) — 53 events · `theatermascini`
 - ✅ **AFAS Live** (mainstream/xl/zuidoost) — 53 events · `ticketmaster`
 - ✅ **Bijlmer Parktheater** (mainstream/groot/zuidoost) — 45 events · `theater`
 - ✅ **Splendor** (alternatief/middel/centrum) — 40 events · `stager`
+- ✅ **Betty Asfalt Complex** (alternatief/klein/centrum) — 35 events · `bettyasfalt`
 - ✅ **Bitterzoet** (alternatief/middel/centrum) — 30 events · via Paradiso routing
 - ✅ **OCCII** (underground/klein/zuid) — 25 events · `ical`
 - ✅ **Podium Mozaiek** (alternatief/middel/west) — 23 events · Ticketmatic
@@ -61,42 +64,53 @@ Gegenereerd via `apps/api/scripts/_venue-report.ts` — alle gepubliceerde venue
 - ✅ **Bimhuis** (mainstream/middel/centrum) — 20 events · Playwright
 - ✅ **Johan Cruijff ArenA** (mainstream/xl/zuidoost) — 20 events · `ticketmaster`
 - ✅ **Podium DE FLUX** (alternatief/middel) — 17 events · `wpTheatre`
+- ✅ **Mike's Badhuistheater** (alternatief/klein/oost) — 17 events · `badhuistheater`
 - ✅ **De Brakke Grond** (mainstream/middel/centrum) — 12 events · Playwright
 - ✅ **RAI Theater** (mainstream/groot/zuid) — 11 events · `ticketmaster`
 - ✅ **Q-Factory** (alternatief/middel/oost) — 10 events · Playwright
 - ✅ **On the Roof** (alternatief/klein/noord) — 8 events · Playwright
+- ✅ **Akhnaton** (alternatief/middel/centrum) — 5 events · `akhnaton` (WP CPT, recurring-dedup)
 - ✅ **Concertgemaal** (fringe/klein/noord) — 5 events · Wix Events JSON-LD
 - ✅ **Theater Amsterdam** (mainstream/groot/west) — 4 events · `ticketmaster`
+- ✅ **Bourbon Street** (alternatief/klein/centrum) — 2 events · `bourbonstreet`
 - ⬜ **Sugarfactory** — `/agenda/` 404, geen publieke events
 - ⬜ **Jazz Café Alto** — WP zonder custom event post-type
-- ⬜ **Pakhuis Wilhelmina, De Nieuwe Anita, De Krakeling, Het Veem House for Performance, Plein Theater, ZID Theater, Betty Asfalt Complex, Bourbon Street, De Ruimte, Podium Vrijburcht, Teatro Munganga, Astarotheatro, Casablanca Variété, Mike's Badhuistheater, Volta, Space for Dance Art, Zaal 100, Perdu, Salon de IJzerstaven, Compagnietheater** — separate research per venue
+- ⬜ **Pakhuis Wilhelmina, Het Veem House for Performance, Plein Theater, ZID Theater, De Ruimte, Podium Vrijburcht, Teatro Munganga, Astarotheatro, Casablanca Variété, Volta, Space for Dance Art, Zaal 100, Perdu, Salon de IJzerstaven, Compagnietheater** — separate research per venue
 
-### Musea (12) — geen scrapers, alle 0 events
+### Musea
 
-Musea programmeren tentoonstellingen (multi-week, kind=`exhibition`), niet point-in-time events. Per-museum scraper vereist HTML-parse omdat 'r geen standaard ticket-platform tussen zit. Status per venue:
+Musea programmeren tentoonstellingen (multi-week, `kind=exhibition`), niet point-in-time events. Per-museum scraper is venue-specifieke HTML-parse.
 
+**Met scraper (events live):**
+- ✅ **STRAAT Museum** — 6 events · `straatmuseum`
+- ✅ **FOAM** — 5 events · `foam` (Playwright, lokaal-only)
+- ✅ **Oude Kerk** — 5 events · `oudekerk`
+- ✅ **Nxt Museum** — 3 events · `nxtmuseum`
+- ✅ **Van Gogh Museum** — 3 events · `vangoghmuseum`
+- ✅ **Verzetsmuseum** — 3 events · (LLM-import via admin)
+- ✅ **H'ART Museum** — 2 events · LLM-import
+- ✅ **Huis Marseille** — 2 events · LLM-import
+- ✅ **Stedelijk Museum** — 2 events · LLM-import
+- ✅ **Cobra Museum** — 1 event · `cobramuseum`
+- ✅ **De Nieuwe Kerk** — 1 event · `nieuwekerk`
+
+**Zonder scraper, agenda-URL bekend:**
 | Venue | Agenda URL | Platform | Strategy |
 |---|---|---|---|
 | Amsterdam Museum | `/zien-en-doen/agenda` | Next.js | `__NEXT_DATA__` mining + Playwright |
-| Cobra Museum | `/te-doen/tentoonstellingen/` | WordPress (geen JSON-LD/plugin) | per-detail og:tags + datum uit body |
-| FOAM | `/nl/programme` | SPA (geen SSR-data) | Playwright + DOM-extractie |
-| Huis Marseille | `/tentoonstellingen/` | WP + lege JSON-LD | per-detail og:tags |
-| NXT Museum | `/events` | Next.js + JSON-LD | `__NEXT_DATA__` mining |
-| Oude Kerk | `/` | Next.js | `__NEXT_DATA__` mining |
-| Rijksmuseum | `/en/whats-on?filter=exhibitions` | enterprise (SSR/jaardata in head) | Playwright + selectors |
-| Stedelijk | `/nl/nu-te-zien` | SPA | Playwright + DOM-extractie |
-| Van Gogh Museum | `/en/visit/whats-on/exhibitions` | enterprise | Playwright + selectors |
-| Verzetsmuseum | `/nl/agenda` | onbekend | probe |
 | Wereldmuseum Amsterdam | `/nl/zien-en-doen/tentoonstellingen` | JSON-LD detected | jsonld-scraper of detail-mining |
+| Rijksmuseum | `/en/whats-on?filter=exhibitions` | enterprise (SSR/jaardata in head) | Playwright + selectors |
+| Museum Het Rembrandthuis | — | onbekend | probe |
+| Museum Het Schip / Van Loon / Moco / NEMO / Holocaustmuseum / Solder / Scheepvaartmuseum / Hollandsche Schouwburg / Allard Pierson / ARCAM / Artis / Embassy of the Free Mind / Joods Museum / Hortus Botanicus | — | per-venue probe nodig | separate research |
 | Anne Frank Huis | — | (geen tentoonstellingen, vast museum) | overslaan |
 
-Plan: **één generieke museum-scraper** met `scraperConfig.museum = { listingUrl, detailUrlPattern, dateSelector?, ... }`. Een venue-specifieke probe + config per museum. Niet in deze sessie gedaan — separate batch.
-
 ### Galleries (55)
+- ✅ **Arti et Amicitiae** (underground/klein/centrum) — 12 events · `arti`
 - ✅ **W139** (underground/klein/centrum) — 9 events · `jsonld`
 - ✅ **Bajesdorp - GROND** (underground/klein/oost) — 3 events · `ical`
+- ✅ **CBK Zuidoost** (alternatief/middel/zuidoost) — 2 events · `cbkzuidoost`
 - ✅ **If I Can't Dance** (underground/klein/centrum) — 0 events · `stager` (config klaar, shop leeg)
-- ⬜ Overige 52 (AKINCI, Andriesse Eyck, Annet Gelink, Arti et Amicitiae, Borzo, Bradwolff, Buro Stedelijk, CBK Zuidoost, De Appel, Ellen de Bruijne, Enari, Framer Framed (×2), Galerie Bart, Caroline O'Breen, de Schans, dudokdegroot, Fleur & Wouter, Fons Welters, Fontana, Martin van Zomeren, Onrust, Ron Mandos, Fanny Freytag, GoMulan, GRIMM, Hama, Helicopter, ISO, Josilda da Conceição, Kers, Kunstverein, LANGArt, Lumen Travo, m.simons, Madé van Krimpen, Marwan, No Limits!, No Man's Art, OSCAM, P/////AKT, Projectspace 38/40, puntWG, ROZENSTRAAT, Rutger Brandt, Slewe, Stigter Van Doesburg, tegenboschvanvreden, TORCH, Upstream, Zone 2 Source) — separate research
+- ⬜ Overige 51 (AKINCI, Andriesse Eyck, Annet Gelink, Borzo, Bradwolff, Buro Stedelijk, De Appel, Ellen de Bruijne, Enari, Framer Framed (×2), Galerie Bart, Caroline O'Breen, de Schans, dudokdegroot, Fleur & Wouter, Fons Welters, Fontana, Martin van Zomeren, Onrust, Ron Mandos, Fanny Freytag, GoMulan, GRIMM, Hama, Helicopter, ISO, Josilda da Conceição, Kers, Kunstverein, LANGArt, Lumen Travo, m.simons, Madé van Krimpen, Marwan, No Limits!, No Man's Art, OSCAM, P/////AKT, Projectspace 38/40, puntWG, ROZENSTRAAT, Rutger Brandt, Slewe, Stigter Van Doesburg, tegenboschvanvreden, TORCH, Upstream, Zone 2 Source) — separate research
 
 ### Film (11)
 - ✅ **Cinetol** (alternatief/middel/zuid) — 0 events · `stager` (shop leeg)
