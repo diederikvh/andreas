@@ -26,18 +26,19 @@ export const adminSocial = new Hono();
 
 adminSocial.use('*', requireAdminAny);
 
-export type Slot = 'morning' | 'afternoon' | 'evening';
-export const SLOTS: readonly Slot[] = ['morning', 'afternoon', 'evening'];
+export type Slot = 'morning' | 'evening';
+export const SLOTS: readonly Slot[] = ['morning', 'evening'];
 
 const DEDUP_DAYS = 14;
 
 /** Publicatie-tijd per slot (in Europe/Amsterdam local hours, op de
     dag van generatie). De cron die approved posts publiceert pakt
-    alles waar scheduled_for valt in een venster rond deze tijd. */
+    alles waar scheduled_for valt in een venster rond deze tijd.
+    Twee posts per dag: ochtend voor de overdag-content, avond voor de
+    nacht-content. */
 const SLOT_PUBLISH_HOUR: Record<Slot, number> = {
   morning: 9,
-  afternoon: 14,
-  evening: 19,
+  evening: 18,
 };
 
 function shortId(): string {
@@ -93,14 +94,10 @@ function amsterdamYMD(at: Date): { year: number; month: number; day: number } {
 
 /**
  * Time-window per slot:
- *  - evening: vanaf max(now, vandaag 18:00 Amsterdam) tot morgen 06:00
- *    Amsterdam (logical-day-boundary).
- *  - morning: vandaag 06:00–18:00 (overdag-content: galleries, theater,
- *    expos).
- *  - afternoon: identiek aan evening (carousel-content over vanavond).
- *
- * Voor fase 1 implementeren we alleen evening + afternoon meaningful;
- * morning krijgt een placeholder-window.
+ *  - morning: vandaag 06:00–18:00 Amsterdam (overdag-content:
+ *    galleries, theater, expos).
+ *  - evening: vanaf max(now, vandaag 18:00) tot morgen 06:00 Amsterdam
+ *    (logical-day-boundary — clubs/podia/nacht).
  */
 function computeWindow(slot: Slot, now: Date): { start: Date; end: Date } {
   const { year, month, day } = amsterdamYMD(now);
@@ -109,7 +106,7 @@ function computeWindow(slot: Slot, now: Date): { start: Date; end: Date } {
     const end = inAmsterdamTz(year, month, day, 18, 0);
     return { start: start < now ? now : start, end };
   }
-  // evening + afternoon: vanavond-window
+  // evening: vanavond-window
   const tonightStart = inAmsterdamTz(year, month, day, 18, 0);
   const tomorrowMorning = new Date(inAmsterdamTz(year, month, day, 6, 0).getTime() + 24 * 60 * 60 * 1000);
   return {
@@ -348,6 +345,12 @@ adminSocial.post('/caption', async (c) => {
             ? o.startsAt
             : null;
       if (!startsAt || isNaN(startsAt.getTime())) return null;
+      const endsAt =
+        typeof o.endsAt === 'string'
+          ? new Date(o.endsAt)
+          : o.endsAt instanceof Date
+            ? o.endsAt
+            : null;
       return {
         title: o.title,
         venueName: o.venueName,
@@ -356,6 +359,7 @@ adminSocial.post('/caption', async (c) => {
           typeof o.venueInstagram === 'string' ? o.venueInstagram : null,
         category: typeof o.category === 'string' ? o.category : '',
         startsAt,
+        endsAt: endsAt && !isNaN(endsAt.getTime()) ? endsAt : null,
       };
     })
     .filter((p): p is NonNullable<typeof p> => p !== null);
@@ -618,6 +622,7 @@ export async function runGenerate(
       venueInstagram: p.venueInstagram,
       category: p.category,
       startsAt: p.startsAt,
+      endsAt: p.endsAt,
     })),
   });
   if (captionResult.source === 'fallback') {

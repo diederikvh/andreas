@@ -110,6 +110,16 @@ function formatTimeNl(d: Date): string {
   }).format(d);
 }
 
+/** Hele-dag-event detecteren — scrapers vullen vaak 00:00 → 23:59
+    (of 00:00 / 23:00) in voor doorlopende exposities. Die letterlijk
+    op de slide tonen klopt niet. */
+function isFullDay(startsAt: Date, endsAt: Date | null): boolean {
+  if (!endsAt) return false;
+  if (formatTimeNl(startsAt) !== '00:00') return false;
+  const end = formatTimeNl(endsAt);
+  return end === '23:59' || end === '23:00' || end === '00:00';
+}
+
 // ─── Templates ────────────────────────────────────────────────────────────
 
 export interface CoverInput {
@@ -245,9 +255,10 @@ export interface EventSlideInput {
 }
 
 export function eventSlide(input: EventSlideInput): VNode {
-  const time = formatTimeNl(input.startsAt);
+  const fullDay = isFullDay(input.startsAt, input.endsAt);
+  const time = fullDay ? 'Hele dag' : formatTimeNl(input.startsAt);
   const duration =
-    input.endsAt && input.endsAt.getTime() > input.startsAt.getTime()
+    !fullDay && input.endsAt && input.endsAt.getTime() > input.startsAt.getTime()
       ? `– ${formatTimeNl(input.endsAt)}`
       : null;
 

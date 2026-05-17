@@ -20,12 +20,13 @@ Toon: terloops, alsof iemand naast je iets opmerkt. Korte zinnen of zelfs fragme
 
 Strikte regels:
 - Maximaal 2 korte zinnen of fragmenten in de hoofdtekst. Eén is vaak genoeg.
-- Niet alle picks noemen. Eén oppakken of geen — de slides doen het werk.
+- Pak ALTIJD precies één pick op in de hoofdtekst — niet alle drie noemen, niet geen.
+- Als die ene pick een venue met IG-handle heeft (staat tussen ronde haken in de input als "@handle"), gebruik dan die @-mention i.p.v. de gewone naam. Heeft 't geen handle, gebruik de naam zoals 'ie er staat.
+- HARDE LIMIET: precies één @-mention per caption, nooit twee, nooit nul als de gekozen pick een handle heeft.
 - Geen kapstok-openingszin die de hele avond samenvat ("Drie zalen die…", "Vanavond voor wie…")
-- Het woord "drie" niet gebruiken — laat de carrousel het volume tonen
-- Geen vragen, geen uitroeptekens, geen verkooppraat ("vergeet niet", "mis dit niet")
-- Als je een venue noemt in de hoofdtekst en die heeft een IG-handle (staat tussen ronde haken in de input als "@handle"), gebruik dan die @-mention i.p.v. de gewone naam. Max één @-mention per caption — meer voelt spammy.
-- Hashtags op laatste regel: lowercase, exact 2-3 stuks, altijd #andreas en #amsterdam
+- Het woord "drie" niet gebruiken — laat de carrousel het volume tonen.
+- Geen vragen, geen uitroeptekens, geen verkooppraat ("vergeet niet", "mis dit niet").
+- Hashtags op laatste regel: lowercase, exact 2-3 stuks, altijd #andreas en #amsterdam.
 
 Voorbeelden (fictief, alleen voor de stem):
 
@@ -55,6 +56,7 @@ export interface CaptionPickInput {
   venueInstagram: string | null;
   category: string;
   startsAt: Date;
+  endsAt?: Date | null;
 }
 
 interface CaptionInput {
@@ -86,12 +88,28 @@ function fallbackCaption(input: CaptionInput): string {
   ].join('\n');
 }
 
-function formatPickForPrompt(p: CaptionPickInput): string {
-  const time = new Intl.DateTimeFormat('nl-NL', {
+function formatTimeInAmsterdam(d: Date): string {
+  return new Intl.DateTimeFormat('nl-NL', {
     timeZone: 'Europe/Amsterdam',
     hour: '2-digit',
     minute: '2-digit',
-  }).format(p.startsAt);
+  }).format(d);
+}
+
+/**
+ * Een "hele dag" event detecteren: startsAt = 00:00 en endsAt = 23:00
+ * of later op dezelfde dag (of het volgt direct na in de nacht).
+ * Scrapers vullen vaak 00:00 → 23:59 in voor doorlopende exposities of
+ * full-day-events; die tijd toevoegen aan een caption/slide klopt niet.
+ */
+function isFullDay(startsAt: Date, endsAt: Date | null | undefined): boolean {
+  if (!endsAt) return false;
+  if (formatTimeInAmsterdam(startsAt) !== '00:00') return false;
+  const end = formatTimeInAmsterdam(endsAt);
+  return end === '23:59' || end === '23:00' || end === '00:00';
+}
+
+function formatPickForPrompt(p: CaptionPickInput): string {
   const typeBits = [p.venueType, p.category]
     .filter(Boolean)
     .map((s) => s!.toLowerCase())
@@ -100,7 +118,9 @@ function formatPickForPrompt(p: CaptionPickInput): string {
   const venueLabel = p.venueInstagram
     ? `${p.venueName} (@${p.venueInstagram})`
     : p.venueName;
-  return `- ${p.title} — ${venueLabel}, ${time}${typeStr}`;
+  const fullDay = isFullDay(p.startsAt, p.endsAt ?? null);
+  const timeLabel = fullDay ? 'hele dag' : formatTimeInAmsterdam(p.startsAt);
+  return `- ${p.title} — ${venueLabel}, ${timeLabel}${typeStr}`;
 }
 
 export async function generateCaption(

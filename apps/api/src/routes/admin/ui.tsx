@@ -3141,8 +3141,7 @@ adminUi.get('/insights', async (c) => {
 
 const SLOT_LABEL: Record<Slot, string> = {
   morning: 'Ochtend (09:00)',
-  afternoon: 'Middag (14:00)',
-  evening: 'Avond (19:00)',
+  evening: 'Avond (18:00)',
 };
 
 const SOCIAL_STATUS_LABEL: Record<string, string> = {
@@ -3696,6 +3695,7 @@ adminUi.post('/social/:id/regenerate-caption', async (c) => {
     .select({
       occurrenceId: schema.occurrences.id,
       startsAt: schema.occurrences.startsAt,
+      endsAt: schema.occurrences.endsAt,
       title: schema.events.title,
       category: schema.events.category,
       venueName: schema.venues.name,
@@ -3729,6 +3729,7 @@ adminUi.post('/social/:id/regenerate-caption', async (c) => {
         venueInstagram: r.venueInstagram,
         category: r.category,
         startsAt: r.startsAt,
+        endsAt: r.endsAt,
       })),
     });
     await db
