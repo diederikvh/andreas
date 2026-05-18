@@ -45,7 +45,9 @@ Skill voor toevoegen van nieuwe scrapers: [.claude/skills/scraper-add/SKILL.md](
 - ⬜ **Warehouse Elementenstraat** — `weeztix` config gezet, shop momenteel leeg
 - ⬜ **Yellow House** — scraper nog te kiezen
 
-## Podia (53)
+## Podia (54)
+
+- ✅ **Amsterdamse Bostheater** (mainstream/groot/amstelveen) — 29 events · `bostheater` (custom WP-theme, `.event-card` HTML, multi-day support)
 
 - ✅ **Het Concertgebouw** (mainstream/groot/zuid) — 531 events · `theater` (sitemap-index + JSON-LD, future-slot filter)
 - ✅ **Patronaat** (mainstream/groot/haarlem) — 140 events · `patronaat` (buiten Amsterdam, bewust meegenomen voor regio-coverage)

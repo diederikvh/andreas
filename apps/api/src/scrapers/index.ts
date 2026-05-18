@@ -34,6 +34,7 @@ import { scrapeOudeKerk, type OudeKerkResult } from './oudekerk.js';
 import { scrapeStraatMuseum, type StraatMuseumResult } from './straatmuseum.js';
 import { scrapeNieuweKerk, type NieuweKerkResult } from './nieuwekerk.js';
 import { scrapeBoomChicago, type BoomChicagoResult } from './boomchicago.js';
+import { scrapeBostheater, type BostheaterResult } from './bostheater.js';
 import { scrapeBrakkeGrond, type BrakkeGrondResult } from './brakkegrond.js';
 import { scrapeCelebratix, type CelebratixVenueResult } from './celebratix.js';
 import { scrapeClubUp, type ClubUpResult } from './clubup.js';
@@ -156,6 +157,7 @@ export const scrapers = {
   ijland: scrapeIJland,
   odessa: scrapeOdessa,
   fullhouse: scrapeFullhouse,
+  bostheater: scrapeBostheater,
 } as const;
 
 export type ScraperName = keyof typeof scrapers;
@@ -234,4 +236,5 @@ export type ScraperResult =
   | ClubUpResult
   | IJlandResult
   | OdessaResult
-  | FullhouseResult;
+  | FullhouseResult
+  | BostheaterResult;
