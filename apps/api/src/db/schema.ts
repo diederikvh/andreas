@@ -282,6 +282,10 @@ export const venues = pgTable('venues', {
         scraper parseert de tile-DOM. `roomPath` is het URL-segment
         ('canvas', 'doka', 'werkplaats'). */
     volkshotel?: { roomPath: string };
+    /** Fullhouse.tech — ticket-platform met Next.js shop-pagina's per
+        seller. URL-vorm: `shop.fullhouse.tech/seller/{sellerSlug}`.
+        Events staan embed'd in __NEXT_DATA__ als pageProps.events[]. */
+    fullhouse?: { sellerSlug: string };
     /** Fourvenues is een ticket-platform met iframe-widget per venue.
         URL-vorm: `web.fourvenues.com/en/iframe/{slug}/events?date=YYYY-MM`.
         We scrapen via Playwright omdat events client-side gerenderd

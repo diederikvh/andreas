@@ -10,7 +10,7 @@ Skill voor toevoegen van nieuwe scrapers: [.claude/skills/scraper-add/SKILL.md](
 
 ---
 
-## Clubs (31)
+## Clubs (32)
 
 - ✅ **West Weelde** (mainstream/groot/west) — 47 events · `westweelde` (Sanity CMS public-API, project `qcf0k7mi`)
 - ✅ **Gashouder** (mainstream/groot/west) — 11 events · `gashouder` (Nuxt + DatoCMS GraphQL)
@@ -19,6 +19,7 @@ Skill voor toevoegen van nieuwe scrapers: [.claude/skills/scraper-add/SKILL.md](
 - ✅ **IJland** (alternatief/middel/noord) — 9 events · `ijland` (custom WP-theme, `.agenda_card`)
 - ✅ **SUPPER** (mainstream/middel/centrum) — 8 events · `supper` (Elementor-cards op /club/, datum + lineup + ticket-URL per card)
 - ✅ **Het Veronica Schip** (alternatief/klein/noord) — 7 events · `veronica` (`/api/events` JSON-feed, NDSM-werf)
+- ✅ **Bar Dancing Multipla** (alternatief/klein/nieuw-west) — 11 events · `fullhouse` (Fullhouse.tech seller `solist-events-y4d6`, Next.js __NEXT_DATA__)
 - ✅ **Levenslang** (alternatief/middel/oost) — 1 event · `levenslang` (Webflow CMS-collection)
 - ⬜ **iNN** — `fourvenues` config gezet (slug `innams`); Playwright-only, lokaal te draaien
 - ✅ **Panama** (mainstream/groot/oost) — 37 events · `eventscalendar` (Tribe Events Pro REST)

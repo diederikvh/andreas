@@ -43,6 +43,7 @@ import {
   type EventsCalendarVenueResult,
 } from './eventscalendar.js';
 import { scrapeFourvenues, type FourvenuesResult } from './fourvenues.js';
+import { scrapeFullhouse, type FullhouseResult } from './fullhouse.js';
 import { scrapeGarageNoord, type GarageNoordResult } from './garagenoord.js';
 import { scrapeIJland, type IJlandResult } from './ijland.js';
 import { scrapeIta, type ItaResult } from './ita.js';
@@ -154,6 +155,7 @@ export const scrapers = {
   clubup: scrapeClubUp,
   ijland: scrapeIJland,
   odessa: scrapeOdessa,
+  fullhouse: scrapeFullhouse,
 } as const;
 
 export type ScraperName = keyof typeof scrapers;
@@ -231,4 +233,5 @@ export type ScraperResult =
   | LevenslangResult
   | ClubUpResult
   | IJlandResult
-  | OdessaResult;
+  | OdessaResult
+  | FullhouseResult;
