@@ -155,11 +155,20 @@ type Category = 'Muziek' | 'Theater' | 'Literatuur' | 'Film' | 'Kunst' | 'Lezing
 
 function mapCategory(cat: string | null | undefined): Category {
   const c = (cat ?? '').toLowerCase();
-  if (c.includes('food') || c.includes('cocktail') || c.includes('voetbal')) {
-    // Geen perfecte match — Andreas heeft geen "Bar/Sport". Default
-    // naar Muziek (West Weelde is in eerste plaats clubvenue).
-    return 'Muziek';
+  // Voetbal op grootscherm = filmvertoning-vibes (publiek kijkt
+  // collectief naar groot scherm), niet muziek.
+  if (c.includes('voetbal') || c.includes('sport') || c.includes('film')) {
+    return 'Film';
   }
+  // Food/Cocktails/Brunch/Oesterdag passen niet in onze 6 cats.
+  // Theater = "belevenis" — dinnershow, tasting, etc.
+  if (c.includes('food') || c.includes('cocktail')
+    || c.includes('brunch') || c.includes('oester')
+    || c.includes('parel')) {
+    return 'Theater';
+  }
+  // Alle club/dance varianten (Clubnight, LATIN, ADE, Afterparty,
+  // LGBTQIA+, Festival) → Muziek.
   return 'Muziek';
 }
 
