@@ -62,6 +62,7 @@ import { scrapeRadioRadio, type RadioRadioResult } from './radioradio.js';
 import { scrapeShelter, type ShelterResult } from './shelter.js';
 import { scrapeSieraad, type SieraadResult } from './sieraad.js';
 import { scrapeStager, type StagerVenueResult } from './stager.js';
+import { scrapeSupper, type SupperResult } from './supper.js';
 import { scrapeTheater, type TheaterVenueResult } from './theater.js';
 import { scrapeTicketmaster, type TicketmasterVenueResult } from './ticketmaster.js';
 import { scrapeVolkshotel, type VolkshotelVenueResult } from './volkshotel.js';
@@ -142,6 +143,7 @@ export const scrapers = {
   munganga: scrapeMunganga,
   westweelde: scrapeWestWeelde,
   veronica: scrapeVeronica,
+  supper: scrapeSupper,
 } as const;
 
 export type ScraperName = keyof typeof scrapers;
@@ -213,4 +215,5 @@ export type ScraperResult =
   | VrijburchtResult
   | MungangaResult
   | WestWeeldeResult
-  | VeronicaResult;
+  | VeronicaResult
+  | SupperResult;

@@ -14,7 +14,7 @@ Skill voor toevoegen van nieuwe scrapers: [.claude/skills/scraper-add/SKILL.md](
 
 - ✅ **West Weelde** (mainstream/groot/west) — 47 events · `westweelde` (Sanity CMS public-API, project `qcf0k7mi`)
 - ✅ **Het Veronica Schip** (alternatief/klein/oost) — 7 events · `veronica` (`/api/events` JSON-feed)
-- ✅ **SUPPER** (mainstream/middel/centrum) — `weeztix` (shop `624d9741…`)
+- ✅ **SUPPER** (mainstream/middel/centrum) — 8 events · `supper` (Elementor-cards op /club/, datum + lineup + ticket-URL per card)
 - ⬜ **In Naams** — `fourvenues` config gezet (slug `innams`); Playwright-only, lokaal te draaien
 - ✅ **Panama** (mainstream/groot/oost) — 37 events · `eventscalendar` (Tribe Events Pro REST)
 - ✅ **Thuishaven** (mainstream/groot/west) — 20 events · Playwright (homepage harvest + `.agenda-line-up`)
