@@ -10,8 +10,9 @@ Skill voor toevoegen van nieuwe scrapers: [.claude/skills/scraper-add/SKILL.md](
 
 ---
 
-## Clubs (22)
+## Clubs (23)
 
+- ✅ **West Weelde** (mainstream/groot/west) — 47 events · `westweelde` (Sanity CMS public-API, project `qcf0k7mi`)
 - ✅ **Panama** (mainstream/groot/oost) — 37 events · `eventscalendar` (Tribe Events Pro REST)
 - ✅ **Thuishaven** (mainstream/groot/west) — 20 events · Playwright (homepage harvest + `.agenda-line-up`)
 - ✅ **Radion** (alternatief/klein/nieuw-west) — 19 events · `stager`

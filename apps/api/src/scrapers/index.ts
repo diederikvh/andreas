@@ -12,6 +12,7 @@ import { scrapeMunganga, type MungangaResult } from './munganga.js';
 import { scrapeNieuweBoekhandel, type NieuweBoekhandelResult } from './nieuweboekhandel.js';
 import { scrapePerdu, type PerduResult } from './perdu.js';
 import { scrapeVrijburcht, type VrijburchtResult } from './vrijburcht.js';
+import { scrapeWestWeelde, type WestWeeldeResult } from './westweelde.js';
 import { scrapeRijksakademie, type RijksakademieResult } from './rijksakademie.js';
 import { scrapeBadhuistheater, type BadhuistheaterResult } from './badhuistheater.js';
 import { scrapeBettyAsfalt, type BettyAsfaltResult } from './bettyasfalt.js';
@@ -138,6 +139,7 @@ export const scrapers = {
   aaservices: scrapeAaServices,
   vrijburcht: scrapeVrijburcht,
   munganga: scrapeMunganga,
+  westweelde: scrapeWestWeelde,
 } as const;
 
 export type ScraperName = keyof typeof scrapers;
@@ -207,4 +209,5 @@ export type ScraperResult =
   | EventbriteResult
   | AaServicesResult
   | VrijburchtResult
-  | MungangaResult;
+  | MungangaResult
+  | WestWeeldeResult;
