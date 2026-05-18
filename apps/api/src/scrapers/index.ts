@@ -7,6 +7,7 @@ import { scrapeDeCeuvel, type DeCeuvelResult } from './deceuvel.js';
 import { scrapeDeZwijger, type DeZwijgerResult } from './dezwijger.js';
 import { scrapeEventbrite, type EventbriteResult } from './eventbrite.js';
 import { scrapeFelixMeritis, type FelixMeritisResult } from './felixmeritis.js';
+import { scrapeGashouder, type GashouderResult } from './gashouder.js';
 import { scrapeLima, type LimaResult } from './lima.js';
 import { scrapeMunganga, type MungangaResult } from './munganga.js';
 import { scrapeNieuweBoekhandel, type NieuweBoekhandelResult } from './nieuweboekhandel.js';
@@ -35,6 +36,7 @@ import { scrapeNieuweKerk, type NieuweKerkResult } from './nieuwekerk.js';
 import { scrapeBoomChicago, type BoomChicagoResult } from './boomchicago.js';
 import { scrapeBrakkeGrond, type BrakkeGrondResult } from './brakkegrond.js';
 import { scrapeCelebratix, type CelebratixVenueResult } from './celebratix.js';
+import { scrapeClubUp, type ClubUpResult } from './clubup.js';
 import { scrapeConcertgemaal, type ConcertgemaalResult } from './concertgemaal.js';
 import {
   scrapeEventsCalendar,
@@ -42,8 +44,11 @@ import {
 } from './eventscalendar.js';
 import { scrapeFourvenues, type FourvenuesResult } from './fourvenues.js';
 import { scrapeGarageNoord, type GarageNoordResult } from './garagenoord.js';
+import { scrapeIJland, type IJlandResult } from './ijland.js';
 import { scrapeIta, type ItaResult } from './ita.js';
 import { scrapeKrakeling, type KrakelingResult } from './krakeling.js';
+import { scrapeLevenslang, type LevenslangResult } from './levenslang.js';
+import { scrapeOdessa, type OdessaResult } from './odessa.js';
 import { scrapeOperaballet, type OperaballetResult } from './operaballet.js';
 import { scrapeOt301, type Ot301Result } from './ot301.js';
 import { scrapePodiumMozaiek, type PodiumMozaiekResult } from './podiummozaiek.js';
@@ -144,6 +149,11 @@ export const scrapers = {
   westweelde: scrapeWestWeelde,
   veronica: scrapeVeronica,
   supper: scrapeSupper,
+  gashouder: scrapeGashouder,
+  levenslang: scrapeLevenslang,
+  clubup: scrapeClubUp,
+  ijland: scrapeIJland,
+  odessa: scrapeOdessa,
 } as const;
 
 export type ScraperName = keyof typeof scrapers;
@@ -216,4 +226,9 @@ export type ScraperResult =
   | MungangaResult
   | WestWeeldeResult
   | VeronicaResult
-  | SupperResult;
+  | SupperResult
+  | GashouderResult
+  | LevenslangResult
+  | ClubUpResult
+  | IJlandResult
+  | OdessaResult;
