@@ -1,15 +1,17 @@
 name: Publish scheduled IG-posts
 
-# Elke 15 min op de live API kijken of er approved posts zijn waarvan
-# de scheduled_for-tijd verstreken is. Zo ja: publiceren naar IG. Dit
-# is de motor achter "approven 's ochtends, publiceren door de dag
-# heen op vaste slot-tijden (09/14/19 Amsterdam)".
+# Twee posts per dag: 09:00 NL (morning) en 17:00 NL (evening). We
+# polln alleen in de uur-windows daaromheen, niet de hele dag —
+# zo blijven we ruim binnen de GH-Actions free tier voor private
+# repos. Per slot 4 uur window × 6 polls/uur = 24 polls/dag.
 #
-# GitHub-Actions schedules zijn niet exact — er kan een paar minuten
-# vertraging zitten. Voor IG-posts is dat geen probleem.
+# UTC-bereik:
+#   zomertijd: 07:00 NL = 05:00 UTC, 17:00 NL = 15:00 UTC
+#   wintertijd: 08:00 NL = 07:00 UTC, 17:00 NL = 16:00 UTC
+# Cron `6-9,14-17` dekt beide seizoenen mét marge voor GH-vertraging.
 on:
   schedule:
-    - cron: '*/15 * * * *'
+    - cron: '*/10 6-9,14-17 * * *'
   workflow_dispatch:
 
 jobs:

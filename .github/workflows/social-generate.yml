@@ -1,15 +1,15 @@
 name: Generate social-post drafts
 
-# Dagelijks om 06:00 UTC = 08:00 Amsterdam zomertijd (07:00 winter)
+# Dagelijks om 04:00 UTC = 06:00 Amsterdam zomertijd (05:00 winter)
 # genereren we twee carousel-drafts in één run: ochtend (09:00 publish)
-# en avond (18:00 publish). Diederik approveert 's ochtends; de
-# publish-cron pakt ze om 09:00 en 18:00 lokaal.
+# en avond (17:00 publish). Diederik staat rond 06:30 NL op en
+# approveert vóór 08:00; de publish-cron pakt ze daarna op slot-tijd.
 #
 # Matrix met `fail-fast: false` zodat een mislukking van één slot de
 # andere niet meeneemt.
 on:
   schedule:
-    - cron: '0 6 * * *'
+    - cron: '0 4 * * *'
   workflow_dispatch:
     inputs:
       slot:

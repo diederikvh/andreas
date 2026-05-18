@@ -38,7 +38,7 @@ const DEDUP_DAYS = 14;
     nacht-content. */
 const SLOT_PUBLISH_HOUR: Record<Slot, number> = {
   morning: 9,
-  evening: 18,
+  evening: 17,
 };
 
 function shortId(): string {

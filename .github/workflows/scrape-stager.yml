@@ -1,12 +1,13 @@
 name: Scrape venues
 
 on:
-  # Dagelijks om 04:00 UTC = 06:00 Amsterdam zomertijd / 05:00 wintertijd.
-  # Iets na middernacht is goed: venues hebben meestal hun ticketing-
-  # updates dan al gepubliceerd, en de mobile-app users zijn nog wakker
-  # noch in het ochtendritueel.
+  # Dagelijks om 02:00 UTC = 04:00 Amsterdam zomertijd / 03:00 wintertijd.
+  # Bewust ruim voor 06:00 NL zodat social-generate (04:00 UTC) over
+  # verse data beschikt en Diederik om 06:30 NL approved drafts kan
+  # zien staan. Venues hebben hun ticketing-updates 's nachts al
+  # gepubliceerd.
   schedule:
-    - cron: '0 4 * * *'
+    - cron: '0 2 * * *'
   # Handmatig kunnen triggeren — handig voor backfills of als een
   # scrape mislukt is en we niet 24h willen wachten.
   workflow_dispatch:
