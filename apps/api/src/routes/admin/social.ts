@@ -694,7 +694,14 @@ adminSocial.post('/generate', async (c) => {
     const { post, warnings } = await runGenerate(slot);
     return c.json({ post, warnings });
   } catch (e) {
-    return c.json({ error: (e as Error).message }, 500);
+    const msg = (e as Error).message;
+    // "Geen kandidaten" is voor de scheduled cron een normaal no-op
+    // (doordeweekse maandagochtend = lege overdag-content). Return
+    // 200 zodat de GH-workflow niet als failure markeert.
+    if (msg.startsWith('geen picks voor slot=')) {
+      return c.json({ skipped: true, reason: 'no_candidates', slot });
+    }
+    return c.json({ error: msg }, 500);
   }
 });
 
