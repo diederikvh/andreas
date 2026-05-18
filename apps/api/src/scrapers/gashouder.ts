@@ -25,6 +25,13 @@ const DATO_TOKEN = '3d80bddfea0c484c6bf1c1db87ba8c';
 const VENUE_ID = 'gashouder';
 
 type DateItem = { start: string; end?: string | null };
+
+type DastNode = {
+  type: string;
+  value?: string;
+  children?: DastNode[];
+};
+
 type DatoEvent = {
   id: string;
   title: string | null;
@@ -33,15 +40,36 @@ type DatoEvent = {
   eventType?: string | null;
   eventStatus?: string | null;
   shortDescription?: string | null;
+  structuredText?: { value?: { document?: DastNode } } | null;
   ticketUrl?: string | null;
   ticketPrice?: string | null;
   heroImage?: { url?: string } | null;
   dates: DateItem[];
 };
 
+/** Vlak een DatoCMS Structured-Text (DAST) document uit naar plain text.
+ *  Pakt alleen paragraph + heading nodes; skip blocks (embed/image). */
+function flattenDast(node: DastNode | undefined): string {
+  if (!node) return '';
+  const parts: string[] = [];
+  function walk(n: DastNode) {
+    if (n.type === 'span' && typeof n.value === 'string') {
+      parts.push(n.value);
+      return;
+    }
+    if (n.type === 'paragraph' || n.type === 'heading' || n.type === 'root' || n.type === 'list' || n.type === 'listItem') {
+      for (const c of n.children ?? []) walk(c);
+      if (n.type === 'paragraph' || n.type === 'heading') parts.push('\n\n');
+    }
+  }
+  walk(node);
+  return parts.join('').replace(/\n{3,}/g, '\n\n').trim();
+}
+
 const QUERY = `{
   allEvents(first: 100) {
     id title slug subtitle eventType eventStatus shortDescription
+    structuredText { value }
     ticketUrl ticketPrice
     heroImage { url }
     dates { start end }
@@ -158,7 +186,11 @@ export async function scrapeGashouder(_options?: {
         if (ev.heroImage?.url) {
           imageUrl = (await mirrorImage(ev.heroImage.url, ev.slug)) ?? ev.heroImage.url;
         }
-        const description = ev.shortDescription
+        // structuredText (DAST) is de richtste tekst. Fall back op
+        // shortDescription/subtitle als die ontbreekt.
+        const longText = flattenDast(ev.structuredText?.value?.document);
+        const description = (longText.length > 0 ? longText.slice(0, 800) : null)
+          ?? ev.shortDescription
           ?? (ev.subtitle ?? null);
 
         try {

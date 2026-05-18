@@ -107,6 +107,31 @@ function parseCards(html: string): Card[] {
   return out;
 }
 
+function stripTags(s: string): string {
+  return s.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+/** Fetch Hipsy.nl event-page en pluk de `.description-content` tekst.
+ *  Hipsy is een Livewire-app met de description statisch ge-render'd
+ *  in een div met die class. Skipt de eerste "Over dit evenement"-header. */
+async function fetchHipsyDescription(eventUrl: string): Promise<string | null> {
+  try {
+    const r = await fetch(eventUrl, { headers: { 'user-agent': UA } });
+    if (!r.ok) return null;
+    const html = await r.text();
+    const m = html.match(/<div class="description-content[^"]*">([\s\S]*?)<div class="mt-4/);
+    if (!m) return null;
+    // Strip de "Over dit evenement" header-paragraaf
+    const inner = m[1]
+      .replace(/<p[^>]+>Over dit evenement<\/p>/i, '')
+      .replace(/<br\s*\/?>/g, '\n');
+    const text = decodeEntities(stripTags(inner));
+    return text.slice(0, 800) || null;
+  } catch {
+    return null;
+  }
+}
+
 async function mirrorImage(sourceUrl: string, slug: string): Promise<string | null> {
   try {
     const r = await fetch(sourceUrl, { headers: { 'user-agent': UA } });
@@ -192,11 +217,12 @@ export async function scrapeOdessa(_options?: {
         if (card.imageUrl) {
           imageUrl = (await mirrorImage(card.imageUrl, card.hipsyId)) ?? card.imageUrl;
         }
+        const description = await fetchHipsyDescription(card.ticketUrl);
 
         try {
           enriched = await enrichEvent({
             title: card.title,
-            description: null,
+            description,
             venueName: venue.name,
             venueCategory: 'Muziek',
           });
@@ -213,7 +239,7 @@ export async function scrapeOdessa(_options?: {
             id: eventId,
             venueId: VENUE_ID,
             title: card.title,
-            description: enriched?.cleanedDescription ?? null,
+            description: enriched?.cleanedDescription ?? description,
             kind: eventKind,
             imageUrl,
             category: enriched?.category ?? 'Muziek',
