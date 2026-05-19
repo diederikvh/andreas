@@ -56,14 +56,13 @@ import {
 import { useLocale, useT, type Locale } from '@/lib/i18n';
 import { safeBack } from '@/lib/navigation';
 import {
-  useAcceptInvite,
-  useDeclineInvite,
   useEvent,
-  useInvites,
+  useInvitations,
   useMySaves,
+  useRespondInvitation,
   useToggleSave,
 } from '@/lib/queries';
-import type { ApiInvite } from '@/lib/api';
+import type { ApiInvitation, InvitationStatus } from '@/lib/api';
 import { useMode, useRoles } from '@/store/mode';
 import { fontFamily, palette } from '@/theme/tokens';
 
@@ -137,7 +136,7 @@ export default function EventDetail() {
   });
 
   const { data: event, isLoading, error } = useEvent(id);
-  const { data: invites } = useInvites();
+  const { data: invitations } = useInvitations();
 
   const selectedOccurrenceId =
     targetOccurrenceId &&
@@ -145,15 +144,18 @@ export default function EventDetail() {
       ? targetOccurrenceId
       : event?.occurrences?.[0]?.id ?? null;
 
-  // Vind een openstaande invite die exact bij dit event + de huidige
-  // occurrence hoort. Een event kan meerdere occurrences hebben en de
-  // invite is altijd voor één specifieke voorstelling — dus matchen
-  // alleen op event.id is niet genoeg (zou banner laten verschijnen op
-  // andere data dan waarvoor je uitgenodigd was).
+  // Vind een openstaande invitation waar ik nog op moet reageren voor
+  // dít event én déze occurrence. Een event kan meerdere occurrences
+  // hebben en de invitation is altijd voor één specifieke voorstelling —
+  // dus matchen alleen op event.id is niet genoeg (zou banner laten
+  // verschijnen op andere data dan waarvoor je uitgenodigd was).
   const pendingInvite =
-    invites?.find(
+    invitations?.find(
       (inv) =>
-        inv.event.id === id && inv.occurrence.id === selectedOccurrenceId
+        !inv.isOutgoing &&
+        inv.myStatus === 'pending' &&
+        inv.event.id === id &&
+        inv.occurrence.id === selectedOccurrenceId
     ) ?? null;
   // Pulse-animatie op de Datum-cell is uitgeschakeld — Reanimated
   // worklets met transform: scale waren de waarschijnlijke trigger
@@ -478,10 +480,18 @@ export default function EventDetail() {
 
 type CrewRow = {
   user: { id: string; name: string; handle: string | null; avatarUrl: string | null };
-  /** Heeft deze persoon dit event in z'n gered (organisch of via accept). */
+  /** Heeft deze persoon dit event in z'n gered (organisch of via going). */
   saved: boolean;
-  /** Status van een door mij verzonden invite, als die er is. */
-  inviteStatus?: 'pending' | 'accepted' | 'declined';
+  /** Response-status van een door mij verzonden invite, als die er is.
+      'pending'|'going'|'maybe'|'not_going'. */
+  inviteStatus?: InvitationStatus;
+  /** Als ik deze persoon heb uitgenodigd: invitationId + of er al een
+      reminder is verstuurd. Voor de reminder-knop. */
+  myInvitationId?: string;
+  reminderSentAt?: string | null;
+  /** Voor groepsleden zonder directe vriendschap met mij: naam van de
+      groep waarlangs ik visibility heb ("Vrijdagclub"). */
+  viaGroupName?: string | null;
 };
 
 /**
@@ -492,17 +502,18 @@ type CrewRow = {
  * dezelfde border-kleur over de hele rand.
  */
 /**
- * Banner op de event-detail wanneer er een openstaande invite is voor
- * dít event én déze occurrence. Toont wie 'm gestuurd heeft + eventueel
- * bericht, plus Accept/Decline-knoppen. Na actie verdwijnt 'ie (de
- * accept-mutation updatet useInvites, waardoor de match wegvalt).
+ * Banner op de event-detail wanneer er een openstaande invitation is
+ * voor dít event én déze occurrence. Drie knoppen sinds slice B: Ga
+ * mee / Misschien / Nee. Reply-veld blijft optioneel. Na actie verdwijnt
+ * de banner (de respond-mutation updatet useInvitations, waardoor de
+ * match wegvalt).
  */
 function InviteBanner({
   invite,
   scrollRef,
   scrollY,
 }: {
-  invite: ApiInvite;
+  invite: ApiInvitation;
   scrollRef: ReturnType<typeof useAnimatedRef<Animated.ScrollView>>;
   scrollY: ReturnType<typeof useScrollViewOffset>;
 }) {
@@ -510,16 +521,15 @@ function InviteBanner({
   const roles = useRoles();
   const isNacht = mode === 'nacht';
   const t = useT();
-  const accept = useAcceptInvite();
-  const decline = useDeclineInvite();
-  const busy = accept.isPending || decline.isPending;
+  const respond = useRespondInvitation();
+  const busy = respond.isPending;
   const [reply, setReply] = useState('');
   const bannerRef = useRef<View>(null);
   const { height: windowHeight } = useWindowDimensions();
 
   // Wanneer het keyboard opent (door tap op het reply-veld), scroll
-  // de banner zo dat z'n onderkant — én dus de Accept/Decline-knoppen
-  // — boven het keyboard staat. Geen `automaticallyAdjustKeyboardInsets`
+  // de banner zo dat z'n onderkant — én dus de respons-knoppen — boven
+  // het keyboard staat. Geen `automaticallyAdjustKeyboardInsets`
   // gebruiken: die scrollt alleen genoeg voor het input-veld, niet
   // voor de knoppen eronder.
   useEffect(() => {
@@ -546,13 +556,14 @@ function InviteBanner({
     invite.from.name?.trim() ||
     (invite.from.handle ? `@${invite.from.handle}` : t('Iemand', 'Someone'));
 
-  const onAccept = () => {
+  const onRespond = (status: 'going' | 'maybe' | 'not_going') => {
     if (busy) return;
-    accept.mutate({ id: invite.id, replyMessage: reply.trim() || undefined });
-  };
-  const onDecline = () => {
-    if (busy) return;
-    decline.mutate({ id: invite.id, replyMessage: reply.trim() || undefined });
+    respond.mutate({
+      id: invite.id,
+      status,
+      replyMessage: reply.trim() || undefined,
+      eventId: invite.event.id,
+    });
   };
 
   return (
@@ -574,7 +585,12 @@ function InviteBanner({
         />
         <View style={styles.inviteHeadText}>
           <Text style={[styles.inviteKicker, { color: roles.fgMuted }]}>
-            {t('UITGENODIGD DOOR', 'INVITED BY')}
+            {invite.group
+              ? t(
+                  `VIA ${invite.group.name.toUpperCase()}`,
+                  `VIA ${invite.group.name.toUpperCase()}`
+                )
+              : t('UITGENODIGD DOOR', 'INVITED BY')}
           </Text>
           <Text style={[styles.inviteName, { color: roles.fg }]}>
             {fromName}
@@ -611,7 +627,7 @@ function InviteBanner({
       </View>
       <View style={styles.inviteActions}>
         <Pressable
-          onPress={onAccept}
+          onPress={() => onRespond('going')}
           disabled={busy}
           style={[
             styles.inviteBtn,
@@ -622,13 +638,11 @@ function InviteBanner({
           ]}
         >
           <Text style={[styles.inviteBtnText, { color: roles.onAccent }]}>
-            {accept.isPending
-              ? t('Bezig…', 'Working…')
-              : t('Accepteren', 'Accept')}
+            {t('Ga mee', 'Going')}
           </Text>
         </Pressable>
         <Pressable
-          onPress={onDecline}
+          onPress={() => onRespond('maybe')}
           disabled={busy}
           style={[
             styles.inviteBtn,
@@ -639,7 +653,22 @@ function InviteBanner({
           ]}
         >
           <Text style={[styles.inviteBtnText, { color: roles.fg }]}>
-            {t('Afwijzen', 'Decline')}
+            {t('Misschien', 'Maybe')}
+          </Text>
+        </Pressable>
+        <Pressable
+          onPress={() => onRespond('not_going')}
+          disabled={busy}
+          style={[
+            styles.inviteBtn,
+            {
+              backgroundColor: isNacht ? palette.noir3 : palette.paper,
+              opacity: busy ? 0.5 : 1,
+            },
+          ]}
+        >
+          <Text style={[styles.inviteBtnText, { color: roles.fgMuted }]}>
+            {t('Nee', 'No')}
           </Text>
         </Pressable>
       </View>
@@ -677,37 +706,78 @@ function CrewAndInvite({
           (inv) => inv.occurrenceId === selectedOccurrence.id
         )
       : (event.incomingAcceptedInvites ?? []);
+    const occPeopleGoing = selectedOccurrence
+      ? (event.peopleGoing ?? []).filter(
+          (p) => p.occurrenceId === selectedOccurrence.id
+        )
+      : (event.peopleGoing ?? []);
     const map = new Map<string, CrewRow>();
     for (const f of occFriends) {
       map.set(f.id, { user: f, saved: true });
     }
-    // Mijn-uitgaande invites: voegt status toe (pending/accepted/declined).
+    // Mijn-uitgaande invitations: voegt status + invitationId toe voor
+    // de reminder-knop. Voor groep-invites zit `viaGroupName` op de
+    // invite-row — die laten we in de crew zien zodat ik weet via welke
+    // groep ik iemand heb uitgenodigd.
     for (const inv of myOccInvites) {
       const existing = map.get(inv.to.id);
-      if (existing) existing.inviteStatus = inv.status;
-      else map.set(inv.to.id, { user: inv.to, saved: false, inviteStatus: inv.status });
+      if (existing) {
+        existing.inviteStatus = inv.status;
+        existing.myInvitationId = inv.id;
+        existing.reminderSentAt = inv.reminderSentAt;
+        if (!existing.viaGroupName && inv.viaGroupName) {
+          existing.viaGroupName = inv.viaGroupName;
+        }
+      } else {
+        map.set(inv.to.id, {
+          user: inv.to,
+          saved: false,
+          inviteStatus: inv.status,
+          myInvitationId: inv.id,
+          reminderSentAt: inv.reminderSentAt,
+          viaGroupName: inv.viaGroupName,
+        });
+      }
     }
-    // Vrienden die mij hebben uitgenodigd én wiens invite ik heb
-    // geaccepteerd: zelfde "Gaat mee"-status — connection-flag i.p.v.
-    // hearted-only.
+    // Vrienden wiens uitnodiging ik heb geaccepteerd ('going'): zelfde
+    // "Gaat mee"-status — connection-flag i.p.v. hearted-only.
     for (const inv of incomingAccepted) {
       const existing = map.get(inv.from.id);
-      if (existing) existing.inviteStatus = 'accepted';
+      if (existing) existing.inviteStatus = 'going';
       else
         map.set(inv.from.id, {
           user: inv.from,
           saved: true,
-          inviteStatus: 'accepted',
+          inviteStatus: 'going',
         });
     }
-    // Sort: 'connected' (accepted invite in welke richting dan ook)
-    // bovenaan, daarna hearted-only, daarna pending invites van mij,
-    // tot slot declined. Alfabetisch binnen elke groep.
+    // Iedereen anders met een going-respons op een invitation waar ik in
+    // zit (groepsleden + 1-op-1 recipients). Voor groepsleden die geen
+    // friend van mij zijn is dit de enige weg om ze in crew te krijgen.
+    for (const p of occPeopleGoing) {
+      const existing = map.get(p.user.id);
+      if (existing) {
+        existing.inviteStatus = 'going';
+        if (!existing.viaGroupName && p.viaGroupName) {
+          existing.viaGroupName = p.viaGroupName;
+        }
+      } else {
+        map.set(p.user.id, {
+          user: p.user,
+          saved: false,
+          inviteStatus: 'going',
+          viaGroupName: p.viaGroupName,
+        });
+      }
+    }
+    // Sort: going > saved-only > maybe > pending > not_going. Alfabetisch
+    // binnen elke groep.
     const order = (r: CrewRow): number => {
-      if (r.inviteStatus === 'accepted') return 0;
+      if (r.inviteStatus === 'going') return 0;
       if (!r.inviteStatus && r.saved) return 1;
-      if (r.inviteStatus === 'pending') return 2;
-      return 3;
+      if (r.inviteStatus === 'maybe') return 2;
+      if (r.inviteStatus === 'pending') return 3;
+      return 4;
     };
     return Array.from(map.values()).sort(
       (a, b) => order(a) - order(b) || a.user.name.localeCompare(b.user.name)
@@ -717,6 +787,7 @@ function CrewAndInvite({
     event.friendsSaved,
     event.myInvites,
     event.incomingAcceptedInvites,
+    event.peopleGoing,
   ]);
 
   const hasCrew = rows.length > 0;
@@ -741,7 +812,12 @@ function CrewAndInvite({
         {hasCrew && (
           <View>
             {rows.map((row, i) => (
-              <CrewRowItem key={row.user.id} row={row} first={i === 0} />
+              <CrewRowItem
+                key={row.user.id}
+                row={row}
+                first={i === 0}
+                eventId={event.id}
+              />
             ))}
           </View>
         )}
@@ -758,9 +834,7 @@ function CrewAndInvite({
         >
           <Ionicons name="person-add-outline" size={18} color={roles.fg} />
           <Text style={[styles.inviteText, { color: roles.fg }]}>
-            {hasCrew
-              ? t('Nog iemand uitnodigen', 'Invite someone else')
-              : t('Nodig iemand uit', 'Invite someone')}
+            {t('Nodig iemand uit', 'Invite someone')}
           </Text>
           <Text style={[styles.inviteChev, { color: roles.fgPlaceholder }]}>
             ›
@@ -771,11 +845,19 @@ function CrewAndInvite({
   );
 }
 
-function CrewRowItem({ row, first }: { row: CrewRow; first: boolean }) {
+function CrewRowItem({
+  row,
+  first,
+  eventId,
+}: {
+  row: CrewRow;
+  first: boolean;
+  eventId: string;
+}) {
   const mode = useMode();
   const roles = useRoles();
   const isNacht = mode === 'nacht';
-  const subtle = !row.saved && row.inviteStatus === 'declined';
+  const subtle = !row.saved && row.inviteStatus === 'not_going';
   return (
     <Pressable
       onPress={() => router.push(`/friend/${row.user.id}` as never)}
@@ -807,35 +889,47 @@ function CrewRowItem({ row, first }: { row: CrewRow; first: boolean }) {
           </Text>
         </View>
       )}
-      <Text
-        numberOfLines={1}
-        style={[styles.crewName, { color: roles.fg }]}
-      >
-        {row.user.name}
-      </Text>
-      <CrewStatusBadge row={row} />
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <Text
+          numberOfLines={1}
+          style={[styles.crewName, { color: roles.fg }]}
+        >
+          {row.user.name}
+        </Text>
+        {row.viaGroupName ? (
+          <Text
+            numberOfLines={1}
+            style={[styles.crewVia, { color: roles.fgMuted }]}
+          >
+            {`via ${row.viaGroupName}`}
+          </Text>
+        ) : null}
+      </View>
+      <CrewStatusBadge row={row} eventId={eventId} />
     </Pressable>
   );
 }
 
-function CrewStatusBadge({ row }: { row: CrewRow }) {
+function CrewStatusBadge({ row }: { row: CrewRow; eventId: string }) {
   const roles = useRoles();
   const t = useT();
-  // "Gaat mee" voor connection-rows: ik heb 'm uitgenodigd én ze
-  // hebben geaccepteerd, OF zij hebben mij uitgenodigd én ik heb
-  // geaccepteerd. Beide zijn een echte verbinding via invite — de
-  // pill markeert ze t.o.v. spontaan-gehearte vrienden (geen badge).
-  if (row.saved && row.inviteStatus !== 'accepted') return null;
+  // Status-only pil. De Herinner-actie zit op /invitation/[id] — daar
+  // heb je per-recipient context én één-shot reminderSentAt-state.
+  // Op event-detail tonen we alleen wat iemands status is, geen actie.
+  if (row.saved && !row.inviteStatus) return null;
+  if (!row.inviteStatus) return null;
   const label =
-    row.inviteStatus === 'accepted'
+    row.inviteStatus === 'going'
       ? t('Gaat mee', 'Going')
-      : row.inviteStatus === 'declined'
-        ? t('Afgewezen', 'Declined')
-        : t('Wacht op antwoord', 'Awaiting reply');
+      : row.inviteStatus === 'maybe'
+        ? t('Misschien', 'Maybe')
+        : row.inviteStatus === 'not_going'
+          ? t('Afgezegd', 'Not coming')
+          : t('Wacht op antwoord', 'Awaiting reply');
   const textTone =
-    row.inviteStatus === 'accepted'
+    row.inviteStatus === 'going'
       ? roles.accent
-      : row.inviteStatus === 'declined'
+      : row.inviteStatus === 'not_going'
         ? roles.fgPlaceholder
         : roles.fgMuted;
   return (
@@ -1721,10 +1815,16 @@ const styles = StyleSheet.create({
     fontSize: 14.5,
   },
   crewName: {
-    flex: 1,
     fontFamily: fontFamily.medium,
     fontSize: 14,
     letterSpacing: -0.14,
+  },
+  crewVia: {
+    fontFamily: fontFamily.mono,
+    fontSize: 9.5,
+    letterSpacing: 1.1,
+    textTransform: 'uppercase',
+    marginTop: 2,
   },
   crewPill: {
     paddingHorizontal: 9,

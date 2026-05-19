@@ -1,4 +1,4 @@
-import { and, asc, count, desc, eq, gt, ilike, inArray, not, or, sql, type SQL } from 'drizzle-orm';
+import { aliasedTable, and, asc, count, desc, eq, gt, ilike, inArray, isNull, ne, not, or, sql, type SQL } from 'drizzle-orm';
 import { Hono } from 'hono';
 
 import { db, schema } from '../db/index.js';
@@ -525,68 +525,177 @@ eventsRoute.get('/:id', async (c) => {
   // pill toont.
   const headFriends = occ?.next ? friendsByOcc.get(occ.next.id) : undefined;
 
-  // Mijn eigen verstuurde invites voor dit event — gebruikt op detail
-  // (toont wie ik gevraagd heb + status) én op de invite-modal (om
-  // dubbele invites te blokkeren). Filtert op de occurrences van dit
-  // event zodat invites voor andere events nooit lekken.
+  // Mijn eigen verstuurde invitations voor dit event — zowel 1-op-1 als
+  // groep-invites. Voor 1-op-1: één rij per (invitation, recipient).
+  // Voor groep: één rij per (invitation, groepslid) — zo zie ik in de
+  // crew-lijst voor elk groepslid de actuele status en kan ik per
+  // persoon een reminder sturen. Status komt uit `invitation_responses`
+  // van de andere user(s); eigen response (initiator = 'going') wordt
+  // weggefilterd via ne(userId, me).
   const myInvites =
     me && occurrenceIdsAll.length > 0
       ? await db
           .select({
-            id: schema.invites.id,
-            status: schema.invites.status,
-            message: schema.invites.message,
-            occurrenceId: schema.invites.occurrenceId,
+            id: schema.invitations.id,
+            status: schema.invitationResponses.status,
+            message: schema.invitations.message,
+            occurrenceId: schema.invitations.occurrenceId,
             occurrenceStartsAt: schema.occurrences.startsAt,
+            reminderSentAt: schema.invitationResponses.reminderSentAt,
+            groupName: schema.groups.name,
             toUserId: schema.users.id,
             toName: schema.users.name,
             toHandle: schema.users.handle,
             toAvatarUrl: schema.users.avatarUrl,
           })
-          .from(schema.invites)
-          .innerJoin(schema.users, eq(schema.users.id, schema.invites.toUserId))
+          .from(schema.invitations)
+          .innerJoin(
+            schema.invitationResponses,
+            and(
+              eq(
+                schema.invitationResponses.invitationId,
+                schema.invitations.id
+              ),
+              ne(schema.invitationResponses.userId, me)
+            )!
+          )
+          .innerJoin(
+            schema.users,
+            eq(schema.users.id, schema.invitationResponses.userId)
+          )
           .innerJoin(
             schema.occurrences,
-            eq(schema.occurrences.id, schema.invites.occurrenceId)
+            eq(schema.occurrences.id, schema.invitations.occurrenceId)
+          )
+          .leftJoin(
+            schema.groups,
+            eq(schema.groups.id, schema.invitations.groupId)
           )
           .where(
             and(
-              eq(schema.invites.fromUserId, me),
-              inArray(schema.invites.occurrenceId, occurrenceIdsAll)
+              eq(schema.invitations.fromUserId, me),
+              isNull(schema.invitations.revokedAt),
+              inArray(schema.invitations.occurrenceId, occurrenceIdsAll)
             )
           )
-          .orderBy(asc(schema.invites.createdAt))
+          .orderBy(asc(schema.invitations.createdAt))
       : [];
 
-  // Inkomende uitnodigingen die ik geaccepteerd heb — voor de
-  // "connection"-markering op de event-detail crew-lijst. Toont aan
-  // welke vrienden mij hebben uitgenodigd voor occurrences van dit
-  // event waar ik op 'accepteren' heb getikt; dat is een verbinding
-  // naast de spontane heart.
+  // Inkomende uitnodigingen waarop ik 'going' heb geantwoord — voor de
+  // "connection"-markering in het crew-blok. Een going-respons is een
+  // expliciete RSVP, naast de spontane save. Pakt zowel 1-op-1 (waar
+  // iemand mij persoonlijk uitnodigde) als groep-invites (waar ik via
+  // een groep meedoe). Voor crew-context tonen we de initiator als
+  // "verbinding"; bij groep-invites is dat degene die de groep heeft
+  // uitgenodigd.
   const incomingAcceptedInvites =
     me && occurrenceIdsAll.length > 0
       ? await db
           .select({
-            id: schema.invites.id,
-            occurrenceId: schema.invites.occurrenceId,
+            id: schema.invitations.id,
+            occurrenceId: schema.invitations.occurrenceId,
             fromUserId: schema.users.id,
             fromName: schema.users.name,
             fromHandle: schema.users.handle,
             fromAvatarUrl: schema.users.avatarUrl,
           })
-          .from(schema.invites)
+          .from(schema.invitations)
+          .innerJoin(
+            schema.invitationResponses,
+            and(
+              eq(
+                schema.invitationResponses.invitationId,
+                schema.invitations.id
+              ),
+              eq(schema.invitationResponses.userId, me),
+              eq(schema.invitationResponses.status, 'going')
+            )!
+          )
           .innerJoin(
             schema.users,
-            eq(schema.users.id, schema.invites.fromUserId)
+            eq(schema.users.id, schema.invitations.fromUserId)
           )
           .where(
             and(
-              eq(schema.invites.toUserId, me),
-              eq(schema.invites.status, 'accepted'),
-              inArray(schema.invites.occurrenceId, occurrenceIdsAll)
+              isNull(schema.invitations.revokedAt),
+              ne(schema.invitations.fromUserId, me),
+              inArray(schema.invitations.occurrenceId, occurrenceIdsAll)
             )
           )
       : [];
+
+  // People going via invitations — alle going-responses op invitations
+  // waar IK ook in zit (als initiator óf als groepslid). Dit pakt
+  // groepsleden die niet noodzakelijk vrienden van mij zijn maar wel
+  // 'going' hebben gereageerd op een groep-invite waar ik deel van
+  // ben. Inclusief 1-op-1's. Eigen response wordt uitgesloten.
+  const peopleGoing: Array<{
+    user: { id: string; name: string; handle: string | null; avatarUrl: string | null };
+    occurrenceId: string;
+    viaGroupName: string | null;
+  }> = [];
+  if (me && occurrenceIdsAll.length > 0) {
+    // Stap 1: invitation-ids waar ik in zit (response-rij heb).
+    const myInvolvedIds = await db
+      .selectDistinct({ id: schema.invitationResponses.invitationId })
+      .from(schema.invitationResponses)
+      .innerJoin(
+        schema.invitations,
+        eq(schema.invitations.id, schema.invitationResponses.invitationId)
+      )
+      .where(
+        and(
+          eq(schema.invitationResponses.userId, me),
+          isNull(schema.invitations.revokedAt),
+          inArray(schema.invitations.occurrenceId, occurrenceIdsAll)
+        )
+      );
+
+    if (myInvolvedIds.length > 0) {
+      const ids = myInvolvedIds.map((r) => r.id);
+      const rows = await db
+        .select({
+          userId: schema.users.id,
+          userName: schema.users.name,
+          userHandle: schema.users.handle,
+          userAvatarUrl: schema.users.avatarUrl,
+          occurrenceId: schema.invitations.occurrenceId,
+          groupName: schema.groups.name,
+        })
+        .from(schema.invitationResponses)
+        .innerJoin(
+          schema.invitations,
+          eq(schema.invitations.id, schema.invitationResponses.invitationId)
+        )
+        .innerJoin(
+          schema.users,
+          eq(schema.users.id, schema.invitationResponses.userId)
+        )
+        .leftJoin(
+          schema.groups,
+          eq(schema.groups.id, schema.invitations.groupId)
+        )
+        .where(
+          and(
+            inArray(schema.invitationResponses.invitationId, ids),
+            eq(schema.invitationResponses.status, 'going'),
+            ne(schema.invitationResponses.userId, me)
+          )
+        );
+      for (const r of rows) {
+        peopleGoing.push({
+          user: {
+            id: r.userId,
+            name: r.userName,
+            handle: r.userHandle,
+            avatarUrl: r.userAvatarUrl,
+          },
+          occurrenceId: r.occurrenceId,
+          viaGroupName: r.groupName,
+        });
+      }
+    }
+  }
 
   const isExhibition = row.kind === 'exhibition';
   // Per occurrence z'n eigen friendsSaved injecteren zodat de mobile-UI
@@ -633,6 +742,8 @@ eventsRoute.get('/:id', async (c) => {
         message: i.message,
         occurrenceId: i.occurrenceId,
         occurrenceStartsAt: i.occurrenceStartsAt,
+        reminderSentAt: i.reminderSentAt,
+        viaGroupName: i.groupName,
         to: {
           id: i.toUserId,
           name: i.toName,
@@ -640,6 +751,7 @@ eventsRoute.get('/:id', async (c) => {
           avatarUrl: i.toAvatarUrl,
         },
       })),
+      peopleGoing,
       incomingAcceptedInvites: incomingAcceptedInvites.map((i) => ({
         id: i.id,
         occurrenceId: i.occurrenceId,

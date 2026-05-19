@@ -71,7 +71,7 @@ export function PushManager() {
   useEffect(() => {
     const invalidate = () => {
       qc.invalidateQueries({ queryKey: ['friend-requests'] });
-      qc.invalidateQueries({ queryKey: ['invites'] });
+      qc.invalidateQueries({ queryKey: ['invitations'] });
     };
     const pushSub = Notifications.addNotificationReceivedListener(invalidate);
     const appSub = AppState.addEventListener('change', (next) => {

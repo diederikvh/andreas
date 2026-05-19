@@ -23,11 +23,14 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { BackButton } from '@/components/BackButton';
 import { EventListRow } from '@/components/EventListRow';
-import type { ApiEvent } from '@/lib/api';
+import type { ApiEvent, ApiInvitation } from '@/lib/api';
+import { useSession } from '@/lib/authClient';
 import {
   eventImageUrl,
   CATEGORY_TICK,
   type EventGroup,
+  dowMixed,
+  monthShort,
   rowTimeLabel,
   groupEventsByDay,
   translateCategory,
@@ -35,6 +38,7 @@ import {
 import { useLocale, useT } from '@/lib/i18n';
 import {
   useFriend,
+  useInvitations,
   useMirrorByHandle,
   useRemoveFriend,
   useSetFriendFavorite,
@@ -42,7 +46,7 @@ import {
 import { useMode, useRoles } from '@/store/mode';
 import { fontFamily, palette } from '@/theme/tokens';
 
-type Tab = 'aankomend' | 'spiegel';
+type Tab = 'profiel' | 'samen';
 
 export default function FriendDetail() {
   const { id: rawId } = useLocalSearchParams<{ id: string }>();
@@ -54,23 +58,37 @@ export default function FriendDetail() {
   const t = useT();
 
   const { data, isLoading, error } = useFriend(id);
+  const { data: session } = useSession();
+  const myId = session?.user?.id ?? null;
+  const { data: invitations } = useInvitations();
   const removeFriend = useRemoveFriend();
   const setFavorite = useSetFriendFavorite(id);
-  const [tab, setTab] = useState<Tab>('aankomend');
+  const [tab, setTab] = useState<Tab>('profiel');
+
+  // Invites tussen mij en deze friend: beide partijen hebben een
+  // response-rij op dezelfde invitation. Dekt 1-op-1's én groep-invites
+  // waarin we beide zitten. Filter niet-verlopen, sorteer toekomstige
+  // events eerst (chronologisch).
+  const samenInvites: ApiInvitation[] = (() => {
+    if (!invitations || !myId) return [];
+    return invitations
+      .filter((inv) => {
+        if (inv.revokedAt) return false;
+        const meIn = inv.responses.some((r) => r.user.id === myId);
+        const friendIn = inv.responses.some((r) => r.user.id === id);
+        return meIn && friendIn;
+      })
+      .sort(
+        (a, b) =>
+          new Date(a.occurrence.startsAt).getTime() -
+          new Date(b.occurrence.startsAt).getTime()
+      );
+  })();
   const [menuOpen, setMenuOpen] = useState(false);
   const [avatarOpen, setAvatarOpen] = useState(false);
 
   const handle = data?.user.handle ?? null;
-  // Als alleen de spiegel gedeeld wordt (en saves dus niet), forceer
-  // de tab-state naar 'spiegel' zodat de useMirrorByHandle-hook ook
-  // ophaalt en de Spiegel-tab als enige pane verschijnt.
-  const onlyMirrorShared = Boolean(
-    data && data.mirrorShared && data.savesPrivate
-  );
-  useEffect(() => {
-    if (onlyMirrorShared && tab !== 'spiegel') setTab('spiegel');
-  }, [onlyMirrorShared, tab]);
-  const mirror = useMirrorByHandle(handle, { enabled: tab === 'spiegel' });
+  const mirror = useMirrorByHandle(handle, { enabled: tab === 'profiel' });
 
   const confirmUnfollow = () => {
     if (!data) return;
@@ -152,12 +170,17 @@ export default function FriendDetail() {
   // als niemand iets deelt).
   const savesShared = !savesPrivate;
   const mirrorShared = Boolean(data.mirrorShared);
-  const showTabs = savesShared && mirrorShared;
+  const profielHasContent = mirrorShared || savesShared;
+  const samenHasContent = samenInvites.length > 0;
+  // Tabs alleen tonen wanneer er minstens twee panes content hebben.
+  // Als enkel Profiel of enkel Samen iets bevat, renderen we die pane
+  // direct zonder switch — minder klikken, geen dode tab-pill.
+  const showTabs = profielHasContent && samenHasContent;
   const effectiveTab: Tab = showTabs
     ? tab
-    : mirrorShared && !savesShared
-      ? 'spiegel'
-      : 'aankomend';
+    : profielHasContent
+      ? 'profiel'
+      : 'samen';
 
   return (
     <View style={[styles.root, { backgroundColor: roles.bg }]}>
@@ -215,39 +238,54 @@ export default function FriendDetail() {
 
         {showTabs && <FriendSubTabs tab={effectiveTab} onChange={setTab} />}
 
-        {!savesShared && !mirrorShared && (
-          <Text style={[styles.empty, { color: roles.fgMuted }]}>
-            {t(
-              `${user.name.split(' ')[0]} deelt niks.`,
-              `${user.name.split(' ')[0]} shares nothing.`
-            )}
-          </Text>
-        )}
-
-        {effectiveTab === 'aankomend' && savesShared && (
+        {effectiveTab === 'profiel' && (
           <>
-            {upcomingDays.length === 0 && (
-              <Text style={[styles.empty, { color: roles.fgMuted }]}>
-                {t('Nog niks geliket.', 'Nothing liked yet.')}
-              </Text>
+            {mirrorShared && (
+              <MirrorPane
+                name={user.name}
+                data={mirror.data ?? null}
+                loading={mirror.isLoading}
+                errored={Boolean(mirror.error)}
+              />
             )}
-            {upcomingDays.map((day) => (
-              <View key={`up-${day.id}`}>
-                <DateAnchor group={day} />
-                {day.events.map((e) => (
-                  <FriendSavedRow key={e.id} event={e} />
+
+            {/* Divider alleen wanneer beide blokken iets renderen — anders
+                hangt-ie los boven of onder een lege ruimte. */}
+            {mirrorShared && savesShared && (
+              <View
+                style={[
+                  styles.sectionDivider,
+                  { borderTopColor: roles.bgChip },
+                ]}
+              />
+            )}
+
+            {savesShared && (
+              <>
+                {upcomingDays.length === 0 && (
+                  <Text style={[styles.empty, { color: roles.fgMuted }]}>
+                    {t('Nog niks geliket.', 'Nothing liked yet.')}
+                  </Text>
+                )}
+                {upcomingDays.map((day) => (
+                  <View key={`up-${day.id}`}>
+                    <DateAnchor group={day} />
+                    {day.events.map((e) => (
+                      <FriendSavedRow key={e.id} event={e} />
+                    ))}
+                  </View>
                 ))}
-              </View>
-            ))}
+              </>
+            )}
           </>
         )}
 
-        {effectiveTab === 'spiegel' && mirrorShared && (
-          <MirrorPane
-            name={user.name}
-            data={mirror.data ?? null}
-            loading={mirror.isLoading}
-            errored={Boolean(mirror.error)}
+        {effectiveTab === 'samen' && (
+          <SamenPane
+            invites={samenInvites}
+            friendId={id}
+            friendName={user.name}
+            myId={myId}
           />
         )}
       </ScrollView>
@@ -531,7 +569,7 @@ function FriendSubTabs({
   const roles = useRoles();
   const t = useT();
   const [trackW, setTrackW] = useState(0);
-  const activeIndex = tab === 'aankomend' ? 0 : 1;
+  const activeIndex = tab === 'profiel' ? 0 : 1;
   const progress = useSharedValue(activeIndex);
   useEffect(() => {
     progress.value = withTiming(activeIndex, {
@@ -576,14 +614,14 @@ function FriendSubTabs({
           ]}
         />
         <SwitchBtn
-          label={t('Liked', 'Liked')}
-          active={tab === 'aankomend'}
-          onPress={() => onChange('aankomend')}
+          label={t('Profiel', 'Profile')}
+          active={tab === 'profiel'}
+          onPress={() => onChange('profiel')}
         />
         <SwitchBtn
-          label={t('Profielinzicht', 'Profile insight')}
-          active={tab === 'spiegel'}
-          onPress={() => onChange('spiegel')}
+          label={t('Samen', 'Together')}
+          active={tab === 'samen'}
+          onPress={() => onChange('samen')}
         />
       </View>
     </View>
@@ -711,6 +749,134 @@ function DateAnchor({ group }: { group: EventGroup }) {
         </Text>
       </View>
     </View>
+  );
+}
+
+/**
+ * Lijst met invitations tussen mij en deze friend. Dekt 1-op-1's (in
+ * beide richtingen) én groep-invites waarin we beide zitten. Per rij:
+ *
+ *  - EventListRow met datum boven titel + categorie/venue tags + avatar-
+ *    stack van going-respondenten (sociale bewijslast).
+ *  - Onder de row een korte status-zin: hoeveel van het totaal gaat én
+ *    de status van de friend zelf wanneer die afwijkt van going.
+ *
+ * Tap → /invitation/[id] voor het volle overzicht per status.
+ */
+function SamenPane({
+  invites,
+  friendId,
+  friendName,
+  myId,
+}: {
+  invites: ApiInvitation[];
+  friendId: string;
+  friendName: string;
+  myId: string | null;
+}) {
+  const roles = useRoles();
+  const t = useT();
+  const locale = useLocale();
+  const friendFirst = friendName.split(' ')[0] || friendName;
+
+  if (invites.length === 0) {
+    return (
+      <Text style={[styles.empty, { color: roles.fgMuted }]}>
+        {t(
+          `Nog niks samen met ${friendFirst}. Nodig ze uit voor een event om hier te zien wat er speelt.`,
+          `Nothing planned with ${friendFirst} yet. Invite them to an event to fill this in.`
+        )}
+      </Text>
+    );
+  }
+
+  return (
+    <>
+      {invites.map((inv) => {
+        const d = new Date(inv.occurrence.startsAt);
+        const dow = dowMixed(d.getDay(), locale);
+        const month = monthShort(d.getMonth(), locale).toLowerCase();
+        const time = rowTimeLabel(
+          inv.occurrence.startsAt,
+          inv.occurrence.endsAt,
+          locale
+        );
+        const dateLabel = `${dow} ${d.getDate()} ${month} · ${time}`;
+
+        // Friend's eigen response — gebruikt voor de "Roos: misschien"-
+        // zin onder de row wanneer hij/zij niet going is.
+        const friendResp = inv.responses.find((r) => r.user.id === friendId);
+        const friendStatus = friendResp?.status ?? 'pending';
+
+        // Going-stack: alle responses met status 'going', uitgezonderd
+        // mijzelf — die hoef ik niet in mijn eigen overzicht te zien.
+        // Friend gaat vooraan zodat 'ie meteen herkenbaar is.
+        const goingAll = inv.responses
+          .filter((r) => r.status === 'going' && r.user.id !== myId)
+          .sort((a, b) =>
+            a.user.id === friendId ? -1 : b.user.id === friendId ? 1 : 0
+          );
+        const goingFriends = goingAll.slice(0, 3).map((r) => ({
+          name: r.user.name,
+          avatar: r.user.avatarUrl,
+        }));
+
+        // Compacte going-counter: "1/4 gaan" — verder geen extra info,
+        // detail staat op /invitation/[id] één tap verder.
+        const totalGoing = inv.responses.filter(
+          (r) => r.status === 'going'
+        ).length;
+        const totalCount = inv.responses.length;
+        const summary = t(
+          `${totalGoing}/${totalCount} gaan`,
+          `${totalGoing}/${totalCount} going`
+        );
+        // Unused-warn voorkomen — friendStatus blijft beschikbaar voor
+        // toekomstige UI-tweaks (bv. friend-only status-pill).
+        void friendStatus;
+
+        return (
+          <EventListRow
+            key={inv.id}
+            time={dateLabel}
+            dateAbove
+            thumb={
+              eventImageUrl({
+                imageUrl: inv.event.imageUrl,
+                venue: { imageUrl: null },
+              }) ?? ''
+            }
+            title={inv.event.title}
+            venue=""
+            tags={[
+              {
+                label: translateCategory(inv.event.category, locale),
+                tone: CATEGORY_TICK[inv.event.category],
+              },
+              {
+                label: inv.event.venueName,
+                tone: CATEGORY_TICK[inv.event.category],
+              },
+              {
+                // Going-counter aan dezelfde tag-rij, "acid"-tone (geel in
+                // nacht, donker-geel in dag) zodat 'ie eruit springt
+                // tegen de category/venue-tags.
+                label: summary,
+                tone: 'acid',
+              },
+            ]}
+            friends={goingFriends.length > 0 ? goingFriends : undefined}
+            tick={CATEGORY_TICK[inv.event.category]}
+            onPress={() =>
+              router.push(
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                `/invitation/${inv.id}` as any
+              )
+            }
+          />
+        );
+      })}
+    </>
   );
 }
 
@@ -858,6 +1024,15 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
     paddingHorizontal: 22,
     paddingVertical: 14,
+  },
+  // Hairline-divider tussen profielinzicht- en likes-secties in de
+  // Profiel-tab. Marginhorizontal = paginakanten zodat de lijn netjes
+  // tot dezelfde gutter loopt als de rij-content.
+  sectionDivider: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    marginHorizontal: 22,
+    marginTop: 28,
+    marginBottom: 20,
   },
 
   anchor: {

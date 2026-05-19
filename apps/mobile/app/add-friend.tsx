@@ -172,71 +172,89 @@ export default function AddFriend() {
           />
         </View>
 
-        {/* Action-buttons in volgorde: invite → scan → my QR.
-            Externe deel-actie eerst (vaakst gebruikt voor mensen
-            buiten de app), daarna scan en eigen QR voor 1-op-1
-            connecten in dezelfde ruimte. */}
-        <View style={styles.actionsRow}>
-          <Pressable
-            onPress={onInviteFriend}
-            style={[
-              styles.actionPill2,
-              { backgroundColor: isNacht ? palette.noir2 : palette.paper2 },
-            ]}
-          >
-            <Ionicons
-              name="share-outline"
-              size={16}
-              color={roles.fg}
-              style={{ marginRight: 6 }}
-            />
-            <Text style={[styles.actionPill2Text, { color: roles.fg }]}>
-              {tx('Nodig vriend uit', 'Invite a friend')}
-            </Text>
-          </Pressable>
-          <Pressable
-            onPress={() => setScannerOpen(true)}
-            style={[
-              styles.actionPill2,
-              { backgroundColor: isNacht ? palette.noir2 : palette.paper2 },
-            ]}
-          >
-            <Ionicons
-              name="scan-outline"
-              size={16}
-              color={roles.fg}
-              style={{ marginRight: 6 }}
-            />
-            <Text style={[styles.actionPill2Text, { color: roles.fg }]}>
-              {tx('Scan QR', 'Scan QR')}
-            </Text>
-          </Pressable>
-          {me?.handle && (
+        <ScrollView
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={{ paddingBottom: insets.bottom + 32 }}
+        >
+          {/* Action-buttons scrollen mee zodat ze bij veel zoek-
+              resultaten plaats maken voor de lijst. Alleen het zoekveld
+              blijft sticky bovenaan. */}
+          <View style={styles.actionsRow}>
             <Pressable
-              onPress={() => setShowQr(true)}
+              onPress={onInviteFriend}
               style={[
                 styles.actionPill2,
                 { backgroundColor: isNacht ? palette.noir2 : palette.paper2 },
               ]}
             >
               <Ionicons
-                name="qr-code-outline"
-                size={14}
+                name="share-outline"
+                size={16}
                 color={roles.fg}
                 style={{ marginRight: 6 }}
               />
               <Text style={[styles.actionPill2Text, { color: roles.fg }]}>
-                {tx('Mijn QR', 'My QR')}
+                {tx('Nodig vriend uit', 'Invite a friend')}
               </Text>
             </Pressable>
-          )}
-        </View>
-
-        <ScrollView
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={{ paddingBottom: insets.bottom + 32 }}
-        >
+            <Pressable
+              onPress={() =>
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                router.push('/group/new' as any)
+              }
+              style={[
+                styles.actionPill2,
+                { backgroundColor: isNacht ? palette.noir2 : palette.paper2 },
+              ]}
+            >
+              <Ionicons
+                name="people-outline"
+                size={16}
+                color={roles.fg}
+                style={{ marginRight: 6 }}
+              />
+              <Text style={[styles.actionPill2Text, { color: roles.fg }]}>
+                {tx('Groep aanmaken', 'Create group')}
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={() => setScannerOpen(true)}
+              style={[
+                styles.actionPill2,
+                { backgroundColor: isNacht ? palette.noir2 : palette.paper2 },
+              ]}
+            >
+              <Ionicons
+                name="scan-outline"
+                size={16}
+                color={roles.fg}
+                style={{ marginRight: 6 }}
+              />
+              <Text style={[styles.actionPill2Text, { color: roles.fg }]}>
+                {tx('Scan QR', 'Scan QR')}
+              </Text>
+            </Pressable>
+            {me?.handle && (
+              <Pressable
+                onPress={() => setShowQr(true)}
+                style={[
+                  styles.actionPill2,
+                  { backgroundColor: isNacht ? palette.noir2 : palette.paper2 },
+                ]}
+              >
+                <Ionicons
+                  name="qr-code-outline"
+                  size={14}
+                  color={roles.fg}
+                  style={{ marginRight: 6 }}
+                />
+                <Text style={[styles.actionPill2Text, { color: roles.fg }]}>
+                  {tx('Mijn QR', 'My QR')}
+                </Text>
+              </Pressable>
+            )}
+          </View>
           {debouncedQ.length < 2 ? (
             <EmptyHint
               icon="people-outline"

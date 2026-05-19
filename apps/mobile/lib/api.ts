@@ -106,6 +106,11 @@ export type ApiEvent = {
   /** Uitnodigingen aan mij verstuurd die ik geaccepteerd heb — voor de
       "connection"-markering in de crew-lijst op event-detail. */
   incomingAcceptedInvites?: ApiIncomingAcceptedInvite[];
+  /** Iedereen met een 'going'-respons op invitations voor dit event
+   *  waar IK ook in zit (initiator óf groepslid). Inclusief groepsleden
+   *  die geen vrienden zijn. Per spec: "Bij event-detail zichtbaar:
+   *  'X gaat ook'". `viaGroupName` is gezet voor groep-invites. */
+  peopleGoing?: ApiPersonGoing[];
   /** Volg ik de venue van dit event? Mobile groepeert hierop. */
   venueFollowed?: boolean;
   /** Series waar dit event onderdeel van is (bv. ADE, Lenteballet). */
@@ -133,23 +138,42 @@ export type ApiSeriesBadge = {
   imageUrl: string | null;
 };
 
+/** Drie-status-respons (plus pending) sinds slice B. */
+export type InvitationStatus = 'pending' | 'going' | 'maybe' | 'not_going';
+
 export type ApiEventInviteRecord = {
   id: string;
-  status: 'pending' | 'accepted' | 'declined';
+  status: InvitationStatus;
   message: string | null;
   to: ApiPublicUser;
   /** Welke specifieke occurrence heb ik deze invitee voor uitgenodigd. */
   occurrenceId: string;
   occurrenceStartsAt: string;
+  /** Niet-NULL = ik heb deze persoon al een keer herinnerd. Per spec
+      maar één reminder per (invitation, ontvanger). */
+  reminderSentAt: string | null;
+  /** Naam van de groep waarlangs deze recipient is uitgenodigd. NULL =
+      1-op-1. Voor crew-context "via Vrijdagclub". */
+  viaGroupName: string | null;
 };
 
-/** Inkomende invite die ik geaccepteerd heb — voor de "Gaat mee"-pill
- *  op vrienden die mij hebben uitgenodigd én wiens uitnodiging ik
- *  geaccepteerd heb. */
+/** Inkomende invite waarop ik 'going' heb geantwoord — voor de
+ *  "Gaat mee"-pill op vrienden die mij hebben uitgenodigd én wiens
+ *  uitnodiging ik heb geaccepteerd. Naam blijft `IncomingAccepted`
+ *  voor minimal churn; semantiek = mijn response is 'going'. */
 export type ApiIncomingAcceptedInvite = {
   id: string;
   occurrenceId: string;
   from: ApiPublicUser;
+};
+
+/** Iemand die going-respons op een gedeelde invitation heeft — voor de
+ *  crew-lijst op event-detail. `viaGroupName` is de groepsnaam waarlangs
+ *  ik visibility heb op deze person ("Roos · via Vrijdagclub"); null = 1-op-1. */
+export type ApiPersonGoing = {
+  user: ApiPublicUser;
+  occurrenceId: string;
+  viaGroupName: string | null;
 };
 
 export type EventsFilter = {
@@ -738,22 +762,50 @@ export async function setFriendFavorite(
   );
 }
 
-// ─── Invites ──────────────────────────────────────────────────────────
+// ─── Invitations (3-status, groep-aware) ─────────────────────────────
+//
+// Vervangt het oude `invites`-pad (binair accepted/declined). Eén
+// `ApiInvitation` representeert één verzending — 1-op-1 of groep.
+// `responses` bevat de per-user-respons-rijen die de UI nodig heeft om
+// "X gaat, Y misschien, Z pending" te tonen.
 
-export type ApiInvite = {
+/** Per-user respons op een uitnodiging. */
+export type ApiInvitationResponse = {
+  user: ApiPublicUser;
+  status: InvitationStatus;
+  replyMessage: string | null;
+  reminderSentAt: string | null;
+  respondedAt: string | null;
+};
+
+export type ApiInvitation = {
   id: string;
   message: string | null;
   createdAt: string;
+  /** Is dit een uitnodiging die ik zelf heb verstuurd? Andersom: ik
+      ben de ontvanger. Gebruikt door social-tab om in/uit te splitsen. */
+  isOutgoing: boolean;
+  /** Niet-NULL = initiator heeft 'm ingetrokken; de UI verbergt 'm. */
+  revokedAt: string | null;
+  /** Initiator van de uitnodiging. */
   from: ApiPublicUser;
-  /** De specifieke occurrence waar je voor wordt uitgenodigd. */
+  /** Mijn eigen response-status — `null` als ik (somehow) geen response-
+      rij heb (zou niet moeten). */
+  myStatus: InvitationStatus | null;
+  myReplyMessage: string | null;
+  /** Groep waar deze invite voor naar gegaan is. `null` = 1-op-1. */
+  group: { id: string; name: string } | null;
+  /** Alle responses op deze invitation. Bij 1-op-1: initiator + recipient.
+      Bij groep: alle leden + initiator. Volgorde niet gegarandeerd. */
+  responses: ApiInvitationResponse[];
+  /** De specifieke occurrence waar voor wordt uitgenodigd. */
   occurrence: {
     id: string;
     startsAt: string;
     endsAt: string | null;
     room: string | null;
   };
-  /** Het master-event (Hamlet, De Maandag, etc.) — voor titel en
-      thumbnail in de invite-lijst. */
+  /** Het master-event — voor titel + thumbnail in de invite-lijst. */
   event: {
     id: string;
     title: string;
@@ -766,49 +818,172 @@ export type ApiInvite = {
   };
 };
 
-export async function getInvites(): Promise<ApiInvite[]> {
-  const { invites } = await authedRequest<{ invites: ApiInvite[] }>('/invites');
-  return invites;
+/** Backwards-compatible alias — hetzelfde object onder de oude naam,
+ *  zodat call-sites die `ApiInvite` referenceren mee kunnen draaien tot
+ *  ze in slice B-cleanup expliciet hernoemd worden. */
+export type ApiInvite = ApiInvitation;
+
+export async function getInvitations(opts: { past?: boolean } = {}): Promise<
+  ApiInvitation[]
+> {
+  const qs = opts.past ? '?past=1' : '';
+  const { invitations } = await authedRequest<{ invitations: ApiInvitation[] }>(
+    `/invitations${qs}`
+  );
+  return invitations;
 }
 
-export async function sendInvites(input: {
-  /** ID van de specifieke occurrence (= moment) waarvoor je vrienden
-      uitnodigt. Niet de event-ID — een vriend wil weten "ga je mee
-      dinsdag 19:30?" niet "ga je mee naar Hamlet?" */
+export async function sendInvitations(input: {
+  /** ID van de specifieke occurrence (= moment) waarvoor je vrienden +
+      groepen uitnodigt. */
   occurrenceId: string;
-  toUserIds: string[];
+  /** Groepen om in één keer uit te nodigen. Server snapshot't actieve
+      leden bij verzending; later toegetreden leden krijgen niets. */
+  groupIds?: string[];
+  /** Individuele vrienden — moeten accepted-friends zijn, anders worden
+      ze stil overgeslagen door de server. */
+  userIds?: string[];
   message?: string;
-}): Promise<{ created: number; sent: string[] }> {
-  return await authedRequest<{ created: number; sent: string[] }>('/invites', {
-    method: 'POST',
-    body: JSON.stringify(input),
-  });
+}): Promise<{ created: number; ids: string[] }> {
+  return await authedRequest<{ created: number; ids: string[] }>(
+    '/invitations',
+    {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }
+  );
 }
 
-export async function acceptInvite(
+/** Reageer op een uitnodiging. Mag tot het event voorbij is. Bij `going`
+ *  maakt de server automatisch een save aan (idempotent). */
+export async function respondInvitation(
   id: string,
-  replyMessage?: string
-): Promise<{ status: 'accepted'; eventId: string; occurrenceId: string }> {
+  body: { status: 'going' | 'maybe' | 'not_going'; replyMessage?: string }
+): Promise<{ ok: true; status: 'going' | 'maybe' | 'not_going' }> {
   return await authedRequest<{
-    status: 'accepted';
-    eventId: string;
-    occurrenceId: string;
-  }>(`/invites/${id}/accept`, {
+    ok: true;
+    status: 'going' | 'maybe' | 'not_going';
+  }>(`/invitations/${id}/respond`, {
     method: 'POST',
-    body: JSON.stringify({ replyMessage: replyMessage ?? null }),
+    body: JSON.stringify(body),
     headers: { 'content-type': 'application/json' },
   });
 }
 
-export async function declineInvite(
-  id: string,
-  replyMessage?: string
+/** Stuur eenmalige herinnering naar een specifiek pending response. Server
+ *  weigert met 409 als al verzonden. */
+export async function remindInvitation(
+  invitationId: string,
+  userId: string
 ): Promise<{ ok: true }> {
-  return await authedRequest<{ ok: true }>(`/invites/${id}/decline`, {
-    method: 'POST',
-    body: JSON.stringify({ replyMessage: replyMessage ?? null }),
+  return await authedRequest<{ ok: true }>(
+    `/invitations/${invitationId}/remind/${userId}`,
+    { method: 'POST' }
+  );
+}
+
+/** Initiator trekt een verstuurde uitnodiging in. Soft-delete server-side;
+ *  uit alle inboxen weg bij volgende fetch. */
+export async function revokeInvitation(id: string): Promise<{ ok: true }> {
+  return await authedRequest<{ ok: true }>(`/invitations/${id}`, {
+    method: 'DELETE',
+  });
+}
+
+// ─── Groups ─────────────────────────────────────────────────────────────
+
+export type ApiGroupMember = ApiPublicUser & {
+  joinedAt: string;
+  mutedAt: string | null;
+};
+
+/** Lichte vorm in lijst-respons — actieve leden zonder timestamps. */
+export type ApiGroupMemberLite = ApiPublicUser;
+
+export type ApiGroupSummary = {
+  id: string;
+  name: string;
+  creatorId: string;
+  isCreator: boolean;
+  muted: boolean;
+  createdAt: string;
+  members: ApiGroupMemberLite[];
+};
+
+export type ApiGroupDetail = {
+  id: string;
+  name: string;
+  creatorId: string;
+  isCreator: boolean;
+  muted: boolean;
+  members: ApiGroupMember[];
+};
+
+export async function getGroups(): Promise<ApiGroupSummary[]> {
+  const { groups } = await authedRequest<{ groups: ApiGroupSummary[] }>(
+    '/groups'
+  );
+  return groups;
+}
+
+export async function getGroup(id: string): Promise<ApiGroupDetail> {
+  return await authedRequest<ApiGroupDetail>(`/groups/${id}`);
+}
+
+export async function createGroup(input: {
+  name: string;
+  memberIds: string[];
+}): Promise<{ id: string; name: string; memberCount: number }> {
+  return await authedRequest<{ id: string; name: string; memberCount: number }>(
+    '/groups',
+    {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }
+  );
+}
+
+export async function renameGroup(id: string, name: string): Promise<{ ok: true }> {
+  return await authedRequest<{ ok: true }>(`/groups/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ name }),
     headers: { 'content-type': 'application/json' },
   });
+}
+
+export async function addGroupMembers(
+  id: string,
+  userIds: string[]
+): Promise<{ added: number }> {
+  return await authedRequest<{ added: number }>(`/groups/${id}/members`, {
+    method: 'POST',
+    body: JSON.stringify({ userIds }),
+    headers: { 'content-type': 'application/json' },
+  });
+}
+
+export async function removeGroupMember(
+  groupId: string,
+  userId: string
+): Promise<{ ok: true }> {
+  return await authedRequest<{ ok: true }>(
+    `/groups/${groupId}/members/${userId}`,
+    { method: 'DELETE' }
+  );
+}
+
+export async function muteGroup(id: string): Promise<{ ok: true; muted: boolean }> {
+  return await authedRequest<{ ok: true; muted: boolean }>(
+    `/groups/${id}/mute`,
+    { method: 'POST' }
+  );
+}
+
+export async function unmuteGroup(id: string): Promise<{ ok: true; muted: boolean }> {
+  return await authedRequest<{ ok: true; muted: boolean }>(
+    `/groups/${id}/mute`,
+    { method: 'DELETE' }
+  );
 }
 
 export async function uploadAvatar(input: {

@@ -6,9 +6,9 @@ import {
 
 import {
   acceptFriendRequest,
-  acceptInvite,
+  addGroupMembers,
+  createGroup,
   declineFriendRequest,
-  declineInvite,
   getEvent,
   getEventGenres,
   getEvents,
@@ -16,7 +16,9 @@ import {
   getFriendDetail,
   getFriendRequests,
   getFriends,
-  getInvites,
+  getGroup,
+  getGroups,
+  getInvitations,
   getMe,
   getOutgoingFriendRequests,
   getMySaves,
@@ -26,15 +28,22 @@ import {
   getVenue,
   getVenueSubtypes,
   getVenues,
+  muteGroup,
+  remindInvitation,
   removeFriend,
+  removeGroupMember,
+  renameGroup,
+  respondInvitation,
+  revokeInvitation,
   setFriendFavorite,
   type ApiFriendDetail,
   searchUsers,
   sendFriendRequest,
-  sendInvites,
+  sendInvitations,
   setVenueFollow,
   toggleDismiss,
   toggleSave,
+  unmuteGroup,
   getMirrorByHandle,
   getMyDismisses,
   getMyMirror,
@@ -69,7 +78,9 @@ export const queryKeys = {
   outgoingFriendRequests: () => ['outgoing-friend-requests'] as const,
   friend: (id: string) => ['friend', id] as const,
   userSearch: (q: string) => ['user-search', q] as const,
-  invites: () => ['invites'] as const,
+  invitations: () => ['invitations'] as const,
+  groups: () => ['groups'] as const,
+  group: (id: string) => ['group', id] as const,
   socialFeed: () => ['social-feed'] as const,
   me: (userId: string | null) => ['me', userId] as const,
 };
@@ -443,20 +454,20 @@ export function useSetFriendFavorite(friendId: string) {
   });
 }
 
-// ─── Invites ────────────────────────────────────────────────────────
+// ─── Invitations ────────────────────────────────────────────────────
 
-export function useInvites(opts: { enabled?: boolean } = {}) {
+export function useInvitations(opts: { enabled?: boolean } = {}) {
   return useQuery({
-    queryKey: queryKeys.invites(),
-    queryFn: () => getInvites(),
+    queryKey: queryKeys.invitations(),
+    queryFn: () => getInvitations(),
     enabled: opts.enabled ?? true,
-    // Zelfde reden als useFriendRequests — Inbox altijd vers.
+    // Zelfde reden als useFriendRequests — inbox altijd vers.
     staleTime: 0,
     refetchOnMount: 'always',
   });
 }
 
-export function useSendInvites() {
+export function useSendInvitations() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (input: {
@@ -464,39 +475,163 @@ export function useSendInvites() {
       /** Het master-event waar deze occurrence bij hoort — alleen
           gebruikt om de event-detail-cache te invalidaten. */
       eventId: string;
-      toUserIds: string[];
+      groupIds?: string[];
+      userIds?: string[];
       message?: string;
     }) =>
-      sendInvites({
+      sendInvitations({
         occurrenceId: input.occurrenceId,
-        toUserIds: input.toUserIds,
+        groupIds: input.groupIds,
+        userIds: input.userIds,
         message: input.message,
       }),
     onSettled: (_data, _err, vars) => {
-      qc.invalidateQueries({ queryKey: queryKeys.invites() });
-      // Inviter ziet `myInvites` op event-detail — refreshen zodat de
-      // nieuwe rijen direct verschijnen.
+      qc.invalidateQueries({ queryKey: queryKeys.invitations() });
       qc.invalidateQueries({ queryKey: queryKeys.event(vars.eventId) });
     },
   });
 }
 
-export function useAcceptInvite() {
+/** Reageren op een uitnodiging: going / maybe / not_going. Vervangt het
+ *  oude accept/decline-paar. */
+export function useRespondInvitation() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (input: string | { id: string; replyMessage?: string }) => {
-      if (typeof input === 'string') return acceptInvite(input);
-      return acceptInvite(input.id, input.replyMessage);
-    },
-    onSettled: (data) => {
-      qc.invalidateQueries({ queryKey: queryKeys.invites() });
+    mutationFn: (input: {
+      id: string;
+      status: 'going' | 'maybe' | 'not_going';
+      replyMessage?: string;
+      /** Optionele eventId voor doelgerichte cache-invalidatie van
+          de event-detail-page; valt anders terug op brede invalidate. */
+      eventId?: string;
+    }) =>
+      respondInvitation(input.id, {
+        status: input.status,
+        replyMessage: input.replyMessage,
+      }),
+    onSettled: (_data, _err, vars) => {
+      qc.invalidateQueries({ queryKey: queryKeys.invitations() });
       qc.invalidateQueries({ queryKey: queryKeys.saves() });
-      if (data?.eventId) {
-        qc.invalidateQueries({ queryKey: queryKeys.event(data.eventId) });
+      if (vars.eventId) {
+        qc.invalidateQueries({ queryKey: queryKeys.event(vars.eventId) });
       }
       // Friend-pills op andere events kunnen veranderen omdat ik nu een
       // save voor dit event heb.
       qc.invalidateQueries({ queryKey: ['events'] });
+      qc.invalidateQueries({ queryKey: ['event'] });
+    },
+  });
+}
+
+/** Stuur eenmalige reminder naar een pending invitee. Server weigert
+ *  een tweede call. */
+export function useRemindInvitation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { invitationId: string; userId: string; eventId?: string }) =>
+      remindInvitation(input.invitationId, input.userId),
+    onSettled: (_data, _err, vars) => {
+      qc.invalidateQueries({ queryKey: queryKeys.invitations() });
+      if (vars.eventId) {
+        qc.invalidateQueries({ queryKey: queryKeys.event(vars.eventId) });
+      }
+    },
+  });
+}
+
+/** Initiator trekt een verstuurde uitnodiging in. */
+export function useRevokeInvitation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { id: string; eventId?: string }) =>
+      revokeInvitation(input.id),
+    onSettled: (_data, _err, vars) => {
+      qc.invalidateQueries({ queryKey: queryKeys.invitations() });
+      if (vars.eventId) {
+        qc.invalidateQueries({ queryKey: queryKeys.event(vars.eventId) });
+      }
+    },
+  });
+}
+
+// ─── Groups ─────────────────────────────────────────────────────────
+
+export function useGroups(opts: { enabled?: boolean } = {}) {
+  return useQuery({
+    queryKey: queryKeys.groups(),
+    queryFn: () => getGroups(),
+    enabled: opts.enabled ?? true,
+    staleTime: 30_000,
+  });
+}
+
+export function useGroup(id: string, opts: { enabled?: boolean } = {}) {
+  return useQuery({
+    queryKey: queryKeys.group(id),
+    queryFn: () => getGroup(id),
+    enabled: (opts.enabled ?? true) && Boolean(id),
+    staleTime: 30_000,
+  });
+}
+
+export function useCreateGroup() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { name: string; memberIds: string[] }) =>
+      createGroup(input),
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.groups() });
+    },
+  });
+}
+
+export function useRenameGroup() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { id: string; name: string }) =>
+      renameGroup(input.id, input.name),
+    onSettled: (_data, _err, vars) => {
+      qc.invalidateQueries({ queryKey: queryKeys.groups() });
+      qc.invalidateQueries({ queryKey: queryKeys.group(vars.id) });
+    },
+  });
+}
+
+export function useAddGroupMembers() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { id: string; userIds: string[] }) =>
+      addGroupMembers(input.id, input.userIds),
+    onSettled: (_data, _err, vars) => {
+      qc.invalidateQueries({ queryKey: queryKeys.groups() });
+      qc.invalidateQueries({ queryKey: queryKeys.group(vars.id) });
+    },
+  });
+}
+
+/** Verlaten (self) of kicken (door creator). Server bepaalt 't op
+ *  basis van userId vs current session. */
+export function useRemoveGroupMember() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { groupId: string; userId: string }) =>
+      removeGroupMember(input.groupId, input.userId),
+    onSettled: (_data, _err, vars) => {
+      qc.invalidateQueries({ queryKey: queryKeys.groups() });
+      qc.invalidateQueries({ queryKey: queryKeys.group(vars.groupId) });
+    },
+  });
+}
+
+/** Mute toggle — combineert beide endpoints in één hook. */
+export function useToggleGroupMute() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { id: string; mute: boolean }) =>
+      input.mute ? muteGroup(input.id) : unmuteGroup(input.id),
+    onSettled: (_data, _err, vars) => {
+      qc.invalidateQueries({ queryKey: queryKeys.groups() });
+      qc.invalidateQueries({ queryKey: queryKeys.group(vars.id) });
     },
   });
 }
@@ -538,18 +673,3 @@ export function useSetVenueFollow() {
   });
 }
 
-export function useDeclineInvite() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (input: string | { id: string; replyMessage?: string }) => {
-      if (typeof input === 'string') return declineInvite(input);
-      return declineInvite(input.id, input.replyMessage);
-    },
-    onSettled: () => {
-      qc.invalidateQueries({ queryKey: queryKeys.invites() });
-      // Inviter's myInvites wordt geüpdatet bij de volgende fetch van
-      // het event — geen specifieke eventId beschikbaar hier.
-      qc.invalidateQueries({ queryKey: ['event'] });
-    },
-  });
-}

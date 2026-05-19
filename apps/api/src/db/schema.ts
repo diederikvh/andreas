@@ -33,6 +33,15 @@ export const inviteStatus = pgEnum('invite_status', [
   'accepted',
   'declined',
 ]);
+/** Drie-status-respons op een uitnodiging (1-op-1 of groep), plus
+    `pending` voor nog-niet-gereageerd. Vervangt het oude binaire
+    accepted/declined-model van `invites`. */
+export const responseStatus = pgEnum('response_status', [
+  'pending',
+  'going',
+  'maybe',
+  'not_going',
+]);
 export const savesVisibility = pgEnum('saves_visibility', [
   'favorites',
   'friends',
@@ -553,6 +562,125 @@ export const invites = pgTable(
     uniqueIndex('invites_unique_idx').on(t.fromUserId, t.toUserId, t.occurrenceId),
     index('invites_to_status_idx').on(t.toUserId, t.status),
     index('invites_occurrence_idx').on(t.occurrenceId),
+  ]
+);
+
+/**
+ * Een door een user opgerichte groep — een vaste club waar hij/zij vaak
+ * dingen mee onderneemt ("Vrijdagclub", "Bandvrienden"). Alleen de
+ * creator mag de groep beheren (naam wijzigen, leden toevoegen/kicken).
+ * Andere leden kunnen wel zelf vertrekken en/of muten. Groepen zijn
+ * gedeeld: alle leden zien wie er nog meer in zit.
+ */
+export const groups = pgTable(
+  'groups',
+  {
+    id: text().primaryKey(),
+    name: text().notNull(),
+    creatorId: text()
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    createdAt: timestamp({ withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+  },
+  (t) => [index('groups_creator_idx').on(t.creatorId)]
+);
+
+/**
+ * Lidmaatschap-tabel — soft-delete via `leftAt` zodat responses op oude
+ * uitnodigingen blijven bestaan nadat iemand de groep heeft verlaten.
+ * `mutedAt` is per-user mute (geen push, wel zichtbaar in app).
+ */
+export const groupMembers = pgTable(
+  'group_members',
+  {
+    groupId: text()
+      .notNull()
+      .references(() => groups.id, { onDelete: 'cascade' }),
+    userId: text()
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    joinedAt: timestamp({ withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+    leftAt: timestamp({ withTimezone: true }),
+    mutedAt: timestamp({ withTimezone: true }),
+  },
+  (t) => [
+    primaryKey({ columns: [t.groupId, t.userId] }),
+    index('group_members_user_idx').on(t.userId),
+  ]
+);
+
+/**
+ * Een verzonden uitnodiging — één rij per "verzending":
+ *   * `groupId = null` → 1-op-1; `invitation_responses` bevat exact twee
+ *     rijen (initiator + recipient).
+ *   * `groupId` gezet → groep-invite; `invitation_responses` bevat een
+ *     rij per groepslid dat op het moment van versturen actief was
+ *     (snapshot), plus de initiator.
+ *
+ * Wijzigingen in groep-samenstelling na de verzending hebben geen
+ * effect: later toegetreden leden krijgen geen response-slot, vertrokken
+ * leden behouden hun bestaande respons (read-only).
+ *
+ * `revokedAt`: spec staat toe dat de initiator z'n verstuurde invite
+ * intrekt. Soft-delete zodat we save-cleanup en push-suppressie kunnen
+ * doen voordat het record echt verdwijnt. List-endpoints filteren op
+ * `revokedAt IS NULL`.
+ */
+export const invitations = pgTable(
+  'invitations',
+  {
+    id: text().primaryKey(),
+    fromUserId: text()
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    occurrenceId: text()
+      .notNull()
+      .references(() => occurrences.id, { onDelete: 'cascade' }),
+    groupId: text().references(() => groups.id, { onDelete: 'cascade' }),
+    message: text(),
+    revokedAt: timestamp({ withTimezone: true }),
+    createdAt: timestamp({ withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+  },
+  (t) => [
+    index('invitations_from_idx').on(t.fromUserId),
+    index('invitations_occurrence_idx').on(t.occurrenceId),
+    index('invitations_group_idx').on(t.groupId),
+  ]
+);
+
+/**
+ * Per-user respons op een uitnodiging. Initiator zit hier ook in (default
+ * `going`, maar mag wijzigen). Status is mutable tot de occurrence is
+ * verlopen. `reminderSentAt` = één reminder per (invitation, user) zoals
+ * de spec voorschrijft.
+ */
+export const invitationResponses = pgTable(
+  'invitation_responses',
+  {
+    invitationId: text()
+      .notNull()
+      .references(() => invitations.id, { onDelete: 'cascade' }),
+    userId: text()
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    status: responseStatus().notNull().default('pending'),
+    replyMessage: text(),
+    reminderSentAt: timestamp({ withTimezone: true }),
+    respondedAt: timestamp({ withTimezone: true }),
+    createdAt: timestamp({ withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+  },
+  (t) => [
+    primaryKey({ columns: [t.invitationId, t.userId] }),
+    index('invitation_responses_user_idx').on(t.userId),
+    index('invitation_responses_status_idx').on(t.status),
   ]
 );
 

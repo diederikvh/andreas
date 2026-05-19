@@ -1487,8 +1487,8 @@ function PrivacySection({
           </Text>
           <Text style={[styles.privacySub, { color: roles.fgMuted }]}>
             {t(
-              'Friend-pills op events en je gered-lijst op je profiel.',
-              'Friend-pills on events and your saved list on your profile.'
+              'Friend-pills op events en je planning-lijst op je profiel.',
+              'Friend-pills on events and your planning list on your profile.'
             )}
           </Text>
           <SegmentPicker

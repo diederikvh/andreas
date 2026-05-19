@@ -19,7 +19,7 @@ import {
 } from '@/components/icons/TabIcons';
 import { useSession } from '@/lib/authClient';
 import { tinyTap } from '@/lib/haptics';
-import { useFriendRequests, useInvites } from '@/lib/queries';
+import { useFriendRequests, useInvitations } from '@/lib/queries';
 import { useMode, useRoles } from '@/store/mode';
 import { fontFamily, palette } from '@/theme/tokens';
 
@@ -52,10 +52,15 @@ export function TabBar({ state, navigation }: BottomTabBarProps) {
   const { data: session } = useSession();
   const isAuthed = Boolean(session?.user?.id);
   const { data: requests } = useFriendRequests({ enabled: isAuthed });
-  const { data: invites } = useInvites({ enabled: isAuthed });
-  const socialBadge = isAuthed
-    ? (requests?.length ?? 0) + (invites?.length ?? 0)
-    : 0;
+  const { data: invitations } = useInvitations({ enabled: isAuthed });
+  // Tel alleen invitations waar ik écht moet beslissen: ingekomen
+  // (niet door mij verstuurd) én nog pending. Een eigen verstuurde
+  // pending invite (uitstaand bij iemand anders) telt niet als notif
+  // voor mij.
+  const pendingForMe =
+    invitations?.filter((inv) => !inv.isOutgoing && inv.myStatus === 'pending')
+      .length ?? 0;
+  const socialBadge = isAuthed ? (requests?.length ?? 0) + pendingForMe : 0;
 
   // Op Android leverde expo-blur weinig effect, dus tint extra
   // opaque om de pill nog leesbaar te houden boven scrollende content.

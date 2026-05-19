@@ -17,7 +17,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Cross } from '@/components/Cross';
 import { EventListRow } from '@/components/EventListRow';
-import type { ApiEventInviteRecord, ApiPublicUser } from '@/lib/api';
+import type { ApiEventInviteRecord, ApiGroupSummary, ApiPublicUser } from '@/lib/api';
 import {
   eventImageUrl,
   CATEGORY_TICK,
@@ -31,8 +31,9 @@ import { safeBack } from '@/lib/navigation';
 import {
   useEvent,
   useFriends,
+  useGroups,
   useOutgoingFriendRequests,
-  useSendInvites,
+  useSendInvitations,
 } from '@/lib/queries';
 import { useMode, useRoles } from '@/store/mode';
 import { fontFamily, palette } from '@/theme/tokens';
@@ -72,10 +73,12 @@ export default function InviteModal() {
 
   const { data: event } = useEvent(eventId);
   const { data: friends } = useFriends();
+  const { data: groups } = useGroups();
   const { data: outgoing } = useOutgoingFriendRequests();
-  const sendInvites = useSendInvites();
+  const sendInvites = useSendInvitations();
 
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [selectedGroups, setSelectedGroups] = useState<Set<string>>(new Set());
   const [message, setMessage] = useState('');
   const [sent, setSent] = useState(false);
 
@@ -145,16 +148,17 @@ export default function InviteModal() {
     [outgoing]
   );
 
-  // Vrienden die je nu daadwerkelijk kan uitnodigen (geaccepteerd én
-  // nog niet eerder voor dit event uitgenodigd). Als dit 0 is komt er
-  // geen dock/bericht-veld maar een "vriend zoeken" call-to-action.
-  const hasSelectable = useMemo(
+  // Iets selecteerbaars? Vrienden waar je nog niemand voor gaf óf
+  // minstens één groep. Als dit false is verschijnt geen dock maar een
+  // CTA om vrienden toe te voegen of groep aan te maken.
+  const hasSelectableFriends = useMemo(
     () =>
       rows.some(
         (r) => !r.friendshipPending && !inviteByUser.has(r.user.id)
       ),
     [rows, inviteByUser]
   );
+  const hasSelectable = hasSelectableFriends || (groups?.length ?? 0) > 0;
 
   const toggle = (id: string) => {
     if (inviteByUser.has(id) || pendingFriendIds.has(id)) return;
@@ -167,13 +171,27 @@ export default function InviteModal() {
     Haptics.selectionAsync();
   };
 
+  const toggleGroup = (id: string) => {
+    setSelectedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+    Haptics.selectionAsync();
+  };
+
+  const totalSelected = selected.size + selectedGroups.size;
+
   const onSend = async () => {
-    if (selected.size === 0 || !eventId || !resolvedOccurrenceId) return;
+    if (totalSelected === 0 || !eventId || !resolvedOccurrenceId) return;
     try {
       await sendInvites.mutateAsync({
         occurrenceId: resolvedOccurrenceId,
         eventId,
-        toUserIds: Array.from(selected),
+        userIds: selected.size > 0 ? Array.from(selected) : undefined,
+        groupIds:
+          selectedGroups.size > 0 ? Array.from(selectedGroups) : undefined,
         message: message.trim() || undefined,
       });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -267,7 +285,19 @@ export default function InviteModal() {
           {t('Nodig iemand uit', 'Invite someone')}
         </Text>
 
-
+        {/* Gecombineerde lijst: groepen, favorieten, andere vrienden —
+            zelfde patroon als de Sociaal-tab. Geen aparte sectiekoppen,
+            alle rijen delen één 56px avatar-cel zodat namen op één
+            verticale lijn beginnen. `rows` is al gesorteerd op
+            favoriete-vrienden eerst, daarna alfabetisch. */}
+        {(groups ?? []).map((g) => (
+          <GroupCheckRow
+            key={g.id}
+            group={g}
+            checked={selectedGroups.has(g.id)}
+            onPress={() => toggleGroup(g.id)}
+          />
+        ))}
         {rows.map((r) => (
           <FriendCheckRow
             key={r.user.id}
@@ -356,13 +386,13 @@ export default function InviteModal() {
         </View>
         <Pressable
           onPress={onSend}
-          disabled={selected.size === 0 || sendInvites.isPending || sent}
+          disabled={totalSelected === 0 || sendInvites.isPending || sent}
           style={[
             styles.cta,
             {
               backgroundColor: isNacht ? palette.acid : palette.red,
               opacity:
-                selected.size === 0 || sendInvites.isPending ? 0.5 : 1,
+                totalSelected === 0 || sendInvites.isPending ? 0.5 : 1,
             },
           ]}
         >
@@ -432,25 +462,27 @@ function FriendCheckRow({
         { borderColor: roles.bgChip, opacity: disabled ? 0.55 : 1 },
       ]}
     >
-      {friend.avatarUrl ? (
-        <Image
-          source={{ uri: friend.avatarUrl }}
-          style={styles.rowAvatar}
-          contentFit="cover"
-        />
-      ) : (
-        <View
-          style={[
-            styles.rowAvatar,
-            styles.rowAvatarFallback,
-            { backgroundColor: isNacht ? palette.noir2 : palette.paper2 },
-          ]}
-        >
-          <Text style={[styles.rowAvatarInitial, { color: roles.fgMuted }]}>
-            {(friend.name.trim()[0] ?? '?').toUpperCase()}
-          </Text>
-        </View>
-      )}
+      <View style={styles.avatarSlot}>
+        {friend.avatarUrl ? (
+          <Image
+            source={{ uri: friend.avatarUrl }}
+            style={styles.rowAvatar}
+            contentFit="cover"
+          />
+        ) : (
+          <View
+            style={[
+              styles.rowAvatar,
+              styles.rowAvatarFallback,
+              { backgroundColor: isNacht ? palette.noir2 : palette.paper2 },
+            ]}
+          >
+            <Text style={[styles.rowAvatarInitial, { color: roles.fgMuted }]}>
+              {(friend.name.trim()[0] ?? '?').toUpperCase()}
+            </Text>
+          </View>
+        )}
+      </View>
       <View style={styles.rowBody}>
         <View
           style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}
@@ -502,6 +534,127 @@ function FriendCheckRow({
   );
 }
 
+function GroupCheckRow({
+  group,
+  checked,
+  onPress,
+}: {
+  group: ApiGroupSummary;
+  checked: boolean;
+  onPress: () => void;
+}) {
+  const mode = useMode();
+  const roles = useRoles();
+  const isNacht = mode === 'nacht';
+  const t = useT();
+  const memberCount = group.members.length;
+  // Avatar-stack: 28px tiles met 14px offset zodat max 3 tiles in dezelfde
+  // 56px-cel passen als de FriendCheckRow-avatar — namen lijnen daardoor
+  // op één verticale lijn op.
+  const visible = group.members.slice(0, 3);
+  const overflow = Math.max(0, memberCount - visible.length);
+  const totalTiles = visible.length + (overflow > 0 ? 1 : 0);
+  return (
+    <Pressable
+      onPress={onPress}
+      style={[styles.row, { borderColor: roles.bgChip }]}
+    >
+      <View style={styles.avatarSlot}>
+        {visible.map((m, i) => (
+          <View
+            key={m.id}
+            style={[
+              groupStyles.tile,
+              {
+                left: i * 14,
+                zIndex: totalTiles - i,
+                borderColor: roles.bg,
+                backgroundColor: isNacht ? palette.noir2 : palette.paper2,
+              },
+            ]}
+          >
+            {m.avatarUrl ? (
+              <Image
+                source={{ uri: m.avatarUrl }}
+                style={groupStyles.tileImage}
+                contentFit="cover"
+              />
+            ) : (
+              <Text style={[groupStyles.tileInitial, { color: roles.fgMuted }]}>
+                {(m.name.trim()[0] ?? '?').toUpperCase()}
+              </Text>
+            )}
+          </View>
+        ))}
+        {overflow > 0 && (
+          <View
+            style={[
+              groupStyles.tile,
+              {
+                left: visible.length * 14,
+                borderColor: roles.bg,
+                backgroundColor: roles.bgChip,
+              },
+            ]}
+          >
+            <Text style={[groupStyles.tileInitial, { color: roles.fgMuted }]}>
+              +{overflow}
+            </Text>
+          </View>
+        )}
+      </View>
+      <View style={styles.rowBody}>
+        <Text
+          numberOfLines={1}
+          style={[styles.rowName, { color: roles.fg, flexShrink: 1 }]}
+        >
+          {group.name}
+        </Text>
+        <Text
+          numberOfLines={1}
+          style={[styles.rowHandle, { color: roles.fgMuted }]}
+        >
+          {memberCount === 1
+            ? t('1 lid', '1 member')
+            : t(`${memberCount} leden`, `${memberCount} members`)}
+        </Text>
+      </View>
+      <View
+        style={[
+          styles.checkBox,
+          checked
+            ? { backgroundColor: roles.accent, borderColor: roles.accent }
+            : { borderColor: roles.fgPlaceholder },
+        ]}
+      >
+        {checked && (
+          <Ionicons name="checkmark" size={16} color={roles.onAccent} />
+        )}
+      </View>
+    </Pressable>
+  );
+}
+
+const groupStyles = StyleSheet.create({
+  tile: {
+    position: 'absolute',
+    top: 4,
+    width: 28,
+    height: 28,
+    borderRadius: 999,
+    borderWidth: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  tileImage: { width: '100%', height: '100%' },
+  tileInitial: {
+    fontFamily: fontFamily.bold,
+    fontSize: 11,
+    letterSpacing: -0.1,
+  },
+});
+
 function InviteStatusBadge({
   status,
 }: {
@@ -510,15 +663,17 @@ function InviteStatusBadge({
   const roles = useRoles();
   const t = useT();
   const label =
-    status === 'accepted'
+    status === 'going'
       ? t('Gaat mee', 'Going')
-      : status === 'declined'
-        ? t('Afgewezen', 'Declined')
-        : t('Verstuurd', 'Sent');
+      : status === 'maybe'
+        ? t('Misschien', 'Maybe')
+        : status === 'not_going'
+          ? t('Afgezegd', 'Not coming')
+          : t('Verstuurd', 'Sent');
   const textTone =
-    status === 'accepted'
+    status === 'going'
       ? roles.accent
-      : status === 'declined'
+      : status === 'not_going'
         ? roles.fgPlaceholder
         : roles.fgMuted;
   return (
@@ -642,6 +797,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 22,
     paddingVertical: 10,
     borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  // Gedeelde 56px-cel voor zowel single avatars (vriend) als 3-tile
+  // group-stacks. Houdt naam-start op één verticale lijn over alle
+  // rij-types.
+  avatarSlot: {
+    width: 56,
+    height: 36,
+    position: 'relative',
+    justifyContent: 'center',
   },
   rowAvatar: { width: 36, height: 36, borderRadius: 999 },
   rowAvatarFallback: { alignItems: 'center', justifyContent: 'center' },

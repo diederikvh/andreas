@@ -33,7 +33,8 @@ import type {
   ApiFeedEvent,
   ApiFriend,
   ApiFriendRequest,
-  ApiInvite,
+  ApiGroupSummary,
+  ApiInvitation,
   SavedApiEvent,
 } from '@/lib/api';
 import { useSession } from '@/lib/authClient';
@@ -42,6 +43,7 @@ import {
   CATEGORY_TICK,
   VENUE_TYPE_TICK,
   dowMixed,
+  monthShort,
   type EventGroup,
   rowTimeLabel,
   groupEventsByDay,
@@ -53,7 +55,8 @@ import {
   useDeclineFriendRequest,
   useFriendRequests,
   useFriends,
-  useInvites,
+  useGroups,
+  useInvitations,
   useMySaves,
   useOutgoingFriendRequests,
   useRemoveFriend,
@@ -90,8 +93,19 @@ export default function Social() {
   const authed = Boolean(session?.user?.id);
 
   const { data: requests } = useFriendRequests({ enabled: authed });
-  const { data: invites } = useInvites({ enabled: authed });
+  const { data: invitations } = useInvitations({ enabled: authed });
+  // De Vrienden-sub toont incoming uitnodigingen waarop ik nog moet
+  // reageren én mijn eigen verstuurde uitnodigingen zolang er nog
+  // pending responses van anderen open staan. De InviteRow toont het
+  // verschil in label ("X nodigt jou uit" vs "Jij hebt X uitgenodigd").
+  const invites = invitations?.filter((inv) => {
+    if (!inv.isOutgoing) return inv.myStatus === 'pending';
+    return inv.responses.some(
+      (r) => r.user.id !== inv.from.id && r.status === 'pending'
+    );
+  });
   const { data: friends } = useFriends({ enabled: authed });
+  const { data: groups } = useGroups({ enabled: authed });
   const { data: outgoing } = useOutgoingFriendRequests({ enabled: authed });
   const { data: saves, isLoading: savesLoading, error: savesError } =
     useMySaves({ enabled: authed });
@@ -108,7 +122,7 @@ export default function Social() {
     try {
       await Promise.all([
         qc.invalidateQueries({ queryKey: ['friend-requests'] }),
-        qc.invalidateQueries({ queryKey: ['invites'] }),
+        qc.invalidateQueries({ queryKey: ['invitations'] }),
         qc.invalidateQueries({ queryKey: ['friends'] }),
         qc.invalidateQueries({ queryKey: ['outgoing-friend-requests'] }),
         qc.invalidateQueries({ queryKey: ['saves'] }),
@@ -150,6 +164,7 @@ export default function Social() {
             requests={requests}
             invites={invites}
             friends={friends}
+            groups={groups}
             outgoing={outgoing}
             onAcceptReq={(id) => acceptReq.mutate(id)}
             onDeclineReq={(id) => declineReq.mutate(id)}
@@ -307,6 +322,7 @@ function FriendsPanel({
   requests,
   invites,
   friends,
+  groups,
   outgoing,
   onAcceptReq,
   onDeclineReq,
@@ -314,8 +330,9 @@ function FriendsPanel({
 }: {
   authed: boolean;
   requests: ApiFriendRequest[] | undefined;
-  invites: ApiInvite[] | undefined;
+  invites: ApiInvitation[] | undefined;
   friends: ApiFriend[] | undefined;
+  groups: ApiGroupSummary[] | undefined;
   outgoing: ApiFriendRequest[] | undefined;
   onAcceptReq: (id: string) => void;
   onDeclineReq: (id: string) => void;
@@ -395,14 +412,30 @@ function FriendsPanel({
           ))}
         </>
       )}
-      {hasFriends && (
+      {(hasFriends || (groups?.length ?? 0) > 0) && (
         <>
           <SectionHead
             label={t('Vrienden', 'Friends')}
             action={t('Toevoegen', 'Add')}
             onAction={() => router.push('/add-friend')}
           />
-          {friends?.map((f) => <FriendRow key={f.id} friend={f} />)}
+          {/* Gecombineerde lijst, gesorteerd: groepen eerst, dan
+              favorieten, dan overige vrienden. Per spec staan groep-
+              en vriendrijen in dezelfde lijst zonder aparte koppen —
+              groepen visueel herkenbaar aan de avatar-stack. */}
+          {(groups ?? []).map((g) => (
+            <GroupRow key={g.id} group={g} />
+          ))}
+          {(friends ?? [])
+            .filter((f) => f.favorite)
+            .map((f) => (
+              <FriendRow key={f.id} friend={f} />
+            ))}
+          {(friends ?? [])
+            .filter((f) => !f.favorite)
+            .map((f) => (
+              <FriendRow key={f.id} friend={f} />
+            ))}
         </>
       )}
       {hasOutgoing && (
@@ -608,18 +641,56 @@ function RequestRow({
   );
 }
 
-function InviteRow({ invite }: { invite: ApiInvite }) {
+function InviteRow({ invite }: { invite: ApiInvitation }) {
   const roles = useRoles();
   const t = useT();
   const locale = useLocale();
   const d = new Date(invite.occurrence.startsAt);
-  const dateLabel = `${dowMixed(d.getDay(), locale)} · ${rowTimeLabel(invite.occurrence.startsAt, invite.occurrence.endsAt, locale)}`;
+  const dow = dowMixed(d.getDay(), locale);
+  const month = monthShort(d.getMonth(), locale).toLowerCase();
+  const time = rowTimeLabel(
+    invite.occurrence.startsAt,
+    invite.occurrence.endsAt,
+    locale
+  );
+  const dateLabel = `${dow} ${d.getDate()} ${month} · ${time}`;
+  const others = invite.responses.filter((r) => r.user.id !== invite.from.id);
+  const goingCount = others.filter((r) => r.status === 'going').length;
+  const maybeCount = others.filter((r) => r.status === 'maybe').length;
+  const pendingCount = others.filter((r) => r.status === 'pending').length;
+  const isGroup = Boolean(invite.group);
+
+  // Drie tekst-stukken voor de pill, met tone:
+  //   outgoing + pending → "Wacht op N" (primair — vraagt actie/druk)
+  //   incoming group + (going|maybe) → "3 gaan, 1 misschien" (neutraal info)
+  //   anders → geen pill
+  let pillText: string | null = null;
+  let pillPrimary = false;
+  if (invite.isOutgoing && pendingCount > 0) {
+    pillText = t(`Wacht op ${pendingCount}`, `Awaiting ${pendingCount}`);
+    pillPrimary = true;
+  } else if (!invite.isOutgoing && isGroup && (goingCount > 0 || maybeCount > 0)) {
+    const parts: string[] = [];
+    if (goingCount > 0) parts.push(t(`${goingCount} gaan`, `${goingCount} going`));
+    if (maybeCount > 0)
+      parts.push(t(`${maybeCount} misschien`, `${maybeCount} maybe`));
+    pillText = parts.join(' · ');
+  }
+
+  // Groep-invites en eigen verstuurde invites tonen veel meer detail
+  // (alle responses per status, herinner-knop, intrekken) — die routen
+  // naar het detail-overzicht. 1-op-1 inkomende invites zijn simpel
+  // (twee mensen, accept/decline) — die gaan direct naar het event.
+  const target =
+    isGroup || invite.isOutgoing
+      ? `/invitation/${invite.id}`
+      : `/event/${invite.event.id}?o=${invite.occurrence.id}`;
   return (
     <Pressable
       onPress={() =>
         router.push(
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          `/event/${invite.event.id}?o=${invite.occurrence.id}` as any
+          target as any
         )
       }
       style={[styles.row, { borderColor: roles.bgChip, alignItems: 'flex-start' }]}
@@ -627,23 +698,169 @@ function InviteRow({ invite }: { invite: ApiInvite }) {
       <ProfileAvatar avatarUrl={invite.from.avatarUrl} name={invite.from.name} size={36} />
       <View style={styles.rowBody}>
         <Text
-          numberOfLines={2}
-          style={[styles.inviteLine, { color: roles.fgRead }]}
+          numberOfLines={1}
+          style={[styles.inviteKicker, { color: roles.fg }]}
         >
-          <Text style={[styles.inviteEm, { color: roles.fg }]}>
-            {invite.from.name}
-          </Text>
-          {t(' vraagt je mee naar ', ' is inviting you to ')}
-          <Text style={[styles.inviteEm, { color: roles.fg }]}>
-            {invite.event.title}
-          </Text>
-          .
+          {dateLabel} · {invite.event.venueName}
         </Text>
+        <Text
+          numberOfLines={2}
+          style={[styles.inviteTitle, { color: roles.fgRead }]}
+        >
+          {invite.isOutgoing ? (
+            <>
+              <Text style={[styles.inviteEm, { color: roles.fg }]}>
+                {t('Jij', 'You')}
+              </Text>
+              {isGroup ? (
+                <>
+                  {t(' nodigt ', ' invited ')}
+                  <Text style={[styles.inviteEm, { color: roles.fg }]}>
+                    {invite.group?.name}
+                  </Text>
+                  {t(' uit voor ', ' to ')}
+                </>
+              ) : others.length === 1 ? (
+                <>
+                  {t(' nodigt ', ' invited ')}
+                  <Text style={[styles.inviteEm, { color: roles.fg }]}>
+                    {others[0]?.user.name ?? ''}
+                  </Text>
+                  {t(' uit voor ', ' to ')}
+                </>
+              ) : (
+                t(' nodigt iemand uit voor ', ' invited someone to ')
+              )}
+              <Text style={[styles.inviteEm, { color: roles.fg }]}>
+                {invite.event.title}
+              </Text>
+              .
+            </>
+          ) : (
+            <>
+              <Text style={[styles.inviteEm, { color: roles.fg }]}>
+                {invite.from.name}
+              </Text>
+              {isGroup ? (
+                <>
+                  {t(' nodigt ', ' is inviting ')}
+                  <Text style={[styles.inviteEm, { color: roles.fg }]}>
+                    {invite.group?.name}
+                  </Text>
+                  {t(' uit voor ', ' to ')}
+                </>
+              ) : (
+                t(' vraagt je mee naar ', ' is inviting you to ')
+              )}
+              <Text style={[styles.inviteEm, { color: roles.fg }]}>
+                {invite.event.title}
+              </Text>
+              .
+            </>
+          )}
+        </Text>
+        {pillText && (
+          <View
+            style={[
+              styles.invitePill,
+              pillPrimary
+                ? { backgroundColor: `${roles.accent}26` }
+                : { backgroundColor: roles.bgTag },
+            ]}
+          >
+            <Text
+              style={[
+                styles.invitePillText,
+                { color: pillPrimary ? roles.accent : roles.fgMuted },
+              ]}
+            >
+              {pillText}
+            </Text>
+          </View>
+        )}
+      </View>
+    </Pressable>
+  );
+}
+
+function GroupRow({ group }: { group: ApiGroupSummary }) {
+  const roles = useRoles();
+  const t = useT();
+  const memberCount = group.members.length;
+  // Compactere stack: 28px tiles met 14px offset zodat 3 tiles in
+  // exact 56px breed passen — gelijk aan de friend-row avatar-cell,
+  // waardoor namen op één verticale lijn beginnen.
+  const visible = group.members.slice(0, 3);
+  const overflow = Math.max(0, memberCount - visible.length);
+  const totalTiles = visible.length + (overflow > 0 ? 1 : 0);
+  return (
+    <Pressable
+      onPress={() =>
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        router.push(`/group/${group.id}` as any)
+      }
+      style={[styles.row, { borderColor: roles.bgChip }]}
+    >
+      <View style={styles.avatarSlot}>
+        {visible.map((m, i) => (
+          <View
+            key={m.id}
+            style={[
+              styles.groupStackTile,
+              {
+                // Rechts-aligned binnen de 56px-slot zodat de laatste
+                // tile altijd op dezelfde X eindigt (en de naam dus
+                // op één lijn met de friend-row begint).
+                left: i * 14,
+                zIndex: totalTiles - i,
+                borderColor: roles.bg,
+              },
+            ]}
+          >
+            <ProfileAvatar avatarUrl={m.avatarUrl} name={m.name} size={28} />
+          </View>
+        ))}
+        {overflow > 0 && (
+          <View
+            style={[
+              styles.groupStackTile,
+              styles.groupStackOverflow,
+              {
+                left: visible.length * 14,
+                borderColor: roles.bg,
+                backgroundColor: roles.bgChip,
+              },
+            ]}
+          >
+            <Text style={[styles.groupStackOverflowText, { color: roles.fgMuted }]}>
+              +{overflow}
+            </Text>
+          </View>
+        )}
+      </View>
+      <View style={styles.rowBody}>
+        <View style={styles.rowNameLine}>
+          <Text
+            numberOfLines={1}
+            style={[styles.rowName, { color: roles.fg }]}
+          >
+            {group.name}
+          </Text>
+          {group.muted ? (
+            <Ionicons
+              name="notifications-off-outline"
+              size={13}
+              color={roles.fgMuted}
+            />
+          ) : null}
+        </View>
         <Text
           numberOfLines={1}
           style={[styles.rowMeta, { color: roles.fgMuted }]}
         >
-          {dateLabel} · {invite.event.venueName}
+          {memberCount === 1
+            ? t('1 lid', '1 member')
+            : t(`${memberCount} leden`, `${memberCount} members`)}
         </Text>
       </View>
     </Pressable>
@@ -657,7 +874,9 @@ function FriendRow({ friend }: { friend: ApiFriend }) {
       onPress={() => router.push(`/friend/${friend.id}` as never)}
       style={[styles.row, { borderColor: roles.bgChip }]}
     >
-      <ProfileAvatar avatarUrl={friend.avatarUrl} name={friend.name} size={36} />
+      <View style={styles.avatarSlot}>
+        <ProfileAvatar avatarUrl={friend.avatarUrl} name={friend.name} size={36} />
+      </View>
       <View style={styles.rowBody}>
         <View style={styles.rowNameLine}>
           <Text
@@ -1083,12 +1302,70 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     marginTop: 2,
   },
-  inviteLine: {
+  // Gedeelde avatar-cell voor zowel FriendRow als GroupRow. 56px breed
+  // accommodeert een stack van 3× 28px tiles met 14px offset, én laat
+  // de single 36px friend-avatar links uitlijnen — beide rows starten
+  // hun naam dus op exact dezelfde X.
+  avatarSlot: {
+    width: 56,
+    height: 36,
+    position: 'relative',
+    justifyContent: 'center',
+  },
+  groupStackTile: {
+    position: 'absolute',
+    top: 4,
+    width: 28,
+    height: 28,
+    borderRadius: 999,
+    borderWidth: 2,
+    padding: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  groupStackOverflow: {
+    paddingHorizontal: 4,
+    overflow: 'hidden',
+  },
+  groupStackOverflowText: {
+    fontFamily: fontFamily.bold,
+    fontSize: 11,
+    letterSpacing: -0.1,
+  },
+  // Kicker bovenaan invite-rij (datum + venue) — kleiner dan de titel
+  // maar wel bold zodat 't direct opvalt als context-info.
+  inviteKicker: {
+    fontFamily: fontFamily.bold,
+    fontSize: 11.5,
+    letterSpacing: -0.05,
+    marginBottom: 4,
+  },
+  // De main-zin onder de kicker — body-tekst met inline `inviteEm`-spans
+  // voor namen.
+  inviteTitle: {
     fontFamily: fontFamily.body,
     fontSize: 14,
     lineHeight: 19,
   },
   inviteEm: { fontFamily: fontFamily.bold },
+  // Zelfde label-stijl als de tags op EventListRow: gevuld pill,
+  // geen border, mono-uppercase tekst.
+  invitePill: {
+    alignSelf: 'flex-start',
+    height: 24,
+    paddingHorizontal: 10,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 6,
+  },
+  invitePillText: {
+    fontFamily: fontFamily.mono,
+    fontSize: 9,
+    letterSpacing: 0.9,
+    textTransform: 'uppercase',
+  },
 
   twin: { flexDirection: 'row', gap: 8 },
   twinBtn: {
