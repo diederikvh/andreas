@@ -300,6 +300,20 @@ venuesRoute.get('/:slug', async (c) => {
       const occ = occRange.byEvent.get(id);
       if (!event || !occ) return null;
       const headFriends = occ.next ? friendsByOcc.get(occ.next.id) : undefined;
+      // occurrencesInRange = alle occurrences-bij-deze-venue voor dit
+      // event (occRange is al gescoped). UI gebruikt occ[0].id om
+      // `?o=…` mee te geven bij een rij-tap zodat event-detail de
+      // eerstvolgende voorstelling AT THIS VENUE selecteert — anders
+      // valt 't terug op de globale next, die voor een multi-venue film
+      // bij een ander venue kan zitten (zoals Theater de Omval i.p.v. Eye).
+      const occurrencesInRange = occ.all.map((o) => {
+        const f = friendsByOcc.get(o.id);
+        return {
+          ...o,
+          friendsSaved: f?.friends ?? [],
+          friendsSavedCount: f?.count ?? 0,
+        };
+      });
       return {
         ...event,
         startsAt: occ.next?.startsAt ?? null,
@@ -309,6 +323,7 @@ venuesRoute.get('/:slug', async (c) => {
         ticketUrl: occ.next?.ticketUrl ?? null,
         occurrenceCount: occ.count,
         nextOccurrenceVenue: occ.next?.venue ?? null,
+        occurrencesInRange,
         friendsSaved: headFriends?.friends ?? [],
         friendsSavedCount: headFriends?.count ?? 0,
         series: seriesMap.get(event.id) ?? [],

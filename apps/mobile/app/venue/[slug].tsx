@@ -803,7 +803,19 @@ function ProgramRow({
       featured={event.featured}
       tick={CATEGORY_TICK[event.category]}
       dateAbove
-      onPress={() => router.push(`/event/${event.id}?source=venue`)}
+      onPress={() => {
+        // Eerstvolgende occurrence AT THIS VENUE meegeven zodat event-
+        // detail bij multi-venue films (Anora draait ook in andere
+        // bioscopen) de juiste voorstelling selecteert. Zonder `o=`
+        // valt 't terug op de globale next, die bij een ander venue
+        // kan zitten — dan zie je bij /v/eye-filmmuseum klikken op
+        // Amadeus opeens Theater de Omval's volgende vertoning.
+        const occId = event.occurrencesInRange?.[0]?.id;
+        const qs = occId
+          ? `?source=venue&o=${encodeURIComponent(occId)}`
+          : `?source=venue`;
+        router.push(`/event/${event.id}${qs}`);
+      }}
     />
   );
 }
