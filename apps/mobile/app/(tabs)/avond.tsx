@@ -605,12 +605,27 @@ export default function Avond() {
   );
   // Expo-mode "Overdag"-rail: alle single-day events vandaag die
   // helemaal in het dag-venster vallen (start < 18:00 én eindt
-  // < 20:00 dezelfde dag) — cat-agnostisch. Zo glipt een 15:00
-  // clubfeest, een matinee-concert of een middag-lezing er allemaal in.
+  // < 20:00 dezelfde dag). Cat-agnostisch maar excl. Film — films-
+  // matinees krijgen hun eigen rail (zie railFilmOverdag) zodat ze
+  // niet ook hier verschijnen (anders dubbelroken op één pagina).
   const railOverdag = useMemo(
     () =>
-      filtered.filter((r) =>
-        isDaytimeOccurrence(r.occurrence.startsAt, r.occurrence.endsAt)
+      filtered.filter(
+        (r) =>
+          r.event.category !== 'Film' &&
+          isDaytimeOccurrence(r.occurrence.startsAt, r.occurrence.endsAt)
+      ),
+    [filtered]
+  );
+  // Matinees: films met daytime-occurrence vandaag. Eye is voorlopig de
+  // enige film-scraper, dus dit zijn in praktijk Eye-screenings; zodra
+  // Kriterion/Het Ketelhuis erbij komen vult de rail vanzelf aan.
+  const railFilmOverdag = useMemo(
+    () =>
+      filtered.filter(
+        (r) =>
+          r.event.category === 'Film' &&
+          isDaytimeOccurrence(r.occurrence.startsAt, r.occurrence.endsAt)
       ),
     [filtered]
   );
@@ -1002,6 +1017,26 @@ export default function Avond() {
               onMore={() => router.push('/agenda' as never)}
             >
               {railOverdag.map((r) => (
+                <RailEventCard
+                  key={r.id}
+                  event={r.event}
+                  occurrenceId={
+                    r.occurrence.id.endsWith('::next') ? undefined : r.occurrence.id
+                  }
+                  occurrenceStartsAt={r.occurrence.startsAt}
+                  occurrenceEndsAt={r.occurrence.endsAt}
+                  occurrenceVenueName={r.occurrence.venue?.name ?? null}
+                />
+              ))}
+            </Rail>
+            <Rail
+              kicker={t('Matinees', 'Matinees')}
+              moreLabel={t('Meer →', 'More →')}
+              onMore={() =>
+                router.push({ pathname: '/agenda', params: { cat: 'Film' } })
+              }
+            >
+              {railFilmOverdag.map((r) => (
                 <RailEventCard
                   key={r.id}
                   event={r.event}
