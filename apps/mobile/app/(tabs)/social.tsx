@@ -96,17 +96,19 @@ export default function Social() {
   const { data: requests } = useFriendRequests({ enabled: authed });
   const { data: invitations } = useInvitations({ enabled: authed });
   // Toon ALLE non-revoked invitations zolang het event nog niet voorbij
-  // is (server filtert al op `endsAt > now`). Pending én going én
-  // andere statussen blijven dus zichtbaar — "wat gaan we samen doen"
-  // is óók relevant als iedereen al ja heeft gezegd. Sortering:
-  // eerstvolgende event eerst (chronologisch oplopend).
-  const invites = invitations
-    ?.slice()
-    .sort(
-      (a, b) =>
-        new Date(a.occurrence.startsAt).getTime() -
-        new Date(b.occurrence.startsAt).getTime()
+  // is (server filtert al op `endsAt > now`). Sortering: invitations
+  // die nog actie van mij vragen (incoming pending) bovenaan, daarna
+  // de rest op event-datum (eerstvolgende eerst). Zo zie je direct
+  // waar je nog op moet reageren.
+  const invites = invitations?.slice().sort((a, b) => {
+    const aAction = !a.isOutgoing && a.myStatus === 'pending' ? 0 : 1;
+    const bAction = !b.isOutgoing && b.myStatus === 'pending' ? 0 : 1;
+    if (aAction !== bAction) return aAction - bAction;
+    return (
+      new Date(a.occurrence.startsAt).getTime() -
+      new Date(b.occurrence.startsAt).getTime()
     );
+  });
   const { data: friends } = useFriends({ enabled: authed });
   const { data: groups } = useGroups({ enabled: authed });
   const { data: outgoing } = useOutgoingFriendRequests({ enabled: authed });
@@ -684,6 +686,37 @@ function MergedRow({
 
 // ─── Rij-componenten ────────────────────────────────────────────────
 
+/**
+ * Avatar met optionele accent-dot rechtsboven — voor rijen die actie
+ * van de gebruiker vragen (incoming pending invitations + binnenkomende
+ * friend-requests). De dot lift visueel boven de avatar uit door
+ * `borderColor` te matchen met de pagina-achtergrond.
+ */
+function AvatarWithDot({
+  avatarUrl,
+  name,
+  showDot,
+}: {
+  avatarUrl: string | null;
+  name: string;
+  showDot: boolean;
+}) {
+  const roles = useRoles();
+  return (
+    <View style={{ position: 'relative' }}>
+      <ProfileAvatar avatarUrl={avatarUrl} name={name} size={36} />
+      {showDot && (
+        <View
+          style={[
+            styles.actionDot,
+            { backgroundColor: roles.accent, borderColor: roles.bg },
+          ]}
+        />
+      )}
+    </View>
+  );
+}
+
 function SectionHead({
   label,
   action,
@@ -730,7 +763,11 @@ function RequestRow({
   const roles = useRoles();
   return (
     <View style={[styles.row, { borderColor: roles.bgChip }]}>
-      <ProfileAvatar avatarUrl={request.avatarUrl} name={request.name} size={36} />
+      <AvatarWithDot
+        avatarUrl={request.avatarUrl}
+        name={request.name}
+        showDot
+      />
       <View style={styles.rowBody}>
         <Text numberOfLines={1} style={[styles.rowName, { color: roles.fg }]}>
           {request.name}
@@ -833,7 +870,11 @@ function InviteRow({ invite }: { invite: ApiInvitation }) {
       }
       style={[styles.row, { borderColor: roles.bgChip, alignItems: 'flex-start' }]}
     >
-      <ProfileAvatar avatarUrl={invite.from.avatarUrl} name={invite.from.name} size={36} />
+      <AvatarWithDot
+        avatarUrl={invite.from.avatarUrl}
+        name={invite.from.name}
+        showDot={!invite.isOutgoing && invite.myStatus === 'pending'}
+      />
       <View style={styles.rowBody}>
         <Text
           numberOfLines={1}
@@ -1287,6 +1328,17 @@ const styles = StyleSheet.create({
     height: 36,
     position: 'relative',
     justifyContent: 'center',
+  },
+  // Notification-dot rechtsboven op de avatar voor rijen die actie van
+  // mij vragen (incoming pending invitation / friend-request).
+  actionDot: {
+    position: 'absolute',
+    top: -2,
+    right: -2,
+    width: 12,
+    height: 12,
+    borderRadius: 999,
+    borderWidth: 2,
   },
   groupStackTile: {
     position: 'absolute',
