@@ -5,7 +5,6 @@ import { satoriFonts } from './fonts.js';
 import {
   SLIDE_HEIGHT,
   SLIDE_WIDTH,
-  coverSlide,
   eventSlide,
   outroSlide,
   type EventSlideInput,
@@ -46,36 +45,17 @@ async function renderSlide(tree: unknown): Promise<Buffer> {
 
 export async function renderCarousel(
   picks: CarouselPick[],
-  options: { date?: Date; slot?: 'morning' | 'evening' } = {}
+  _options: { date?: Date; slot?: 'morning' | 'evening' } = {}
 ): Promise<Buffer[]> {
-  const date = options.date ?? new Date();
   if (picks.length === 0) {
     throw new Error('renderCarousel: minstens 1 pick vereist');
   }
 
-  const tagline =
-    options.slot === 'evening'
-      ? `${picks.length} tips voor vanavond`
-      : `${picks.length} tips voor vandaag`;
-
   const slides: Buffer[] = [];
 
-  // Cover — hero-foto van de LAATSTE pick zodat slide 1 → slide 2 ook
-  // visueel wisselt; anders zou de eerste swipe dezelfde foto twee keer
-  // tonen wat statisch oogt.
-  const coverHero = picks[picks.length - 1]?.imageUrl ?? null;
-  slides.push(
-    await renderSlide(
-      coverSlide({
-        date,
-        pickCount: picks.length,
-        heroImageUrl: coverHero,
-        tagline,
-      })
-    )
-  );
-
-  // Event-slides
+  // Direct met de eerste tip beginnen — geen cover-slide. Snelle herken-
+  // baarheid in de IG-feed (eerste slide = direct concreet event), en
+  // de tip-counter (1/4, 2/4 …) staat op de slide zelf.
   for (let i = 0; i < picks.length; i++) {
     const pick = picks[i];
     const input: EventSlideInput = {

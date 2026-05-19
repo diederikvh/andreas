@@ -14,20 +14,20 @@
 const ANTHROPIC_VERSION = '2023-06-01';
 const MODEL = 'claude-haiku-4-5';
 
-const SYSTEM_PROMPT = `Je schrijft Nederlandse IG-captions voor Andreas — een Amsterdam-uitgaansapp. Twee posts per dag (ochtend + avond). De carrousel toont drie picks; jouw caption maakt concreet wat er speelt en tagt de venues.
+const SYSTEM_PROMPT = `Je schrijft Nederlandse IG-captions voor Andreas — een Amsterdam-uitgaansapp. De carrousel toont picks voor de aankomende week (4 tips, verspreid over verschillende dagen); jouw caption maakt concreet wat er speelt, vermeldt per pick de dag, en tagt de venues.
 
 Toon: terloops en feitelijk. Korte zinnen of fragmenten. Geen brochure, geen tagline, geen sfeerpoëzie ("voor wie thuis wou blijven", "een avond waar je iets doet"). Vertel wát er is, niet hoe 't voelt.
 
 Structuur:
-- Eén pick krijgt een korte concrete vermelding (titel of wat 't is) en de venue als @-mention.
-- De andere venues mét handle worden compact erbij genoemd. Vorm: "Daarna ook @x en @y." of "Of @x en @y." Nieuwe regel mag.
+- Eén pick krijgt een korte concrete vermelding (titel of wat 't is) + dag + venue als @-mention.
+- De andere venues mét handle worden compact erbij genoemd, telkens met de dag erbij. Vorm: "Verder @x (donderdag) en @y (zaterdag)." Nieuwe regel mag.
 - Venues zonder handle laat je weg in de mentions-rij, maar mag je wel in de hoofdzin gebruiken als ze de focus zijn.
 
 Strikte regels:
 - Maximaal 3 korte regels in de hoofdtekst.
-- Tag ALLE picks die een IG-handle hebben (staat tussen haken als "@handle" in de input). Eén pick uitgebreid, rest compact.
-- Geen kapstok-openingszin die de hele dag samenvat ("Drie zalen die…", "Vanavond in Amsterdam:")
-- Het woord "drie" niet gebruiken — laat de carrousel het volume tonen.
+- Tag ALLE picks die een IG-handle hebben (staat tussen haken als "@handle" in de input). Eén pick uitgebreid, rest compact — en altijd met de dag erbij zodat lezers ook later in de week weten wanneer.
+- Geen kapstok-openingszin die "vanavond" of "vandaag" suggereert — de picks staan op verschillende dagen.
+- Het exacte aantal picks niet noemen ("vier", "drie") — laat de carrousel het volume tonen.
 - Geen vragen, geen uitroeptekens, geen verkooppraat ("vergeet niet", "mis dit niet").
 - Geen vage sfeerwoorden ("leuk", "lekker", "fijn", "mooi") — wees concreet.
 - Hashtags op laatste regel: lowercase, exact 2-3 stuks, altijd #andreas en #amsterdam.
@@ -35,19 +35,20 @@ Strikte regels:
 Voorbeelden (fictief, alleen voor stem en structuur):
 
 ---
-Bazart in @paradisoadam, Belgische rock.
-Ook @ot301 en @artietamicitiae open vanavond.
+Bazart bij @paradisoadam, vrijdag — Belgische rock.
+Verder @melkweg (dinsdag), @ot301 (donderdag), @sissisamsterdam (zaterdag).
 #andreas #amsterdam
 ---
-Iron Maiden in @melkweg, niet de band — een film.
-Daarna @ot301 en @sissisamsterdam.
+Iron Maiden in @melkweg, zondag — niet de band, een film.
+Daarna @ot301 (woensdag) en @sissisamsterdam (vrijdag).
 #andreas #amsterdam
 ---
-Geometrisch Abstract bij @artietamicitiae, expo tot zes.
-Vanavond verder @paradisoadam en @ot301.
+Geometrisch Abstract bij @artietamicitiae, expo tot zes — woensdag tip.
+Verder @paradisoadam (vr) en @ot301 (za).
 #andreas #amsterdam #kunst
 ---
-@theatermascini speelt Hoogeboom. Daarna @splendor en @denieuweanita.
+@theatermascini speelt Hoogeboom op donderdag.
+Daarna @splendor (vr) en @denieuweanita (zo).
 #andreas #amsterdam #theater
 ---`;
 
@@ -76,19 +77,14 @@ interface CaptionResult {
 /** Korte fallback-caption als de API niet beschikbaar is. Genereert
     een minimaal-bruikbare tekst zodat de admin-UI niet leeg blijft. */
 function fallbackCaption(input: CaptionInput): string {
-  const fmt = new Intl.DateTimeFormat('nl-NL', {
-    timeZone: 'Europe/Amsterdam',
-    weekday: 'long',
-  });
-  const day = fmt.format(input.date);
   return [
-    `Vanavond — ${input.picks.length} picks voor ${day}.`,
+    'Komende week in Amsterdam.',
     input.picks
-      .slice(0, 2)
-      .map((p) => `${p.venueName}.`)
+      .slice(0, 3)
+      .map((p) => `${p.venueName} (${formatWeekdayInAmsterdam(p.startsAt)}).`)
       .join(' '),
     '',
-    '#andreas #amsterdam #vanavond',
+    '#andreas #amsterdam',
   ].join('\n');
 }
 
@@ -97,6 +93,16 @@ function formatTimeInAmsterdam(d: Date): string {
     timeZone: 'Europe/Amsterdam',
     hour: '2-digit',
     minute: '2-digit',
+  }).format(d);
+}
+
+/** "vrijdag" — locale-aware lange dagnaam in Amsterdam tz, voor in de
+    prompt en de fallback-caption zodat Claude (en wij) per pick weten
+    op welke dag 't valt. */
+function formatWeekdayInAmsterdam(d: Date): string {
+  return new Intl.DateTimeFormat('nl-NL', {
+    timeZone: 'Europe/Amsterdam',
+    weekday: 'long',
   }).format(d);
 }
 
@@ -124,7 +130,8 @@ function formatPickForPrompt(p: CaptionPickInput): string {
     : p.venueName;
   const fullDay = isFullDay(p.startsAt, p.endsAt ?? null);
   const timeLabel = fullDay ? 'hele dag' : formatTimeInAmsterdam(p.startsAt);
-  return `- ${p.title} — ${venueLabel}, ${timeLabel}${typeStr}`;
+  const weekday = formatWeekdayInAmsterdam(p.startsAt);
+  return `- ${p.title} — ${venueLabel}, ${weekday} ${timeLabel}${typeStr}`;
 }
 
 export async function generateCaption(
@@ -135,7 +142,7 @@ export async function generateCaption(
     return { caption: fallbackCaption(input), source: 'fallback' };
   }
 
-  const dateLine = new Intl.DateTimeFormat('nl-NL', {
+  const publishDate = new Intl.DateTimeFormat('nl-NL', {
     timeZone: 'Europe/Amsterdam',
     weekday: 'long',
     day: 'numeric',
@@ -143,8 +150,8 @@ export async function generateCaption(
   }).format(input.date);
 
   const userMessage = [
-    `Datum: ${dateLine}`,
-    'Picks:',
+    `Publicatiedag: ${publishDate}.`,
+    'Picks (verspreid over de aankomende week — vermeld per pick de dag):',
     ...input.picks.map(formatPickForPrompt),
     '',
     'Schrijf één caption volgens het format. Alleen de caption, geen toelichting.',

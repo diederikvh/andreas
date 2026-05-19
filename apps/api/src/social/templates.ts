@@ -355,42 +355,68 @@ export function eventSlide(input: EventSlideInput): VNode {
           gap: 24,
         },
       },
-      // Time row
+      // Datum links, tijd rechts op één regel. Datum vertelt de lezer
+      // welke dag, tijd staat als sterke acid-marker rechts.
       el(
         'div',
         {
           style: {
             display: 'flex',
             flexDirection: 'row',
-            gap: 18,
+            justifyContent: 'space-between',
             alignItems: 'baseline',
+            width: '100%',
           },
         },
         el(
           'div',
           {
             style: {
-              fontSize: 64,
+              fontSize: 56,
               fontWeight: 900,
               color: ACID,
-              letterSpacing: -2,
+              letterSpacing: -1,
+              textTransform: 'uppercase',
             },
           },
-          time
+          formatDateNl(input.startsAt)
         ),
-        duration
-          ? el(
-              'div',
-              {
-                style: {
-                  fontSize: 44,
-                  fontWeight: 500,
-                  color: INK,
-                },
+        el(
+          'div',
+          {
+            style: {
+              display: 'flex',
+              flexDirection: 'row',
+              gap: 14,
+              alignItems: 'baseline',
+            },
+          },
+          el(
+            'div',
+            {
+              style: {
+                fontSize: 56,
+                fontWeight: 900,
+                color: ACID,
+                letterSpacing: -1,
               },
-              duration
-            )
-          : null
+            },
+            time
+          ),
+          duration
+            ? el(
+                'div',
+                {
+                  style: {
+                    fontSize: 36,
+                    fontWeight: 500,
+                    color: INK,
+                  },
+                },
+                duration
+              )
+            : null
+        )
       ),
       // Title
       el(

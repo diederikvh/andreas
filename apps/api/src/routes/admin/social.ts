@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { and, asc, desc, eq, gte, isNotNull, lt, lte, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, inArray, isNotNull, lt, lte, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 
 import { db, schema } from '../../db/index.js';
@@ -38,7 +38,7 @@ const DEDUP_DAYS = 14;
     nacht-content. */
 const SLOT_PUBLISH_HOUR: Record<Slot, number> = {
   morning: 9,
-  evening: 17,
+  evening: 16,
 };
 
 function shortId(): string {
@@ -50,6 +50,17 @@ const SCENE_WEIGHT: Record<string, number> = {
   underground: 1.0,
   fringe: 0.7,
 };
+
+/**
+ * Welke event-categorieën horen bij welk slot:
+ *  - morning: Theater + Kunst (rustige, overdag-geprogrammeerde
+ *    voorstellingen en tentoonstellingen).
+ *  - evening: Muziek (concerten, clubavonden, podia — alles wat onder
+ *    de event_category 'Muziek' valt, ongeacht venue-type).
+ */
+function categoriesForSlot(slot: Slot): readonly string[] {
+  return slot === 'morning' ? ['Theater', 'Kunst'] : ['Muziek'];
+}
 
 /**
  * Bouwt een Date in Europe/Amsterdam tz vanuit Y-M-D h:m components.
@@ -93,26 +104,18 @@ function amsterdamYMD(at: Date): { year: number; month: number; day: number } {
 }
 
 /**
- * Time-window per slot:
- *  - morning: vandaag 06:00–18:00 Amsterdam (overdag-content:
- *    galleries, theater, expos).
- *  - evening: vanaf max(now, vandaag 18:00) tot morgen 06:00 Amsterdam
- *    (logical-day-boundary — clubs/podia/nacht).
+ * Time-window: aankomende 7 dagen vanaf nu. Eerder gebruikten we een
+ * dag-specifiek window per slot (vandaag-overdag / vanavond), maar de
+ * post wordt vaak gelezen op een andere dag dan de publicatiedag, dus
+ * tips over de hele week zijn waardevoller. De categorie-filter
+ * (`categoriesForSlot`) blijft de eigenlijke morning/evening-scheiding.
+ *
+ * Slot blijft de parameter voor toekomstige tweaks (bv. ochtend toch
+ * korter window dan avond), nu nog gelijkbehandeling.
  */
-function computeWindow(slot: Slot, now: Date): { start: Date; end: Date } {
-  const { year, month, day } = amsterdamYMD(now);
-  if (slot === 'morning') {
-    const start = inAmsterdamTz(year, month, day, 6, 0);
-    const end = inAmsterdamTz(year, month, day, 18, 0);
-    return { start: start < now ? now : start, end };
-  }
-  // evening: vanavond-window
-  const tonightStart = inAmsterdamTz(year, month, day, 18, 0);
-  const tomorrowMorning = new Date(inAmsterdamTz(year, month, day, 6, 0).getTime() + 24 * 60 * 60 * 1000);
-  return {
-    start: tonightStart < now ? now : tonightStart,
-    end: tomorrowMorning,
-  };
+function computeWindow(_slot: Slot, now: Date): { start: Date; end: Date } {
+  const end = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+  return { start: now, end };
 }
 
 interface Candidate {
@@ -255,7 +258,11 @@ async function selectPicksForSlot(
         isNotNull(schema.events.imageUrl),
         eq(schema.occurrences.status, 'scheduled'),
         gte(schema.occurrences.startsAt, window.start),
-        lt(schema.occurrences.startsAt, window.end)
+        lt(schema.occurrences.startsAt, window.end),
+        inArray(
+          schema.events.category,
+          categoriesForSlot(slot) as ('Muziek' | 'Theater' | 'Kunst')[]
+        )
       )
     )
     .orderBy(schema.occurrences.startsAt)) as Candidate[];
@@ -286,7 +293,7 @@ adminSocial.get('/picks', async (c) => {
     return c.json({ error: 'invalid slot' }, 400);
   }
   const slot = slotParam as Slot;
-  const limit = Math.max(1, Math.min(10, Number(c.req.query('limit') ?? '3')));
+  const limit = Math.max(1, Math.min(10, Number(c.req.query('limit') ?? '4')));
   const debug = c.req.query('debug') === '1';
   const skipIds = parseSkipParam(c.req.query('skip'));
 
@@ -443,7 +450,7 @@ adminSocial.get('/preview', async (c) => {
   const skipIds = parseSkipParam(c.req.query('skip'));
   const now = new Date();
   const { picks, window } = await selectPicksForSlot(slot, {
-    limit: 3,
+    limit: 4,
     skipIds,
     now,
   });
@@ -479,14 +486,11 @@ adminSocial.get('/preview', async (c) => {
 
   const imgTags = slides
     .map((buf, i) => {
-      // slide 0 = cover, slide N-1 = outro; tussenliggende = picks[i-1]
-      const pickIdx = i - 1;
-      const pick = pickIdx >= 0 && pickIdx < picks.length ? picks[pickIdx] : null;
+      // Geen cover meer: slide 0..N-1 = picks, laatste = outro.
+      const pick = i < picks.length ? picks[i] : null;
       const caption = pick
         ? `<a href="?slot=${slot}&skip=${encodeURIComponent([...skipIds, pick.eventId].join(','))}" style="color:#5a4e3f;text-decoration:none">${pick.eventId}<br/><span style="color:#a89c84">skip →</span></a>`
-        : i === 0
-          ? 'cover'
-          : 'outro';
+        : 'outro';
       return `<figure style="margin:0"><img src="data:image/png;base64,${buf.toString('base64')}" style="width:360px;height:auto;display:block;border-radius:12px;box-shadow:0 8px 28px rgba(0,0,0,0.18)"/><figcaption style="margin-top:8px;font:13px/1.3 ui-monospace,Menlo,monospace;color:#5a4e3f">${caption}</figcaption></figure>`;
     })
     .join('');
@@ -574,7 +578,7 @@ export async function runGenerate(
   const warnings: string[] = [];
   const now = new Date();
   const { picks } = await selectPicksForSlot(slot, {
-    limit: 3,
+    limit: 4,
     skipIds: options.skipIds ?? new Set(),
     now,
   });
