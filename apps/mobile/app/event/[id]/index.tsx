@@ -58,6 +58,7 @@ import { safeBack } from '@/lib/navigation';
 import {
   useEvent,
   useInvitations,
+  useMe,
   useMySaves,
   useRespondInvitation,
   useToggleSave,
@@ -492,6 +493,11 @@ type CrewRow = {
   /** Voor groepsleden zonder directe vriendschap met mij: naam van de
       groep waarlangs ik visibility heb ("Vrijdagclub"). */
   viaGroupName?: string | null;
+  /** Klikt-op-rij navigeert naar /invitation/[id] in plaats van /friend
+      — voor mijn eigen-rij zodat je je eigen invite-context kan inzien. */
+  linkInvitationId?: string;
+  /** True voor de "Jij"-rij; CrewRowItem rendert (jij)-suffix. */
+  isMe?: boolean;
 };
 
 /**
@@ -689,6 +695,8 @@ function CrewAndInvite({
   const roles = useRoles();
   const isNacht = mode === 'nacht';
   const t = useT();
+  const { data: me } = useMe();
+  const { data: invitations } = useInvitations();
 
   const rows = useMemo<CrewRow[]>(() => {
     // Crew is occurrence-specific: alleen vrienden die díe voorstelling
@@ -770,6 +778,34 @@ function CrewAndInvite({
         });
       }
     }
+    // Mezelf-rij: wanneer ik 'going' ben op een invitation voor deze
+    // occurrence, verschijn ik óók in de crew met de eigen avatar en een
+    // (jij)-suffix. Tap op de rij gaat naar /invitation/[id] zodat je
+    // alle responses kunt bekijken. Pakt de eerste matching invitation
+    // — meerdere zijn zelden tegelijk relevant.
+    if (me?.id && selectedOccurrence && invitations) {
+      const myGoing = invitations.find(
+        (inv) =>
+          !inv.revokedAt &&
+          inv.occurrence.id === selectedOccurrence.id &&
+          inv.myStatus === 'going'
+      );
+      if (myGoing) {
+        map.set(me.id, {
+          user: {
+            id: me.id,
+            name: me.name || '',
+            handle: me.handle ?? null,
+            avatarUrl: me.avatarUrl ?? null,
+          },
+          saved: true,
+          inviteStatus: 'going',
+          linkInvitationId: myGoing.id,
+          isMe: true,
+          viaGroupName: myGoing.group?.name ?? null,
+        });
+      }
+    }
     // Sort: going > saved-only > maybe > pending > not_going. Alfabetisch
     // binnen elke groep.
     const order = (r: CrewRow): number => {
@@ -788,6 +824,8 @@ function CrewAndInvite({
     event.myInvites,
     event.incomingAcceptedInvites,
     event.peopleGoing,
+    me,
+    invitations,
   ]);
 
   const hasCrew = rows.length > 0;
@@ -856,11 +894,21 @@ function CrewRowItem({
 }) {
   const mode = useMode();
   const roles = useRoles();
+  const t = useT();
   const isNacht = mode === 'nacht';
   const subtle = !row.saved && row.inviteStatus === 'not_going';
+  const onRowPress = () => {
+    // Eigen rij heeft een directe link naar /invitation/[id]; anderen
+    // gaan naar friend-detail.
+    if (row.linkInvitationId) {
+      router.push(`/invitation/${row.linkInvitationId}` as never);
+    } else {
+      router.push(`/friend/${row.user.id}` as never);
+    }
+  };
   return (
     <Pressable
-      onPress={() => router.push(`/friend/${row.user.id}` as never)}
+      onPress={onRowPress}
       style={[
         styles.crewRow,
         !first && {
@@ -895,6 +943,7 @@ function CrewRowItem({
           style={[styles.crewName, { color: roles.fg }]}
         >
           {row.user.name}
+          {row.isMe ? t(' (jij)', ' (you)') : ''}
         </Text>
         {row.viaGroupName ? (
           <Text

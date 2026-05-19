@@ -142,7 +142,14 @@ export default function Social() {
   const topInset = insets.top + HEADER_HEIGHT + SUB_TAB_HEIGHT;
   const bottomInset = insets.bottom + 96;
 
-  const inboxCount = (requests?.length ?? 0) + (invites?.length ?? 0);
+  // Badge telt openstaande acties: friend-requests die ik moet beslissen
+  // + invitations waar mijn response nog pending is. Eigen verstuurde
+  // invites + invites waarop ik al heb gereageerd tellen niet — die
+  // vragen geen actie van mij.
+  const pendingForMe =
+    invitations?.filter((inv) => !inv.isOutgoing && inv.myStatus === 'pending')
+      .length ?? 0;
+  const inboxCount = (requests?.length ?? 0) + pendingForMe;
 
   return (
     <View style={[styles.root, { backgroundColor: roles.bg }]}>

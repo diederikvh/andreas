@@ -1,9 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -11,6 +12,7 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  TouchableOpacity,
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -74,6 +76,25 @@ export default function InvitationDetail() {
 
   const [reply, setReply] = useState('');
 
+  // Bij keyboard-show: scroll de hele content naar het einde zodat de
+  // respondWrap (reply-veld + Ga/Misschien/Nee-knoppen) boven het
+  // keyboard komt te staan. Eenvoudiger dan measureInWindow-rekenwerk
+  // en werkt prima omdat de respondWrap onderaan de scrollview staat.
+  const scrollRef = useRef<ScrollView>(null);
+  useEffect(() => {
+    const evtName =
+      Platform.OS === 'ios' ? 'keyboardDidShow' : 'keyboardDidShow';
+    const sub = Keyboard.addListener(evtName, () => {
+      // Kleine vertraging zodat de KeyboardAvoidingView eerst z'n
+      // padding kan zetten — anders scrollen we naar een nog-te-korte
+      // contentSize.
+      setTimeout(() => {
+        scrollRef.current?.scrollToEnd({ animated: true });
+      }, 50);
+    });
+    return () => sub.remove();
+  }, []);
+
   if (!invitation) {
     return (
       <View
@@ -120,6 +141,13 @@ export default function InvitationDetail() {
 
   const onRespond = (status: 'going' | 'maybe' | 'not_going') => {
     if (respond.isPending) return;
+    // Haptic + visuele bevestiging direct bij tap. Voor 'going' een
+    // success-feel, voor de andere twee een lichte selection-tick.
+    if (status === 'going') {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } else {
+      Haptics.selectionAsync();
+    }
     respond.mutate({
       id: invitation.id,
       status,
@@ -127,6 +155,7 @@ export default function InvitationDetail() {
       eventId: invitation.event.id,
     });
     setReply('');
+    Keyboard.dismiss();
   };
 
   const onRemind = (userId: string) => {
@@ -205,6 +234,7 @@ export default function InvitationDetail() {
       </View>
 
       <ScrollView
+        ref={scrollRef}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="interactive"
         contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}
@@ -325,9 +355,10 @@ export default function InvitationDetail() {
               />
             </View>
             <View style={styles.respondBtnRow}>
-              <Pressable
+              <TouchableOpacity
                 onPress={() => onRespond('going')}
                 disabled={respond.isPending}
+                activeOpacity={0.65}
                 style={[
                   styles.respondBtn,
                   { backgroundColor: roles.accent },
@@ -338,10 +369,11 @@ export default function InvitationDetail() {
                 >
                   {t('Ga mee', 'Going')}
                 </Text>
-              </Pressable>
-              <Pressable
+              </TouchableOpacity>
+              <TouchableOpacity
                 onPress={() => onRespond('maybe')}
                 disabled={respond.isPending}
+                activeOpacity={0.65}
                 style={[
                   styles.respondBtn,
                   {
@@ -352,10 +384,11 @@ export default function InvitationDetail() {
                 <Text style={[styles.respondBtnText, { color: roles.fg }]}>
                   {t('Misschien', 'Maybe')}
                 </Text>
-              </Pressable>
-              <Pressable
+              </TouchableOpacity>
+              <TouchableOpacity
                 onPress={() => onRespond('not_going')}
                 disabled={respond.isPending}
+                activeOpacity={0.65}
                 style={[
                   styles.respondBtn,
                   {
@@ -368,7 +401,7 @@ export default function InvitationDetail() {
                 >
                   {t('Nee', 'No')}
                 </Text>
-              </Pressable>
+              </TouchableOpacity>
             </View>
           </View>
         )}
