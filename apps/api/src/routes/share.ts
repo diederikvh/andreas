@@ -146,10 +146,32 @@ shareRoute.get('/e/:id', async (c) => {
   }
 
   // Occurrences: alle toekomstige (gecapt op 50) + de meest recente uit
-  // het verleden als fallback voor afgelopen events.
+  // het verleden als fallback voor afgelopen events. Left-join venues op
+  // de occurrence-venue-kolom zodat we per voorstelling het juiste venue
+  // tonen — relevant voor multi-venue films (Anora bij Eye én Kriterion).
+  // Coalesce naar event-venue als de occurrence geen eigen venue heeft.
   const upcomingOccs = await db
-    .select()
+    .select({
+      id: schema.occurrences.id,
+      eventId: schema.occurrences.eventId,
+      startsAt: schema.occurrences.startsAt,
+      endsAt: schema.occurrences.endsAt,
+      priceCents: schema.occurrences.priceCents,
+      priceNote: schema.occurrences.priceNote,
+      ticketUrl: schema.occurrences.ticketUrl,
+      room: schema.occurrences.room,
+      lineup: schema.occurrences.lineup,
+      status: schema.occurrences.status,
+      venueId: schema.occurrences.venueId,
+      createdAt: schema.occurrences.createdAt,
+      occVenueName: schema.venues.name,
+      occVenueSlug: schema.venues.slug,
+    })
     .from(schema.occurrences)
+    .leftJoin(
+      schema.venues,
+      eq(schema.venues.id, schema.occurrences.venueId)
+    )
     .where(
       and(
         eq(schema.occurrences.eventId, row.id),
@@ -163,8 +185,27 @@ shareRoute.get('/e/:id', async (c) => {
   let primaryOcc = upcomingOccs[0];
   if (!primaryOcc) {
     const [past] = await db
-      .select()
+      .select({
+        id: schema.occurrences.id,
+        eventId: schema.occurrences.eventId,
+        startsAt: schema.occurrences.startsAt,
+        endsAt: schema.occurrences.endsAt,
+        priceCents: schema.occurrences.priceCents,
+        priceNote: schema.occurrences.priceNote,
+        ticketUrl: schema.occurrences.ticketUrl,
+        room: schema.occurrences.room,
+        lineup: schema.occurrences.lineup,
+        status: schema.occurrences.status,
+        venueId: schema.occurrences.venueId,
+        createdAt: schema.occurrences.createdAt,
+        occVenueName: schema.venues.name,
+        occVenueSlug: schema.venues.slug,
+      })
       .from(schema.occurrences)
+      .leftJoin(
+        schema.venues,
+        eq(schema.venues.id, schema.occurrences.venueId)
+      )
       .where(
         and(
           eq(schema.occurrences.eventId, row.id),
@@ -439,7 +480,13 @@ type ApiVenueType =
   | 'boekhandel-cafe'
   | null;
 
-type OccRow = typeof schema.occurrences.$inferSelect;
+type OccRow = typeof schema.occurrences.$inferSelect & {
+  /** Venue van de occurrence (afwijkend van event.venue bij multi-venue
+      films). Null als occurrence.venueId leeg is — caller valt terug op
+      event.venue. */
+  occVenueName?: string | null;
+  occVenueSlug?: string | null;
+};
 
 type RelatedEvent = {
   eventId: string;
@@ -791,21 +838,47 @@ function renderEventSeoPage(opts: {
     : '';
 
   // Komende voorstellingen lijst — alleen tonen bij events met meerdere.
-  const occListHtml = !isExhibition && upcomingOccs.length > 1
-    ? `
+  // Voor multi-venue films (Anora bij Eye én Kriterion) groeperen we
+  // per venue zodat de lijst niet door elkaar staat met bioscoopnamen
+  // op elke regel. Voor single-venue events (concerts/theater) krijg je
+  // één groep zonder kop — visueel gelijk aan vóór.
+  let occListHtml = '';
+  if (!isExhibition && upcomingOccs.length > 1) {
+    type Group = { venueName: string; venueSlug: string | null; rows: typeof upcomingOccs };
+    const byVenue = new Map<string, Group>();
+    for (const o of upcomingOccs) {
+      const venueName = o.occVenueName ?? event.venue.name;
+      const venueSlug = o.occVenueSlug ?? event.venue.slug;
+      const key = venueSlug ?? venueName;
+      let g = byVenue.get(key);
+      if (!g) {
+        g = { venueName, venueSlug, rows: [] };
+        byVenue.set(key, g);
+      }
+      g.rows.push(o);
+    }
+    const groups = [...byVenue.values()];
+    const multiVenue = groups.length > 1;
+    occListHtml = `
       <h2>Komende voorstellingen</h2>
-      <ul class="occurrences">
-        ${upcomingOccs
-          .map(
-            (o) => `<li>
+      ${groups
+        .map((g) => {
+          const heading = multiVenue
+            ? `<h3 class="occ-venue"><a href="/v/${escapeHtml(g.venueSlug ?? '')}">${escapeHtml(g.venueName)}</a> (${g.rows.length})</h3>`
+            : '';
+          const rows = g.rows
+            .map(
+              (o) => `<li>
           <span class="when">${escapeHtml(formatShort(o.startsAt))}</span>
-          <span class="what">${o.room ? escapeHtml(o.room) : escapeHtml(event.venue.name)}${o.priceCents != null ? ` · ${escapeHtml(formatPrice(o.priceCents))}` : ''}${o.status === 'sold_out' ? ' · <em>uitverkocht</em>' : ''}</span>
+          <span class="what">${o.room ? escapeHtml(o.room) : escapeHtml(g.venueName)}${o.priceCents != null ? ` · ${escapeHtml(formatPrice(o.priceCents))}` : ''}${o.status === 'sold_out' ? ' · <em>uitverkocht</em>' : ''}</span>
         </li>`
-          )
-          .join('\n        ')}
-      </ul>
-    `
-    : '';
+            )
+            .join('\n        ');
+          return `${heading}<ul class="occurrences">\n        ${rows}\n      </ul>`;
+        })
+        .join('\n      ')}
+    `;
+  }
 
   // Series-pills.
   const seriesHtml = series.length > 0

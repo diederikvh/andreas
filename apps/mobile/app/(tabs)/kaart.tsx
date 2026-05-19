@@ -195,14 +195,26 @@ export default function Kaart() {
       const byVenue = new Map<string, Bucket>();
       const occs = e.occurrencesInRange ?? [];
       for (const o of occs) {
-        const v = o.venue ?? {
-          id: e.venue.id,
-          slug: e.venue.slug,
-          name: e.venue.name,
-          lat: e.venue.lat,
-          lng: e.venue.lng,
-          type: e.venue.type ?? null,
-        };
+        // Fallback op event.venue als de occurrence-venue ontbreekt
+        // (legacy/cached responses voor 2026-05-19's deploy) OF als
+        // ze coords mist (oudere cache schreef alleen id/slug/name).
+        // Zonder finite lat/lng crasht MLRN's PointAnnotation op
+        // asDouble().
+        const occVenue = o.venue;
+        const useOcc =
+          occVenue &&
+          Number.isFinite(occVenue.lat) &&
+          Number.isFinite(occVenue.lng);
+        const v = useOcc
+          ? occVenue
+          : {
+              id: e.venue.id,
+              slug: e.venue.slug,
+              name: e.venue.name,
+              lat: e.venue.lat,
+              lng: e.venue.lng,
+              type: e.venue.type ?? null,
+            };
         const existing = byVenue.get(v.id);
         // Eerstvolgende occurrence per venue houden — sortering komt al
         // uit de backend (asc) maar we kunnen niet aannemen, dus expliciet.
@@ -235,6 +247,17 @@ export default function Kaart() {
       }
 
       for (const bucket of byVenue.values()) {
+        // Defensive: alleen pins met finite lat/lng renderen — MapLibre's
+        // PointAnnotation crashed op asDouble() als er een null/NaN
+        // doorglipt (gebeurde bij occurrence-venues die door een join-
+        // edge case zonder coords kwamen). Stille drop is hier veiliger
+        // dan een hele-kaart-crash.
+        if (
+          !Number.isFinite(bucket.venue.lat) ||
+          !Number.isFinite(bucket.venue.lng)
+        ) {
+          continue;
+        }
         // Per-pin filters: type (op de pin-venue, niet event.venue),
         // time-block (op deze occurrence) en text-search (incl. venue-
         // naam van deze pin).
