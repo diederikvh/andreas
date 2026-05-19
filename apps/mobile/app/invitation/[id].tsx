@@ -4,6 +4,8 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useMemo, useState } from 'react';
 import {
   Alert,
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -167,7 +169,13 @@ export default function InvitationDetail() {
   };
 
   return (
-    <View style={[styles.root, { backgroundColor: roles.bg }]}>
+    <KeyboardAvoidingView
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      style={[styles.root, { backgroundColor: roles.bg }]}
+      // iOS heeft een kleine status-bar offset nodig zodat de header
+      // niet onder de notch schuift wanneer het keyboard opent.
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+    >
       <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
         <BackButton onPress={() => safeBack()} />
         <Text
@@ -197,6 +205,8 @@ export default function InvitationDetail() {
       </View>
 
       <ScrollView
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="interactive"
         contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}
       >
         {/* Hele event-rij klikbaar — `onPress` prop van EventListRow
@@ -363,7 +373,7 @@ export default function InvitationDetail() {
           </View>
         )}
       </ScrollView>
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 

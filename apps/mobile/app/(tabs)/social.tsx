@@ -94,16 +94,18 @@ export default function Social() {
 
   const { data: requests } = useFriendRequests({ enabled: authed });
   const { data: invitations } = useInvitations({ enabled: authed });
-  // De Vrienden-sub toont incoming uitnodigingen waarop ik nog moet
-  // reageren én mijn eigen verstuurde uitnodigingen zolang er nog
-  // pending responses van anderen open staan. De InviteRow toont het
-  // verschil in label ("X nodigt jou uit" vs "Jij hebt X uitgenodigd").
-  const invites = invitations?.filter((inv) => {
-    if (!inv.isOutgoing) return inv.myStatus === 'pending';
-    return inv.responses.some(
-      (r) => r.user.id !== inv.from.id && r.status === 'pending'
+  // Toon ALLE non-revoked invitations zolang het event nog niet voorbij
+  // is (server filtert al op `endsAt > now`). Pending én going én
+  // andere statussen blijven dus zichtbaar — "wat gaan we samen doen"
+  // is óók relevant als iedereen al ja heeft gezegd. Sortering:
+  // eerstvolgende event eerst (chronologisch oplopend).
+  const invites = invitations
+    ?.slice()
+    .sort(
+      (a, b) =>
+        new Date(a.occurrence.startsAt).getTime() -
+        new Date(b.occurrence.startsAt).getTime()
     );
-  });
   const { data: friends } = useFriends({ enabled: authed });
   const { data: groups } = useGroups({ enabled: authed });
   const { data: outgoing } = useOutgoingFriendRequests({ enabled: authed });
@@ -124,6 +126,7 @@ export default function Social() {
         qc.invalidateQueries({ queryKey: ['friend-requests'] }),
         qc.invalidateQueries({ queryKey: ['invitations'] }),
         qc.invalidateQueries({ queryKey: ['friends'] }),
+        qc.invalidateQueries({ queryKey: ['groups'] }),
         qc.invalidateQueries({ queryKey: ['outgoing-friend-requests'] }),
         qc.invalidateQueries({ queryKey: ['saves'] }),
         qc.invalidateQueries({ queryKey: ['social-feed'] }),
@@ -660,16 +663,28 @@ function InviteRow({ invite }: { invite: ApiInvitation }) {
   const pendingCount = others.filter((r) => r.status === 'pending').length;
   const isGroup = Boolean(invite.group);
 
-  // Drie tekst-stukken voor de pill, met tone:
-  //   outgoing + pending → "Wacht op N" (primair — vraagt actie/druk)
-  //   incoming group + (going|maybe) → "3 gaan, 1 misschien" (neutraal info)
+  // Pill-prioriteit:
+  //   iedereen-going → "Iedereen gaat (N)" (primair — feel-good)
+  //   outgoing + pending → "Wacht op N" (primair — vraagt actie)
+  //   incoming group + counts → "3 gaan · 1 misschien" (neutraal info)
   //   anders → geen pill
+  const totalGoing = invite.responses.filter(
+    (r) => r.status === 'going'
+  ).length;
+  const totalCount = invite.responses.length;
+  const everyoneGoing = totalCount > 1 && totalGoing === totalCount;
   let pillText: string | null = null;
   let pillPrimary = false;
-  if (invite.isOutgoing && pendingCount > 0) {
+  if (everyoneGoing) {
+    pillText = t(
+      `Iedereen gaat (${totalGoing})`,
+      `Everyone going (${totalGoing})`
+    );
+    pillPrimary = true;
+  } else if (invite.isOutgoing && pendingCount > 0) {
     pillText = t(`Wacht op ${pendingCount}`, `Awaiting ${pendingCount}`);
     pillPrimary = true;
-  } else if (!invite.isOutgoing && isGroup && (goingCount > 0 || maybeCount > 0)) {
+  } else if (isGroup && (goingCount > 0 || maybeCount > 0)) {
     const parts: string[] = [];
     if (goingCount > 0) parts.push(t(`${goingCount} gaan`, `${goingCount} going`));
     if (maybeCount > 0)

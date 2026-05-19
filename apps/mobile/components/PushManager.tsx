@@ -72,6 +72,7 @@ export function PushManager() {
     const invalidate = () => {
       qc.invalidateQueries({ queryKey: ['friend-requests'] });
       qc.invalidateQueries({ queryKey: ['invitations'] });
+      qc.invalidateQueries({ queryKey: ['groups'] });
     };
     const pushSub = Notifications.addNotificationReceivedListener(invalidate);
     const appSub = AppState.addEventListener('change', (next) => {
