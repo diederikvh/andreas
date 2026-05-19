@@ -27,9 +27,10 @@ import { randomBytes } from 'node:crypto';
 import { and, eq } from 'drizzle-orm';
 
 import { db, schema } from '../db/index.js';
-import { fetchFilmPoster } from './_film-poster.js';
+import { uploadToBunny } from '../storage/bunny.js';
 
 const AGENDA_URL = 'https://www.kriterion.nl/agenda/';
+const FILMS_API = 'https://www.kriterion.nl/api/films?populate=still&pagination%5Blimit%5D=200';
 const VENUE_ID = 'kriterion';
 const UA = 'AndreasBot/1.0 (+https://andreas.amsterdam)';
 
@@ -61,7 +62,14 @@ export async function scrapeKriterion(): Promise<KriterionResult[]> {
     errors: [],
   };
 
-  const html = await fetchText(AGENDA_URL);
+  // Twee bronnen: agenda (screenings = JSON-LD met data/tijd/show-id),
+  // films-API (Strapi met titel/regie/jaar/still). Stills komen van een
+  // private GCS-bucket via tijdelijk-signed URLs (15 min) — we
+  // downloaden ze en pushen naar Bunny CDN voor persistent gebruik.
+  const [html, posters] = await Promise.all([
+    fetchText(AGENDA_URL),
+    loadPostersByTitle(),
+  ]);
   if (!html) {
     result.errors.push('agenda fetch failed');
     return [result];
@@ -107,11 +115,15 @@ export async function scrapeKriterion(): Promise<KriterionResult[]> {
       let eventId: string;
       if (existing) {
         eventId = existing.id;
-        // Bestaand event zonder poster? Probeer 'm te verrijken via
-        // Wikipedia. Doen we one-shot per scrape; lukt 't niet, dan
-        // null houden en volgende run opnieuw proberen.
-        if (!existing.imageUrl) {
-          const poster = await fetchFilmPoster(title);
+        // Kriterion's stills zijn cinematic en breed (16:9) — mooier
+        // voor card-rendering dan Wikipedia's poster-thumbnails (1:1.5).
+        // Overschrijf null OF wikipedia/wikimedia URLs; laat Eye- en
+        // andere venue-stills met rust (die hebben hun eigen redactie).
+        if (
+          !existing.imageUrl ||
+          /wiki(p|m)edia\.org/.test(existing.imageUrl)
+        ) {
+          const poster = await resolveAndUploadPoster(title, posters);
           if (poster) {
             await db
               .update(schema.events)
@@ -123,9 +135,10 @@ export async function scrapeKriterion(): Promise<KriterionResult[]> {
         eventId = `film-${slugify(title)}-${randomBytes(3).toString('hex')}`;
         // Kriterion's description is een sjabloon ("Filmvoorstelling van
         // X in Filmtheater Kriterion Amsterdam") — niet bruikbaar als
-        // event-omschrijving. Poster via Wikipedia (de meeste films
-        // hebben er een). Lukt dat niet, null en volgende run opnieuw.
-        const poster = await fetchFilmPoster(title);
+        // event-omschrijving. Poster komt van Kriterion's eigen film-
+        // API (Strapi still-field) — als 't lukt, anders null en
+        // volgende run opnieuw.
+        const poster = await resolveAndUploadPoster(title, posters);
         await db.insert(schema.events).values({
           id: eventId,
           venueId: VENUE_ID,
@@ -254,4 +267,94 @@ function slugify(s: string): string {
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-|-$/g, '')
     .slice(0, 60);
+}
+
+/** Normaliseer titels voor matching: lowercase, strip suffix-haakjes
+    ("(ENG subs)", "(4k Restoration)"), strip " | Festival-X" en strip
+    diacritics. Zo matched "The President's Cake (ENG subs)" met
+    Strapi's "The President's Cake". */
+function normalizeForMatch(s: string): string {
+  return s
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .split(/\s*\|\s*/)[0]
+    .replace(/\s*\([^)]*\)\s*/g, ' ')
+    .replace(/[^a-z0-9 ]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+interface StrapiFilm {
+  id: number;
+  attributes: {
+    titel?: string;
+    still?: {
+      data?: {
+        attributes?: {
+          formats?: {
+            large?: { url: string };
+            medium?: { url: string };
+            small?: { url: string };
+          };
+        };
+      };
+    };
+  };
+}
+
+/** Haal alle Kriterion-films op uit hun Strapi-API en return een map
+    van genormaliseerde titel → signed-still-URL. */
+async function loadPostersByTitle(): Promise<Map<string, string>> {
+  const map = new Map<string, string>();
+  try {
+    const r = await fetch(FILMS_API, { headers: { 'User-Agent': UA } });
+    if (!r.ok) return map;
+    const json = (await r.json()) as { data?: StrapiFilm[] };
+    for (const f of json.data ?? []) {
+      const title = f.attributes.titel?.trim();
+      const formats = f.attributes.still?.data?.attributes?.formats;
+      // Voorkeur voor large → medium → small (eerst beste kwaliteit
+      // proberen). Kriterion's signed URLs zijn 15 min geldig — moeten
+      // we direct downloaden + naar Bunny pushen.
+      const url =
+        formats?.large?.url ?? formats?.medium?.url ?? formats?.small?.url;
+      if (title && url) {
+        map.set(normalizeForMatch(title), url);
+      }
+    }
+  } catch {
+    /* gracefully skip — geen posters dan */
+  }
+  return map;
+}
+
+/** Match een agenda-titel met Kriterion's film-DB, download de still
+    via de signed GCS URL en upload naar Bunny voor persistente toegang.
+    Returnt de publieke Bunny-URL, of null als 't niet lukt. */
+async function resolveAndUploadPoster(
+  title: string,
+  posters: Map<string, string>
+): Promise<string | null> {
+  const key = normalizeForMatch(title);
+  if (!key) return null;
+  let signedUrl = posters.get(key);
+  // Fallback: zoek partial match (Strapi's "Joe Speedboot" vs agenda's
+  // "Joe Speedboot (ENG subs)" → na normaliseren beide "joe speedboot",
+  // dus exact-match werkt al. Voor festival-titels "X | Festival Y"
+  // matchen we 'X' tegen Strapi's 'X'). Hier zou extra fuzzy matching
+  // kunnen — voor nu houden we 't exact zodat we niet de verkeerde film
+  // koppelen.
+  if (!signedUrl) return null;
+  try {
+    const r = await fetch(signedUrl, { headers: { 'User-Agent': UA } });
+    if (!r.ok) return null;
+    const buf = await r.arrayBuffer();
+    // Bunny-path: kriterion/film-posters/<slug>.jpg. Idempotent (Bunny
+    // overwrite is een PUT) — re-uploaden geeft dezelfde URL.
+    const path = `kriterion/film-posters/${slugify(title)}.jpg`;
+    return await uploadToBunny(path, buf, 'image/jpeg');
+  } catch {
+    return null;
+  }
 }
