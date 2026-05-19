@@ -252,7 +252,7 @@ export default function InviteModal() {
             time={rowTimeLabel(resolvedOccurrence.startsAt, resolvedOccurrence.endsAt, locale)}
             thumb={eventImageUrl(event) ?? ''}
             title={event.title}
-            venue={event.venue.name}
+            venue={resolvedOccurrence.venue?.name ?? event.venue.name}
             tags={[
               {
                 label: translateCategory(event.category, locale),

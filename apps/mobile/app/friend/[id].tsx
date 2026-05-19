@@ -887,7 +887,7 @@ function FriendSavedRow({ event }: { event: ApiEvent }) {
       time={rowTimeLabel(event.startsAt, event.endsAt, locale)}
       thumb={eventImageUrl(event) ?? ''}
       title={event.title}
-      venue={event.venue.name}
+      venue={event.nextOccurrenceVenue?.name ?? event.venue.name}
       tags={[
         {
           label: translateCategory(event.category, locale),

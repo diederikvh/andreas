@@ -210,6 +210,7 @@ seriesRoute.get('/:slug', async (c) => {
       priceNote: occ.next?.priceNote ?? null,
       ticketUrl: occ.next?.ticketUrl ?? null,
       occurrenceCount: occ.count,
+      nextOccurrenceVenue: occ.next?.venue ?? null,
       friendsSaved: headFriends?.friends ?? [],
       friendsSavedCount: headFriends?.count ?? 0,
       venueFollowed: followedVenueIds.has(row.venue.id),

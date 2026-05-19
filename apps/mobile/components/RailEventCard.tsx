@@ -31,6 +31,7 @@ export function RailEventCard({
   occurrenceId,
   occurrenceStartsAt,
   occurrenceEndsAt,
+  occurrenceVenueName,
   wide = false,
   showDate = false,
 }: {
@@ -42,6 +43,10 @@ export function RailEventCard({
       díe occurrence ipv de event-level startsAt. */
   occurrenceStartsAt?: string;
   occurrenceEndsAt?: string | null;
+  /** Voor films met meerdere bioscopen: venue van de getoonde occurrence.
+      Bij `null`/`undefined` valt 't terug op `event.venue.name` (= eerste
+      bioscoop die de film scrapete; voor concerts/theater altijd correct). */
+  occurrenceVenueName?: string | null;
   /** Vol-breed renderen i.p.v. de standaard 220px. Rail injecteert dit
       automatisch wanneer er één item in de rail zit. */
   wide?: boolean;
@@ -125,7 +130,7 @@ export function RailEventCard({
             numberOfLines={1}
             style={[styles.cardVenue, { color: roles.fgMuted }]}
           >
-            {event.venue.name}
+            {occurrenceVenueName ?? event.venue.name}
           </Text>
         </View>
       </View>

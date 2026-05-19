@@ -410,7 +410,6 @@ export default function EventDetail() {
             <OccurrenceList
               occurrences={event.occurrences}
               selectedId={selectedOccurrence?.id ?? null}
-              eventVenueId={event.venue.id}
               onSelect={(occId) => {
                 Haptics.selectionAsync();
                 router.setParams({ o: occId });
@@ -1202,26 +1201,45 @@ function OccurrenceList({
   occurrences,
   selectedId,
   onSelect,
-  eventVenueId,
 }: {
   occurrences: ApiOccurrence[];
   selectedId: string | null;
   onSelect: (occurrenceId: string) => void;
-  /** Voor films: occurrences kunnen een ander venue hebben dan het
-      event-niveau venue. We tonen de venue-naam alleen als 'ie afwijkt
-      (anders is 't ruis — het venue staat al in de hero). */
-  eventVenueId: string;
 }) {
   const roles = useRoles();
   const t = useT();
   const locale = useLocale();
+  // Groepeer op venue-naam. Alleen relevant voor films met meerdere
+  // bioscopen — bij single-venue events krijg je één groep en functioneert
+  // 't als de oude "Alle voorstellingen"-lijst, met de venue-naam als
+  // kop i.p.v. een generiek label.
+  const groupedByVenue = (() => {
+    const map = new Map<string, ApiOccurrence[]>();
+    for (const o of occurrences) {
+      const key = o.venue?.name ?? t('Alle voorstellingen', 'All performances');
+      const arr = map.get(key);
+      if (arr) arr.push(o);
+      else map.set(key, [o]);
+    }
+    return [...map.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([venueName, list]) => ({
+        venueName,
+        list: list.sort(
+          (a, b) =>
+            new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime()
+        ),
+      }));
+  })();
   return (
     <>
-      <Text style={[styles.crewHeading, { color: roles.fg }]}>
-        {t('Alle voorstellingen', 'All performances')} ({occurrences.length})
-      </Text>
-      <View style={[styles.occList, { borderColor: roles.bgChip }]}>
-        {occurrences.map((o) => {
+      {groupedByVenue.map(({ venueName, list }) => (
+        <View key={venueName}>
+          <Text style={[styles.crewHeading, { color: roles.fg }]}>
+            {venueName} ({list.length})
+          </Text>
+          <View style={[styles.occList, { borderColor: roles.bgChip }]}>
+            {list.map((o) => {
           const d = new Date(o.startsAt);
           const dow = dowMixed(d.getDay(), locale);
           const day = d.getDate();
@@ -1261,9 +1279,6 @@ function OccurrenceList({
                 <Text style={[styles.occTime, { color: roles.fgMuted }]}>
                   {time}
                   {o.room ? ` · ${o.room}` : ''}
-                  {o.venue && o.venue.id !== eventVenueId
-                    ? ` · ${o.venue.name}`
-                    : ''}
                 </Text>
                 <Text style={[styles.occPrice, { color: roles.fgMuted }]}>
                   {o.status === 'sold_out'
@@ -1283,8 +1298,10 @@ function OccurrenceList({
               )}
             </Pressable>
           );
-        })}
-      </View>
+            })}
+          </View>
+        </View>
+      ))}
     </>
   );
 }
@@ -1346,7 +1363,11 @@ function toViewModel(
     date: `${dow} ${day} ${month} ${year}`,
     time: formatTimeRange(sourceStart, sourceEnd, locale),
     allDay: isAllDayRange(sourceStart, sourceEnd),
-    venue: event.venue.name,
+    // Voor films die in meerdere bioscopen draaien: toon de venue van
+    // de geselecteerde occurrence i.p.v. het event-level venue. Voor
+    // single-venue events (concerts/theater) is occ.venue gelijk aan
+    // event.venue zodat dit niets verandert.
+    venue: occ?.venue?.name ?? event.venue.name,
     description: event.description,
     photo: eventImageUrl(event),
     price: formatPrice(sourcePriceCents, locale),

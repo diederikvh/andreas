@@ -1,4 +1,4 @@
-import { and, asc, desc, eq } from 'drizzle-orm';
+import { and, asc, desc, eq, sql } from 'drizzle-orm';
 import { Hono, type Context } from 'hono';
 
 import { auth } from '../auth.js';
@@ -64,7 +64,16 @@ savesRoute.get('/', async (c) => {
       eq(schema.saves.occurrenceId, schema.occurrences.id)
     )
     .innerJoin(schema.events, eq(schema.occurrences.eventId, schema.events.id))
-    .innerJoin(schema.venues, eq(schema.events.venueId, schema.venues.id))
+    // Voor films met multi-venue: join op de occurrence-venue, niet de
+    // event-venue. Coalesce naar event-venue als de occurrence geen eigen
+    // venueId heeft (legacy rows + niet-film events).
+    .innerJoin(
+      schema.venues,
+      eq(
+        schema.venues.id,
+        sql`COALESCE(${schema.occurrences.venueId}, ${schema.events.venueId})`
+      )
+    )
     .where(
       and(
         eq(schema.saves.userId, userId),

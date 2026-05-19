@@ -235,8 +235,15 @@ venuesRoute.get('/:slug', async (c) => {
 
   if (!venue) return c.json({ error: 'venue not found' }, 404);
 
+  // Events die hier spelen = events met ten minste één occurrence waar
+  // de effectieve venue (occurrence.venueId óf, als die NULL is,
+  // event.venueId) gelijk is aan deze venue. Voor films-met-multi-venue
+  // (event.venueId blijft "eerste scraper", maar occurrences kunnen
+  // overal draaien) is dit de enige correcte filter. Voor concerts/
+  // theater valt occurrence.venueId samen met event.venueId, dus zelfde
+  // resultaat als de oude query.
   const eventRows = await db
-    .select({
+    .selectDistinct({
       id: schema.events.id,
       title: schema.events.title,
       description: schema.events.description,
@@ -247,15 +254,22 @@ venuesRoute.get('/:slug', async (c) => {
       genres: schema.events.genres,
     })
     .from(schema.events)
+    .innerJoin(
+      schema.occurrences,
+      eq(schema.occurrences.eventId, schema.events.id)
+    )
     .where(
       and(
-        eq(schema.events.venueId, venue.id),
+        sql`COALESCE(${schema.occurrences.venueId}, ${schema.events.venueId}) = ${venue.id}`,
         eq(schema.events.published, true)
       )
     );
 
+  // Scope occurrences op deze venue zodat Anora's Kriterion-rij níet
+  // op /v/eye-filmmuseum verschijnt — alleen de Eye-screenings tellen.
   const occRange = await findEventsWithOccurrencesInRange({
     eventIds: eventRows.map((e) => e.id),
+    venueId: venue.id,
   });
 
   // myFollowState: alleen als ingelogd. Default voor anonieme requests
@@ -294,6 +308,7 @@ venuesRoute.get('/:slug', async (c) => {
         priceNote: occ.next?.priceNote ?? null,
         ticketUrl: occ.next?.ticketUrl ?? null,
         occurrenceCount: occ.count,
+        nextOccurrenceVenue: occ.next?.venue ?? null,
         friendsSaved: headFriends?.friends ?? [],
         friendsSavedCount: headFriends?.count ?? 0,
         series: seriesMap.get(event.id) ?? [],
@@ -330,7 +345,10 @@ venuesRoute.get('/:slug', async (c) => {
     )
     .where(
       and(
-        eq(schema.events.venueId, venue.id),
+        // Zelfde effectieve-venue-logica als hierboven: een serie hoort
+        // bij deze venue als 't event hier speelt op event- óf
+        // occurrence-niveau (films-multi-venue).
+        sql`COALESCE(${schema.occurrences.venueId}, ${schema.events.venueId}) = ${venue.id}`,
         eq(schema.events.published, true),
         eq(schema.series.published, true),
         gte(schema.occurrences.startsAt, now),

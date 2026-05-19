@@ -198,6 +198,7 @@ eventsRoute.get('/', async (c) => {
       priceNote: occ.next?.priceNote ?? null,
       ticketUrl: occ.next?.ticketUrl ?? null,
       occurrenceCount: occ.count,
+      nextOccurrenceVenue: occ.next?.venue ?? null,
       // Volledige lijst occurrences in de gevraagde range — Agenda en
       // Avond gebruiken dit om per moment één rij te tonen ipv één per
       // event. Een 3-daags festival verschijnt zo op alle 3 dagen.
@@ -417,6 +418,7 @@ eventsRoute.get('/for-you', async (c) => {
       priceNote: headOcc?.priceNote ?? null,
       ticketUrl: headOcc?.ticketUrl ?? null,
       occurrenceCount: occurrencesInRange.length,
+      nextOccurrenceVenue: headOcc?.venue ?? null,
       occurrencesInRange,
       friendsSaved: headFriends?.friends ?? [],
       friendsSavedCount: headFriends?.count ?? 0,
@@ -732,6 +734,7 @@ eventsRoute.get('/:id', async (c) => {
       priceNote: occ?.next?.priceNote ?? null,
       ticketUrl: occ?.next?.ticketUrl ?? null,
       occurrenceCount: occ?.count ?? 0,
+      nextOccurrenceVenue: occ?.next?.venue ?? null,
       occurrences: occurrencesWithFriends,
       friendsSaved: headFriends?.friends ?? [],
       friendsSavedCount: headFriends?.count ?? 0,

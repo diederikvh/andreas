@@ -247,7 +247,7 @@ function ProgramRow({ event }: { event: ApiEvent }) {
       duration={`${dow} ${num} ${month}`}
       thumb={eventImageUrl(event) ?? ''}
       title={event.title}
-      venue={event.venue.name}
+      venue={event.nextOccurrenceVenue?.name ?? event.venue.name}
       tags={[
         {
           label: translateCategory(event.category, locale),

@@ -87,7 +87,7 @@ function formatMetaForRow(row: OccurrenceRow, locale: Locale): string {
   return [
     dow,
     rowTimeLabel(row.occurrence.startsAt, row.occurrence.endsAt, locale),
-    row.event.venue.name.toUpperCase(),
+    (row.occurrence.venue?.name ?? row.event.venue.name).toUpperCase(),
     price,
   ]
     .filter(Boolean)
@@ -843,6 +843,7 @@ export default function Avond() {
                 }
                 occurrenceStartsAt={r.occurrence.startsAt}
                 occurrenceEndsAt={r.occurrence.endsAt}
+                occurrenceVenueName={r.occurrence.venue?.name ?? null}
                 showDate
               />
             ))}
@@ -904,6 +905,7 @@ export default function Avond() {
                   }
                   occurrenceStartsAt={r.occurrence.startsAt}
                   occurrenceEndsAt={r.occurrence.endsAt}
+                  occurrenceVenueName={r.occurrence.venue?.name ?? null}
                 />
               ))}
             </Rail>
@@ -923,6 +925,7 @@ export default function Avond() {
                   }
                   occurrenceStartsAt={r.occurrence.startsAt}
                   occurrenceEndsAt={r.occurrence.endsAt}
+                  occurrenceVenueName={r.occurrence.venue?.name ?? null}
                 />
               ))}
             </Rail>
@@ -942,6 +945,7 @@ export default function Avond() {
                   }
                   occurrenceStartsAt={r.occurrence.startsAt}
                   occurrenceEndsAt={r.occurrence.endsAt}
+                  occurrenceVenueName={r.occurrence.venue?.name ?? null}
                 />
               ))}
             </Rail>
@@ -961,6 +965,7 @@ export default function Avond() {
                   }
                   occurrenceStartsAt={r.occurrence.startsAt}
                   occurrenceEndsAt={r.occurrence.endsAt}
+                  occurrenceVenueName={r.occurrence.venue?.name ?? null}
                 />
               ))}
             </Rail>
@@ -986,6 +991,7 @@ export default function Avond() {
                     }
                     occurrenceStartsAt={r.occurrence.startsAt}
                     occurrenceEndsAt={r.occurrence.endsAt}
+                    occurrenceVenueName={r.occurrence.venue?.name ?? null}
                   />
                 ))}
               </Rail>
@@ -1004,6 +1010,7 @@ export default function Avond() {
                   }
                   occurrenceStartsAt={r.occurrence.startsAt}
                   occurrenceEndsAt={r.occurrence.endsAt}
+                  occurrenceVenueName={r.occurrence.venue?.name ?? null}
                 />
               ))}
             </Rail>
@@ -1023,6 +1030,7 @@ export default function Avond() {
                   }
                   occurrenceStartsAt={r.occurrence.startsAt}
                   occurrenceEndsAt={r.occurrence.endsAt}
+                  occurrenceVenueName={r.occurrence.venue?.name ?? null}
                 />
               ))}
             </Rail>

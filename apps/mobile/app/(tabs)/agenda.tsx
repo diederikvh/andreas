@@ -1544,7 +1544,7 @@ function AgendaRow({
       time={rowTimeLabel(occurrence.startsAt, occurrence.endsAt, locale)}
       thumb={eventImageUrl(event) ?? ''}
       title={event.title}
-      venue={event.venue.name}
+      venue={occurrence.venue?.name ?? event.venue.name}
       venueTone={venueTone}
       tags={[
         {

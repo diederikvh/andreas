@@ -69,6 +69,7 @@ type StackEvent = {
   occurrenceId: string;
   startsAt: string;
   endsAt: string | null;
+  venueName: string;
 };
 
 type SwipeCardHandle = {
@@ -148,6 +149,7 @@ export default function OpGevoel() {
         occurrenceId: occ.id,
         startsAt: occ.startsAt,
         endsAt: occ.endsAt,
+        venueName: occ.venue?.name ?? e.venue.name,
       });
     }
     // Filter op session-seen. Als alles al gezien is binnen de
@@ -523,7 +525,7 @@ const SwipeCard = forwardRef<
               {item.event.title}
             </Text>
             <Text style={styles.cardVenue} numberOfLines={1}>
-              {item.event.venue.name}
+              {item.venueName}
             </Text>
           </View>
         </View>
@@ -704,7 +706,7 @@ function RecapRow({ item, locale }: { item: StackEvent; locale: Locale }) {
       time={rowTimeLabel(item.startsAt, item.endsAt, locale)}
       thumb={eventImageUrl(item.event) ?? ''}
       title={item.event.title}
-      venue={item.event.venue.name}
+      venue={item.venueName}
       venueTone={venueTone}
       tags={[
         {

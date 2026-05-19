@@ -407,7 +407,16 @@ export async function buildOccurrencesByEvent(
  * + de occurrence-data per event.
  */
 export async function findEventsWithOccurrencesInRange(
-  options: { from?: Date; to?: Date; eventIds?: string[] }
+  options: {
+    from?: Date;
+    to?: Date;
+    eventIds?: string[];
+    /** Scope alleen occurrences waar de effectieve venue (occurrence-
+        venueId óf, als die NULL is, event-venueId) deze venue-id is.
+        Gebruikt door /venues/:slug zodat we voor Eye alleen de
+        Eye-screenings van Anora tonen, niet Anora's Kriterion-rij. */
+    venueId?: string;
+  }
 ): Promise<{
   eventIds: string[];
   byEvent: Map<string, EventOccurrenceData>;
@@ -426,6 +435,11 @@ export async function findEventsWithOccurrencesInRange(
   if (to) conditions.push(lte(schema.occurrences.startsAt, to));
   if (options.eventIds && options.eventIds.length > 0) {
     conditions.push(inArray(schema.occurrences.eventId, options.eventIds));
+  }
+  if (options.venueId) {
+    conditions.push(
+      sql`COALESCE(${schema.occurrences.venueId}, ${schema.events.venueId}) = ${options.venueId}`
+    );
   }
 
   const rows = await db
@@ -482,6 +496,13 @@ export function denormalizeEvent<T extends { id: string }>(
   priceNote: string | null;
   ticketUrl: string | null;
   occurrenceCount: number;
+  /** Venue van de eerstvolgende occurrence. Voor films met meerdere
+      bioscopen wijkt dit af van `event.venue` (event-niveau venue is
+      "wie scrapete dit het eerst", niet "waar speelt de volgende
+      voorstelling"). Mobile rendert dit i.p.v. event.venue.name in
+      lijstrijen zodat een Anora-rij die op woensdag bij Kriterion draait
+      ook Kriterion toont, niet Eye. */
+  nextOccurrenceVenue: OccurrenceVenueLite | null;
 } {
   return {
     ...event,
@@ -491,5 +512,6 @@ export function denormalizeEvent<T extends { id: string }>(
     priceNote: occ?.next?.priceNote ?? null,
     ticketUrl: occ?.next?.ticketUrl ?? null,
     occurrenceCount: occ?.count ?? 0,
+    nextOccurrenceVenue: occ?.next?.venue ?? null,
   };
 }

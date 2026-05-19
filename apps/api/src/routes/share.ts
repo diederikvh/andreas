@@ -315,7 +315,12 @@ shareRoute.get('/v/:slug', async (c) => {
     )
     .where(
       and(
-        eq(schema.events.venueId, row.id),
+        // Voor films-met-multi-venue: een Anora-event waarvan
+        // event.venueId='kriterion' maar dat ook bij Eye draait moet op
+        // /v/eye-filmmuseum verschijnen. We checken daarom de effectieve
+        // venue per occurrence (occurrence.venueId óf event.venueId als
+        // fallback voor legacy rows zonder occurrence-venueId).
+        sql`COALESCE(${schema.occurrences.venueId}, ${schema.events.venueId}) = ${row.id}`,
         eq(schema.events.published, true),
         sql`COALESCE(${schema.occurrences.endsAt}, ${schema.occurrences.startsAt} + INTERVAL '4 hours') >= NOW()`,
         sql`${schema.occurrences.status} <> 'cancelled'`

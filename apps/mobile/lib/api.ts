@@ -84,6 +84,12 @@ export type ApiEvent = {
   imageUrl: string | null;
   category: 'Muziek' | 'Theater' | 'Literatuur' | 'Film' | 'Kunst' | 'Lezing';
   featured: boolean;
+  /** Venue van de eerstvolgende occurrence. Voor films met multi-venue
+      (Anora speelt bij Eye én Kriterion) wijkt dit af van `venue` — die
+      blijft "wie scrapete dit het eerst" en is voor list-rendering vaak
+      misleidend. UI rendert in lijstrijen typisch
+      `nextOccurrenceVenue?.name ?? venue.name`. */
+  nextOccurrenceVenue?: { id: string; slug: string; name: string } | null;
   venue: {
     id: string;
     slug: string;
