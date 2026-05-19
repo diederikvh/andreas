@@ -27,6 +27,7 @@ import { randomBytes } from 'node:crypto';
 import { and, eq } from 'drizzle-orm';
 
 import { db, schema } from '../db/index.js';
+import { fetchFilmPoster } from './_film-poster.js';
 
 const AGENDA_URL = 'https://www.kriterion.nl/agenda/';
 const VENUE_ID = 'kriterion';
@@ -92,7 +93,7 @@ export async function scrapeKriterion(): Promise<KriterionResult[]> {
       // Werkt voor Eye-films die we al hebben — Kriterion hangt z'n
       // occurrences daaraan. Anders nieuw event.
       const [existing] = await db
-        .select({ id: schema.events.id })
+        .select({ id: schema.events.id, imageUrl: schema.events.imageUrl })
         .from(schema.events)
         .where(
           and(
@@ -106,19 +107,32 @@ export async function scrapeKriterion(): Promise<KriterionResult[]> {
       let eventId: string;
       if (existing) {
         eventId = existing.id;
+        // Bestaand event zonder poster? Probeer 'm te verrijken via
+        // Wikipedia. Doen we one-shot per scrape; lukt 't niet, dan
+        // null houden en volgende run opnieuw proberen.
+        if (!existing.imageUrl) {
+          const poster = await fetchFilmPoster(title);
+          if (poster) {
+            await db
+              .update(schema.events)
+              .set({ imageUrl: poster })
+              .where(eq(schema.events.id, eventId));
+          }
+        }
       } else {
         eventId = `film-${slugify(title)}-${randomBytes(3).toString('hex')}`;
         // Kriterion's description is een sjabloon ("Filmvoorstelling van
         // X in Filmtheater Kriterion Amsterdam") — niet bruikbaar als
-        // event-omschrijving. Lege description; Wikipedia-of-andere-
-        // scraper kan 'm later verrijken.
+        // event-omschrijving. Poster via Wikipedia (de meeste films
+        // hebben er een). Lukt dat niet, null en volgende run opnieuw.
+        const poster = await fetchFilmPoster(title);
         await db.insert(schema.events).values({
           id: eventId,
           venueId: VENUE_ID,
           title,
           description: null,
           kind: 'show',
-          imageUrl: null,
+          imageUrl: poster,
           category: 'Film',
         });
         result.inserted += 1;
