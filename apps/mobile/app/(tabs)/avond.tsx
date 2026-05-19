@@ -24,7 +24,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppHeader, HEADER_HEIGHT } from '@/components/AppHeader';
 import { ContentSwitchHint } from '@/components/ContentSwitchHint';
 import { Cross } from '@/components/Cross';
-import { Rail } from '@/components/Rail';
+import { Rail, useRailCardStyles } from '@/components/Rail';
 import { RailEventCard } from '@/components/RailEventCard';
 import { VenueRailCard } from '@/components/VenueRailCard';
 import { RefreshBanner } from '@/components/RefreshBanner';
@@ -1204,6 +1204,7 @@ function PlanningRailCard({
 }) {
   const roles = useRoles();
   const locale = useLocale();
+  const { surface } = useRailCardStyles();
   const e = entry.event;
   // SavedApiEvent en ApiFeedEvent hebben beide `imageUrl` + `venue.{name,imageUrl}`.
   const eventImage = (e as { imageUrl?: string | null }).imageUrl ?? null;
@@ -1239,7 +1240,7 @@ function PlanningRailCard({
       }
       style={[
         planningCardStyles.card,
-        { backgroundColor: roles.bgChip, borderColor: roles.bgChip },
+        { backgroundColor: surface.bg, borderColor: surface.border },
       ]}
     >
       {thumb ? (
@@ -1252,7 +1253,7 @@ function PlanningRailCard({
         <View
           style={[
             planningCardStyles.img,
-            { backgroundColor: roles.bgChip },
+            { backgroundColor: surface.fallback },
           ]}
         />
       )}
@@ -1286,7 +1287,7 @@ function PlanningRailCard({
                     {
                       left: i * 12,
                       zIndex: totalTiles - i,
-                      borderColor: roles.bgChip,
+                      borderColor: surface.bg,
                       backgroundColor: roles.bg,
                     },
                   ]}
@@ -1316,7 +1317,7 @@ function PlanningRailCard({
                     {
                       left: visible.length * 12,
                       zIndex: 0,
-                      borderColor: roles.bgChip,
+                      borderColor: surface.bg,
                       backgroundColor: roles.bg,
                     },
                   ]}

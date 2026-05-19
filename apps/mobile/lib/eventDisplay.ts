@@ -836,6 +836,7 @@ export function expandToOccurrenceRows(events: ApiEvent[]): OccurrenceRow[] {
               room: null,
               lineup: null,
               status: 'scheduled',
+              venue: null,
             },
           });
         }
@@ -857,6 +858,7 @@ export function expandToOccurrenceRows(events: ApiEvent[]): OccurrenceRow[] {
             room: null,
             lineup: null,
             status: 'scheduled',
+            venue: null,
           },
         });
       }

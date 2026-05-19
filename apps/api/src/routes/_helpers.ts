@@ -247,6 +247,15 @@ export type ApiOccurrenceShape = {
   room: string | null;
   lineup: LineupEntry[] | null;
   status: 'scheduled' | 'cancelled' | 'sold_out';
+  /** Venue voor deze occurrence. Voor films kan dit afwijken van het
+      event-level venue (een film draait in meerdere bioscopen).
+      Nullable voor zeldzame rijen die geen venueId hebben — caller
+      valt dan terug op event.venue. */
+  venue: {
+    id: string;
+    slug: string;
+    name: string;
+  } | null;
 };
 
 export type EventOccurrenceData = {
@@ -258,7 +267,13 @@ export type EventOccurrenceData = {
   all: ApiOccurrenceShape[];
 };
 
-function toShape(row: OccurrenceRow): ApiOccurrenceShape {
+type OccurrenceVenueLite = { id: string; slug: string; name: string };
+
+function toShape(
+  row: OccurrenceRow,
+  venueMap: Map<string, OccurrenceVenueLite> = new Map()
+): ApiOccurrenceShape {
+  const venue = row.venueId ? (venueMap.get(row.venueId) ?? null) : null;
   return {
     id: row.id,
     startsAt: row.startsAt,
@@ -269,7 +284,30 @@ function toShape(row: OccurrenceRow): ApiOccurrenceShape {
     room: row.room,
     lineup: (row.lineup as LineupEntry[] | null) ?? null,
     status: row.status,
+    venue,
   };
+}
+
+/** Batched venue-lookup voor occurrence-rijen. Returnt een map die
+    `toShape` kan invullen — vermijdt N+1 zonder de hoofdquery te
+    verstoren (occurrence-select blijft `*` zodat row-typing intact
+    blijft). */
+async function loadOccurrenceVenues(
+  rows: { venueId: string | null }[]
+): Promise<Map<string, OccurrenceVenueLite>> {
+  const ids = [
+    ...new Set(rows.map((r) => r.venueId).filter((v): v is string => Boolean(v))),
+  ];
+  if (ids.length === 0) return new Map();
+  const venuesData = await db
+    .select({
+      id: schema.venues.id,
+      slug: schema.venues.slug,
+      name: schema.venues.name,
+    })
+    .from(schema.venues)
+    .where(inArray(schema.venues.id, ids));
+  return new Map(venuesData.map((v) => [v.id, v]));
 }
 
 /**
@@ -317,13 +355,14 @@ export async function buildOccurrencesByEvent(
     .where(and(...conditions))
     .orderBy(asc(schema.occurrences.startsAt));
 
+  const venueMap = await loadOccurrenceVenues(rows);
   for (const row of rows) {
     let entry = map.get(row.eventId);
     if (!entry) {
       entry = { next: null, count: 0, all: [] };
       map.set(row.eventId, entry);
     }
-    const shape = toShape(row);
+    const shape = toShape(row, venueMap);
     entry.all.push(shape);
     if (entry.next === null) entry.next = shape;
     entry.count += 1;
@@ -345,11 +384,12 @@ export async function buildOccurrencesByEvent(
           )
         )
         .orderBy(desc(schema.occurrences.startsAt));
+      const pastVenueMap = await loadOccurrenceVenues(pastRows);
       const seen = new Set<string>();
       for (const row of pastRows) {
         if (seen.has(row.eventId)) continue;
         seen.add(row.eventId);
-        const shape = toShape(row);
+        const shape = toShape(row, pastVenueMap);
         map.set(row.eventId, { next: shape, count: 0, all: [] });
       }
     }
@@ -392,6 +432,7 @@ export async function findEventsWithOccurrencesInRange(
     .select({
       id: schema.occurrences.id,
       eventId: schema.occurrences.eventId,
+      venueId: schema.occurrences.venueId,
       startsAt: schema.occurrences.startsAt,
       endsAt: schema.occurrences.endsAt,
       priceCents: schema.occurrences.priceCents,
@@ -407,6 +448,7 @@ export async function findEventsWithOccurrencesInRange(
     .where(and(...conditions))
     .orderBy(asc(schema.occurrences.startsAt));
 
+  const venueMap = await loadOccurrenceVenues(rows);
   const byEvent = new Map<string, EventOccurrenceData>();
   const eventOrder: string[] = [];
   for (const row of rows) {
@@ -416,7 +458,7 @@ export async function findEventsWithOccurrencesInRange(
       byEvent.set(row.eventId, entry);
       eventOrder.push(row.eventId);
     }
-    const shape = toShape(row);
+    const shape = toShape(row, venueMap);
     entry.all.push(shape);
     if (entry.next === null) entry.next = shape;
     entry.count += 1;

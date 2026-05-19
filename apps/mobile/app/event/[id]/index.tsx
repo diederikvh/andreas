@@ -410,6 +410,7 @@ export default function EventDetail() {
             <OccurrenceList
               occurrences={event.occurrences}
               selectedId={selectedOccurrence?.id ?? null}
+              eventVenueId={event.venue.id}
               onSelect={(occId) => {
                 Haptics.selectionAsync();
                 router.setParams({ o: occId });
@@ -1201,10 +1202,15 @@ function OccurrenceList({
   occurrences,
   selectedId,
   onSelect,
+  eventVenueId,
 }: {
   occurrences: ApiOccurrence[];
   selectedId: string | null;
   onSelect: (occurrenceId: string) => void;
+  /** Voor films: occurrences kunnen een ander venue hebben dan het
+      event-niveau venue. We tonen de venue-naam alleen als 'ie afwijkt
+      (anders is 't ruis — het venue staat al in de hero). */
+  eventVenueId: string;
 }) {
   const roles = useRoles();
   const t = useT();
@@ -1255,6 +1261,9 @@ function OccurrenceList({
                 <Text style={[styles.occTime, { color: roles.fgMuted }]}>
                   {time}
                   {o.room ? ` · ${o.room}` : ''}
+                  {o.venue && o.venue.id !== eventVenueId
+                    ? ` · ${o.venue.name}`
+                    : ''}
                 </Text>
                 <Text style={[styles.occPrice, { color: roles.fgMuted }]}>
                   {o.status === 'sold_out'

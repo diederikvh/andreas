@@ -396,6 +396,14 @@ export const occurrences = pgTable(
     eventId: text()
       .notNull()
       .references(() => events.id, { onDelete: 'cascade' }),
+    /** Venue van dit specifieke moment. Voor concerts/theater is dit
+        gelijk aan `events.venueId` (één event = één venue). Voor films
+        die gelijktijdig in meerdere bioscopen draaien, krijgt elke
+        occurrence z'n eigen venue zodat één 'Anora'-event meerdere
+        bioscopen kan dekken zonder dat we events dubbelen. Nullable
+        voor backwards-compat; de backfill-migratie heeft alle bestaande
+        rijen al gevuld met events.venueId. */
+    venueId: text().references(() => venues.id, { onDelete: 'set null' }),
     startsAt: timestamp({ withTimezone: true }).notNull(),
     endsAt: timestamp({ withTimezone: true }),
     /** Prijs in centen. Per occurrence omdat film-matinee anders kost
@@ -424,6 +432,7 @@ export const occurrences = pgTable(
     index('occurrences_event_idx').on(t.eventId),
     index('occurrences_starts_at_idx').on(t.startsAt),
     index('occurrences_event_starts_at_idx').on(t.eventId, t.startsAt),
+    index('occurrences_venue_idx').on(t.venueId),
   ]
 );
 

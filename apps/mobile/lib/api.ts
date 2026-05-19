@@ -39,6 +39,15 @@ export type ApiOccurrence = {
       vaak leeg voor films. */
   lineup: ApiLineupEntry[] | null;
   status: OccurrenceStatus;
+  /** Venue van dit specifieke moment. Voor films kan dit afwijken van
+      `event.venue`: één 'Anora'-event heeft occurrences in verschillende
+      bioscopen. Voor concerts/theater is dit gelijk aan `event.venue`.
+      Nullable als fallback — UI valt dan terug op event-niveau venue. */
+  venue: {
+    id: string;
+    slug: string;
+    name: string;
+  } | null;
   /** Vrienden die specifiek díe occurrence hebben gesaved. Een save
       voor de woensdag-voorstelling laat alleen daar de pill zien, niet
       bij de overige occurrences van dezelfde film. Optioneel: list-
