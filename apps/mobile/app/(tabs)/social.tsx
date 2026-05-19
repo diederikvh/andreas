@@ -37,6 +37,7 @@ import type {
   ApiInvitation,
   SavedApiEvent,
 } from '@/lib/api';
+import type { BadgeTone } from '@/lib/types';
 import { useSession } from '@/lib/authClient';
 import {
   eventImageUrl,
@@ -44,9 +45,7 @@ import {
   VENUE_TYPE_TICK,
   dowMixed,
   monthShort,
-  type EventGroup,
   rowTimeLabel,
-  groupEventsByDay,
   translateCategory,
 } from '@/lib/eventDisplay';
 import { useLocale, useT } from '@/lib/i18n';
@@ -57,6 +56,7 @@ import {
   useFriends,
   useGroups,
   useInvitations,
+  useMe,
   useMySaves,
   useOutgoingFriendRequests,
   useRemoveFriend,
@@ -67,7 +67,7 @@ import { fontFamily } from '@/theme/tokens';
 
 const SUB_TAB_HEIGHT = 60;
 
-type Sub = 'vrienden' | 'feed' | 'planning';
+type Sub = 'vrienden' | 'planning';
 
 /**
  * Social-tab — bundelt alles wat met andere mensen te maken heeft:
@@ -91,6 +91,7 @@ export default function Social() {
 
   const { data: session } = useSession();
   const authed = Boolean(session?.user?.id);
+  const { data: me } = useMe();
 
   const { data: requests } = useFriendRequests({ enabled: authed });
   const { data: invitations } = useInvitations({ enabled: authed });
@@ -174,20 +175,15 @@ export default function Social() {
             busyReq={acceptReq.isPending || declineReq.isPending}
           />
         )}
-        {sub === 'feed' && (
-          <FeedPanel
-            authed={authed}
-            feed={feed}
-            isLoading={feedLoading}
-            error={feedError}
-          />
-        )}
         {sub === 'planning' && (
           <PlanningPanel
             authed={authed}
             saves={saves}
-            isLoading={savesLoading}
-            error={savesError}
+            feed={feed}
+            isLoading={savesLoading || feedLoading}
+            error={savesError ?? feedError}
+            myAvatarUrl={me?.avatarUrl ?? null}
+            myName={me?.name ?? ''}
           />
         )}
       </ScrollView>
@@ -213,7 +209,7 @@ function SubTabs({
   // Track-breedte meten zodat we de blob in pixels kunnen positioneren
   // — % laat 't 4-6px verschuiven door padding/gap-rounding.
   const [trackW, setTrackW] = useState(0);
-  const activeIndex = sub === 'vrienden' ? 0 : sub === 'feed' ? 1 : 2;
+  const activeIndex = sub === 'vrienden' ? 0 : 1;
   const progress = useSharedValue(activeIndex);
   useEffect(() => {
     progress.value = withTiming(activeIndex, {
@@ -223,7 +219,7 @@ function SubTabs({
   }, [activeIndex, progress]);
   const blobStyle = useAnimatedStyle(() => {
     const inner = Math.max(0, trackW - 6); // padding 3 aan beide kanten
-    const w = inner / 3;
+    const w = inner / 2;
     return {
       width: w,
       transform: [{ translateX: progress.value * w }],
@@ -270,11 +266,6 @@ function SubTabs({
           active={sub === 'vrienden'}
           badge={inboxCount}
           onPress={() => onChange('vrienden')}
-        />
-        <SwitchBtn
-          label={t('Feed', 'Feed')}
-          active={sub === 'feed'}
-          onPress={() => onChange('feed')}
         />
         <SwitchBtn
           label={t('Planning', 'Planning')}
@@ -456,59 +447,126 @@ function FriendsPanel({
 function PlanningPanel({
   authed,
   saves,
+  feed,
   isLoading,
   error,
+  myAvatarUrl,
+  myName,
 }: {
   authed: boolean;
   saves: SavedApiEvent[] | undefined;
+  feed: ApiFeedEvent[] | undefined;
   isLoading: boolean;
   error: unknown;
+  myAvatarUrl: string | null;
+  myName: string;
 }) {
   const roles = useRoles();
   const t = useT();
 
-  const upcoming = useMemo(() => {
-    if (!saves) return [];
-    const now = Date.now();
-    return saves.filter(
-      (s) => new Date(s.endsAt ?? s.startsAt).getTime() >= now
-    );
-  }, [saves]);
-  const past = useMemo(() => {
-    if (!saves) return [];
-    const now = Date.now();
-    return saves
-      .filter((s) => new Date(s.endsAt ?? s.startsAt).getTime() < now)
-      .sort(
-        (a, b) =>
-          new Date(b.startsAt).getTime() - new Date(a.startsAt).getTime()
-      );
-  }, [saves]);
+  // Merge: één rij per unieke occurrence. Eigen saves voegen "jij" toe
+  // aan de friend-stack; friend-feed voegt de friend-avatars toe. Beide
+  // hebben dezelfde event-data. Dedupe op occurrenceId.
+  type Merged = {
+    eventId: string;
+    occurrenceId: string;
+    event: SavedApiEvent | ApiFeedEvent;
+    startsAt: string;
+    endsAt: string | null;
+    mine: boolean;
+    friends: { name: string; avatar: string | null }[];
+  };
 
-  const upcomingDays: EventGroup[] = useMemo(
-    () => groupEventsByDay(upcoming),
-    [upcoming]
+  const merged = useMemo(() => {
+    const map = new Map<string, Merged>();
+    const myFirst = (myName.split(' ')[0] || 'Jij').trim() || 'Jij';
+
+    for (const s of saves ?? []) {
+      const key = s.occurrenceId;
+      map.set(key, {
+        eventId: s.id,
+        occurrenceId: s.occurrenceId,
+        event: s,
+        startsAt: s.startsAt,
+        endsAt: s.endsAt,
+        mine: true,
+        friends: [{ name: myFirst, avatar: myAvatarUrl }],
+      });
+    }
+    for (const f of feed ?? []) {
+      const key = f.occurrence.id;
+      const existing = map.get(key);
+      const friendBadges = f.friendsSaved.map((fr) => ({
+        name: fr.name,
+        avatar: fr.avatarUrl,
+      }));
+      if (existing) {
+        existing.friends.push(...friendBadges);
+      } else {
+        map.set(key, {
+          eventId: f.eventId,
+          occurrenceId: f.occurrence.id,
+          event: f,
+          startsAt:
+            typeof f.occurrence.startsAt === 'string'
+              ? f.occurrence.startsAt
+              : new Date(f.occurrence.startsAt as unknown as string).toISOString(),
+          endsAt:
+            f.occurrence.endsAt == null
+              ? null
+              : typeof f.occurrence.endsAt === 'string'
+                ? f.occurrence.endsAt
+                : new Date(f.occurrence.endsAt as unknown as string).toISOString(),
+          mine: false,
+          friends: friendBadges,
+        });
+      }
+    }
+    return Array.from(map.values());
+  }, [saves, feed, myAvatarUrl, myName]);
+
+  const now = Date.now();
+  const upcoming = useMemo(
+    () =>
+      merged
+        .filter((m) => new Date(m.endsAt ?? m.startsAt).getTime() >= now)
+        .sort(
+          (a, b) =>
+            new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime()
+        ),
+    // now-dependentie weglaten — re-render alleen wanneer merged wijzigt;
+    // 't event-window verschuift langzaam genoeg dat per-second updates
+    // niet nodig zijn.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [merged]
   );
-  const pastDays: EventGroup[] = useMemo(
-    () => groupEventsByDay(past).reverse(),
-    [past]
+  const past = useMemo(
+    () =>
+      merged
+        .filter((m) => new Date(m.endsAt ?? m.startsAt).getTime() < now)
+        .sort(
+          (a, b) =>
+            new Date(b.startsAt).getTime() - new Date(a.startsAt).getTime()
+        ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [merged]
   );
 
-  const noSaves =
+  const isEmpty =
     (!authed && !isLoading) ||
-    (authed && !isLoading && !error && (saves?.length ?? 0) === 0);
+    (authed && !isLoading && !error && merged.length === 0);
 
-  if (noSaves) {
+  if (isEmpty) {
     return (
       <View style={styles.emptyCenter}>
         <Ionicons name="heart-outline" size={48} color={roles.fgMuted} />
         <Text style={[styles.emptyTitle, { color: roles.fg }]}>
-          {t('Nog niks opgeslagen.', 'Nothing saved yet.')}
+          {t('Nog niks op de planning.', 'Nothing planned yet.')}
         </Text>
         <Text style={[styles.emptySub, { color: roles.fgMuted }]}>
           {t(
-            'Hier komt je planning te staan — alle feestjes, voorstellingen en tentoonstellingen waar je naartoe wil. Tik bij een event op het hartje om hem op te slaan.',
-            'This is where your plans live — all the parties, performances and exhibitions you want to go to. Tap the heart on an event to save it.'
+            'Hier komen events waar jij of je vrienden naartoe gaan. Tik bij een event op het hartje om hem op te slaan.',
+            'Events you or your friends are going to show up here. Tap the heart on an event to save it.'
           )}
         </Text>
       </View>
@@ -526,7 +584,7 @@ function PlanningPanel({
     return (
       <View style={styles.listState}>
         <Text style={[styles.listStateText, { color: '#c9453a' }]}>
-          {t('Kon je saves niet laden.', 'Couldn’t load your saves.')}
+          {t('Kon je planning niet laden.', 'Couldn’t load your planning.')}
         </Text>
       </View>
     );
@@ -534,28 +592,86 @@ function PlanningPanel({
 
   return (
     <Animated.View entering={FadeIn.duration(180)}>
-      {upcomingDays.map((day) => (
-        <View key={`up-${day.id}`}>
-          <DateAnchor group={day} />
-          {day.events.map((e) => (
-            <SavedRow key={e.id} event={e} />
-          ))}
-        </View>
+      {upcoming.map((m) => (
+        <MergedRow key={m.occurrenceId} entry={m} />
       ))}
-      {pastDays.length > 0 && (
+      {past.length > 0 && (
         <>
           <PastAnchor count={past.length} />
-          {pastDays.map((day) => (
-            <View key={`past-${day.id}`}>
-              <DateAnchor group={day} dim />
-              {day.events.map((e) => (
-                <SavedRow key={e.id} event={e} dim />
-              ))}
-            </View>
+          {past.map((m) => (
+            <MergedRow key={`past-${m.occurrenceId}`} entry={m} dim />
           ))}
         </>
       )}
     </Animated.View>
+  );
+}
+
+/**
+ * Combined-row voor de gemerge'd Planning-feed. Eigen saves + friend-
+ * saves landen in dezelfde rij; de avatar-stack toont "jij + vrienden"
+ * met label-aggregatie via EventListRow's `friends`-prop.
+ */
+function MergedRow({
+  entry,
+  dim = false,
+}: {
+  entry: {
+    eventId: string;
+    occurrenceId: string;
+    event: SavedApiEvent | ApiFeedEvent;
+    startsAt: string;
+    endsAt: string | null;
+    mine: boolean;
+    friends: { name: string; avatar: string | null }[];
+  };
+  dim?: boolean;
+}) {
+  const locale = useLocale();
+  const e = entry.event as ApiFeedEvent &
+    Partial<SavedApiEvent> & {
+      venue?: SavedApiEvent['venue'];
+    };
+  // Saves geven `venue` als object, feed geeft `venue` ook als object.
+  // Beide hebben name + type + imageUrl.
+  const venue: { name: string; type?: string | null; imageUrl?: string | null } =
+    (entry.event as SavedApiEvent).venue ?? (entry.event as ApiFeedEvent).venue;
+  const venueTone =
+    venue.type && (VENUE_TYPE_TICK as Record<string, BadgeTone>)[venue.type]
+      ? (VENUE_TYPE_TICK as Record<string, BadgeTone>)[venue.type]
+      : undefined;
+  const tone = CATEGORY_TICK[e.category];
+  const d = new Date(entry.startsAt);
+  const dow = dowMixed(d.getDay(), locale);
+  const month = monthShort(d.getMonth(), locale).toLowerCase();
+  const time = rowTimeLabel(entry.startsAt, entry.endsAt, locale);
+  const dateLabel = `${dow} ${d.getDate()} ${month} · ${time}`;
+  return (
+    <View style={dim ? { opacity: 0.5 } : undefined}>
+      <EventListRow
+        thumb={
+          eventImageUrl({
+            imageUrl: e.imageUrl ?? null,
+            venue: { imageUrl: venue.imageUrl ?? null },
+          }) ?? ''
+        }
+        title={e.title}
+        venue={venue.name}
+        venueTone={venueTone}
+        time={dateLabel}
+        dateAbove
+        tags={[
+          { label: translateCategory(e.category, locale), tone },
+        ]}
+        seriesLabel={undefined}
+        genreLabel={(e.genres ?? [])[0]}
+        friends={entry.friends.length > 0 ? entry.friends : undefined}
+        tick={tone}
+        onPress={() =>
+          router.push(`/event/${entry.eventId}?source=gered&o=${entry.occurrenceId}`)
+        }
+      />
+    </View>
   );
 }
 
@@ -978,35 +1094,6 @@ function PendingRow({ user }: { user: ApiFriendRequest }) {
   );
 }
 
-function DateAnchor({
-  group,
-  dim = false,
-}: {
-  group: EventGroup;
-  dim?: boolean;
-}) {
-  const roles = useRoles();
-  const t = useT();
-  const fg = dim ? roles.fgMuted : roles.fg;
-  const meta = dim ? roles.fgPlaceholder : roles.fgMuted;
-  return (
-    <View style={styles.anchor}>
-      <View style={styles.anchorLeft}>
-        <Text style={[styles.anchorDow, { color: fg }]}>
-          {group.dow} {group.num}
-        </Text>
-        <Text style={[styles.anchorMonth, { color: meta }]}>
-          {group.month}
-        </Text>
-      </View>
-      <Text style={[styles.anchorCount, { color: roles.fgPlaceholder }]}>
-        {group.count}{' '}
-        {group.count === 1 ? t('plan', 'plan') : t('plannen', 'plans')}
-      </Text>
-    </View>
-  );
-}
-
 function PastAnchor({ count }: { count: number }) {
   const roles = useRoles();
   const t = useT();
@@ -1019,139 +1106,6 @@ function PastAnchor({ count }: { count: number }) {
         {count} {count === 1 ? t('plan', 'plan') : t('plannen', 'plans')}
       </Text>
     </View>
-  );
-}
-
-function SavedRow({ event, dim = false }: { event: ApiEvent; dim?: boolean }) {
-  const tone = CATEGORY_TICK[event.category];
-  const locale = useLocale();
-  const friends = event.friendsSaved?.map((f) => ({
-    name: f.name,
-    avatar: f.avatarUrl,
-  }));
-  return (
-    <View style={dim ? styles.rowDim : undefined}>
-      <EventListRow
-        time={rowTimeLabel(event.startsAt, event.endsAt, locale)}
-        thumb={eventImageUrl(event) ?? ''}
-        title={event.title}
-        venue={event.venue.name}
-        tags={[{ label: translateCategory(event.category, locale), tone }]}
-        seriesLabel={event.series?.[0]?.name}
-        genreLabel={event.genres?.[0]}
-        friends={friends && friends.length > 0 ? friends : undefined}
-        tick={tone}
-        onPress={() => router.push(`/event/${event.id}?source=friend`)}
-      />
-    </View>
-  );
-}
-
-/**
- * Compacte "X geleden"-label voor de feed-rij — past in de
- * geroteerde tijd-kolom (max ~4 chars). "net" = < 5 min, "Xu" =
- * binnen 24u, "Xd" = binnen 30 dagen, "Xw" daarna.
- */
-function relativeAgo(iso: string, locale: 'nl' | 'en'): string {
-  const diffMs = Date.now() - new Date(iso).getTime();
-  if (diffMs < 5 * 60_000) return locale === 'nl' ? 'net' : 'now';
-  const minutes = Math.floor(diffMs / 60_000);
-  if (minutes < 60) return `${minutes}m`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return locale === 'nl' ? `${hours}u` : `${hours}h`;
-  const days = Math.floor(hours / 24);
-  if (days < 30) return `${days}d`;
-  const weeks = Math.floor(days / 7);
-  return locale === 'nl' ? `${weeks}w` : `${weeks}w`;
-}
-
-function FeedRow({ entry }: { entry: ApiFeedEvent }) {
-  const locale = useLocale();
-  const friends = entry.friendsSaved.map((f) => ({
-    name: f.name,
-    avatar: f.avatarUrl,
-  }));
-  const venueType = entry.venue.type;
-  const venueTone = venueType ? VENUE_TYPE_TICK[venueType] : undefined;
-  const tone = CATEGORY_TICK[entry.category];
-  return (
-    <EventListRow
-      thumb={eventImageUrl({
-        imageUrl: entry.imageUrl,
-        venue: { imageUrl: entry.venue.imageUrl ?? null },
-      }) ?? ''}
-      title={entry.title}
-      venue={entry.venue.name}
-      venueTone={venueTone}
-      time={relativeAgo(entry.lastSavedAt, locale)}
-      tags={[{ label: translateCategory(entry.category, locale), tone }]}
-      seriesLabel={undefined}
-      genreLabel={entry.genres[0]}
-      friends={friends.length > 0 ? friends : undefined}
-      tick={tone}
-      onPress={() => router.push(`/event/${entry.eventId}?source=friend`)}
-    />
-  );
-}
-
-function FeedPanel({
-  authed,
-  feed,
-  isLoading,
-  error,
-}: {
-  authed: boolean;
-  feed: ApiFeedEvent[] | undefined;
-  isLoading: boolean;
-  error: unknown;
-}) {
-  const roles = useRoles();
-  const t = useT();
-
-  const noFeed =
-    (!authed && !isLoading) ||
-    (authed && !isLoading && !error && (feed?.length ?? 0) === 0);
-
-  if (noFeed) {
-    return (
-      <View style={styles.emptyCenter}>
-        <Ionicons name="people-outline" size={48} color={roles.fgMuted} />
-        <Text style={[styles.emptyTitle, { color: roles.fg }]}>
-          {t('Nog geen activiteit.', 'No activity yet.')}
-        </Text>
-        <Text style={[styles.emptySub, { color: roles.fgMuted }]}>
-          {t(
-            'Hier zie je wat je vrienden hebben gered — geen algoritme, geen aanbevelingen, alleen de events waar zij naartoe gaan.',
-            'See what your friends are saving — no algorithm, no recommendations, just the events they’re going to.'
-          )}
-        </Text>
-      </View>
-    );
-  }
-
-  if (isLoading) {
-    return (
-      <View style={styles.loadingWrap}>
-        <SpinningCross size={28} color={roles.fgPlaceholder} />
-      </View>
-    );
-  }
-  if (error) {
-    return (
-      <View style={styles.listState}>
-        <Text style={[styles.listStateText, { color: '#c9453a' }]}>
-          {t('Kon de feed niet laden.', 'Couldn’t load the feed.')}
-        </Text>
-      </View>
-    );
-  }
-
-  return (
-    <Animated.View entering={FadeIn.duration(180)}>
-      {feed!.map((e) => (
-        <FeedRow key={e.eventId} entry={e} />
-      ))}
-    </Animated.View>
   );
 }
 
