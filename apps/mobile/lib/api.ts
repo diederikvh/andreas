@@ -42,11 +42,16 @@ export type ApiOccurrence = {
   /** Venue van dit specifieke moment. Voor films kan dit afwijken van
       `event.venue`: één 'Anora'-event heeft occurrences in verschillende
       bioscopen. Voor concerts/theater is dit gelijk aan `event.venue`.
-      Nullable als fallback — UI valt dan terug op event-niveau venue. */
+      Nullable als fallback — UI valt dan terug op event-niveau venue.
+      `lat`/`lng`/`type` worden gebruikt voor de Kaart-pin per
+      occurrence (multi-venue films krijgen een pin per bioscoop). */
   venue: {
     id: string;
     slug: string;
     name: string;
+    lat: number;
+    lng: number;
+    type: string | null;
   } | null;
   /** Vrienden die specifiek díe occurrence hebben gesaved. Een save
       voor de woensdag-voorstelling laat alleen daar de pill zien, niet
@@ -89,7 +94,14 @@ export type ApiEvent = {
       blijft "wie scrapete dit het eerst" en is voor list-rendering vaak
       misleidend. UI rendert in lijstrijen typisch
       `nextOccurrenceVenue?.name ?? venue.name`. */
-  nextOccurrenceVenue?: { id: string; slug: string; name: string } | null;
+  nextOccurrenceVenue?: {
+    id: string;
+    slug: string;
+    name: string;
+    lat: number;
+    lng: number;
+    type: string | null;
+  } | null;
   venue: {
     id: string;
     slug: string;

@@ -91,8 +91,29 @@ const AMSTERDAM_CS = { lat: 52.3791, lng: 4.9003 };
 /** Max afstand vanaf CS waarbij we de echte device-locatie nog gebruiken. */
 const AMSTERDAM_RADIUS_KM = 50;
 
+/** Pin-eenheid: één event op één locatie. Voor films met multi-venue
+    (Anora bij Eye én Kriterion) komt het zelfde event als twee
+    MapEvents terug, elk met de venue-specifieke coords. Voor single-
+    venue events (concerts/theater/exhibitions) is 't één-op-één met
+    het event. */
 type MapEvent = {
+  /** `${event.id}::${venueId}` — uniek per pin zodat activeId multi-
+      venue films correct kan onderscheiden. */
+  id: string;
   event: ApiEvent;
+  /** Resolved venue voor dit specifieke pin. Voor films de occurrence-
+      venue, anders event.venue. */
+  venue: {
+    id: string;
+    slug: string;
+    name: string;
+    lat: number;
+    lng: number;
+    type: string | null;
+  };
+  /** Tijd-label van de eerstvolgende occurrence op déze venue. */
+  startsAt: string;
+  endsAt: string | null;
   minutes: number;
 };
 
@@ -153,41 +174,103 @@ export default function Kaart() {
   const mapEvents: MapEvent[] = useMemo(() => {
     if (!events) return [];
     const needle = query.trim().toLowerCase();
-    return events
-      .filter((e) => {
-        if (e.kind === 'exhibition') return false;
-        if (activeCats.length > 0 && !activeCats.includes(e.category)) {
-          return false;
+    const result: MapEvent[] = [];
+    for (const e of events) {
+      if (e.kind === 'exhibition') continue;
+      if (activeCats.length > 0 && !activeCats.includes(e.category)) continue;
+      if (onlyFriends && (e.friendsSaved?.length ?? 0) === 0) continue;
+      if (onlyFavorites && !e.venueFollowed) continue;
+
+      // Splits over occurrence-venues: voor films met multi-venue
+      // (Anora bij Eye én Kriterion) komt 't event als meerdere pins,
+      // elk op de juiste locatie. Group eerst per venueId zodat we
+      // dezelfde-venue-occurrences niet dubbel renderen. Fallback op
+      // event.venue als de occurrences geen eigen venue hebben (legacy
+      // rows of als 't endpoint occurrencesInRange niet meegeeft).
+      type Bucket = {
+        venue: MapEvent['venue'];
+        startsAt: string;
+        endsAt: string | null;
+      };
+      const byVenue = new Map<string, Bucket>();
+      const occs = e.occurrencesInRange ?? [];
+      for (const o of occs) {
+        const v = o.venue ?? {
+          id: e.venue.id,
+          slug: e.venue.slug,
+          name: e.venue.name,
+          lat: e.venue.lat,
+          lng: e.venue.lng,
+          type: e.venue.type ?? null,
+        };
+        const existing = byVenue.get(v.id);
+        // Eerstvolgende occurrence per venue houden — sortering komt al
+        // uit de backend (asc) maar we kunnen niet aannemen, dus expliciet.
+        if (
+          !existing ||
+          new Date(o.startsAt).getTime() < new Date(existing.startsAt).getTime()
+        ) {
+          byVenue.set(v.id, {
+            venue: v,
+            startsAt: o.startsAt,
+            endsAt: o.endsAt,
+          });
         }
+      }
+      // Fallback: geen occurrences in range → één pin op event.venue
+      // met event-niveau startsAt/endsAt.
+      if (byVenue.size === 0 && e.startsAt) {
+        byVenue.set(e.venue.id, {
+          venue: {
+            id: e.venue.id,
+            slug: e.venue.slug,
+            name: e.venue.name,
+            lat: e.venue.lat,
+            lng: e.venue.lng,
+            type: e.venue.type ?? null,
+          },
+          startsAt: e.startsAt,
+          endsAt: e.endsAt,
+        });
+      }
+
+      for (const bucket of byVenue.values()) {
+        // Per-pin filters: type (op de pin-venue, niet event.venue),
+        // time-block (op deze occurrence) en text-search (incl. venue-
+        // naam van deze pin).
         if (activeTypes.length > 0) {
-          if (!e.venue.type || !activeTypes.includes(e.venue.type)) {
-            return false;
+          const vtype = bucket.venue.type as (typeof activeTypes)[number] | null;
+          if (!vtype || !activeTypes.includes(vtype)) {
+            continue;
           }
         }
         if (activeBlocks.length > 0) {
-          const block = getTimeBlock(new Date(e.startsAt).getHours());
-          if (!activeBlocks.includes(block)) return false;
+          const block = getTimeBlock(new Date(bucket.startsAt).getHours());
+          if (!activeBlocks.includes(block)) continue;
         }
-        if (onlyFriends && (e.friendsSaved?.length ?? 0) === 0) return false;
-        if (onlyFavorites && !e.venueFollowed) return false;
         if (needle.length > 0) {
           const inTitle = e.title.toLowerCase().includes(needle);
-          const inVenue = e.venue.name.toLowerCase().includes(needle);
+          const inVenue = bucket.venue.name.toLowerCase().includes(needle);
           const inGenres = (e.genres ?? []).some((g) =>
             g.toLowerCase().includes(needle)
           );
-          if (!inTitle && !inVenue && !inGenres) return false;
+          if (!inTitle && !inVenue && !inGenres) continue;
         }
-        return true;
-      })
-      .map((e) => ({
-        event: e,
-        minutes: travelMinutes(
-          centre,
-          { lat: e.venue.lat, lng: e.venue.lng },
-          transport
-        ),
-      }));
+        result.push({
+          id: `${e.id}::${bucket.venue.id}`,
+          event: e,
+          venue: bucket.venue,
+          startsAt: bucket.startsAt,
+          endsAt: bucket.endsAt,
+          minutes: travelMinutes(
+            centre,
+            { lat: bucket.venue.lat, lng: bucket.venue.lng },
+            transport
+          ),
+        });
+      }
+    }
+    return result;
   }, [
     events,
     centre,
@@ -223,7 +306,7 @@ export default function Kaart() {
   // alleen een expliciete close reset 'm.
   const hasAutoRecenteredRef = useRef(false);
 
-  const activeMapEvent = mapEvents.find((m) => m.event.id === activeId) ?? null;
+  const activeMapEvent = mapEvents.find((m) => m.id === activeId) ?? null;
 
   const recentre = useCallback(() => {
     cameraRef.current?.flyTo({
@@ -320,7 +403,7 @@ export default function Kaart() {
             In de buurt
           </Text>
           {sorted.map((m) => (
-            <SheetRow key={m.event.id} mapEvent={m} />
+            <SheetRow key={m.id} mapEvent={m} />
           ))}
         </ScrollView>
       ) : (
@@ -363,9 +446,9 @@ export default function Kaart() {
                 friendships in de DB staan. */}
             {mapEvents.map((m) => (
               <EventMarker
-                key={m.event.id}
+                key={m.id}
                 m={m}
-                isActive={activeId === m.event.id}
+                isActive={activeId === m.id}
                 onPress={selectEvent}
               />
             ))}
@@ -763,10 +846,10 @@ const EventMarker = memo(function EventMarker({
   const tone: BadgeTone = CATEGORY_TICK[m.event.category];
   return (
     <MapMarker
-      id={`evt-${m.event.id}`}
-      lngLat={[m.event.venue.lng, m.event.venue.lat]}
+      id={`evt-${m.id}`}
+      lngLat={[m.venue.lng, m.venue.lat]}
       anchor="center"
-      onPress={() => onPress(m.event.id)}
+      onPress={() => onPress(m.id)}
     >
       <View
         style={[
@@ -810,8 +893,11 @@ function SheetRow({ mapEvent }: { mapEvent: MapEvent }) {
   const roles = useRoles();
   const locale = useLocale();
   const catTone = TONE[mode][CATEGORY_TICK[mapEvent.event.category]];
-  const venueType = mapEvent.event.venue.type;
-  const venueTone = venueType ? TONE[mode][VENUE_TYPE_TICK[venueType]] : null;
+  const venueType = mapEvent.venue.type;
+  const venueTone =
+    venueType && (VENUE_TYPE_TICK as Record<string, BadgeTone>)[venueType]
+      ? TONE[mode][(VENUE_TYPE_TICK as Record<string, BadgeTone>)[venueType]]
+      : null;
   const friends = mapEvent.event.friendsSaved ?? [];
 
   return (
@@ -850,7 +936,7 @@ function SheetRow({ mapEvent }: { mapEvent: MapEvent }) {
               style={[styles.sheetTag, { backgroundColor: `${venueTone}26` }]}
             >
               <Text style={[styles.sheetTagText, { color: venueTone }]}>
-                {mapEvent.event.venue.name}
+                {mapEvent.venue.name}
               </Text>
             </View>
           ) : (
@@ -858,7 +944,7 @@ function SheetRow({ mapEvent }: { mapEvent: MapEvent }) {
               numberOfLines={1}
               style={[styles.sheetVenue, { color: roles.fgMuted }]}
             >
-              {mapEvent.event.venue.name}
+              {mapEvent.venue.name}
             </Text>
           )}
           <View style={[styles.sheetTag, { backgroundColor: `${catTone}26` }]}>
@@ -872,7 +958,7 @@ function SheetRow({ mapEvent }: { mapEvent: MapEvent }) {
         </View>
       </View>
       <Text style={[styles.sheetTime, { color: roles.fg }]}>
-        {rowTimeLabel(mapEvent.event.startsAt, mapEvent.event.endsAt)}
+        {rowTimeLabel(mapEvent.startsAt, mapEvent.endsAt)}
       </Text>
     </Pressable>
   );
@@ -889,8 +975,11 @@ function DrawerCard({
   const roles = useRoles();
   const locale = useLocale();
   const catTone = TONE[mode][CATEGORY_TICK[mapEvent.event.category]];
-  const venueType = mapEvent.event.venue.type;
-  const venueTone = venueType ? TONE[mode][VENUE_TYPE_TICK[venueType]] : null;
+  const venueType = mapEvent.venue.type;
+  const venueTone =
+    venueType && (VENUE_TYPE_TICK as Record<string, BadgeTone>)[venueType]
+      ? TONE[mode][(VENUE_TYPE_TICK as Record<string, BadgeTone>)[venueType]]
+      : null;
   const transportIcon = transport === 'walk' ? 'walk-outline' : 'bicycle-outline';
   return (
     <Pressable
@@ -917,8 +1006,8 @@ function DrawerCard({
             />
             <Text style={[styles.cardTime, { color: roles.fgMuted }]}>
               {mapEvent.minutes} min ·{' '}
-              {rowTimeLabel(mapEvent.event.startsAt, mapEvent.event.endsAt)}
-              {!venueTone ? ` · ${mapEvent.event.venue.name}` : ''}
+              {rowTimeLabel(mapEvent.startsAt, mapEvent.endsAt)}
+              {!venueTone ? ` · ${mapEvent.venue.name}` : ''}
             </Text>
           </View>
           <Text
@@ -933,7 +1022,7 @@ function DrawerCard({
                 style={[styles.cardTag, { backgroundColor: `${venueTone}26` }]}
               >
                 <Text style={[styles.cardTagText, { color: venueTone }]}>
-                  {mapEvent.event.venue.name}
+                  {mapEvent.venue.name}
                 </Text>
               </View>
             )}

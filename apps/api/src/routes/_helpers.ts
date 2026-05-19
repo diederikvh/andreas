@@ -251,11 +251,7 @@ export type ApiOccurrenceShape = {
       event-level venue (een film draait in meerdere bioscopen).
       Nullable voor zeldzame rijen die geen venueId hebben — caller
       valt dan terug op event.venue. */
-  venue: {
-    id: string;
-    slug: string;
-    name: string;
-  } | null;
+  venue: OccurrenceVenueLite | null;
 };
 
 export type EventOccurrenceData = {
@@ -267,7 +263,19 @@ export type EventOccurrenceData = {
   all: ApiOccurrenceShape[];
 };
 
-type OccurrenceVenueLite = { id: string; slug: string; name: string };
+type OccurrenceVenueLite = {
+  id: string;
+  slug: string;
+  name: string;
+  /** Coords zijn nodig voor de Kaart-pin per occurrence (multi-venue
+      films krijgen een pin per bioscoop). Voor andere consumenten
+      ongebruikt — overhead is minimaal (twee floats per occurrence). */
+  lat: number;
+  lng: number;
+  /** Voor de venue-tone-pill in de kaart-sheet bij een per-occurrence
+      MapEvent. */
+  type: string | null;
+};
 
 function toShape(
   row: OccurrenceRow,
@@ -304,6 +312,9 @@ async function loadOccurrenceVenues(
       id: schema.venues.id,
       slug: schema.venues.slug,
       name: schema.venues.name,
+      lat: schema.venues.lat,
+      lng: schema.venues.lng,
+      type: schema.venues.type,
     })
     .from(schema.venues)
     .where(inArray(schema.venues.id, ids));
