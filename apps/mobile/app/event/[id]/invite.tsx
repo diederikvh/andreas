@@ -664,7 +664,7 @@ function InviteStatusBadge({
   const t = useT();
   const label =
     status === 'going'
-      ? t('Gaat mee', 'Going')
+      ? t('Gaat', 'Going')
       : status === 'maybe'
         ? t('Misschien', 'Maybe')
         : status === 'not_going'

@@ -16,6 +16,7 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  TouchableOpacity,
   useWindowDimensions,
   View,
 } from 'react-native';
@@ -564,6 +565,14 @@ function InviteBanner({
 
   const onRespond = (status: 'going' | 'maybe' | 'not_going') => {
     if (busy) return;
+    // Haptic bij tap: notification voor going (success-feel),
+    // impactAsync(Medium) voor maybe/nee — voelbaarder dan
+    // selectionAsync (die op iOS soms helemaal niet voelt).
+    if (status === 'going') {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } else {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    }
     respond.mutate({
       id: invite.id,
       status,
@@ -632,9 +641,10 @@ function InviteBanner({
         />
       </View>
       <View style={styles.inviteActions}>
-        <Pressable
+        <TouchableOpacity
           onPress={() => onRespond('going')}
           disabled={busy}
+          activeOpacity={0.65}
           style={[
             styles.inviteBtn,
             {
@@ -644,12 +654,13 @@ function InviteBanner({
           ]}
         >
           <Text style={[styles.inviteBtnText, { color: roles.onAccent }]}>
-            {t('Ga mee', 'Going')}
+            {t('Ga', 'Going')}
           </Text>
-        </Pressable>
-        <Pressable
+        </TouchableOpacity>
+        <TouchableOpacity
           onPress={() => onRespond('maybe')}
           disabled={busy}
+          activeOpacity={0.65}
           style={[
             styles.inviteBtn,
             {
@@ -661,10 +672,11 @@ function InviteBanner({
           <Text style={[styles.inviteBtnText, { color: roles.fg }]}>
             {t('Misschien', 'Maybe')}
           </Text>
-        </Pressable>
-        <Pressable
+        </TouchableOpacity>
+        <TouchableOpacity
           onPress={() => onRespond('not_going')}
           disabled={busy}
+          activeOpacity={0.65}
           style={[
             styles.inviteBtn,
             {
@@ -676,7 +688,7 @@ function InviteBanner({
           <Text style={[styles.inviteBtnText, { color: roles.fgMuted }]}>
             {t('Nee', 'No')}
           </Text>
-        </Pressable>
+        </TouchableOpacity>
       </View>
     </View>
   );
@@ -969,7 +981,7 @@ function CrewStatusBadge({ row }: { row: CrewRow; eventId: string }) {
   if (!row.inviteStatus) return null;
   const label =
     row.inviteStatus === 'going'
-      ? t('Gaat mee', 'Going')
+      ? t('Gaat', 'Going')
       : row.inviteStatus === 'maybe'
         ? t('Misschien', 'Maybe')
         : row.inviteStatus === 'not_going'

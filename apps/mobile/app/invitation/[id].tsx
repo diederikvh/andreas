@@ -141,12 +141,13 @@ export default function InvitationDetail() {
 
   const onRespond = (status: 'going' | 'maybe' | 'not_going') => {
     if (respond.isPending) return;
-    // Haptic + visuele bevestiging direct bij tap. Voor 'going' een
-    // success-feel, voor de andere twee een lichte selection-tick.
+    // Haptic bij tap: notification voor going (success-feel),
+    // impactAsync(Medium) voor maybe/nee — voelbaarder dan
+    // selectionAsync (die op iOS soms helemaal niet voelt).
     if (status === 'going') {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } else {
-      Haptics.selectionAsync();
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     }
     respond.mutate({
       id: invitation.id,
@@ -289,7 +290,7 @@ export default function InvitationDetail() {
         )}
 
         <StatusGroup
-          label={t('Gaat mee', 'Going')}
+          label={t('Gaat', 'Going')}
           tone={roles.accent}
           responses={groups.going}
           myId={myId}
@@ -367,7 +368,7 @@ export default function InvitationDetail() {
                 <Text
                   style={[styles.respondBtnText, { color: roles.onAccent }]}
                 >
-                  {t('Ga mee', 'Going')}
+                  {t('Ga', 'Going')}
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity
