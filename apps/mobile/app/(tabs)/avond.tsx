@@ -30,7 +30,7 @@ import { VenueRailCard } from '@/components/VenueRailCard';
 import { RefreshBanner } from '@/components/RefreshBanner';
 import { RunningStrip } from '@/components/RunningStrip';
 import { SpinningCross } from '@/components/SpinningCross';
-import type { ApiEvent, VenueType } from '@/lib/api';
+import type { ApiEvent, ApiFeedEvent, SavedApiEvent, VenueType } from '@/lib/api';
 import {
   eventImageUrl,
   CATEGORY_TICK,
@@ -38,7 +38,9 @@ import {
   isDaytimeOccurrence,
   getVenueTypeChips,
   dowFull,
+  dowMixed,
   dowUpper,
+  monthShort,
   effectiveEndsAtMs,
   expandToOccurrenceRows,
   isLongRunning,
@@ -59,6 +61,9 @@ import {
   useEvents,
   useForYouEvents,
   useFriends,
+  useMe,
+  useMySaves,
+  useSocialFeed,
   useVenues,
   useSeriesList,
 } from '@/lib/queries';
@@ -225,10 +230,83 @@ export default function Avond() {
   const activeCats = useVandaagFilters((s) => s.activeCats);
   const activeTypes = useVandaagFilters((s) => s.activeTypes);
   const { data: session } = useSession();
+  const authed = Boolean(session?.user?.id);
   // Friends data wordt nog gebruikt door rail-filters (friendsSaved op
   // events). Geen friends-chip meer in de header — die zat in de oude
   // chip-row.
-  useFriends({ enabled: Boolean(session?.user?.id) });
+  useFriends({ enabled: authed });
+  // Eigen saves + social-feed: input voor de "Planning"-rail onderaan
+  // de pagina. Beide queries zijn al elders in de app actief, hier
+  // herbenoemen we de cache zodat we mergen op occurrenceId.
+  const { data: me } = useMe();
+  const { data: mySaves } = useMySaves({ enabled: authed });
+  const { data: socialFeed } = useSocialFeed({ enabled: authed });
+
+  // Combined planning: eigen saves + saves van vrienden, gemerged per
+  // occurrence. Per item komt jezelf voorop in de avatar-stack zodat het
+  // direct duidelijk is dat je 'm zelf hebt gesaved. Toekomstige events
+  // alleen, oudste eerst.
+  const planningRail = useMemo(() => {
+    if (!authed) return [];
+    const myFirst = (me?.name?.split(' ')[0] || 'Jij').trim() || 'Jij';
+    const map = new Map<
+      string,
+      {
+        eventId: string;
+        occurrenceId: string;
+        event: SavedApiEvent | ApiFeedEvent;
+        startsAt: string;
+        endsAt: string | null;
+        friends: { name: string; avatar: string | null }[];
+      }
+    >();
+    for (const s of mySaves ?? []) {
+      map.set(s.occurrenceId, {
+        eventId: s.id,
+        occurrenceId: s.occurrenceId,
+        event: s,
+        startsAt: s.startsAt,
+        endsAt: s.endsAt,
+        friends: [{ name: myFirst, avatar: me?.avatarUrl ?? null }],
+      });
+    }
+    for (const f of socialFeed ?? []) {
+      const startsAtStr =
+        typeof f.occurrence.startsAt === 'string'
+          ? f.occurrence.startsAt
+          : new Date(f.occurrence.startsAt as unknown as string).toISOString();
+      const endsAtStr =
+        f.occurrence.endsAt == null
+          ? null
+          : typeof f.occurrence.endsAt === 'string'
+            ? f.occurrence.endsAt
+            : new Date(f.occurrence.endsAt as unknown as string).toISOString();
+      const friendBadges = f.friendsSaved.map((fr) => ({
+        name: fr.name,
+        avatar: fr.avatarUrl,
+      }));
+      const existing = map.get(f.occurrence.id);
+      if (existing) {
+        existing.friends.push(...friendBadges);
+      } else {
+        map.set(f.occurrence.id, {
+          eventId: f.eventId,
+          occurrenceId: f.occurrence.id,
+          event: f,
+          startsAt: startsAtStr,
+          endsAt: endsAtStr,
+          friends: friendBadges,
+        });
+      }
+    }
+    const now = Date.now();
+    return Array.from(map.values())
+      .filter((m) => new Date(m.endsAt ?? m.startsAt).getTime() >= now)
+      .sort(
+        (a, b) =>
+          new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime()
+      );
+  }, [authed, me, mySaves, socialFeed]);
 
   // Pull-to-refresh: invalideert events-cache zodat de huidige
   // window-query opnieuw fetched. Voor wanneer de gebruiker denkt
@@ -571,20 +649,6 @@ export default function Avond() {
       return true;
     });
   }, [events, now, tomorrowWindow.fromMs, tomorrowWindow.toMs]);
-  // "Vrienden gaan" is bewust toekomst-inclusief (geen vandaag-window):
-  // vrienden plannen vooruit, en de rail hoort daarom onder de
-  // agenda-banner — los van het vandaag-deel. Pool is `leadsPool`
-  // (uit-mode-events, alle toekomst, gesorteerd op startsAt) gefilterd
-  // op friendsSaved op occurrence-niveau — anders zou een 5-occurrence
-  // event waarvan één voorstelling is gesaved op alle 5 dagen in deze
-  // rail verschijnen.
-  const railFriendsUit = useMemo(
-    () =>
-      leadsPool.filter(
-        (r) => (r.occurrence.friendsSaved?.length ?? 0) > 0
-      ),
-    [leadsPool]
-  );
   // Rails voor 'expo'-mode — gebaseerd op `expoEvents` (ApiEvent[]).
   // Doorlopende exhibitions worden gegroepeerd per type instelling
   // (musea per genre, galleries per scene) i.p.v. op tijd-framing —
@@ -697,14 +761,6 @@ export default function Avond() {
         .filter((e) => e.category === 'Literatuur')
         .sort(sortByStartsAt),
     [expoEventsToday]
-  );
-
-  const railFriendsExpo = useMemo<ApiEvent[]>(
-    () =>
-      expoEvents
-        .filter((e) => (e.friendsSaved?.length ?? 0) > 0)
-        .sort(sortByStartsAt),
-    [expoEvents]
   );
 
   const hasFilterActive =
@@ -1047,38 +1103,28 @@ export default function Avond() {
             </Animated.View>
           )}
 
-        {/* Vrienden gaan — toekomst-inclusief, dus niet bij het
-            vandaag-deel maar onder de agenda-banner. Splitst alsnog
-            per content-mode (uit gebruikt OccurrenceRow met occurrence-
-            id voor recurring events, expo werkt op kale ApiEvent). */}
-        {!isLoading && !error && cmode === 'uit' && railFriendsUit.length > 0 && (
-          <Rail kicker={t("Vrienden vinden 't leuk", 'Friends liked')}>
-            {railFriendsUit.map((r) => (
-              <RailEventCard
-                key={r.id}
-                event={r.event}
-                occurrenceId={
-                  r.occurrence.id.endsWith('::next') ? undefined : r.occurrence.id
-                }
-                occurrenceStartsAt={r.occurrence.startsAt}
-                occurrenceEndsAt={r.occurrence.endsAt}
-              />
-            ))}
-          </Rail>
-        )}
-        {!isLoading && !error && cmode === 'expo' && railFriendsExpo.length > 0 && (
-          <Rail kicker={t("Vrienden vinden 't leuk", 'Friends liked')}>
-            {railFriendsExpo.map((e) => (
-              <RailEventCard key={e.id} event={e} />
-            ))}
-          </Rail>
-        )}
 
         {/* Favoriete venues, altijd zichtbaar — los van of er vandaag
             iets speelt. Komt na de agenda-banner omdat 't visueel
             buiten de "vandaag"-bubbel valt en als hub voor je
             volg-lijst dient (tap → venue-pagina met volledige
             programmering). */}
+        {/* Jouw + vrienden-planning — events waar jij of een vriend(in)
+            naartoe wil. Eigen saves + social-feed gemerged per occurrence.
+            Per kaart toont de avatar-stack wie 'm geliked heeft. Boven
+            de venues-rail want planning is persoonlijker en relevanter. */}
+        {planningRail.length > 0 && (
+          <Rail
+            kicker={t('Jij en je vrienden', 'You and friends')}
+            moreLabel={t('Alles →', 'See all →')}
+            onMore={() => router.push('/social' as never)}
+          >
+            {planningRail.map((m) => (
+              <PlanningRailCard key={m.occurrenceId} entry={m} />
+            ))}
+          </Rail>
+        )}
+
         {followedVenues.length > 0 && (
           <Rail
             kicker={t('Jouw favoriete venues', 'Your favourite venues')}
@@ -1137,6 +1183,240 @@ function ListState({
     </View>
   );
 }
+
+/**
+ * Card voor de "Op de planning"-rail onderaan Avond. Eén tegel per
+ * occurrence: hero-image bovenaan, datum + tijd, titel, venue, en een
+ * avatar-stack onderaan met "Jij + Roos & Milan +2"-style label. Tap
+ * navigeert naar event-detail met de juiste occurrence-target.
+ */
+function PlanningRailCard({
+  entry,
+}: {
+  entry: {
+    eventId: string;
+    occurrenceId: string;
+    event: SavedApiEvent | ApiFeedEvent;
+    startsAt: string;
+    endsAt: string | null;
+    friends: { name: string; avatar: string | null }[];
+  };
+}) {
+  const roles = useRoles();
+  const locale = useLocale();
+  const e = entry.event;
+  // SavedApiEvent en ApiFeedEvent hebben beide `imageUrl` + `venue.{name,imageUrl}`.
+  const eventImage = (e as { imageUrl?: string | null }).imageUrl ?? null;
+  const venueRef = (
+    e as { venue?: { name?: string; imageUrl?: string | null } }
+  ).venue;
+  const venueName = venueRef?.name ?? '';
+  const thumb =
+    eventImage ??
+    venueRef?.imageUrl ??
+    null;
+  const d = new Date(entry.startsAt);
+  const dateLabel = `${dowMixed(d.getDay(), locale)} ${d.getDate()} ${monthShort(d.getMonth(), locale).toLowerCase()}`;
+  const time = rowTimeLabel(entry.startsAt, entry.endsAt, locale);
+
+  const visible = entry.friends.slice(0, 3);
+  const overflow = Math.max(0, entry.friends.length - visible.length);
+  const totalTiles = visible.length + (overflow > 0 ? 1 : 0);
+  const nameLabel = (() => {
+    if (entry.friends.length === 0) return '';
+    if (entry.friends.length === 1) return entry.friends[0].name;
+    if (entry.friends.length === 2)
+      return `${entry.friends[0].name} & ${entry.friends[1].name}`;
+    return `${entry.friends[0].name} +${entry.friends.length - 1}`;
+  })();
+
+  return (
+    <Pressable
+      onPress={() =>
+        router.push(
+          `/event/${entry.eventId}?o=${entry.occurrenceId}&source=avond` as never
+        )
+      }
+      style={[
+        planningCardStyles.card,
+        { backgroundColor: roles.bgChip, borderColor: roles.bgChip },
+      ]}
+    >
+      {thumb ? (
+        <Image
+          source={{ uri: thumb }}
+          style={planningCardStyles.img}
+          contentFit="cover"
+        />
+      ) : (
+        <View
+          style={[
+            planningCardStyles.img,
+            { backgroundColor: roles.bgChip },
+          ]}
+        />
+      )}
+      <View style={planningCardStyles.body}>
+        <Text
+          numberOfLines={1}
+          style={[planningCardStyles.kicker, { color: roles.accent }]}
+        >
+          {`${dateLabel} · ${time}`}
+        </Text>
+        <Text
+          numberOfLines={2}
+          style={[planningCardStyles.title, { color: roles.fg }]}
+        >
+          {e.title}
+        </Text>
+        <Text
+          numberOfLines={1}
+          style={[planningCardStyles.venue, { color: roles.fgMuted }]}
+        >
+          {venueName}
+        </Text>
+        {entry.friends.length > 0 && (
+          <View style={planningCardStyles.friendsRow}>
+            <View style={planningCardStyles.stack}>
+              {visible.map((f, i) => (
+                <View
+                  key={`${f.name}-${i}`}
+                  style={[
+                    planningCardStyles.avatar,
+                    {
+                      left: i * 12,
+                      zIndex: totalTiles - i,
+                      borderColor: roles.bgChip,
+                      backgroundColor: roles.bg,
+                    },
+                  ]}
+                >
+                  {f.avatar ? (
+                    <Image
+                      source={{ uri: f.avatar }}
+                      style={planningCardStyles.avatarImg}
+                      contentFit="cover"
+                    />
+                  ) : (
+                    <Text
+                      style={[
+                        planningCardStyles.avatarInitial,
+                        { color: roles.fgMuted },
+                      ]}
+                    >
+                      {(f.name.trim()[0] ?? '?').toUpperCase()}
+                    </Text>
+                  )}
+                </View>
+              ))}
+              {overflow > 0 && (
+                <View
+                  style={[
+                    planningCardStyles.avatar,
+                    {
+                      left: visible.length * 12,
+                      zIndex: 0,
+                      borderColor: roles.bgChip,
+                      backgroundColor: roles.bg,
+                    },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      planningCardStyles.avatarInitial,
+                      { color: roles.fgMuted },
+                    ]}
+                  >
+                    +{overflow}
+                  </Text>
+                </View>
+              )}
+            </View>
+            <Text
+              numberOfLines={1}
+              style={[planningCardStyles.friendsLabel, { color: roles.fgMuted }]}
+            >
+              {nameLabel}
+            </Text>
+          </View>
+        )}
+      </View>
+    </Pressable>
+  );
+}
+
+const planningCardStyles = StyleSheet.create({
+  card: {
+    width: 220,
+    borderRadius: 12,
+    borderWidth: 1,
+    overflow: 'hidden',
+  },
+  img: {
+    width: '100%',
+    height: 130,
+  },
+  body: {
+    padding: 12,
+    gap: 4,
+  },
+  kicker: {
+    fontFamily: fontFamily.bold,
+    fontSize: 11,
+    letterSpacing: -0.1,
+  },
+  title: {
+    fontFamily: fontFamily.bold,
+    fontSize: 14,
+    letterSpacing: -0.21,
+    lineHeight: 18,
+    marginTop: 2,
+  },
+  venue: {
+    fontFamily: fontFamily.mono,
+    fontSize: 10,
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+  },
+  friendsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 8,
+  },
+  stack: {
+    height: 24,
+    minWidth: 24,
+    position: 'relative',
+  },
+  avatar: {
+    position: 'absolute',
+    top: 0,
+    width: 24,
+    height: 24,
+    borderRadius: 999,
+    borderWidth: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  avatarImg: {
+    width: '100%',
+    height: '100%',
+  },
+  avatarInitial: {
+    fontFamily: fontFamily.bold,
+    fontSize: 10,
+    letterSpacing: -0.1,
+  },
+  friendsLabel: {
+    fontFamily: fontFamily.mono,
+    fontSize: 9.5,
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+    flexShrink: 1,
+  },
+});
 
 function EmptyResults({
   hasFilter,
