@@ -129,6 +129,20 @@ export default function InvitationDetail() {
   const time = rowTimeLabel(occStart, occEnd, locale);
   const dateLabel = `${dow} ${d.getDate()} ${month} · ${time}`;
 
+  // Eigen response + edit-state. Zodra je een keuze hebt gemaakt
+  // (status !== 'pending'), verbergen we het reply-veld + de drie
+  // knoppen en tonen we het antwoord met een potloodje. Het potlood
+  // verdwijnt vanaf 24u voor het event start — kort daarvoor wordt het
+  // antwoord beschouwd als definitief om laatste-minuut-flips te
+  // ontmoedigen.
+  const myResponse = invitation.responses.find((r) => r.user.id === myId);
+  const myStatus = myResponse?.status ?? null;
+  const hasAnswered = myStatus !== null && myStatus !== 'pending';
+  const msUntilStart = new Date(occStart).getTime() - Date.now();
+  const canEdit = msUntilStart > 24 * 60 * 60 * 1000;
+  const [editing, setEditing] = useState(false);
+  const showRespondForm = !hasAnswered || editing;
+
   // Groepeer responses per status. Initiator zit ook in responses
   // (default 'going') — die nemen we mee in de going-sectie.
   const groups: Record<InvitationStatus, ApiInvitationResponse[]> = {
@@ -156,6 +170,7 @@ export default function InvitationDetail() {
       eventId: invitation.event.id,
     });
     setReply('');
+    setEditing(false);
     Keyboard.dismiss();
   };
 
@@ -326,13 +341,63 @@ export default function InvitationDetail() {
           renderRowExtra={null}
         />
 
-        {/* Eigen-antwoord-knoppen: alleen voor niet-initiator (of zelfs
-            voor initiator om eigen 'going'-default te wijzigen). */}
+        {/* Eigen-antwoord-blok. Twee modes:
+            1. Nog geen antwoord OF gebruiker tikt potlood → form (reply-
+               veld + Ga/Misschien/Nee).
+            2. Antwoord gegeven → samenvatting met optioneel potloodje
+               (verdwijnt 24u vóór event-start). */}
         {!isOutgoing && (
           <View style={styles.respondWrap}>
             <Text style={[styles.respondLabel, { color: roles.fgMuted }]}>
               {t('Jouw antwoord', 'Your response')}
             </Text>
+            {!showRespondForm && hasAnswered && myStatus && (
+              <View
+                style={[
+                  styles.answerSummary,
+                  {
+                    borderColor: isNacht ? '#2a2a2d' : palette.paper,
+                    backgroundColor: isNacht ? palette.noir2 : palette.paper2,
+                  },
+                ]}
+              >
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.answerStatus, { color: roles.fg }]}>
+                    {myStatus === 'going'
+                      ? t('Je gaat', 'You’re going')
+                      : myStatus === 'maybe'
+                        ? t('Je twijfelt nog', 'You’re unsure')
+                        : t('Je gaat niet', 'You’re not coming')}
+                  </Text>
+                  {myResponse?.replyMessage ? (
+                    <Text
+                      numberOfLines={3}
+                      style={[styles.answerReply, { color: roles.fgMuted }]}
+                    >
+                      “{myResponse.replyMessage}”
+                    </Text>
+                  ) : null}
+                </View>
+                {canEdit && (
+                  <Pressable
+                    onPress={() => {
+                      setReply(myResponse?.replyMessage ?? '');
+                      setEditing(true);
+                    }}
+                    hitSlop={8}
+                    style={[
+                      styles.editIcon,
+                      { backgroundColor: isNacht ? palette.noir3 : palette.paper },
+                    ]}
+                    accessibilityLabel={t('Wijzig antwoord', 'Edit response')}
+                  >
+                    <Ionicons name="pencil" size={16} color={roles.fgMuted} />
+                  </Pressable>
+                )}
+              </View>
+            )}
+            {showRespondForm && (
+              <>
             <View
               style={[
                 styles.replyField,
@@ -404,6 +469,8 @@ export default function InvitationDetail() {
                 </Text>
               </TouchableOpacity>
             </View>
+              </>
+            )}
           </View>
         )}
       </ScrollView>
@@ -653,6 +720,35 @@ const styles = StyleSheet.create({
     fontSize: 9.5,
     letterSpacing: 1.1,
     textTransform: 'uppercase',
+  },
+  // Samenvatting na gemaakte keuze. Zelfde card-look als het reply-veld
+  // zodat het bij elkaar past, met een potlood-knop rechts voor edit.
+  answerSummary: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    borderWidth: 1,
+    borderRadius: 12,
+  },
+  answerStatus: {
+    fontFamily: fontFamily.bold,
+    fontSize: 15,
+    letterSpacing: -0.22,
+  },
+  answerReply: {
+    fontFamily: fontFamily.body,
+    fontSize: 13,
+    lineHeight: 18,
+    marginTop: 4,
+  },
+  editIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   replyField: {
     paddingHorizontal: 14,
