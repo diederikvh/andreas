@@ -181,9 +181,7 @@ export async function scrapeDeBalie(options?: {
   }
   result.fetched = posts.length;
 
-  // TODO(lezing-gate): zet terug op 'Lezing' zodra de nieuwe native
-  // build live is (de oude TestFlight bundle kent 'Lezing' niet en crasht).
-  const venueCategory = venue.categories?.[0] ?? 'Literatuur';
+  const venueCategory = venue.categories?.[0] ?? 'Lezing';
   const now = new Date();
   const pastCutoff = now.getTime() - 24 * 60 * 60_000;
 

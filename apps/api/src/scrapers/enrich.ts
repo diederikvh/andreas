@@ -111,7 +111,8 @@ export type EventCategory =
   | 'Theater'
   | 'Literatuur'
   | 'Film'
-  | 'Kunst';
+  | 'Kunst'
+  | 'Lezing';
 
 export type EnrichOutput = {
   genres: string[];
@@ -129,6 +130,7 @@ const ALLOWED_CATEGORIES: EventCategory[] = [
   'Literatuur',
   'Film',
   'Kunst',
+  'Lezing',
 ];
 
 const FALLBACK: EnrichOutput = {

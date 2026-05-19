@@ -237,20 +237,6 @@ Geschat: ~150 regels backend, ~80 regels mobile, ~2-3u.
 
 ## Te fixen / technical debt
 
-- **`Lezing`-categorie unhide zodra nieuwe native build live is** (gate-fix 2026-05-17, commit `b9075e7`). Achtergrond: de oude TestFlight bundle kent `'Lezing'` niet als event-category en crasht erop. We hebben Lezing tijdelijk weg-gemapt naar Literatuur — alle schema/UI-code voor Lezing staat klaar, alleen de DATA serveert nu Literatuur. Wanneer de nieuwe native build (met Lezing-aware bundle) live is op TestFlight en de App Store, doe:
-  1. **Code revert** in 2 files:
-     - `apps/api/src/scrapers/dezwijger.ts` — `venueCategory ?? 'Literatuur'` terug naar `'Lezing'` (zoek op `TODO(lezing-gate)`).
-     - `apps/api/src/scrapers/debalie.ts` — idem.
-  2. **enrich.ts opfrissen** zodat Claude's Lezing-output door komt: voeg `'Lezing'` toe aan zowel `type EventCategory` (rond regel 109) als `ALLOWED_CATEGORIES` (rond regel 126) in `apps/api/src/scrapers/enrich.ts`. (Nu filtert enrich.ts `'Lezing'` impliciet naar `null` → caller valt terug op venue-default; na deze fix krijgt Pakhuis/De Balie events de juiste Lezing-tag.)
-  3. **DB-restore**:
-     ```sql
-     UPDATE venues SET categories = ARRAY['Lezing']::event_category[] WHERE id IN ('pakhuis-de-zwijger','de-balie');
-     UPDATE events SET category = 'Lezing' WHERE venue_id IN ('pakhuis-de-zwijger','de-balie');
-     ```
-  4. **Fly deploy**: `fly deploy --config apps/api/fly.toml --dockerfile apps/api/Dockerfile`.
-  5. **Verifieer** in de nieuwe bundle: Pakhuis/De Balie events tonen cobalt-tone (i.p.v. saffron Literatuur), Lezing-tab is zichtbaar op Vandaag/Agenda, geen crashes op oudere bundles (die moeten dan geen oude bundles meer zijn).
-  6. Grep op `TODO(lezing-gate)` voor restant-markers en verwijder.
-
 - **Sentry — sourcemap mapping verifiëren** (2026-05-17). Wiring + auth-tokens (shell + EAS-secret) staan; eerste events stromen binnen op `pluvo-bv.sentry.io`. Te checken bij eerste issue: zijn de stack-frames mapped naar bron-bestanden, of nog geminified? Bij geminified → sourcemap-upload niet doorgekomen (token-scopes, of debug-ids niet meegekomen). Native build #21 (v1.1.1) heeft sourcemaps via EAS-secret; OTA's daarna moeten via shell-env-token uploaden.
 - **Privacy-gates**: `buildFriendsByEvent` en `GET /friends/:id` zien alle saves van vrienden. Zodra users een privacy-flag krijgen ("vrienden mogen mijn saves zien" toggle) moeten beide endpoints daarop checken.
 - **Apple Maps mapType**: `mutedStandard` is alleen iOS — Android krijgt nog steeds standaard kaart. MapLibre swap voor echt-zwart Andreas-style staat als open punt.
