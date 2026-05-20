@@ -7,10 +7,12 @@ import { scrapeDeCeuvel, type DeCeuvelResult } from './deceuvel.js';
 import { scrapeDeZwijger, type DeZwijgerResult } from './dezwijger.js';
 import { scrapeEventbrite, type EventbriteResult } from './eventbrite.js';
 import { scrapeEye, type EyeResult } from './eye.js';
+import { scrapeFchyena, type FchyenaResult } from './fchyena.js';
 import { scrapeFilmhallen, type FilmhallenResult } from './filmhallen.js';
 import { scrapeKetelhuis, type KetelhuisResult } from './ketelhuis.js';
 import { scrapeKriterion, type KriterionResult } from './kriterion.js';
 import { scrapeLab111, type Lab111Result } from './lab111.js';
+import { scrapeRialto, type RialtoResult } from './rialto.js';
 import { scrapeStudiok, type StudiokResult } from './studiok.js';
 import { scrapeTheMovies, type TheMoviesResult } from './themovies.js';
 import { scrapeUitkijk, type UitkijkResult } from './uitkijk.js';
@@ -174,6 +176,8 @@ export const scrapers = {
   filmhallen: scrapeFilmhallen,
   lab111: scrapeLab111,
   uitkijk: scrapeUitkijk,
+  fchyena: scrapeFchyena,
+  rialto: scrapeRialto,
 } as const;
 
 export type ScraperName = keyof typeof scrapers;
@@ -261,4 +265,6 @@ export type ScraperResult =
   | StudiokResult
   | FilmhallenResult
   | Lab111Result
-  | UitkijkResult;
+  | UitkijkResult
+  | FchyenaResult
+  | RialtoResult;

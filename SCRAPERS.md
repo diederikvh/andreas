@@ -94,6 +94,7 @@ Skill voor toevoegen van nieuwe scrapers: [.claude/skills/scraper-add/SKILL.md](
 - ✅ **Perdu** (underground/klein/centrum) — 10 events · `perdu` (WP REST `events` CPT, filter NL-versies, datum uit detail-text "DD maand om HH:MM")
 - ✅ **Plein Theater** (alternatief/klein/oost) — 22 events · `aaservices` (AA services-API `venue=123`, één JSON-call)
 - ✅ **Podium Vrijburcht** (alternatief/klein/oost) — 14 events · `vrijburcht` (custom WP-listing, canonical-slug merging voor recurring shows)
+- ⬜ **Cinetol** — `stager` config klaar, shop momenteel leeg
 - ⬜ **Salon de IJzerstaven** — probe
 - ⬜ **Space for Dance Art** — probe
 - ⬜ **Sugarfactory** — `/agenda/` 404, geen publieke events op site
@@ -186,7 +187,6 @@ Musea programmeren tentoonstellingen (`kind=exhibition`), niet point-in-time eve
 ## Film (12)
 
 - ⬜ **Cinema The Pulse** — Webflow CMS + FilmGenie booking; sitemap geeft alle films + DOM-rendered showtimes per detail-page
-- ⬜ **Cinetol** — `stager` config klaar, shop momenteel leeg
 - ⬜ **Cavia** — probe
 - ⬜ **De Uitkijk** — probe
 - ⬜ **Eye Filmmuseum** — probe (groot, hoge prioriteit)
@@ -262,10 +262,18 @@ Volgorde op verwachte event-impact + scrape-effort.
 - ✅ ~~Athenaeum Spui / Scheltema / Zuidoost~~ — Stealth werkte; 12 events live. Zie Boekhandel-cafés sectie.
 
 **Quick-wins (platform al bekend, alleen config invullen):**
-- ⬜ **Eye Filmmuseum** — film, mainstream
+- ✅ **Eye Filmmuseum** — film, mainstream
+- ✅ **Kriterion** — JSON-LD kandidaat
+- ✅ **The Movies**
+- ✅ **The Ketelhuis**
+- ✅ **Studio/K**
+- ⬜ **Rialto**
+- ⬜ **Lab111**
+- ⬜ **De Uitkijk**
+- ⬜ **Cavia**
+- ⬜ **FilmHallen**
+- ⬜ **FC Hyena** 
 - ⬜ **Cinema The Pulse** — eigen Webflow + FilmGenie (custom scraper schrijven)
-- ⬜ **Kriterion** — JSON-LD kandidaat
-- ⬜ **FilmHallen / The Movies / Rialto / Studio/K / Lab111 / De Uitkijk / Cavia / FC Hyena** — film-venues, vergelijkbare aanpak
 
 **Clubs zonder bron:**
 - ⬜ **Café Café** — geen publieke feed gevonden
