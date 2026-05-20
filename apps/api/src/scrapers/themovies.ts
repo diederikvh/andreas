@@ -24,7 +24,6 @@ import { randomBytes } from 'node:crypto';
 import { and, eq } from 'drizzle-orm';
 
 import { db, schema } from '../db/index.js';
-import { fetchFilmGenres } from './_tmdb.js';
 
 const SITEMAP_URL = 'https://themovies.nl/fk-feed/film-sitemap-xml';
 const VENUE_ID = 'the-movies';
@@ -118,7 +117,6 @@ export async function scrapeTheMovies(): Promise<TheMoviesResult[]> {
           id: schema.events.id,
           description: schema.events.description,
           imageUrl: schema.events.imageUrl,
-          genres: schema.events.genres,
         })
         .from(schema.events)
         .where(
@@ -136,7 +134,7 @@ export async function scrapeTheMovies(): Promise<TheMoviesResult[]> {
         // Vul ontbrekende velden aan zonder bestaande te overschrijven.
         // Wikipedia-URLs voor poster mogen weg (Kriterion-pattern) —
         // The Movies' image is een filmposter, even goed of beter.
-        const patch: Record<string, unknown> = {};
+        const patch: Record<string, string> = {};
         if (!existing.description && description) {
           patch.description = description;
         }
@@ -147,10 +145,6 @@ export async function scrapeTheMovies(): Promise<TheMoviesResult[]> {
         ) {
           patch.imageUrl = imageUrl;
         }
-        if (!existing.genres || existing.genres.length === 0) {
-          const genres = await fetchFilmGenres(title);
-          if (genres.length > 0) patch.genres = genres;
-        }
         if (Object.keys(patch).length > 0) {
           await db
             .update(schema.events)
@@ -159,7 +153,6 @@ export async function scrapeTheMovies(): Promise<TheMoviesResult[]> {
         }
       } else {
         eventId = `film-${slugify(title)}-${randomBytes(3).toString('hex')}`;
-        const genres = await fetchFilmGenres(title);
         await db.insert(schema.events).values({
           id: eventId,
           venueId: VENUE_ID,
@@ -168,7 +161,6 @@ export async function scrapeTheMovies(): Promise<TheMoviesResult[]> {
           kind: 'show',
           imageUrl,
           category: 'Film',
-          ...(genres.length > 0 ? { genres } : {}),
         });
         result.inserted += 1;
       }

@@ -22,7 +22,6 @@ import { randomBytes } from 'node:crypto';
 import { and, eq } from 'drizzle-orm';
 
 import { db, schema } from '../db/index.js';
-import { fetchFilmGenres } from './_tmdb.js';
 
 const SITEMAP_INDEX = 'https://www.eyefilm.nl/sitemap.xml';
 const VENUE_ID = 'eye';
@@ -129,7 +128,6 @@ export async function scrapeEye(): Promise<EyeResult[]> {
           id: schema.events.id,
           description: schema.events.description,
           imageUrl: schema.events.imageUrl,
-          genres: schema.events.genres,
         })
         .from(schema.events)
         .where(
@@ -148,8 +146,8 @@ export async function scrapeEye(): Promise<EyeResult[]> {
         // Eye's eigen description is een korte teaser uit JSON-LD;
         // og:image is de filmposter — beide goede bronnen om null-events
         // te verrijken (bv. eerst door Kriterion zonder description
-        // aangemaakt, daarna Eye die 'm aanvult). Genres komen van TMDb.
-        const patch: Record<string, unknown> = {};
+        // aangemaakt, daarna Eye die 'm aanvult).
+        const patch: Record<string, string> = {};
         if (!existing.description && description) {
           patch.description = description;
         }
@@ -159,10 +157,6 @@ export async function scrapeEye(): Promise<EyeResult[]> {
         ) {
           patch.imageUrl = ogImage;
         }
-        if (!existing.genres || existing.genres.length === 0) {
-          const genres = await fetchFilmGenres(title);
-          if (genres.length > 0) patch.genres = genres;
-        }
         if (Object.keys(patch).length > 0) {
           await db
             .update(schema.events)
@@ -171,7 +165,6 @@ export async function scrapeEye(): Promise<EyeResult[]> {
         }
       } else {
         eventId = `film-${slugify(title)}-${randomBytes(3).toString('hex')}`;
-        const genres = await fetchFilmGenres(title);
         await db.insert(schema.events).values({
           id: eventId,
           venueId: VENUE_ID, // primary venue (alleen relevant als fallback)
@@ -180,7 +173,6 @@ export async function scrapeEye(): Promise<EyeResult[]> {
           kind: 'show',
           imageUrl: ogImage,
           category: 'Film',
-          ...(genres.length > 0 ? { genres } : {}),
         });
         result.inserted += 1;
       }
