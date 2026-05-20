@@ -1,9 +1,14 @@
 /**
  * Rialto scraper.
  *
- * Rialto Ceintuurbaan (De Pijp) + Rialto VU. Onder één venue
- * (`rialto`) — een aparte VU-venue kan later. Pagina /agenda heeft
- * server-side rendered ticket-URLs met inline metadata:
+ * Rialto Ceintuurbaan (De Pijp) + Rialto VU (campus VU, Zuid).
+ * Per-occurrence wordt de juiste venue gekoppeld via de location-param
+ * in de ticket-URL: "Rialto De Pijp" → venue `rialto`, "Rialto VU"
+ * → venue `rialto-vu`. Event.venueId is altijd de primary (rialto);
+ * occurrence.venueId reflecteert de daadwerkelijke locatie.
+ *
+ * Pagina /agenda heeft server-side rendered ticket-URLs met inline
+ * metadata:
  *
  *   /nl/films/{filmId}/{slug}?location={loc}&date={YYYY-MM-DD}&time={HH:MM}
  *
@@ -13,9 +18,7 @@
  *   1. Fetch /agenda + komende 13 dagen (14 totaal) → ticket-URLs.
  *   2. Per unieke film-id: fetch /nl/films/{id}/{slug} voor og:title,
  *      og:description, og:image.
- *   3. Per ticket-URL: maak occurrence. show-id =
- *      `${filmId}-${date}-${time}` (location-onafhankelijk; locatie
- *      kan in room-veld).
+ *   3. Per ticket-URL: maak occurrence met juiste venueId per locatie.
  *
  * Idempotency: occurrence-id = `rialto-${filmId}-${YYYYMMDD}-${HHMM}`.
  */
@@ -25,7 +28,8 @@ import { and, eq } from 'drizzle-orm';
 
 import { db, schema } from '../db/index.js';
 
-const VENUE_ID = 'rialto';
+const PRIMARY_VENUE_ID = 'rialto';
+const VU_VENUE_ID = 'rialto-vu';
 const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36';
 const DAYS_AHEAD = 14;
 
@@ -36,6 +40,13 @@ export interface RialtoResult {
   occurrencesUpserted: number;
   skipped: number;
   errors: string[];
+}
+
+/** Vertaal location-string uit ticket-URL naar onze venue-id. */
+function venueIdForLocation(loc: string): string {
+  const l = loc.toLowerCase();
+  if (l.includes('vu')) return VU_VENUE_ID;
+  return PRIMARY_VENUE_ID;
 }
 
 interface TicketUrl {
@@ -49,7 +60,7 @@ interface TicketUrl {
 
 export async function scrapeRialto(): Promise<RialtoResult[]> {
   const result: RialtoResult = {
-    venueId: VENUE_ID,
+    venueId: PRIMARY_VENUE_ID,
     fetched: 0,
     inserted: 0,
     occurrencesUpserted: 0,
@@ -158,7 +169,7 @@ export async function scrapeRialto(): Promise<RialtoResult[]> {
           eventId = `film-${slugify(meta.title)}-${randomBytes(3).toString('hex')}`;
           await db.insert(schema.events).values({
             id: eventId,
-            venueId: VENUE_ID,
+            venueId: PRIMARY_VENUE_ID,
             title: meta.title,
             description: meta.description,
             kind: 'show',
@@ -175,7 +186,11 @@ export async function scrapeRialto(): Promise<RialtoResult[]> {
         continue;
       }
       const occId = `rialto-${t.filmId}-${t.date.replace(/-/g, '')}-${t.time.replace(':', '')}`;
-      const room = t.location;
+      const occVenueId = venueIdForLocation(t.location);
+      // Voor De Pijp houden we 'm in 't room-veld als hall-label
+      // (verkoopapparaat onderscheidt zalen niet apart). Voor VU laten
+      // we room leeg — de venue-naam is al duidelijk.
+      const room = occVenueId === PRIMARY_VENUE_ID ? null : null;
       const ticketUrl = t.href;
 
       const [existingOcc] = await db
@@ -191,7 +206,7 @@ export async function scrapeRialto(): Promise<RialtoResult[]> {
             startsAt,
             ticketUrl,
             room,
-            venueId: VENUE_ID,
+            venueId: occVenueId,
             eventId,
           })
           .where(eq(schema.occurrences.id, occId));
@@ -199,7 +214,7 @@ export async function scrapeRialto(): Promise<RialtoResult[]> {
         await db.insert(schema.occurrences).values({
           id: occId,
           eventId,
-          venueId: VENUE_ID,
+          venueId: occVenueId,
           startsAt,
           priceCents: null,
           ticketUrl,
