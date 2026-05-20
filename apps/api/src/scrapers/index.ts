@@ -9,6 +9,7 @@ import { scrapeEventbrite, type EventbriteResult } from './eventbrite.js';
 import { scrapeEye, type EyeResult } from './eye.js';
 import { scrapeKetelhuis, type KetelhuisResult } from './ketelhuis.js';
 import { scrapeKriterion, type KriterionResult } from './kriterion.js';
+import { scrapeStudiok, type StudiokResult } from './studiok.js';
 import { scrapeTheMovies, type TheMoviesResult } from './themovies.js';
 import { scrapeFelixMeritis, type FelixMeritisResult } from './felixmeritis.js';
 import { scrapeGashouder, type GashouderResult } from './gashouder.js';
@@ -166,6 +167,7 @@ export const scrapers = {
   kriterion: scrapeKriterion,
   themovies: scrapeTheMovies,
   ketelhuis: scrapeKetelhuis,
+  studiok: scrapeStudiok,
 } as const;
 
 export type ScraperName = keyof typeof scrapers;
@@ -249,4 +251,5 @@ export type ScraperResult =
   | EyeResult
   | KriterionResult
   | TheMoviesResult
-  | KetelhuisResult;
+  | KetelhuisResult
+  | StudiokResult;

@@ -147,10 +147,9 @@ export async function scrapeKetelhuis(): Promise<KetelhuisResult[]> {
           continue;
         }
 
-        const title =
-          events[0].name?.trim() ||
-          data.titleH1?.trim() ||
-          '';
+        const title = decodeEntities(
+          (events[0].name?.trim() || data.titleH1?.trim() || '')
+        ).trim();
         if (!title) {
           result.skipped += 1;
           continue;
@@ -286,6 +285,20 @@ export async function scrapeKetelhuis(): Promise<KetelhuisResult[]> {
 /** Ketelhuis schrijft soms `+1:00` i.p.v. `+01:00` — JS Date faalt dan. */
 function fixIsoTimezone(s: string): string {
   return s.replace(/([+-])(\d):(\d{2})$/, (_, sign, h, m) => `${sign}0${h}:${m}`);
+}
+
+function decodeEntities(s: string): string {
+  return s
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&#8217;/g, '’')
+    .replace(/&#8216;/g, '‘')
+    .replace(/&#8211;/g, '–')
+    .replace(/&#038;/g, '&')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>');
 }
 
 function parseShowId(url?: string): string | null {
