@@ -66,9 +66,9 @@ export async function scrapeKriterion(): Promise<KriterionResult[]> {
   // films-API (Strapi met titel/regie/jaar/still). Stills komen van een
   // private GCS-bucket via tijdelijk-signed URLs (15 min) — we
   // downloaden ze en pushen naar Bunny CDN voor persistent gebruik.
-  const [html, posters] = await Promise.all([
+  const [html, films] = await Promise.all([
     fetchText(AGENDA_URL),
-    loadPostersByTitle(),
+    loadFilmsByTitle(),
   ]);
   if (!html) {
     result.errors.push('agenda fetch failed');
@@ -101,7 +101,11 @@ export async function scrapeKriterion(): Promise<KriterionResult[]> {
       // Werkt voor Eye-films die we al hebben — Kriterion hangt z'n
       // occurrences daaraan. Anders nieuw event.
       const [existing] = await db
-        .select({ id: schema.events.id, imageUrl: schema.events.imageUrl })
+        .select({
+          id: schema.events.id,
+          description: schema.events.description,
+          imageUrl: schema.events.imageUrl,
+        })
         .from(schema.events)
         .where(
           and(
@@ -112,9 +116,16 @@ export async function scrapeKriterion(): Promise<KriterionResult[]> {
         )
         .limit(1);
 
+      const meta = films.get(normalizeForMatch(title));
       let eventId: string;
       if (existing) {
         eventId = existing.id;
+        const patch: Record<string, string> = {};
+        // Description aanvullen als 'ie leeg is. Niet overschrijven —
+        // Eye/Wikipedia/AI-enrich kunnen al een betere variant hebben.
+        if (!existing.description && meta?.description) {
+          patch.description = meta.description;
+        }
         // Kriterion's stills zijn cinematic en breed (16:9) — mooier
         // voor card-rendering dan Wikipedia's poster-thumbnails (1:1.5).
         // Overschrijf null OF wikipedia/wikimedia URLs; laat Eye- en
@@ -123,27 +134,27 @@ export async function scrapeKriterion(): Promise<KriterionResult[]> {
           !existing.imageUrl ||
           /wiki(p|m)edia\.org/.test(existing.imageUrl)
         ) {
-          const poster = await resolveAndUploadPoster(title, posters);
-          if (poster) {
-            await db
-              .update(schema.events)
-              .set({ imageUrl: poster })
-              .where(eq(schema.events.id, eventId));
-          }
+          const poster = await resolveAndUploadPoster(title, films);
+          if (poster) patch.imageUrl = poster;
+        }
+        if (Object.keys(patch).length > 0) {
+          await db
+            .update(schema.events)
+            .set(patch)
+            .where(eq(schema.events.id, eventId));
         }
       } else {
         eventId = `film-${slugify(title)}-${randomBytes(3).toString('hex')}`;
-        // Kriterion's description is een sjabloon ("Filmvoorstelling van
-        // X in Filmtheater Kriterion Amsterdam") — niet bruikbaar als
-        // event-omschrijving. Poster komt van Kriterion's eigen film-
-        // API (Strapi still-field) — als 't lukt, anders null en
-        // volgende run opnieuw.
-        const poster = await resolveAndUploadPoster(title, posters);
+        // Kriterion's agenda-description is een sjabloon, maar Strapi's
+        // beschrijving (Editor.js JSON) is echte film-tekst. Poster
+        // komt van Strapi → Bunny. Beide null als Strapi geen match
+        // heeft; volgende run probeert opnieuw.
+        const poster = await resolveAndUploadPoster(title, films);
         await db.insert(schema.events).values({
           id: eventId,
           venueId: VENUE_ID,
           title,
-          description: null,
+          description: meta?.description ?? null,
           kind: 'show',
           imageUrl: poster,
           category: 'Film',
@@ -289,6 +300,9 @@ interface StrapiFilm {
   id: number;
   attributes: {
     titel?: string;
+    /** Editor.js JSON-string met blocks. We platten 'm tot één
+        paragraaf voor event.description. */
+    beschrijving?: string;
     still?: {
       data?: {
         attributes?: {
@@ -303,30 +317,62 @@ interface StrapiFilm {
   };
 }
 
+interface FilmMeta {
+  posterUrl?: string;
+  description?: string;
+}
+
 /** Haal alle Kriterion-films op uit hun Strapi-API en return een map
-    van genormaliseerde titel → signed-still-URL. */
-async function loadPostersByTitle(): Promise<Map<string, string>> {
-  const map = new Map<string, string>();
+    van genormaliseerde titel → film-meta (signed-still-URL + plain-
+    text-description geëxtraheerd uit Editor.js blocks). */
+async function loadFilmsByTitle(): Promise<Map<string, FilmMeta>> {
+  const map = new Map<string, FilmMeta>();
   try {
     const r = await fetch(FILMS_API, { headers: { 'User-Agent': UA } });
     if (!r.ok) return map;
     const json = (await r.json()) as { data?: StrapiFilm[] };
     for (const f of json.data ?? []) {
       const title = f.attributes.titel?.trim();
+      if (!title) continue;
       const formats = f.attributes.still?.data?.attributes?.formats;
-      // Voorkeur voor large → medium → small (eerst beste kwaliteit
-      // proberen). Kriterion's signed URLs zijn 15 min geldig — moeten
-      // we direct downloaden + naar Bunny pushen.
-      const url =
+      const posterUrl =
         formats?.large?.url ?? formats?.medium?.url ?? formats?.small?.url;
-      if (title && url) {
-        map.set(normalizeForMatch(title), url);
-      }
+      const description = parseEditorJsText(f.attributes.beschrijving);
+      map.set(normalizeForMatch(title), { posterUrl, description });
     }
   } catch {
-    /* gracefully skip — geen posters dan */
+    /* gracefully skip */
   }
   return map;
+}
+
+/** Editor.js bewaart description als JSON met `blocks`. We pakken
+    paragraph-blocks en plakken hun text aan elkaar; HTML entities
+    decoderen en HTML-tags strippen omdat de tekst van Editor.js
+    inline `<em>`/`<b>`/`&amp;`/etc. kan bevatten. */
+function parseEditorJsText(raw?: string): string | undefined {
+  if (!raw) return undefined;
+  try {
+    const data = JSON.parse(raw) as {
+      blocks?: Array<{ type?: string; data?: { text?: string } }>;
+    };
+    const parts = (data.blocks ?? [])
+      .filter((b) => b.type === 'paragraph' && b.data?.text)
+      .map((b) => b.data!.text!);
+    const text = parts
+      .join('\n\n')
+      .replace(/<[^>]+>/g, '')
+      .replace(/&amp;/g, '&')
+      .replace(/&nbsp;/g, ' ')
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'")
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .trim();
+    return text || undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /** Match een agenda-titel met Kriterion's film-DB, download de still
@@ -334,17 +380,11 @@ async function loadPostersByTitle(): Promise<Map<string, string>> {
     Returnt de publieke Bunny-URL, of null als 't niet lukt. */
 async function resolveAndUploadPoster(
   title: string,
-  posters: Map<string, string>
+  films: Map<string, FilmMeta>
 ): Promise<string | null> {
   const key = normalizeForMatch(title);
   if (!key) return null;
-  let signedUrl = posters.get(key);
-  // Fallback: zoek partial match (Strapi's "Joe Speedboot" vs agenda's
-  // "Joe Speedboot (ENG subs)" → na normaliseren beide "joe speedboot",
-  // dus exact-match werkt al. Voor festival-titels "X | Festival Y"
-  // matchen we 'X' tegen Strapi's 'X'). Hier zou extra fuzzy matching
-  // kunnen — voor nu houden we 't exact zodat we niet de verkeerde film
-  // koppelen.
+  const signedUrl = films.get(key)?.posterUrl;
   if (!signedUrl) return null;
   try {
     const r = await fetch(signedUrl, { headers: { 'User-Agent': UA } });

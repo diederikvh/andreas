@@ -124,7 +124,11 @@ export async function scrapeEye(): Promise<EyeResult[]> {
       //    Werkt cross-venue: als Kriterion morgen "Anora" scraped vindt
       //    'ie dezelfde event en hangt z'n occurrences er gewoon aan.
       const [existing] = await db
-        .select({ id: schema.events.id })
+        .select({
+          id: schema.events.id,
+          description: schema.events.description,
+          imageUrl: schema.events.imageUrl,
+        })
         .from(schema.events)
         .where(
           and(
@@ -138,6 +142,27 @@ export async function scrapeEye(): Promise<EyeResult[]> {
       let eventId: string;
       if (existing) {
         eventId = existing.id;
+        // Vul ontbrekende velden aan zonder bestaande te overschrijven.
+        // Eye's eigen description is een korte teaser uit JSON-LD;
+        // og:image is de filmposter — beide goede bronnen om null-events
+        // te verrijken (bv. eerst door Kriterion zonder description
+        // aangemaakt, daarna Eye die 'm aanvult).
+        const patch: Record<string, string> = {};
+        if (!existing.description && description) {
+          patch.description = description;
+        }
+        if (
+          ogImage &&
+          (!existing.imageUrl || /wiki(p|m)edia\.org/.test(existing.imageUrl))
+        ) {
+          patch.imageUrl = ogImage;
+        }
+        if (Object.keys(patch).length > 0) {
+          await db
+            .update(schema.events)
+            .set(patch)
+            .where(eq(schema.events.id, eventId));
+        }
       } else {
         eventId = `film-${slugify(title)}-${randomBytes(3).toString('hex')}`;
         await db.insert(schema.events).values({

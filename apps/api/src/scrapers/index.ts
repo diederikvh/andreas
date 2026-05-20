@@ -8,6 +8,7 @@ import { scrapeDeZwijger, type DeZwijgerResult } from './dezwijger.js';
 import { scrapeEventbrite, type EventbriteResult } from './eventbrite.js';
 import { scrapeEye, type EyeResult } from './eye.js';
 import { scrapeKriterion, type KriterionResult } from './kriterion.js';
+import { scrapeTheMovies, type TheMoviesResult } from './themovies.js';
 import { scrapeFelixMeritis, type FelixMeritisResult } from './felixmeritis.js';
 import { scrapeGashouder, type GashouderResult } from './gashouder.js';
 import { scrapeLima, type LimaResult } from './lima.js';
@@ -162,6 +163,7 @@ export const scrapers = {
   bostheater: scrapeBostheater,
   eye: scrapeEye,
   kriterion: scrapeKriterion,
+  themovies: scrapeTheMovies,
 } as const;
 
 export type ScraperName = keyof typeof scrapers;
@@ -243,4 +245,5 @@ export type ScraperResult =
   | FullhouseResult
   | BostheaterResult
   | EyeResult
-  | KriterionResult;
+  | KriterionResult
+  | TheMoviesResult;
