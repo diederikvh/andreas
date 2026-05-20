@@ -7,8 +7,10 @@ import { scrapeDeCeuvel, type DeCeuvelResult } from './deceuvel.js';
 import { scrapeDeZwijger, type DeZwijgerResult } from './dezwijger.js';
 import { scrapeEventbrite, type EventbriteResult } from './eventbrite.js';
 import { scrapeEye, type EyeResult } from './eye.js';
+import { scrapeCavia, type CaviaResult } from './cavia.js';
 import { scrapeCinecenter, type CinecenterResult } from './cinecenter.js';
 import { scrapeCinemaDeVlugt, type CinemaDeVlugtResult } from './cinemadevlugt.js';
+import { scrapeThePulse, type ThePulseResult } from './thepulse.js';
 import { scrapeFchyena, type FchyenaResult } from './fchyena.js';
 import { scrapeFilmhallen, type FilmhallenResult } from './filmhallen.js';
 import { scrapeKetelhuis, type KetelhuisResult } from './ketelhuis.js';
@@ -182,6 +184,8 @@ export const scrapers = {
   rialto: scrapeRialto,
   cinecenter: scrapeCinecenter,
   cinemadevlugt: scrapeCinemaDeVlugt,
+  cavia: scrapeCavia,
+  thepulse: scrapeThePulse,
 } as const;
 
 export type ScraperName = keyof typeof scrapers;
@@ -273,4 +277,6 @@ export type ScraperResult =
   | FchyenaResult
   | RialtoResult
   | CinecenterResult
-  | CinemaDeVlugtResult;
+  | CinemaDeVlugtResult
+  | CaviaResult
+  | ThePulseResult;
