@@ -2,25 +2,18 @@
  * Rialto scraper.
  *
  * Rialto Ceintuurbaan (De Pijp) + Rialto VU (campus VU, Zuid).
- * Per-occurrence wordt de juiste venue gekoppeld via de location-param
- * in de ticket-URL: "Rialto De Pijp" → venue `rialto`, "Rialto VU"
- * → venue `rialto-vu`. Event.venueId is altijd de primary (rialto);
- * occurrence.venueId reflecteert de daadwerkelijke locatie.
+ * Onder twee aparte venues: `rialto` (De Pijp) en `rialto-vu` (VU).
  *
- * Pagina /agenda heeft server-side rendered ticket-URLs met inline
- * metadata:
+ * Bron: publiek JSON-feed-endpoint per locatie:
  *
- *   /nl/films/{filmId}/{slug}?location={loc}&date={YYYY-MM-DD}&time={HH:MM}
+ *   /feed/nl/program/{locationId}/{daysAhead}
  *
- * Geen JSON-LD, geen API endpoint. Alle data zit in deze URLs.
+ * waarbij locationId 1 = De Pijp en 7 = VU. Returnt een array van
+ * dag-buckets met programs (screenings). Per screening: id, film_id,
+ * title, starts_at (HH:MM), date (ISO), genre, locatie, sold_out,
+ * cover (filename), film_url, selected_time_url (ticket-URL).
  *
- * Plan:
- *   1. Fetch /agenda + komende 13 dagen (14 totaal) → ticket-URLs.
- *   2. Per unieke film-id: fetch /nl/films/{id}/{slug} voor og:title,
- *      og:description, og:image.
- *   3. Per ticket-URL: maak occurrence met juiste venueId per locatie.
- *
- * Idempotency: occurrence-id = `rialto-${filmId}-${YYYYMMDD}-${HHMM}`.
+ * Idempotency: occurrence-id = `rialto-show-{program-id}`.
  */
 
 import { randomBytes } from 'node:crypto';
@@ -30,8 +23,14 @@ import { db, schema } from '../db/index.js';
 
 const PRIMARY_VENUE_ID = 'rialto';
 const VU_VENUE_ID = 'rialto-vu';
-const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36';
-const DAYS_AHEAD = 14;
+const UA = 'AndreasBot/1.0 (+https://andreas.amsterdam)';
+const DAYS_AHEAD = 28;
+
+/** location-id in Rialto's feed → onze venue-id. */
+const LOCATIONS: Array<{ id: number; venueId: string }> = [
+  { id: 1, venueId: PRIMARY_VENUE_ID },
+  { id: 7, venueId: VU_VENUE_ID },
+];
 
 export interface RialtoResult {
   venueId: 'rialto';
@@ -42,20 +41,26 @@ export interface RialtoResult {
   errors: string[];
 }
 
-/** Vertaal location-string uit ticket-URL naar onze venue-id. */
-function venueIdForLocation(loc: string): string {
-  const l = loc.toLowerCase();
-  if (l.includes('vu')) return VU_VENUE_ID;
-  return PRIMARY_VENUE_ID;
+interface FeedProgram {
+  id: number;
+  film_id: number;
+  title: string;
+  film_url: string;
+  selected_time_url?: string;
+  url?: string;
+  cover?: string;
+  location_name?: string;
+  genre?: string;
+  starts_at: string;
+  date: string;
+  timestamp: string;
+  sold_out: boolean;
+  note?: string | null;
 }
 
-interface TicketUrl {
-  filmId: string;
-  slug: string;
-  location: string;
-  date: string;
-  time: string;
-  href: string;
+interface FeedDay {
+  programs?: FeedProgram[];
+  date?: string;
 }
 
 export async function scrapeRialto(): Promise<RialtoResult[]> {
@@ -68,42 +73,34 @@ export async function scrapeRialto(): Promise<RialtoResult[]> {
     errors: [],
   };
 
-  // 1) Verzamel ticket-URLs over komende 14 dagen.
-  const allTickets: TicketUrl[] = [];
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  for (let i = 0; i < DAYS_AHEAD; i += 1) {
-    const d = new Date(today);
-    d.setDate(d.getDate() + i);
-    const dateStr = d.toISOString().slice(0, 10);
-    const url = i === 0
-      ? 'https://rialtofilm.nl/agenda'
-      : `https://rialtofilm.nl/agenda?date=${dateStr}`;
-    const html = await fetchText(url);
-    if (!html) continue;
-    for (const t of parseTickets(html)) {
-      allTickets.push(t);
+  // 1) Haal feeds op per locatie en verzamel programs samen met de
+  //    bijbehorende venue-id.
+  const allPrograms: Array<{ p: FeedProgram; venueId: string }> = [];
+  for (const loc of LOCATIONS) {
+    const feed = await fetchFeed(loc.id);
+    if (!feed) {
+      result.errors.push(`feed loc ${loc.id} fetch failed`);
+      continue;
+    }
+    for (const day of feed) {
+      for (const p of day.programs ?? []) {
+        allPrograms.push({ p, venueId: loc.venueId });
+      }
     }
   }
 
-  // Dedup op (filmId, date, time, location).
-  const seen = new Set<string>();
-  const unique = allTickets.filter((t) => {
-    const k = `${t.filmId}|${t.date}|${t.time}|${t.location}`;
-    if (seen.has(k)) return false;
-    seen.add(k);
-    return true;
-  });
+  // 2) Group by film_id → één event per film, occurrences per program.
+  const byFilmId = new Map<number, Array<{ p: FeedProgram; venueId: string }>>();
+  for (const entry of allPrograms) {
+    const list = byFilmId.get(entry.p.film_id);
+    if (list) list.push(entry);
+    else byFilmId.set(entry.p.film_id, [entry]);
+  }
 
-  // 2) Per unieke filmId: één fetch voor metadata.
-  const filmIds = [...new Set(unique.map((t) => t.filmId))];
-  const filmMeta = new Map<
-    string,
-    { title: string; description: string | null; imageUrl: string | null }
-  >();
-  for (const t of unique) {
-    if (filmMeta.has(t.filmId)) continue;
-    const url = `https://rialtofilm.nl/nl/films/${t.filmId}/${t.slug}`;
+  // 3) Per unieke film_id: één film-page-fetch voor og:title/desc/image.
+  const filmMeta = new Map<number, { title: string; description: string | null; imageUrl: string | null }>();
+  for (const [filmId, list] of byFilmId) {
+    const url = list[0].p.film_url;
     const html = await fetchText(url);
     result.fetched += 1;
     if (!html) continue;
@@ -117,20 +114,21 @@ export async function scrapeRialto(): Promise<RialtoResult[]> {
       ) || null;
     const imageUrl =
       html.match(/<meta property="og:image"[^>]*content="([^"]+)"/)?.[1] || null;
-    filmMeta.set(t.filmId, { title, description, imageUrl });
+    filmMeta.set(filmId, { title, description, imageUrl });
   }
 
-  // 3) Maak per ticket een occurrence.
-  const eventByFilmId = new Map<string, string>();
+  // 4) Per film: maak/vind event, hang occurrences eraan.
   const nowMs = Date.now();
-  for (const t of unique) {
+  const eventByFilmId = new Map<number, string>();
+  for (const [filmId, list] of byFilmId) {
     try {
-      const meta = filmMeta.get(t.filmId);
-      if (!meta) continue;
+      const meta = filmMeta.get(filmId);
+      if (!meta) {
+        result.skipped += 1;
+        continue;
+      }
 
-      // Event-id reuse binnen deze scrape-run zodat we niet N× per film
-      // de bestaande-event-lookup hoeven te doen.
-      let eventId = eventByFilmId.get(t.filmId);
+      let eventId = eventByFilmId.get(filmId);
       if (!eventId) {
         const [existing] = await db
           .select({
@@ -154,8 +152,7 @@ export async function scrapeRialto(): Promise<RialtoResult[]> {
           if (!existing.description && meta.description) patch.description = meta.description;
           if (
             meta.imageUrl &&
-            (!existing.imageUrl ||
-              /wiki(p|m)edia\.org/.test(existing.imageUrl))
+            (!existing.imageUrl || /wiki(p|m)edia\.org/.test(existing.imageUrl))
           ) {
             patch.imageUrl = meta.imageUrl;
           }
@@ -178,77 +175,67 @@ export async function scrapeRialto(): Promise<RialtoResult[]> {
           });
           result.inserted += 1;
         }
-        eventByFilmId.set(t.filmId, eventId);
+        eventByFilmId.set(filmId, eventId);
       }
 
-      const startsAt = new Date(`${t.date}T${t.time}:00`);
-      if (Number.isNaN(startsAt.getTime()) || startsAt.getTime() < nowMs - 6 * 3600 * 1000) {
-        continue;
-      }
-      const occId = `rialto-${t.filmId}-${t.date.replace(/-/g, '')}-${t.time.replace(':', '')}`;
-      const occVenueId = venueIdForLocation(t.location);
-      // Voor De Pijp houden we 'm in 't room-veld als hall-label
-      // (verkoopapparaat onderscheidt zalen niet apart). Voor VU laten
-      // we room leeg — de venue-naam is al duidelijk.
-      const room = occVenueId === PRIMARY_VENUE_ID ? null : null;
-      const ticketUrl = t.href;
+      for (const { p, venueId } of list) {
+        const tsMs = Number(p.timestamp) * 1000;
+        const startsAt = Number.isFinite(tsMs) ? new Date(tsMs) : null;
+        if (!startsAt || Number.isNaN(startsAt.getTime())) continue;
+        if (startsAt.getTime() < nowMs - 6 * 3600 * 1000) continue;
 
-      const [existingOcc] = await db
-        .select({ id: schema.occurrences.id })
-        .from(schema.occurrences)
-        .where(eq(schema.occurrences.id, occId))
-        .limit(1);
+        const occId = `rialto-show-${p.id}`;
+        const ticketUrl = p.selected_time_url ?? p.film_url;
+        const status: 'scheduled' | 'sold_out' = p.sold_out ? 'sold_out' : 'scheduled';
 
-      if (existingOcc) {
-        await db
-          .update(schema.occurrences)
-          .set({
-            startsAt,
-            ticketUrl,
-            room,
-            venueId: occVenueId,
+        const [existingOcc] = await db
+          .select({ id: schema.occurrences.id })
+          .from(schema.occurrences)
+          .where(eq(schema.occurrences.id, occId))
+          .limit(1);
+
+        if (existingOcc) {
+          await db
+            .update(schema.occurrences)
+            .set({
+              startsAt,
+              ticketUrl,
+              venueId,
+              eventId,
+              status,
+            })
+            .where(eq(schema.occurrences.id, occId));
+        } else {
+          await db.insert(schema.occurrences).values({
+            id: occId,
             eventId,
-          })
-          .where(eq(schema.occurrences.id, occId));
-      } else {
-        await db.insert(schema.occurrences).values({
-          id: occId,
-          eventId,
-          venueId: occVenueId,
-          startsAt,
-          priceCents: null,
-          ticketUrl,
-          room,
-          status: 'scheduled',
-        });
+            venueId,
+            startsAt,
+            priceCents: null,
+            ticketUrl,
+            status,
+          });
+        }
+        result.occurrencesUpserted += 1;
       }
-      result.occurrencesUpserted += 1;
     } catch (e) {
-      result.errors.push(
-        `${t.filmId}/${t.date}: ${(e as Error).message ?? String(e)}`
-      );
+      result.errors.push(`film ${filmId}: ${(e as Error).message ?? String(e)}`);
     }
   }
-  result.skipped = filmIds.length - filmMeta.size;
   return [result];
 }
 
-/** Parse alle ticket-URLs uit agenda HTML. */
-function parseTickets(html: string): TicketUrl[] {
-  const out: TicketUrl[] = [];
-  const re =
-    /href="https:\/\/rialtofilm\.nl\/nl\/films\/(\d+)\/([^"?]+)\?location=([^"&]+)&amp;date=(\d{4}-\d{2}-\d{2})&amp;time=(\d{2}:\d{2})"/g;
-  for (const m of html.matchAll(re)) {
-    out.push({
-      filmId: m[1],
-      slug: m[2],
-      location: decodeURIComponent(m[3].replace(/\+/g, ' ')),
-      date: m[4],
-      time: m[5],
-      href: `https://rialtofilm.nl/nl/films/${m[1]}/${m[2]}?location=${m[3]}&date=${m[4]}&time=${m[5]}`,
-    });
+async function fetchFeed(locationId: number): Promise<FeedDay[] | null> {
+  try {
+    const r = await fetch(
+      `https://rialtofilm.nl/feed/nl/program/${locationId}/${DAYS_AHEAD}`,
+      { headers: { 'User-Agent': UA, Accept: 'application/json' } }
+    );
+    if (!r.ok) return null;
+    return (await r.json()) as FeedDay[];
+  } catch {
+    return null;
   }
-  return out;
 }
 
 async function fetchText(url: string): Promise<string | null> {
