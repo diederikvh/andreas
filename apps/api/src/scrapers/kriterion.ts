@@ -28,6 +28,7 @@ import { and, eq } from 'drizzle-orm';
 
 import { db, schema } from '../db/index.js';
 import { uploadToBunny } from '../storage/bunny.js';
+import { fetchFilmGenres } from './_tmdb.js';
 
 const AGENDA_URL = 'https://www.kriterion.nl/agenda/';
 const FILMS_API = 'https://www.kriterion.nl/api/films?populate=still&pagination%5Blimit%5D=200';
@@ -105,6 +106,7 @@ export async function scrapeKriterion(): Promise<KriterionResult[]> {
           id: schema.events.id,
           description: schema.events.description,
           imageUrl: schema.events.imageUrl,
+          genres: schema.events.genres,
         })
         .from(schema.events)
         .where(
@@ -120,7 +122,7 @@ export async function scrapeKriterion(): Promise<KriterionResult[]> {
       let eventId: string;
       if (existing) {
         eventId = existing.id;
-        const patch: Record<string, string> = {};
+        const patch: Record<string, unknown> = {};
         // Description aanvullen als 'ie leeg is. Niet overschrijven —
         // Eye/Wikipedia/AI-enrich kunnen al een betere variant hebben.
         if (!existing.description && meta?.description) {
@@ -137,6 +139,10 @@ export async function scrapeKriterion(): Promise<KriterionResult[]> {
           const poster = await resolveAndUploadPoster(title, films);
           if (poster) patch.imageUrl = poster;
         }
+        if (!existing.genres || existing.genres.length === 0) {
+          const genres = await fetchFilmGenres(title);
+          if (genres.length > 0) patch.genres = genres;
+        }
         if (Object.keys(patch).length > 0) {
           await db
             .update(schema.events)
@@ -147,9 +153,10 @@ export async function scrapeKriterion(): Promise<KriterionResult[]> {
         eventId = `film-${slugify(title)}-${randomBytes(3).toString('hex')}`;
         // Kriterion's agenda-description is een sjabloon, maar Strapi's
         // beschrijving (Editor.js JSON) is echte film-tekst. Poster
-        // komt van Strapi → Bunny. Beide null als Strapi geen match
-        // heeft; volgende run probeert opnieuw.
+        // komt van Strapi → Bunny. Genres van TMDb. Alles null als 't
+        // niet lukt; volgende run probeert opnieuw.
         const poster = await resolveAndUploadPoster(title, films);
+        const genres = await fetchFilmGenres(title);
         await db.insert(schema.events).values({
           id: eventId,
           venueId: VENUE_ID,
@@ -158,6 +165,7 @@ export async function scrapeKriterion(): Promise<KriterionResult[]> {
           kind: 'show',
           imageUrl: poster,
           category: 'Film',
+          ...(genres.length > 0 ? { genres } : {}),
         });
         result.inserted += 1;
       }
