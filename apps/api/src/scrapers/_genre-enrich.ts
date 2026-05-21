@@ -20,7 +20,7 @@
 import { and, eq, isNull, or, sql } from 'drizzle-orm';
 
 import { db, schema } from '../db/index.js';
-import { enrichEvent } from './enrich.js';
+import { classifyEventGenres } from './_genre-classifier.js';
 
 export interface GenreEnrichResult {
   scanned: number;
@@ -141,9 +141,12 @@ export async function enrichGenresFromKeywords(): Promise<GenreEnrichResult> {
   return result;
 }
 
-/** Stap 2: AI-fallback voor events die NA stap 1 nog leeg zijn. Skipt
-    events zonder description (te weinig context, kost tokens voor
-    niets). Hergebruikt enrichEvent uit enrich.ts. */
+/** Stap 2: AI-classifier voor events die NA stap 1 nog leeg zijn.
+    Gebruikt een closed-list classifier (zie _genre-classifier.ts) —
+    dwingt AI om een primaire bucket te kiezen i.p.v. lege array bij
+    twijfel. Werkt ook bij dunne descriptions: venue + titel + category
+    is meestal genoeg context (bv. Bimhuis-event = jazz, Frascati =
+    toneel, etc.). */
 export async function enrichGenresFromAI(): Promise<GenreEnrichResult> {
   const rows = await db
     .select({
@@ -171,17 +174,12 @@ export async function enrichGenresFromAI(): Promise<GenreEnrichResult> {
   };
 
   for (const e of rows) {
-    if (!e.description || e.description.length < 40) {
-      // Te weinig signaal voor AI — skip om tokens te besparen.
-      result.unchanged += 1;
-      continue;
-    }
     try {
-      const out = await enrichEvent({
+      const out = await classifyEventGenres({
         title: e.title,
         description: e.description,
         venueName: e.venueName ?? '',
-        venueCategory: e.category,
+        category: e.category,
       });
       if (out.genres.length === 0) {
         result.unchanged += 1;

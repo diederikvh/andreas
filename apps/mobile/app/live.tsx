@@ -1,16 +1,17 @@
 /**
- * Andreas × Clubs — overzicht van clubnachten in komende 7 dagen.
- * Per nacht een entry met banner-image, venue, tijd, volledige lineup
- * en genre-chips. Date-gegroepeerd ("VANAVOND", "VR 23 MEI", etc.).
+ * Andreas × Live — overzicht van livemuziek op podia (Paradiso,
+ * Melkweg, Bimhuis, Q-Factory, etc.) komende ~7 dagen. Date-
+ * gegroepeerd ('Vanavond' / 'Vr 23 mei'), per concert banner-image,
+ * tijd + venue, titel/lineup en genre-chips.
  *
- * Container-loos design (zoals Films-pagina): geen card-chrome, image
- * en tekst direct op de bg — Resident Advisor-vibe.
+ * Verschil met /clubs: alleen events met start vóór 23:00 — late
+ * podium-feesten horen bij clubs, niet bij Live.
  */
 
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { router } from 'expo-router';
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import {
   Pressable,
   ScrollView,
@@ -35,24 +36,66 @@ import { fontFamily, palette } from '@/theme/tokens';
 
 const HORIZONTAL_PADDING = 14;
 
-interface ClubNight {
+interface LiveShow {
   id: string;
   event: ApiEvent;
   occurrence: ApiOccurrence;
 }
 
-export default function Clubs() {
+type GenreBucket =
+  | 'rock'
+  | 'hiphop'
+  | 'jazz'
+  | 'klassiek'
+  | 'pop'
+  | 'electronic'
+  | 'wereld'
+  | 'overig';
+
+const BUCKET_LABELS: Record<GenreBucket, { nl: string; en: string }> = {
+  rock: { nl: 'Rock/Indie', en: 'Rock/Indie' },
+  hiphop: { nl: 'Hip-hop', en: 'Hip-hop' },
+  jazz: { nl: 'Jazz', en: 'Jazz' },
+  klassiek: { nl: 'Klassiek', en: 'Classical' },
+  pop: { nl: 'Pop', en: 'Pop' },
+  electronic: { nl: 'Electronic', en: 'Electronic' },
+  wereld: { nl: 'Wereld', en: 'World' },
+  overig: { nl: 'Overig', en: 'Other' },
+};
+
+/** Map alle vrije-vorm genres uit de DB naar één van 7 buckets.
+    Eerste-match wint — meer specifieke buckets staan eerst zodat
+    "indie folk" niet als 'pop' eindigt. Events zonder match → overig. */
+function bucketFor(event: ApiEvent): GenreBucket {
+  const genres = (event.genres ?? []).map((g) => g.toLowerCase());
+  const all = genres.join(' ');
+  if (/\b(klassiek|classical|symfon|symphony|kamermuziek|chamber|opera-?music|orkest)\b/.test(all))
+    return 'klassiek';
+  if (/\b(jazz|bebop|swing|big[- ]?band|fusion|nu[- ]?jazz)\b/.test(all))
+    return 'jazz';
+  if (/\b(hip[- ]?hop|rap|trap|urban|r&b|rnb|r ?and ?b)\b/.test(all))
+    return 'hiphop';
+  if (/\b(electronic|elektronisch|ambient|idm|drone|experimental|electronica)\b/.test(all))
+    return 'electronic';
+  if (/\b(world|wereld|latin|latino|afro|afrobeat|reggae|dub|ska|cumbia|balkan|gypsy)\b/.test(all))
+    return 'wereld';
+  if (/\b(indie|alternative|alt[- ]?rock|rock|post[- ]?rock|punk|metal|hardcore|garage|noise|grunge|emo|shoegaze)\b/.test(all))
+    return 'rock';
+  if (/\b(pop|singer[- ]?songwriter|acoustic|folk|country|top[- ]?40)\b/.test(all))
+    return 'pop';
+  return 'overig';
+}
+
+export default function Live() {
   const insets = useSafeAreaInsets();
   const roles = useRoles();
   const mode = useMode();
   const isNacht = mode === 'nacht';
   const t = useT();
   const locale = useLocale();
+  const [selected, setSelected] = useState<GenreBucket | 'all'>('all');
 
-  // Venster: vandaag t/m de eerstvolgende zondag (incl). Op zondag
-  // schuift 't door naar de zondag erna zodat je áltijd minimaal een
-  // weekend in beeld hebt. Concreet: dow=0 (zo) → 8 dagen, dow=1 (ma)
-  // → 7 dagen, dow=6 (za) → 2 dagen.
+  // Vandaag t/m eerstvolgende zondag (zelfde patroon als /clubs).
   const range = useMemo(() => {
     const from = new Date();
     from.setHours(0, 0, 0, 0);
@@ -63,39 +106,30 @@ export default function Clubs() {
     return { from: from.toISOString(), to: to.toISOString() };
   }, []);
 
-  // Default limit van /events is 200 — voor een week met veel films
-  // is dat te klein om alle weekend-feesten mee te krijgen. Cap hoog.
   const { data: events, isLoading, error } = useEvents({
     from: range.from,
     to: range.to,
     limit: 2000,
   });
 
-  // Verzamel club-occurrences. Definitie van "club-nacht":
-  //   - Venue is een echte club (type='club'), of
-  //   - Event is Muziek-category én begint laat (22:00+) of na
-  //     middernacht (00:00-04:59) — vangt DJ-nachten bij Paradiso/
-  //     Melkweg/etc. (die zijn type='podium' maar hosten wel feesten).
-  // Concerten die om 20:00 starten vallen er buiten — terecht, dat
-  // zijn shows geen feesten.
-  const nights = useMemo<ClubNight[]>(() => {
+  // Filter: venue.type='podium' AND category='Muziek' EN start < 23:00
+  // (late shows behoren bij clubs-page). Bimhuis (jazz, 20:30), Q-
+  // Factory, Patronaat, Paradiso main hall (concerten 19:30-21:00),
+  // Melkweg podium, etc.
+  const shows = useMemo<LiveShow[]>(() => {
     if (!events) return [];
     const now = Date.now();
-    const out: ClubNight[] = [];
+    const out: LiveShow[] = [];
     for (const e of events) {
-      const isClubVenue = e.venue.type === 'club';
+      if (e.category !== 'Muziek') continue;
+      if (e.venue.type !== 'podium') continue;
       for (const o of e.occurrencesInRange ?? []) {
         const ts = new Date(o.startsAt).getTime();
         if (ts < now - 4 * 3600 * 1000) continue;
-        if (!isClubVenue) {
-          if (e.category !== 'Muziek') continue;
-          const hour = new Date(o.startsAt).getHours();
-          // Pas vanaf 23:00 of na middernacht (tot 05:00) tellen we
-          // een non-club-Muziek-event als club-nacht. Anders zou een
-          // concert van 21:30 ook meedoen — dat is geen feest.
-          const isLateNight = hour >= 23 || hour < 5;
-          if (!isLateNight) continue;
-        }
+        const hour = new Date(o.startsAt).getHours();
+        // Late events (≥23:00) zijn club-nachten — die zien we op
+        // /clubs. Live is voor de eerdere concert-shows.
+        if (hour >= 23) continue;
         out.push({ id: `${e.id}::${o.id}`, event: e, occurrence: o });
       }
     }
@@ -106,24 +140,46 @@ export default function Clubs() {
     );
   }, [events]);
 
-  // Group by logical-day (06:00 boundary — clubs die 02:00 op zaterdag
-  // draaien horen bij vrijdag-nacht). dateKey = "YYYYMMDD" van de
-  // logische dag.
+  // Counts per bucket — voor de chip-labels. Lege buckets verbergen
+  // we zodat de chip-row consistent oogt over runs (geen klassiek-chip
+  // als er deze week niets klassieks is).
+  const counts = useMemo(() => {
+    const c: Record<GenreBucket, number> = {
+      rock: 0,
+      hiphop: 0,
+      jazz: 0,
+      klassiek: 0,
+      pop: 0,
+      electronic: 0,
+      wereld: 0,
+      overig: 0,
+    };
+    for (const s of shows) c[bucketFor(s.event)] += 1;
+    return c;
+  }, [shows]);
+
+  const visibleChips: GenreBucket[] = (
+    ['rock', 'hiphop', 'jazz', 'klassiek', 'pop', 'electronic', 'wereld', 'overig'] as GenreBucket[]
+  ).filter((b) => counts[b] > 0);
+
+  const filtered = useMemo(() => {
+    if (selected === 'all') return shows;
+    return shows.filter((s) => bucketFor(s.event) === selected);
+  }, [shows, selected]);
+
+  // Groeperen per kalenderdag (geen 06:00-shift zoals clubs — Live-
+  // events lopen niet typisch over middernacht).
   const grouped = useMemo(() => {
-    const buckets = new Map<string, ClubNight[]>();
-    for (const n of nights) {
-      const d = new Date(n.occurrence.startsAt);
-      // Pre-06:00 → reken bij vorige dag.
-      if (d.getHours() < 6) {
-        d.setDate(d.getDate() - 1);
-      }
+    const buckets = new Map<string, LiveShow[]>();
+    for (const s of filtered) {
+      const d = new Date(s.occurrence.startsAt);
       const key = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
       const list = buckets.get(key);
-      if (list) list.push(n);
-      else buckets.set(key, [n]);
+      if (list) list.push(s);
+      else buckets.set(key, [s]);
     }
     return [...buckets.entries()].sort((a, b) => a[0].localeCompare(b[0]));
-  }, [nights]);
+  }, [filtered]);
 
   return (
     <View style={[styles.root, { backgroundColor: roles.bg }]}>
@@ -133,6 +189,29 @@ export default function Clubs() {
           paddingBottom: insets.bottom + 24,
         }}
       >
+        {visibleChips.length > 0 && (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.chipsRow}
+          >
+            <Chip
+              label={t('Alle', 'All')}
+              count={shows.length}
+              active={selected === 'all'}
+              onPress={() => setSelected('all')}
+            />
+            {visibleChips.map((b) => (
+              <Chip
+                key={b}
+                label={BUCKET_LABELS[b][locale === 'en' ? 'en' : 'nl']}
+                count={counts[b]}
+                active={selected === b}
+                onPress={() => setSelected(b)}
+              />
+            ))}
+          </ScrollView>
+        )}
         {isLoading && (
           <View style={styles.centerWrap}>
             <Text style={[styles.dim, { color: roles.fgMuted }]}>
@@ -143,14 +222,14 @@ export default function Clubs() {
         {error && (
           <View style={styles.centerWrap}>
             <Text style={[styles.dim, { color: roles.fgMuted }]}>
-              {t('Kon clubs niet laden.', 'Couldn’t load clubs.')}
+              {t('Kon live niet laden.', 'Couldn’t load live.')}
             </Text>
           </View>
         )}
-        {nights.length === 0 && !isLoading && !error && (
+        {shows.length === 0 && !isLoading && !error && (
           <View style={styles.centerWrap}>
             <Text style={[styles.dim, { color: roles.fgMuted }]}>
-              {t('Geen clubnachten deze week.', 'No club nights this week.')}
+              {t('Geen concerten deze week.', 'No live shows this week.')}
             </Text>
           </View>
         )}
@@ -163,18 +242,17 @@ export default function Clubs() {
               style={[
                 styles.dateHeader,
                 {
-                  color:
-                    idx === 0 ? roles.accent : roles.fg,
+                  color: idx === 0 ? roles.accent : roles.fg,
                   paddingTop: idx === 0 ? 4 : 20,
                 },
               ]}
             >
               {dateHeader(items[0].occurrence.startsAt, locale, idx === 0)}
             </Text>
-            {items.map((n) => (
-              <ClubNightCard
-                key={n.id}
-                night={n}
+            {items.map((s) => (
+              <LiveShowCard
+                key={s.id}
+                show={s}
                 locale={locale}
                 t={t}
                 isToday={idx === 0}
@@ -185,7 +263,7 @@ export default function Clubs() {
       </ScrollView>
 
       <AppHeader
-        title={t('Clubs', 'Clubs')}
+        title={t('Live', 'Live')}
         hideAvatar
         rightSlot={
           <Pressable
@@ -204,54 +282,82 @@ export default function Clubs() {
   );
 }
 
-function ClubNightCard({
-  night,
+function Chip({
+  label,
+  count,
+  active,
+  onPress,
+}: {
+  label: string;
+  count: number;
+  active: boolean;
+  onPress: () => void;
+}) {
+  const roles = useRoles();
+  return (
+    <Pressable
+      onPress={onPress}
+      style={[
+        styles.chip,
+        {
+          backgroundColor: active ? roles.accent : 'transparent',
+          borderColor: active ? roles.accent : roles.bgChip,
+        },
+      ]}
+    >
+      <Text
+        style={[
+          styles.chipText,
+          { color: active ? roles.onAccent : roles.fg },
+        ]}
+      >
+        {label}
+        <Text style={{ color: active ? roles.onAccent : roles.fgMuted }}>
+          {' '}
+          {count}
+        </Text>
+      </Text>
+    </Pressable>
+  );
+}
+
+function LiveShowCard({
+  show,
   locale,
   t,
   isToday,
 }: {
-  night: ClubNight;
+  show: LiveShow;
   locale: Locale;
   t: ReturnType<typeof useT>;
   isToday: boolean;
 }) {
   const roles = useRoles();
-  const { event, occurrence } = night;
+  const { event, occurrence } = show;
   const banner = eventImageUrl(event);
   const time = rowTimeLabel(occurrence.startsAt, occurrence.endsAt, locale);
   const lineup = occurrence.lineup ?? [];
   const genres = event.genres ?? [];
   const isSoldOut = occurrence.status === 'sold_out';
 
-  // Toon dag-label op de card zelf wanneer 't NIET vandaag is — zodra
-  // je een paar cards verder scrollt mis je 't section-header en denk
-  // je anders dat alles vandaag is.
   const dayLabel = (() => {
     if (isToday) return null;
     const d = new Date(occurrence.startsAt);
-    // Pre-06:00 → logische dag is gisteren (zelfde regel als bucket-key).
-    const display = new Date(d);
-    if (d.getHours() < 6) display.setDate(display.getDate() - 1);
-    const dow = dowMixed(display.getDay(), locale);
-    const month = monthShort(display.getMonth(), locale).toLowerCase();
-    return `${dow} ${display.getDate()} ${month}`;
+    const dow = dowMixed(d.getDay(), locale);
+    const month = monthShort(d.getMonth(), locale).toLowerCase();
+    return `${dow} ${d.getDate()} ${month}`;
   })();
 
   return (
     <Pressable
       onPress={() =>
         router.push(
-          `/event/${event.id}?o=${occurrence.id}&source=clubs` as never
+          `/event/${event.id}?o=${occurrence.id}&source=live` as never
         )
       }
       style={styles.card}
     >
-      <View
-        style={[
-          styles.banner,
-          { backgroundColor: roles.bgLift },
-        ]}
-      >
+      <View style={[styles.banner, { backgroundColor: roles.bgLift }]}>
         {banner ? (
           <Image
             source={{ uri: banner }}
@@ -266,9 +372,7 @@ function ClubNightCard({
                 key={g}
                 style={[
                   styles.genreChip,
-                  {
-                    backgroundColor: i === 0 ? roles.accent : roles.fg,
-                  },
+                  { backgroundColor: i === 0 ? roles.accent : roles.fg },
                 ]}
               >
                 <Text
@@ -317,7 +421,6 @@ function ClubNightCard({
   );
 }
 
-/** "Vanavond" voor index 0; daarna "Vr 23 mei" achtig label. */
 function dateHeader(iso: string, locale: Locale, isFirst: boolean): string {
   if (isFirst) return locale === 'en' ? 'Tonight' : 'Vanavond';
   const d = new Date(iso);
@@ -328,6 +431,23 @@ function dateHeader(iso: string, locale: Locale, isFirst: boolean): string {
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
+  chipsRow: {
+    paddingHorizontal: HORIZONTAL_PADDING,
+    paddingTop: 4,
+    paddingBottom: 16,
+    gap: 8,
+  },
+  chip: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
+  chipText: {
+    fontFamily: fontFamily.bold,
+    fontSize: 13,
+    letterSpacing: -0.13,
+  },
   centerWrap: {
     paddingHorizontal: HORIZONTAL_PADDING,
     paddingVertical: 60,
@@ -344,8 +464,6 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     letterSpacing: -0.36,
     paddingHorizontal: HORIZONTAL_PADDING,
-    // paddingTop wordt inline gezet — meer ruimte ná de divider voor
-    // duidelijke dag-overgang.
     paddingBottom: 10,
   },
   dayDivider: {
@@ -365,6 +483,15 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   bannerImg: { width: '100%', height: '100%' },
+  genresOnBanner: {
+    position: 'absolute',
+    top: 8,
+    left: 8,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 4,
+    maxWidth: '70%',
+  },
   body: { gap: 0 },
   metaRow: {
     flexDirection: 'row',
@@ -406,15 +533,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 18,
     letterSpacing: -0.13,
-  },
-  genresOnBanner: {
-    position: 'absolute',
-    top: 8,
-    left: 8,
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 4,
-    maxWidth: '70%',
   },
   genreChip: {
     paddingHorizontal: 10,

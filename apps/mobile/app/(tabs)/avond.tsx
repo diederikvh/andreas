@@ -837,6 +837,7 @@ export default function Avond() {
         >
           <FilmsBanner />
           <ClubsBanner />
+          <LiveBanner />
           <TheaterBanner />
           <KaartBanner />
           <OpGevoelBanner />
@@ -1717,10 +1718,7 @@ function OpGevoelBanner() {
         {t('Vibes', 'Vibes')}
       </Text>
       <Text style={[styles.shortcutTitle, { color: roles.fg }]}>
-        {t(
-          'Swipe en kies wat je leuk vindt.',
-          'Swipe and pick what you like.'
-        )}
+        {t('Wat is je mood vanavond?', "What's your mood tonight?")}
       </Text>
     </Pressable>
   );
@@ -1747,8 +1745,8 @@ function TheaterBanner() {
       </Text>
       <Text style={[styles.shortcutTitle, { color: roles.fg }]}>
         {t(
-          'Voorstellingen komende twee weken.',
-          'Shows over the next two weeks.'
+          'Nu en volgende week op de planken.',
+          'On stage now and next week.'
         )}
       </Text>
     </Pressable>
@@ -1796,10 +1794,29 @@ function FilmsBanner() {
         {t('Films', 'Films')}
       </Text>
       <Text style={[styles.shortcutTitle, { color: roles.fg }]}>
-        {t(
-          'Welke films draaien deze week?',
-          'Which films are showing this week?'
-        )}
+        {t('Wat draait er deze week?', "What's showing this week?")}
+      </Text>
+    </Pressable>
+  );
+}
+
+function LiveBanner() {
+  const roles = useRoles();
+  const t = useT();
+  return (
+    <Pressable
+      onPress={() => router.push('/live' as never)}
+      style={[
+        styles.shortcutBtn,
+        { backgroundColor: roles.bgLift, borderColor: roles.bgChip },
+      ]}
+    >
+      <Ionicons name="mic-outline" size={36} color={roles.accent} />
+      <Text style={[styles.shortcutKicker, { color: roles.fgMuted }]}>
+        {t('Live', 'Live')}
+      </Text>
+      <Text style={[styles.shortcutTitle, { color: roles.fg }]}>
+        {t('Waar speelt de livemuziek?', "Where's the live music at?")}
       </Text>
     </Pressable>
   );
@@ -1821,10 +1838,7 @@ function KaartBanner() {
         {t('Kaart', 'Map')}
       </Text>
       <Text style={[styles.shortcutTitle, { color: roles.fg }]}>
-        {t(
-          'Zie wat er nu speelt in de buurt.',
-          'See what’s on around you right now.'
-        )}
+        {t('Hier en nu in beeld.', 'Right here, right now.')}
       </Text>
     </Pressable>
   );

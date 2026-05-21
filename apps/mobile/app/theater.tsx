@@ -54,9 +54,10 @@ const DISCIPLINE_LABELS: Record<Discipline, { nl: string; en: string }> = {
 };
 
 /** Map een event naar een primaire discipline. Comedy/cabaret wordt
-    eerder gecheckt dan musical/opera zodat "comedy musical" terecht
-    in cabaret valt. Musical heeft een eigen bucket — hoort niet onder
-    opera (musical-rock is geen Verdi). */
+    eerder gecheckt dan musical/opera. Musical heeft eigen bucket
+    (geen opera). Default voor empty/niet-herkende genres: 'toneel'
+    — als 't echt onbekend is is toneel de veiligste gok voor
+    Theater-category-events. */
 function disciplineFor(event: ApiEvent): Discipline {
   const genres = (event.genres ?? []).map((g) => g.toLowerCase());
   if (genres.some((g) => /kind|familie|family/.test(g))) return 'familie';
@@ -65,9 +66,7 @@ function disciplineFor(event: ApiEvent): Discipline {
   if (genres.some((g) => /musical|muziektheater/.test(g))) return 'musical';
   if (genres.some((g) => /opera|operette/.test(g))) return 'opera';
   if (genres.some((g) => /dans|dance|ballet/.test(g))) return 'dans';
-  if (genres.some((g) => /theater|toneel|drama|performance/.test(g)))
-    return 'toneel';
-  return 'overig';
+  return 'toneel';
 }
 
 export default function Theater() {
