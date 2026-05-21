@@ -68,3 +68,43 @@ jobs:
           echo "── HTTP $HTTP ──"
           python3 -m json.tool < response.json 2>/dev/null || cat response.json
           [ "$HTTP" -ge 400 ] && exit 1 || exit 0
+
+  # Genre-enrichment — twee staps. Stap 1 (keyword) is gratis en
+  # pakt het meeste; stap 2 (AI fallback) handelt af wat na stap 1
+  # nog leeg is. Beide idempotent. Runt na enrich-films zodat OMDb-
+  # genres op films er al staan voor de keyword-pass.
+  enrich-genres-keywords:
+    needs: enrich-films
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: POST /admin/api/enrich-genres-keywords
+        run: |
+          HTTP=$(curl --silent --show-error --max-time 600 \
+            -X POST "https://api.andreas.amsterdam/admin/api/enrich-genres-keywords" \
+            -H "Authorization: Bearer ${{ secrets.ANDREAS_ADMIN_API_KEY }}" \
+            -H "Content-Type: application/json" \
+            -o response.json \
+            -w "%{http_code}")
+          echo "── HTTP $HTTP ──"
+          python3 -m json.tool < response.json 2>/dev/null || cat response.json
+          [ "$HTTP" -ge 400 ] && exit 1 || exit 0
+
+  enrich-genres-ai:
+    needs: enrich-genres-keywords
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: POST /admin/api/enrich-genres-ai
+        run: |
+          HTTP=$(curl --silent --show-error --max-time 1500 \
+            -X POST "https://api.andreas.amsterdam/admin/api/enrich-genres-ai" \
+            -H "Authorization: Bearer ${{ secrets.ANDREAS_ADMIN_API_KEY }}" \
+            -H "Content-Type: application/json" \
+            -o response.json \
+            -w "%{http_code}")
+          echo "── HTTP $HTTP ──"
+          python3 -m json.tool < response.json 2>/dev/null || cat response.json
+          [ "$HTTP" -ge 400 ] && exit 1 || exit 0

@@ -3,6 +3,10 @@ import { and, asc, eq, inArray } from 'drizzle-orm';
 import { Hono } from 'hono';
 
 import { db, schema } from '../../db/index.js';
+import {
+  enrichGenresFromAI,
+  enrichGenresFromKeywords,
+} from '../../scrapers/_genre-enrich.js';
 import { enrichFilmsFromOmdb } from '../../scrapers/_omdb-enrich.js';
 import { extractFromUrl } from '../../scrapers/extract-from-url.js';
 import { scrapers, type ScraperName } from '../../scrapers/index.js';
@@ -858,6 +862,39 @@ adminApi.post('/enrich-films-omdb', async (c) => {
         durationMs: Date.now() - startedAt,
         error: (e as Error).message,
       },
+      500
+    );
+  }
+});
+
+// ─── Genre-enrichment (keyword + AI fallback) ───────────────────────
+//
+// Twee-staps verrijking voor events zonder genre-labels. Stap 1 is
+// keyword-heuristiek (gratis); stap 2 is Claude Haiku-fallback voor
+// wat na stap 1 nog leeg is. Aangeroepen door scrape-stager.yml's
+// post-steps na film-enrichment.
+
+adminApi.post('/enrich-genres-keywords', async (c) => {
+  const startedAt = Date.now();
+  try {
+    const result = await enrichGenresFromKeywords();
+    return c.json({ durationMs: Date.now() - startedAt, ...result });
+  } catch (e) {
+    return c.json(
+      { durationMs: Date.now() - startedAt, error: (e as Error).message },
+      500
+    );
+  }
+});
+
+adminApi.post('/enrich-genres-ai', async (c) => {
+  const startedAt = Date.now();
+  try {
+    const result = await enrichGenresFromAI();
+    return c.json({ durationMs: Date.now() - startedAt, ...result });
+  } catch (e) {
+    return c.json(
+      { durationMs: Date.now() - startedAt, error: (e as Error).message },
       500
     );
   }

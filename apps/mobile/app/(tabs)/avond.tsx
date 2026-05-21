@@ -837,6 +837,7 @@ export default function Avond() {
         >
           <FilmsBanner />
           <ClubsBanner />
+          <TheaterBanner />
           <KaartBanner />
           <OpGevoelBanner />
         </ScrollView>
@@ -952,9 +953,7 @@ export default function Avond() {
             <Rail
               kicker={t('Theater & dans', 'Theatre & dance')}
               moreLabel={t('Meer →', 'More →')}
-              onMore={() =>
-                router.push({ pathname: '/agenda', params: { cat: 'Theater' } })
-              }
+              onMore={() => router.push('/theater' as never)}
             >
               {railTheater.map((r) => (
                 <RailEventCard
@@ -1721,6 +1720,35 @@ function OpGevoelBanner() {
         {t(
           'Swipe en kies wat je leuk vindt.',
           'Swipe and pick what you like.'
+        )}
+      </Text>
+    </Pressable>
+  );
+}
+
+function TheaterBanner() {
+  const roles = useRoles();
+  const t = useT();
+  return (
+    <Pressable
+      onPress={() => router.push('/theater' as never)}
+      style={[
+        styles.shortcutBtn,
+        { backgroundColor: roles.bgLift, borderColor: roles.bgChip },
+      ]}
+    >
+      <MaterialCommunityIcons
+        name="drama-masks"
+        size={36}
+        color={roles.accent}
+      />
+      <Text style={[styles.shortcutKicker, { color: roles.fgMuted }]}>
+        {t('Theater', 'Theatre')}
+      </Text>
+      <Text style={[styles.shortcutTitle, { color: roles.fg }]}>
+        {t(
+          'Voorstellingen komende twee weken.',
+          'Shows over the next two weeks.'
         )}
       </Text>
     </Pressable>
