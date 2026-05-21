@@ -38,6 +38,7 @@ type Discipline =
   | 'toneel'
   | 'dans'
   | 'cabaret'
+  | 'musical'
   | 'opera'
   | 'familie'
   | 'overig';
@@ -46,20 +47,23 @@ const DISCIPLINE_LABELS: Record<Discipline, { nl: string; en: string }> = {
   toneel: { nl: 'Toneel', en: 'Theatre' },
   dans: { nl: 'Dans', en: 'Dance' },
   cabaret: { nl: 'Cabaret', en: 'Comedy' },
+  musical: { nl: 'Musical', en: 'Musical' },
   opera: { nl: 'Opera', en: 'Opera' },
   familie: { nl: 'Familie', en: 'Family' },
   overig: { nl: 'Overig', en: 'Other' },
 };
 
-/** Map een event naar een primaire discipline op basis van z'n genres.
-    Eerste-match wint — disciplines staan in volgorde van specificiteit
-    (kindertheater eerst zodat 't niet als 'toneel' wordt geclassed). */
+/** Map een event naar een primaire discipline. Comedy/cabaret wordt
+    eerder gecheckt dan musical/opera zodat "comedy musical" terecht
+    in cabaret valt. Musical heeft een eigen bucket — hoort niet onder
+    opera (musical-rock is geen Verdi). */
 function disciplineFor(event: ApiEvent): Discipline {
   const genres = (event.genres ?? []).map((g) => g.toLowerCase());
   if (genres.some((g) => /kind|familie|family/.test(g))) return 'familie';
-  if (genres.some((g) => /opera|musical|muziektheater/.test(g))) return 'opera';
   if (genres.some((g) => /cabaret|comedy|stand-?up|improv|drag/.test(g)))
     return 'cabaret';
+  if (genres.some((g) => /musical|muziektheater/.test(g))) return 'musical';
+  if (genres.some((g) => /opera|operette/.test(g))) return 'opera';
   if (genres.some((g) => /dans|dance|ballet/.test(g))) return 'dans';
   if (genres.some((g) => /theater|toneel|drama|performance/.test(g)))
     return 'toneel';
@@ -138,6 +142,7 @@ export default function Theater() {
       toneel: 0,
       dans: 0,
       cabaret: 0,
+      musical: 0,
       opera: 0,
       familie: 0,
       overig: 0,
@@ -146,7 +151,7 @@ export default function Theater() {
     return c;
   }, [shows]);
 
-  const visibleChips: Discipline[] = (['toneel', 'dans', 'cabaret', 'opera', 'familie', 'overig'] as Discipline[])
+  const visibleChips: Discipline[] = (['toneel', 'dans', 'cabaret', 'musical', 'opera', 'familie', 'overig'] as Discipline[])
     .filter((d) => counts[d] > 0);
 
   return (
