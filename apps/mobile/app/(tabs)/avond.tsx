@@ -827,12 +827,17 @@ export default function Avond() {
           </View>
         )}
 
-        {/* Twee shortcut-CTAs naast elkaar: Kaart (ruimtelijke verkenning
-            in de buurt) en Vibes (Tinder-stijl swipe-stack). */}
-        <View style={styles.shortcutRow}>
+        {/* Shortcut-CTAs in een horizontale scroller: 2 vol in beeld,
+            3e (Films) peekt aan de rechterkant zodat je 'm ontdekt. */}
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.shortcutScroller}
+        >
           <KaartBanner />
           <OpGevoelBanner />
-        </View>
+          <FilmsBanner />
+        </ScrollView>
 
         {/* "Voor jou" — score-gesorteerde aanbevelingen op basis van je
             save-historie + gevolgde venues. Boven de datum-divider zodat
@@ -1726,6 +1731,31 @@ function OpGevoelBanner() {
   );
 }
 
+function FilmsBanner() {
+  const roles = useRoles();
+  const t = useT();
+  return (
+    <Pressable
+      onPress={() => router.push('/films' as never)}
+      style={[
+        styles.shortcutBtn,
+        { backgroundColor: roles.bgLift, borderColor: roles.bgChip },
+      ]}
+    >
+      <Ionicons name="film-outline" size={36} color={roles.accent} />
+      <Text style={[styles.shortcutKicker, { color: roles.fgMuted }]}>
+        {t('Films', 'Films')}
+      </Text>
+      <Text style={[styles.shortcutTitle, { color: roles.fg }]}>
+        {t(
+          'Welke films draaien deze week?',
+          'Which films are showing this week?'
+        )}
+      </Text>
+    </Pressable>
+  );
+}
+
 function KaartBanner() {
   const roles = useRoles();
   const t = useT();
@@ -2473,17 +2503,16 @@ const styles = StyleSheet.create({
 
   // Twee shortcut-buttons (Kaart + Vibes) naast elkaar boven de hero
   // divider. Marginbottom geeft adem voor de divider eronder.
-  shortcutRow: {
-    flexDirection: 'row',
+  shortcutScroller: {
+    paddingHorizontal: 22,
     gap: 10,
-    marginHorizontal: 22,
     marginBottom: 18,
   },
   shortcutBtn: {
-    flex: 1,
-    // Vierkante-aanvoelende kaartknop: icoon bovenin, tekstblok eronder,
-    // alles links-uitgelijnd. Geen chevron — voelt rustiger in half-
-    // breedte naast z'n tweelingknop.
+    // Fixed-width zodat ~2 kaarten vol in beeld passen op een 390px
+    // iPhone en de 3e ~70px peekt — zelfde "ontdek door te swipen"-
+    // gevoel als de event-rails eronder.
+    width: 155,
     alignItems: 'flex-start',
     gap: 10,
     padding: 14,
