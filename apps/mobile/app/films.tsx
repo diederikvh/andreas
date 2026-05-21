@@ -27,8 +27,8 @@ import { useEvents } from '@/lib/queries';
 import { useMode, useRoles } from '@/store/mode';
 import { fontFamily, palette } from '@/theme/tokens';
 
-const HORIZONTAL_PADDING = 22;
-const GRID_GAP = 12;
+const HORIZONTAL_PADDING = 14;
+const GRID_GAP = 10;
 
 export default function Films() {
   const insets = useSafeAreaInsets();
@@ -276,7 +276,6 @@ const styles = StyleSheet.create({
   poster: {
     aspectRatio: 2 / 3,
     borderRadius: 10,
-    borderWidth: 1,
     overflow: 'hidden',
     marginBottom: 8,
   },
@@ -286,20 +285,21 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 18,
     letterSpacing: -0.21,
-    marginBottom: 4,
+    marginBottom: 1,
   },
   venueLine: {
-    fontFamily: fontFamily.mono,
-    fontSize: 10,
-    letterSpacing: 0.8,
-    textTransform: 'uppercase',
+    fontFamily: fontFamily.body,
+    fontSize: 12,
+    lineHeight: 16,
+    letterSpacing: -0.12,
     marginBottom: 2,
   },
   timesLine: {
-    fontFamily: fontFamily.mono,
-    fontSize: 10,
-    letterSpacing: 0.8,
-    textTransform: 'uppercase',
+    fontFamily: fontFamily.medium,
+    fontSize: 12,
+    lineHeight: 16,
+    letterSpacing: -0.12,
+    marginBottom: 18,
   },
   closeBtn: {
     width: 36,

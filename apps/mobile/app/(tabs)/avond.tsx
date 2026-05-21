@@ -25,6 +25,7 @@ import { AppHeader, HEADER_HEIGHT } from '@/components/AppHeader';
 import { ContentSwitchHint } from '@/components/ContentSwitchHint';
 import { Cross } from '@/components/Cross';
 import { Rail, useRailCardStyles } from '@/components/Rail';
+import { FilmRailCard } from '@/components/FilmRailCard';
 import { RailEventCard } from '@/components/RailEventCard';
 import { VenueRailCard } from '@/components/VenueRailCard';
 import { RefreshBanner } from '@/components/RefreshBanner';
@@ -834,9 +835,10 @@ export default function Avond() {
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.shortcutScroller}
         >
+          <FilmsBanner />
+          <ClubsBanner />
           <KaartBanner />
           <OpGevoelBanner />
-          <FilmsBanner />
         </ScrollView>
 
         {/* "Voor jou" — score-gesorteerde aanbevelingen op basis van je
@@ -912,9 +914,7 @@ export default function Avond() {
             <Rail
               kicker={t('Vannacht in de clubs', 'Tonight in the clubs')}
               moreLabel={t('Meer →', 'More →')}
-              onMore={() =>
-                router.push({ pathname: '/agenda', params: { cat: 'Muziek' } })
-              }
+              onMore={() => router.push('/clubs' as never)}
             >
               {railClubs.map((r) => (
                 <RailEventCard
@@ -972,12 +972,10 @@ export default function Avond() {
             <Rail
               kicker={t('Film vanavond', 'Film tonight')}
               moreLabel={t('Meer →', 'More →')}
-              onMore={() =>
-                router.push({ pathname: '/agenda', params: { cat: 'Film' } })
-              }
+              onMore={() => router.push('/films' as never)}
             >
               {railFilm.map((r) => (
-                <RailEventCard
+                <FilmRailCard
                   key={r.id}
                   event={r.event}
                   occurrenceId={
@@ -1037,12 +1035,10 @@ export default function Avond() {
             <Rail
               kicker={t('Matinees', 'Matinees')}
               moreLabel={t('Meer →', 'More →')}
-              onMore={() =>
-                router.push({ pathname: '/agenda', params: { cat: 'Film' } })
-              }
+              onMore={() => router.push('/films' as never)}
             >
               {railFilmOverdag.map((r) => (
-                <RailEventCard
+                <FilmRailCard
                   key={r.id}
                   event={r.event}
                   occurrenceId={
@@ -1725,6 +1721,31 @@ function OpGevoelBanner() {
         {t(
           'Swipe en kies wat je leuk vindt.',
           'Swipe and pick what you like.'
+        )}
+      </Text>
+    </Pressable>
+  );
+}
+
+function ClubsBanner() {
+  const roles = useRoles();
+  const t = useT();
+  return (
+    <Pressable
+      onPress={() => router.push('/clubs' as never)}
+      style={[
+        styles.shortcutBtn,
+        { backgroundColor: roles.bgLift, borderColor: roles.bgChip },
+      ]}
+    >
+      <Ionicons name="disc-outline" size={36} color={roles.accent} />
+      <Text style={[styles.shortcutKicker, { color: roles.fgMuted }]}>
+        {t('Clubs', 'Clubs')}
+      </Text>
+      <Text style={[styles.shortcutTitle, { color: roles.fg }]}>
+        {t(
+          'Achter de draaitafels deze week.',
+          'On the decks this week.'
         )}
       </Text>
     </Pressable>
