@@ -3,6 +3,7 @@ import { and, asc, eq, inArray } from 'drizzle-orm';
 import { Hono } from 'hono';
 
 import { db, schema } from '../../db/index.js';
+import { enrichFilmsFromOmdb } from '../../scrapers/_omdb-enrich.js';
 import { extractFromUrl } from '../../scrapers/extract-from-url.js';
 import { scrapers, type ScraperName } from '../../scrapers/index.js';
 import { uploadToBunny } from '../../storage/bunny.js';
@@ -828,6 +829,32 @@ adminApi.post('/scrapers/run/:name', async (c) => {
     return c.json(
       {
         scraper: name,
+        durationMs: Date.now() - startedAt,
+        error: (e as Error).message,
+      },
+      500
+    );
+  }
+});
+
+// ─── OMDb enrichment voor Film-events ───────────────────────────────
+//
+// Vult ontbrekende description, image en genres aan voor Film-events
+// die nog gaps hebben. Aangeroepen door scrape-stager.yml's
+// post-step (na alle scrapers). Idempotent — pakt alleen events met
+// ontbrekende velden. Vereist OMDB_API_KEY in env.
+
+adminApi.post('/enrich-films-omdb', async (c) => {
+  const startedAt = Date.now();
+  try {
+    const result = await enrichFilmsFromOmdb();
+    return c.json({
+      durationMs: Date.now() - startedAt,
+      ...result,
+    });
+  } catch (e) {
+    return c.json(
+      {
         durationMs: Date.now() - startedAt,
         error: (e as Error).message,
       },

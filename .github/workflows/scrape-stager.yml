@@ -45,3 +45,26 @@ jobs:
           echo "── HTTP $HTTP ──"
           python3 -m json.tool < response.json 2>/dev/null || cat response.json
           [ "$HTTP" -ge 400 ] && exit 1 || exit 0
+
+  # OMDb enrichment — vult description, image en genres aan voor
+  # Film-events die nog gaps hebben (nieuw gescrapete obscure films,
+  # festival-titels die OMDb ook niet kent worden geskipt). Runt ná
+  # alle scrapers via `needs:`. fail-fast=false op de scrape-job
+  # zorgt dat één gefaalde venue niet de enrichment blokkeert.
+  enrich-films:
+    needs: scrape
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: POST /admin/api/enrich-films-omdb
+        run: |
+          HTTP=$(curl --silent --show-error --max-time 1500 \
+            -X POST "https://api.andreas.amsterdam/admin/api/enrich-films-omdb" \
+            -H "Authorization: Bearer ${{ secrets.ANDREAS_ADMIN_API_KEY }}" \
+            -H "Content-Type: application/json" \
+            -o response.json \
+            -w "%{http_code}")
+          echo "── HTTP $HTTP ──"
+          python3 -m json.tool < response.json 2>/dev/null || cat response.json
+          [ "$HTTP" -ge 400 ] && exit 1 || exit 0
