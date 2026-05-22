@@ -22,11 +22,14 @@
  * is een ander event dan de gewone "Top Gun").
  */
 
-import { randomBytes } from 'node:crypto';
-
-import { and, eq } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 
 import { db, schema } from '../db/index.js';
+import {
+  findOrCreateFilmEvent,
+  loadFilmDedupeMap,
+  pruneStaleOccurrences,
+} from './_film-dedup.js';
 
 const FILMS_INDEX_URL = 'https://www.ketelhuis.nl/films/';
 const VENUE_ID = 'ketelhuis';
@@ -38,6 +41,7 @@ export interface KetelhuisResult {
   fetched: number;
   inserted: number;
   occurrencesUpserted: number;
+  occurrencesPruned: number;
   skipped: number;
   errors: string[];
 }
@@ -64,6 +68,7 @@ export async function scrapeKetelhuis(): Promise<KetelhuisResult[]> {
     fetched: 0,
     inserted: 0,
     occurrencesUpserted: 0,
+    occurrencesPruned: 0,
     skipped: 0,
     errors: [],
   };
@@ -87,6 +92,7 @@ export async function scrapeKetelhuis(): Promise<KetelhuisResult[]> {
       return [...new Set(links)];
     })()`)) as string[];
 
+    const dedupeMap = await loadFilmDedupeMap();
     const now = Date.now();
     for (const filmUrl of filmUrls) {
       try {
@@ -169,67 +175,26 @@ export async function scrapeKetelhuis(): Promise<KetelhuisResult[]> {
           continue;
         }
 
-        // Cross-venue dedup.
-        const [existing] = await db
-          .select({
-            id: schema.events.id,
-            description: schema.events.description,
-            imageUrl: schema.events.imageUrl,
-          })
-          .from(schema.events)
-          .where(
-            and(
-              eq(schema.events.title, title),
-              eq(schema.events.category, 'Film'),
-              eq(schema.events.kind, 'show')
-            )
-          )
-          .limit(1);
-
-        let eventId: string;
-        if (existing) {
-          eventId = existing.id;
-          const patch: Record<string, string> = {};
-          if (!existing.description && description) {
-            patch.description = description;
-          }
-          if (
-            imageUrl &&
-            (!existing.imageUrl ||
-              /wiki(p|m)edia\.org/.test(existing.imageUrl))
-          ) {
-            patch.imageUrl = imageUrl;
-          }
-          if (Object.keys(patch).length > 0) {
-            await db
-              .update(schema.events)
-              .set(patch)
-              .where(eq(schema.events.id, eventId));
-          }
-        } else {
-          eventId = `film-${slugify(title)}-${randomBytes(3).toString('hex')}`;
-          await db.insert(schema.events).values({
-            id: eventId,
-            venueId: VENUE_ID,
-            title,
-            description,
-            kind: 'show',
-            imageUrl,
-            category: 'Film',
-          });
-          result.inserted += 1;
-        }
+        const { eventId, inserted } = await findOrCreateFilmEvent(dedupeMap, {
+          title,
+          description,
+          imageUrl,
+          venueId: VENUE_ID,
+        });
+        if (inserted) result.inserted += 1;
 
         // Dedup per ticket-show-id zodat Ketelhuis' meerdere JSON-LD
         // entries voor dezelfde voorstelling niet leiden tot dubbele
         // occurrence-upserts.
         const seenShowIds = new Set<string>();
+        const seenOccIds = new Set<string>();
         for (const e of future) {
           const ticketUrl = e.offers?.url ?? null;
           const showId = parseShowId(ticketUrl ?? undefined);
           if (!showId || seenShowIds.has(showId)) continue;
           seenShowIds.add(showId);
           const occId = `ketelhuis-show-${showId}`;
+          seenOccIds.add(occId);
           const startsAt = new Date(fixIsoTimezone(e.startDate!));
           if (Number.isNaN(startsAt.getTime())) continue;
           const priceCents =
@@ -267,6 +232,13 @@ export async function scrapeKetelhuis(): Promise<KetelhuisResult[]> {
           }
           result.occurrencesUpserted += 1;
         }
+
+        result.occurrencesPruned += await pruneStaleOccurrences({
+          eventId,
+          venueId: VENUE_ID,
+          seenOccIds,
+          nowMs: now,
+        });
       } catch (e) {
         result.errors.push(
           `${filmUrl}: ${(e as Error).message ?? String(e)}`
@@ -307,12 +279,3 @@ function parseShowId(url?: string): string | null {
   return m ? m[1] : null;
 }
 
-function slugify(s: string): string {
-  return s
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-|-$/g, '')
-    .slice(0, 60);
-}

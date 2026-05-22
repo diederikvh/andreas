@@ -17,11 +17,14 @@
  * blijft één rij; occurrences spreiden zich over venues.
  */
 
-import { randomBytes } from 'node:crypto';
-
-import { and, eq } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 
 import { db, schema } from '../db/index.js';
+import {
+  findOrCreateFilmEvent,
+  loadFilmDedupeMap,
+  pruneStaleOccurrences,
+} from './_film-dedup.js';
 
 const SITEMAP_INDEX = 'https://www.eyefilm.nl/sitemap.xml';
 const VENUE_ID = 'eye';
@@ -35,6 +38,7 @@ export interface EyeResult {
   fetched: number;
   inserted: number;
   occurrencesUpserted: number;
+  occurrencesPruned: number;
   skipped: number;
   errors: string[];
 }
@@ -53,6 +57,7 @@ export async function scrapeEye(): Promise<EyeResult[]> {
     fetched: 0,
     inserted: 0,
     occurrencesUpserted: 0,
+    occurrencesPruned: 0,
     skipped: 0,
     errors: [],
   };
@@ -93,6 +98,9 @@ export async function scrapeEye(): Promise<EyeResult[]> {
   }
 
   // 3) Per film: fetch + JSON-LD parse.
+  // Cross-venue dedupe-map: één query, daarna in-memory lookup. Shared
+  // helper normaliseert suffix-varianten ((ENG subs), (4K), etc).
+  const dedupeMap = await loadFilmDedupeMap();
   const now = Date.now();
   for (const filmUrl of filmUrls) {
     try {
@@ -120,70 +128,25 @@ export async function scrapeEye(): Promise<EyeResult[]> {
       const description = future[0].description?.trim() || null;
       const ogImage = extractMeta(html, 'og:image');
 
-      // 4) Dedup: vind bestaande event op title + film-categorie.
-      //    Werkt cross-venue: als Kriterion morgen "Anora" scraped vindt
-      //    'ie dezelfde event en hangt z'n occurrences er gewoon aan.
-      const [existing] = await db
-        .select({
-          id: schema.events.id,
-          description: schema.events.description,
-          imageUrl: schema.events.imageUrl,
-        })
-        .from(schema.events)
-        .where(
-          and(
-            eq(schema.events.title, title),
-            eq(schema.events.category, 'Film'),
-            eq(schema.events.kind, 'show')
-          )
-        )
-        .limit(1);
-
-      let eventId: string;
-      if (existing) {
-        eventId = existing.id;
-        // Vul ontbrekende velden aan zonder bestaande te overschrijven.
-        // Eye's eigen description is een korte teaser uit JSON-LD;
-        // og:image is de filmposter — beide goede bronnen om null-events
-        // te verrijken (bv. eerst door Kriterion zonder description
-        // aangemaakt, daarna Eye die 'm aanvult).
-        const patch: Record<string, string> = {};
-        if (!existing.description && description) {
-          patch.description = description;
-        }
-        if (
-          ogImage &&
-          (!existing.imageUrl || /wiki(p|m)edia\.org/.test(existing.imageUrl))
-        ) {
-          patch.imageUrl = ogImage;
-        }
-        if (Object.keys(patch).length > 0) {
-          await db
-            .update(schema.events)
-            .set(patch)
-            .where(eq(schema.events.id, eventId));
-        }
-      } else {
-        eventId = `film-${slugify(title)}-${randomBytes(3).toString('hex')}`;
-        await db.insert(schema.events).values({
-          id: eventId,
-          venueId: VENUE_ID, // primary venue (alleen relevant als fallback)
-          title,
-          description,
-          kind: 'show',
-          imageUrl: ogImage,
-          category: 'Film',
-        });
-        result.inserted += 1;
-      }
+      // 4) Cross-venue dedup via shared helper — normaliseert
+      //    suffix-varianten zodat "Anora" en "Anora (4K)" matchen.
+      const { eventId, inserted } = await findOrCreateFilmEvent(dedupeMap, {
+        title,
+        description,
+        imageUrl: ogImage,
+        venueId: VENUE_ID,
+      });
+      if (inserted) result.inserted += 1;
 
       // 5) Occurrences upsert. Eye's `show`-ID uit de ticket-URL is
       //    stabiel — gebruik 't als deterministische occurrence-id zodat
       //    re-scrapes idempotent zijn.
+      const seenOccIds = new Set<string>();
       for (const s of future) {
         const showId = parseShowId(s.offers?.url);
         if (!showId) continue;
         const occId = `eye-show-${showId}`;
+        seenOccIds.add(occId);
         const startsAt = new Date(s.startDate);
         if (Number.isNaN(startsAt.getTime())) continue;
         const priceCents = parsePriceCents(s.offers?.price);
@@ -219,6 +182,13 @@ export async function scrapeEye(): Promise<EyeResult[]> {
         }
         result.occurrencesUpserted += 1;
       }
+
+      result.occurrencesPruned += await pruneStaleOccurrences({
+        eventId,
+        venueId: VENUE_ID,
+        seenOccIds,
+        nowMs: now,
+      });
     } catch (e) {
       result.errors.push(
         `${filmUrl}: ${(e as Error).message ?? String(e)}`
@@ -306,12 +276,3 @@ function parsePriceCents(p?: string): number | null {
   return Math.round(n);
 }
 
-function slugify(s: string): string {
-  return s
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-|-$/g, '')
-    .slice(0, 60);
-}

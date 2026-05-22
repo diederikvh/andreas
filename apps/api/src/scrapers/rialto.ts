@@ -16,10 +16,14 @@
  * Idempotency: occurrence-id = `rialto-show-{program-id}`.
  */
 
-import { randomBytes } from 'node:crypto';
-import { and, eq } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 
 import { db, schema } from '../db/index.js';
+import {
+  findOrCreateFilmEvent,
+  loadFilmDedupeMap,
+  pruneStaleOccurrences,
+} from './_film-dedup.js';
 
 const PRIMARY_VENUE_ID = 'rialto';
 const VU_VENUE_ID = 'rialto-vu';
@@ -37,6 +41,7 @@ export interface RialtoResult {
   fetched: number;
   inserted: number;
   occurrencesUpserted: number;
+  occurrencesPruned: number;
   skipped: number;
   errors: string[];
 }
@@ -69,6 +74,7 @@ export async function scrapeRialto(): Promise<RialtoResult[]> {
     fetched: 0,
     inserted: 0,
     occurrencesUpserted: 0,
+    occurrencesPruned: 0,
     skipped: 0,
     errors: [],
   };
@@ -118,8 +124,14 @@ export async function scrapeRialto(): Promise<RialtoResult[]> {
   }
 
   // 4) Per film: maak/vind event, hang occurrences eraan.
+  const dedupeMap = await loadFilmDedupeMap();
   const nowMs = Date.now();
   const eventByFilmId = new Map<number, string>();
+  // Tracking voor stale-cleanup. Rialto heeft twee venues (Pijp + VU);
+  // we prunen per (eventId, venueId) zodat occurrences van locatie A
+  // niet weggaan als wij locatie B's HTML scrapen.
+  const seenByEventAndVenue = new Map<string, Set<string>>();
+  const key = (eventId: string, venueId: string) => `${eventId}::${venueId}`;
   for (const [filmId, list] of byFilmId) {
     try {
       const meta = filmMeta.get(filmId);
@@ -130,51 +142,14 @@ export async function scrapeRialto(): Promise<RialtoResult[]> {
 
       let eventId = eventByFilmId.get(filmId);
       if (!eventId) {
-        const [existing] = await db
-          .select({
-            id: schema.events.id,
-            description: schema.events.description,
-            imageUrl: schema.events.imageUrl,
-          })
-          .from(schema.events)
-          .where(
-            and(
-              eq(schema.events.title, meta.title),
-              eq(schema.events.category, 'Film'),
-              eq(schema.events.kind, 'show')
-            )
-          )
-          .limit(1);
-
-        if (existing) {
-          eventId = existing.id;
-          const patch: Record<string, string> = {};
-          if (!existing.description && meta.description) patch.description = meta.description;
-          if (
-            meta.imageUrl &&
-            (!existing.imageUrl || /wiki(p|m)edia\.org/.test(existing.imageUrl))
-          ) {
-            patch.imageUrl = meta.imageUrl;
-          }
-          if (Object.keys(patch).length > 0) {
-            await db
-              .update(schema.events)
-              .set(patch)
-              .where(eq(schema.events.id, eventId));
-          }
-        } else {
-          eventId = `film-${slugify(meta.title)}-${randomBytes(3).toString('hex')}`;
-          await db.insert(schema.events).values({
-            id: eventId,
-            venueId: PRIMARY_VENUE_ID,
-            title: meta.title,
-            description: meta.description,
-            kind: 'show',
-            imageUrl: meta.imageUrl,
-            category: 'Film',
-          });
-          result.inserted += 1;
-        }
+        const r = await findOrCreateFilmEvent(dedupeMap, {
+          title: meta.title,
+          description: meta.description,
+          imageUrl: meta.imageUrl,
+          venueId: PRIMARY_VENUE_ID,
+        });
+        eventId = r.eventId;
+        if (r.inserted) result.inserted += 1;
         eventByFilmId.set(filmId, eventId);
       }
 
@@ -187,6 +162,12 @@ export async function scrapeRialto(): Promise<RialtoResult[]> {
         const occId = `rialto-show-${p.id}`;
         const ticketUrl = p.selected_time_url ?? p.film_url;
         const status: 'scheduled' | 'sold_out' = p.sold_out ? 'sold_out' : 'scheduled';
+        let seenSet = seenByEventAndVenue.get(key(eventId, venueId));
+        if (!seenSet) {
+          seenSet = new Set();
+          seenByEventAndVenue.set(key(eventId, venueId), seenSet);
+        }
+        seenSet.add(occId);
 
         const [existingOcc] = await db
           .select({ id: schema.occurrences.id })
@@ -221,6 +202,16 @@ export async function scrapeRialto(): Promise<RialtoResult[]> {
     } catch (e) {
       result.errors.push(`film ${filmId}: ${(e as Error).message ?? String(e)}`);
     }
+  }
+
+  for (const [k, seenOccIds] of seenByEventAndVenue) {
+    const [eventId, venueId] = k.split('::');
+    result.occurrencesPruned += await pruneStaleOccurrences({
+      eventId,
+      venueId,
+      seenOccIds,
+      nowMs,
+    });
   }
   return [result];
 }
@@ -262,12 +253,3 @@ function decodeEntities(s: string): string {
     .replace(/&gt;/g, '>');
 }
 
-function slugify(s: string): string {
-  return s
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-|-$/g, '')
-    .slice(0, 60);
-}

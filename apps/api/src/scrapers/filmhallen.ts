@@ -7,10 +7,14 @@
  * andere films' screenings koppelen.
  */
 
-import { randomBytes } from 'node:crypto';
-import { and, eq } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 
 import { db, schema } from '../db/index.js';
+import {
+  findOrCreateFilmEvent,
+  loadFilmDedupeMap,
+  pruneStaleOccurrences,
+} from './_film-dedup.js';
 
 const HOME_URL = 'https://www.filmhallen.nl/';
 const VENUE_ID = 'filmhallen';
@@ -21,6 +25,7 @@ export interface FilmhallenResult {
   fetched: number;
   inserted: number;
   occurrencesUpserted: number;
+  occurrencesPruned: number;
   skipped: number;
   errors: string[];
 }
@@ -47,6 +52,7 @@ export async function scrapeFilmhallen(): Promise<FilmhallenResult[]> {
     fetched: 0,
     inserted: 0,
     occurrencesUpserted: 0,
+    occurrencesPruned: 0,
     skipped: 0,
     errors: [],
   };
@@ -64,6 +70,7 @@ export async function scrapeFilmhallen(): Promise<FilmhallenResult[]> {
     ),
   ];
 
+  const dedupeMap = await loadFilmDedupeMap();
   const now = Date.now();
   for (const filmUrl of filmUrls) {
     try {
@@ -94,59 +101,21 @@ export async function scrapeFilmhallen(): Promise<FilmhallenResult[]> {
       const description = movie.description?.trim() || null;
       const imageUrl = movie.image?.trim() || null;
 
-      const [existing] = await db
-        .select({
-          id: schema.events.id,
-          description: schema.events.description,
-          imageUrl: schema.events.imageUrl,
-        })
-        .from(schema.events)
-        .where(
-          and(
-            eq(schema.events.title, title),
-            eq(schema.events.category, 'Film'),
-            eq(schema.events.kind, 'show')
-          )
-        )
-        .limit(1);
+      const { eventId, inserted } = await findOrCreateFilmEvent(dedupeMap, {
+        title,
+        description,
+        imageUrl,
+        venueId: VENUE_ID,
+      });
+      if (inserted) result.inserted += 1;
 
-      let eventId: string;
-      if (existing) {
-        eventId = existing.id;
-        const patch: Record<string, string> = {};
-        if (!existing.description && description) patch.description = description;
-        if (
-          imageUrl &&
-          (!existing.imageUrl ||
-            /wiki(p|m)edia\.org/.test(existing.imageUrl))
-        ) {
-          patch.imageUrl = imageUrl;
-        }
-        if (Object.keys(patch).length > 0) {
-          await db
-            .update(schema.events)
-            .set(patch)
-            .where(eq(schema.events.id, eventId));
-        }
-      } else {
-        eventId = `film-${slugify(title)}-${randomBytes(3).toString('hex')}`;
-        await db.insert(schema.events).values({
-          id: eventId,
-          venueId: VENUE_ID,
-          title,
-          description,
-          kind: 'show',
-          imageUrl,
-          category: 'Film',
-        });
-        result.inserted += 1;
-      }
-
+      const seenOccIds = new Set<string>();
       for (const s of mine) {
         const ticketUrl = s.url ?? s.offers?.url ?? null;
         const showId = parseShowId(ticketUrl ?? undefined);
         if (!showId) continue;
         const occId = `filmhallen-show-${showId}`;
+        seenOccIds.add(occId);
         const startsAt = new Date(s.startDate);
         const endsAt = s.endDate ? new Date(s.endDate) : null;
         const priceCents =
@@ -186,6 +155,13 @@ export async function scrapeFilmhallen(): Promise<FilmhallenResult[]> {
         }
         result.occurrencesUpserted += 1;
       }
+
+      result.occurrencesPruned += await pruneStaleOccurrences({
+        eventId,
+        venueId: VENUE_ID,
+        seenOccIds,
+        nowMs: now,
+      });
     } catch (e) {
       result.errors.push(`${filmUrl}: ${(e as Error).message ?? String(e)}`);
     }
@@ -244,12 +220,3 @@ function parseShowId(url?: string): string | null {
   return m ? m[1] : null;
 }
 
-function slugify(s: string): string {
-  return s
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-|-$/g, '')
-    .slice(0, 60);
-}

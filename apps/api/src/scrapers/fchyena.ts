@@ -16,10 +16,14 @@
  * cross-venue dedup met andere film-scrapers vult 't aan.
  */
 
-import { randomBytes } from 'node:crypto';
-import { and, eq } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 
 import { db, schema } from '../db/index.js';
+import {
+  findOrCreateFilmEvent,
+  loadFilmDedupeMap,
+  pruneStaleOccurrences,
+} from './_film-dedup.js';
 
 const SHOWS_URL = 'https://fchyena.nl/json/shows.json';
 const VENUE_ID = 'fc-hyena';
@@ -30,6 +34,7 @@ export interface FchyenaResult {
   fetched: number;
   inserted: number;
   occurrencesUpserted: number;
+  occurrencesPruned: number;
   skipped: number;
   errors: string[];
 }
@@ -50,6 +55,7 @@ export async function scrapeFchyena(): Promise<FchyenaResult[]> {
     fetched: 0,
     inserted: 0,
     occurrencesUpserted: 0,
+    occurrencesPruned: 0,
     skipped: 0,
     errors: [],
   };
@@ -84,6 +90,7 @@ export async function scrapeFchyena(): Promise<FchyenaResult[]> {
     }
   }
 
+  const dedupeMap = await loadFilmDedupeMap();
   const now = Date.now();
   for (const [title, shows] of byTitle) {
     try {
@@ -102,40 +109,21 @@ export async function scrapeFchyena(): Promise<FchyenaResult[]> {
         continue;
       }
 
-      const [existing] = await db
-        .select({ id: schema.events.id })
-        .from(schema.events)
-        .where(
-          and(
-            eq(schema.events.title, title),
-            eq(schema.events.category, 'Film'),
-            eq(schema.events.kind, 'show')
-          )
-        )
-        .limit(1);
-
-      let eventId: string;
-      if (existing) {
-        eventId = existing.id;
-      } else {
-        eventId = `film-${slugify(title)}-${randomBytes(3).toString('hex')}`;
-        await db.insert(schema.events).values({
-          id: eventId,
-          venueId: VENUE_ID,
-          title,
-          description: null,
-          kind: 'show',
-          imageUrl: null,
-          category: 'Film',
-        });
-        result.inserted += 1;
-      }
+      const { eventId, inserted } = await findOrCreateFilmEvent(dedupeMap, {
+        title,
+        description: null,
+        imageUrl: null,
+        venueId: VENUE_ID,
+      });
+      if (inserted) result.inserted += 1;
 
       const seen = new Set<string>();
+      const seenOccIds = new Set<string>();
       for (const f of future) {
         if (seen.has(f.show.id)) continue;
         seen.add(f.show.id);
         const occId = `fchyena-show-${f.show.id}`;
+        seenOccIds.add(occId);
         const startsAt = f.startsAt!;
         const endsAt =
           f.durationMin > 0
@@ -177,6 +165,13 @@ export async function scrapeFchyena(): Promise<FchyenaResult[]> {
         }
         result.occurrencesUpserted += 1;
       }
+
+      result.occurrencesPruned += await pruneStaleOccurrences({
+        eventId,
+        venueId: VENUE_ID,
+        seenOccIds,
+        nowMs: now,
+      });
     } catch (e) {
       result.errors.push(`${title}: ${(e as Error).message ?? String(e)}`);
     }
@@ -224,12 +219,3 @@ function decodeEntities(s: string): string {
     .replace(/&gt;/g, '>');
 }
 
-function slugify(s: string): string {
-  return s
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-|-$/g, '')
-    .slice(0, 60);
-}

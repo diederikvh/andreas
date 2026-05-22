@@ -15,10 +15,14 @@
  * Idempotency: occurrence-id = `cinecenter-show-${screeningUuid}`.
  */
 
-import { randomBytes } from 'node:crypto';
-import { and, eq } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 
 import { db, schema } from '../db/index.js';
+import {
+  findOrCreateFilmEvent,
+  loadFilmDedupeMap,
+  pruneStaleOccurrences,
+} from './_film-dedup.js';
 
 const FILMS_URL = 'https://www.cinecenter.nl/films/';
 const VENUE_ID = 'cinecenter';
@@ -29,6 +33,7 @@ export interface CinecenterResult {
   fetched: number;
   inserted: number;
   occurrencesUpserted: number;
+  occurrencesPruned: number;
   skipped: number;
   errors: string[];
 }
@@ -55,6 +60,7 @@ export async function scrapeCinecenter(): Promise<CinecenterResult[]> {
     fetched: 0,
     inserted: 0,
     occurrencesUpserted: 0,
+    occurrencesPruned: 0,
     skipped: 0,
     errors: [],
   };
@@ -70,6 +76,7 @@ export async function scrapeCinecenter(): Promise<CinecenterResult[]> {
     return [result];
   }
 
+  const dedupeMap = await loadFilmDedupeMap();
   const now = Date.now();
   for (const prod of productions) {
     try {
@@ -87,56 +94,18 @@ export async function scrapeCinecenter(): Promise<CinecenterResult[]> {
         continue;
       }
 
-      const [existing] = await db
-        .select({
-          id: schema.events.id,
-          description: schema.events.description,
-          imageUrl: schema.events.imageUrl,
-        })
-        .from(schema.events)
-        .where(
-          and(
-            eq(schema.events.title, title),
-            eq(schema.events.category, 'Film'),
-            eq(schema.events.kind, 'show')
-          )
-        )
-        .limit(1);
+      const { eventId, inserted } = await findOrCreateFilmEvent(dedupeMap, {
+        title,
+        description: prod.description,
+        imageUrl: prod.thumbnail,
+        venueId: VENUE_ID,
+      });
+      if (inserted) result.inserted += 1;
 
-      let eventId: string;
-      if (existing) {
-        eventId = existing.id;
-        const patch: Record<string, string> = {};
-        if (!existing.description && prod.description) patch.description = prod.description;
-        if (
-          prod.thumbnail &&
-          (!existing.imageUrl ||
-            /wiki(p|m)edia\.org/.test(existing.imageUrl))
-        ) {
-          patch.imageUrl = prod.thumbnail;
-        }
-        if (Object.keys(patch).length > 0) {
-          await db
-            .update(schema.events)
-            .set(patch)
-            .where(eq(schema.events.id, eventId));
-        }
-      } else {
-        eventId = `film-${slugify(title)}-${randomBytes(3).toString('hex')}`;
-        await db.insert(schema.events).values({
-          id: eventId,
-          venueId: VENUE_ID,
-          title,
-          description: prod.description,
-          kind: 'show',
-          imageUrl: prod.thumbnail,
-          category: 'Film',
-        });
-        result.inserted += 1;
-      }
-
+      const seenOccIds = new Set<string>();
       for (const s of future) {
         const occId = `cinecenter-show-${s.id}`;
+        seenOccIds.add(occId);
         const startsAt = new Date(s.startAtUtc);
         const endsAt = s.endsAtUtc ? new Date(s.endsAtUtc) : null;
         const room = s.hallName?.trim() || null;
@@ -175,6 +144,13 @@ export async function scrapeCinecenter(): Promise<CinecenterResult[]> {
         }
         result.occurrencesUpserted += 1;
       }
+
+      result.occurrencesPruned += await pruneStaleOccurrences({
+        eventId,
+        venueId: VENUE_ID,
+        seenOccIds,
+        nowMs: now,
+      });
     } catch (e) {
       result.errors.push(`${prod.title}: ${(e as Error).message ?? String(e)}`);
     }
@@ -311,12 +287,3 @@ function stripHtml(s: string): string {
     .trim();
 }
 
-function slugify(s: string): string {
-  return s
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-|-$/g, '')
-    .slice(0, 60);
-}

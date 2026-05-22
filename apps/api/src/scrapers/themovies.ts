@@ -19,11 +19,14 @@
  *      idempotent over re-runs.
  */
 
-import { randomBytes } from 'node:crypto';
-
-import { and, eq } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 
 import { db, schema } from '../db/index.js';
+import {
+  findOrCreateFilmEvent,
+  loadFilmDedupeMap,
+  pruneStaleOccurrences,
+} from './_film-dedup.js';
 
 const SITEMAP_URL = 'https://themovies.nl/fk-feed/film-sitemap-xml';
 const VENUE_ID = 'the-movies';
@@ -34,6 +37,7 @@ export interface TheMoviesResult {
   fetched: number;
   inserted: number;
   occurrencesUpserted: number;
+  occurrencesPruned: number;
   skipped: number;
   errors: string[];
 }
@@ -62,6 +66,7 @@ export async function scrapeTheMovies(): Promise<TheMoviesResult[]> {
     fetched: 0,
     inserted: 0,
     occurrencesUpserted: 0,
+    occurrencesPruned: 0,
     skipped: 0,
     errors: [],
   };
@@ -75,6 +80,7 @@ export async function scrapeTheMovies(): Promise<TheMoviesResult[]> {
     ...sitemap.matchAll(/<loc>([^<]+\/films\/[^<]+)<\/loc>/g),
   ].map((m) => m[1]);
 
+  const dedupeMap = await loadFilmDedupeMap();
   const now = Date.now();
   for (const filmUrl of filmUrls) {
     try {
@@ -111,64 +117,20 @@ export async function scrapeTheMovies(): Promise<TheMoviesResult[]> {
       const description = movie.description?.trim() || null;
       const imageUrl = movie.image?.trim() || null;
 
-      // Cross-venue dedup.
-      const [existing] = await db
-        .select({
-          id: schema.events.id,
-          description: schema.events.description,
-          imageUrl: schema.events.imageUrl,
-        })
-        .from(schema.events)
-        .where(
-          and(
-            eq(schema.events.title, title),
-            eq(schema.events.category, 'Film'),
-            eq(schema.events.kind, 'show')
-          )
-        )
-        .limit(1);
+      const { eventId, inserted } = await findOrCreateFilmEvent(dedupeMap, {
+        title,
+        description,
+        imageUrl,
+        venueId: VENUE_ID,
+      });
+      if (inserted) result.inserted += 1;
 
-      let eventId: string;
-      if (existing) {
-        eventId = existing.id;
-        // Vul ontbrekende velden aan zonder bestaande te overschrijven.
-        // Wikipedia-URLs voor poster mogen weg (Kriterion-pattern) —
-        // The Movies' image is een filmposter, even goed of beter.
-        const patch: Record<string, string> = {};
-        if (!existing.description && description) {
-          patch.description = description;
-        }
-        if (
-          imageUrl &&
-          (!existing.imageUrl ||
-            /wiki(p|m)edia\.org/.test(existing.imageUrl))
-        ) {
-          patch.imageUrl = imageUrl;
-        }
-        if (Object.keys(patch).length > 0) {
-          await db
-            .update(schema.events)
-            .set(patch)
-            .where(eq(schema.events.id, eventId));
-        }
-      } else {
-        eventId = `film-${slugify(title)}-${randomBytes(3).toString('hex')}`;
-        await db.insert(schema.events).values({
-          id: eventId,
-          venueId: VENUE_ID,
-          title,
-          description,
-          kind: 'show',
-          imageUrl,
-          category: 'Film',
-        });
-        result.inserted += 1;
-      }
-
+      const seenOccIds = new Set<string>();
       for (const s of mine) {
         const showId = parseShowId(s.url ?? s.offers?.url);
         if (!showId) continue;
         const occId = `themovies-show-${showId}`;
+        seenOccIds.add(occId);
         const startsAt = new Date(s.startDate);
         if (Number.isNaN(startsAt.getTime())) continue;
         const endsAt = s.endDate ? new Date(s.endDate) : null;
@@ -210,6 +172,13 @@ export async function scrapeTheMovies(): Promise<TheMoviesResult[]> {
         }
         result.occurrencesUpserted += 1;
       }
+
+      result.occurrencesPruned += await pruneStaleOccurrences({
+        eventId,
+        venueId: VENUE_ID,
+        seenOccIds,
+        nowMs: now,
+      });
     } catch (e) {
       result.errors.push(
         `${filmUrl}: ${(e as Error).message ?? String(e)}`
@@ -273,12 +242,3 @@ function parseShowId(url?: string): string | null {
   return m ? m[1] : null;
 }
 
-function slugify(s: string): string {
-  return s
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-|-$/g, '')
-    .slice(0, 60);
-}

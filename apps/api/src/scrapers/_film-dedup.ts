@@ -196,7 +196,12 @@ interface FilmEventInput {
       oorspronkelijke event-venue. Per-occurrence venue wordt los gezet. */
   venueId: string;
   description?: string | null;
-  imageUrl?: string | null;
+  /** Image URL — string|null voor goedkope cases, of een lazy `() =>
+      Promise<string | null>` voor dure resolves (bv. Bunny-upload).
+      De helper roept de functie alleen aan als 'ie de URL daadwerkelijk
+      gaat gebruiken: bij een nieuwe insert, of bij een hit waarvan de
+      bestaande imageUrl null/Wikipedia is. */
+  imageUrl?: string | null | (() => Promise<string | null>);
   /** Optionele override op de slugify-prefix; default `film`. */
   slugPrefix?: string;
 }
@@ -228,17 +233,22 @@ export async function findOrCreateFilmEvent(
     throw new Error(`findOrCreateFilmEvent: lege title-key voor "${input.title}"`);
   }
 
+  const resolveImageUrl = async (): Promise<string | null> => {
+    if (typeof input.imageUrl === 'function') return input.imageUrl();
+    return input.imageUrl ?? null;
+  };
+
   const existing = map.get(key);
   if (existing) {
     const patch: Partial<typeof schema.events.$inferInsert> = {};
     if (!existing.description && input.description) {
       patch.description = input.description;
     }
-    if (
-      input.imageUrl &&
-      (!existing.imageUrl || /wiki(p|m)edia\.org/.test(existing.imageUrl))
-    ) {
-      patch.imageUrl = input.imageUrl;
+    if (!existing.imageUrl || /wiki(p|m)edia\.org/.test(existing.imageUrl)) {
+      const incomingImage = await resolveImageUrl();
+      if (incomingImage) {
+        patch.imageUrl = incomingImage;
+      }
     }
     // Display-titel: bij gelijke key kiest de kortste variant. Zo wint
     // "Anora" van "Anora (ENG SUBS)" of "Anora (4K Restoration)" voor
@@ -259,20 +269,21 @@ export async function findOrCreateFilmEvent(
 
   const prefix = input.slugPrefix ?? 'film';
   const eventId = `${prefix}-${slugify(input.title)}-${randomBytes(3).toString('hex')}`;
+  const imageUrl = await resolveImageUrl();
   await db.insert(schema.events).values({
     id: eventId,
     venueId: input.venueId,
     title: input.title,
     description: input.description ?? null,
     kind: 'show',
-    imageUrl: input.imageUrl ?? null,
+    imageUrl,
     category: 'Film',
   });
   map.set(key, {
     id: eventId,
     title: input.title,
     description: input.description ?? null,
-    imageUrl: input.imageUrl ?? null,
+    imageUrl,
   });
   return { eventId, inserted: true };
 }

@@ -11,10 +11,14 @@
  * Idempotency: occurrence-id = `lab111-show-{ticketing-id}`.
  */
 
-import { randomBytes } from 'node:crypto';
-import { and, eq } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 
 import { db, schema } from '../db/index.js';
+import {
+  findOrCreateFilmEvent,
+  loadFilmDedupeMap,
+  pruneStaleOccurrences,
+} from './_film-dedup.js';
 
 const HOME_URL = 'https://www.lab111.nl/';
 const VENUE_ID = 'lab111';
@@ -25,6 +29,7 @@ export interface Lab111Result {
   fetched: number;
   inserted: number;
   occurrencesUpserted: number;
+  occurrencesPruned: number;
   skipped: number;
   errors: string[];
 }
@@ -41,6 +46,7 @@ export async function scrapeLab111(): Promise<Lab111Result[]> {
     fetched: 0,
     inserted: 0,
     occurrencesUpserted: 0,
+    occurrencesPruned: 0,
     skipped: 0,
     errors: [],
   };
@@ -57,6 +63,9 @@ export async function scrapeLab111(): Promise<Lab111Result[]> {
       )
     ),
   ];
+
+  // Cross-venue dedupe-map: shared helper normaliseert suffix-varianten.
+  const dedupeMap = await loadFilmDedupeMap();
 
   const now = Date.now();
   for (const filmUrl of filmUrls) {
@@ -90,56 +99,18 @@ export async function scrapeLab111(): Promise<Lab111Result[]> {
         continue;
       }
 
-      const [existing] = await db
-        .select({
-          id: schema.events.id,
-          description: schema.events.description,
-          imageUrl: schema.events.imageUrl,
-        })
-        .from(schema.events)
-        .where(
-          and(
-            eq(schema.events.title, title),
-            eq(schema.events.category, 'Film'),
-            eq(schema.events.kind, 'show')
-          )
-        )
-        .limit(1);
+      const { eventId, inserted } = await findOrCreateFilmEvent(dedupeMap, {
+        title,
+        description,
+        imageUrl,
+        venueId: VENUE_ID,
+      });
+      if (inserted) result.inserted += 1;
 
-      let eventId: string;
-      if (existing) {
-        eventId = existing.id;
-        const patch: Record<string, string> = {};
-        if (!existing.description && description) patch.description = description;
-        if (
-          imageUrl &&
-          (!existing.imageUrl ||
-            /wiki(p|m)edia\.org/.test(existing.imageUrl))
-        ) {
-          patch.imageUrl = imageUrl;
-        }
-        if (Object.keys(patch).length > 0) {
-          await db
-            .update(schema.events)
-            .set(patch)
-            .where(eq(schema.events.id, eventId));
-        }
-      } else {
-        eventId = `film-${slugify(title)}-${randomBytes(3).toString('hex')}`;
-        await db.insert(schema.events).values({
-          id: eventId,
-          venueId: VENUE_ID,
-          title,
-          description,
-          kind: 'show',
-          imageUrl,
-          category: 'Film',
-        });
-        result.inserted += 1;
-      }
-
+      const seenOccIds = new Set<string>();
       for (const show of shows) {
         const occId = `lab111-show-${show.id}`;
+        seenOccIds.add(occId);
         const [existingOcc] = await db
           .select({ id: schema.occurrences.id })
           .from(schema.occurrences)
@@ -169,6 +140,13 @@ export async function scrapeLab111(): Promise<Lab111Result[]> {
         }
         result.occurrencesUpserted += 1;
       }
+
+      result.occurrencesPruned += await pruneStaleOccurrences({
+        eventId,
+        venueId: VENUE_ID,
+        seenOccIds,
+        nowMs: now,
+      });
     } catch (e) {
       result.errors.push(`${filmUrl}: ${(e as Error).message ?? String(e)}`);
     }
@@ -246,12 +224,3 @@ function decodeEntities(s: string): string {
     .replace(/&gt;/g, '>');
 }
 
-function slugify(s: string): string {
-  return s
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-|-$/g, '')
-    .slice(0, 60);
-}

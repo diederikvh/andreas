@@ -22,10 +22,14 @@
  * Idempotency: occurrence-id = `thepulse-show-{screening-uuid}`.
  */
 
-import { randomBytes } from 'node:crypto';
-import { and, eq } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 
 import { db, schema } from '../db/index.js';
+import {
+  findOrCreateFilmEvent,
+  loadFilmDedupeMap,
+  pruneStaleOccurrences,
+} from './_film-dedup.js';
 
 const HOME_URL = 'https://www.cinemathepulse.com/';
 const VENUE_ID = 'cinema-the-pulse';
@@ -36,6 +40,7 @@ export interface ThePulseResult {
   fetched: number;
   inserted: number;
   occurrencesUpserted: number;
+  occurrencesPruned: number;
   skipped: number;
   errors: string[];
 }
@@ -56,6 +61,7 @@ export async function scrapeThePulse(): Promise<ThePulseResult[]> {
     fetched: 0,
     inserted: 0,
     occurrencesUpserted: 0,
+    occurrencesPruned: 0,
     skipped: 0,
     errors: [],
   };
@@ -142,8 +148,10 @@ export async function scrapeThePulse(): Promise<ThePulseResult[]> {
     filmMeta.set(ref, { title, description, imageUrl });
   }
 
+  const dedupeMap = await loadFilmDedupeMap();
   const nowMs = Date.now();
   const eventByRef = new Map<string, string>();
+  const seenByEventId = new Map<string, Set<string>>();
   for (const it of items) {
     try {
       const meta = filmMeta.get(it.programRef);
@@ -153,56 +161,24 @@ export async function scrapeThePulse(): Promise<ThePulseResult[]> {
 
       let eventId = eventByRef.get(it.programRef);
       if (!eventId) {
-        const [existing] = await db
-          .select({
-            id: schema.events.id,
-            description: schema.events.description,
-            imageUrl: schema.events.imageUrl,
-          })
-          .from(schema.events)
-          .where(
-            and(
-              eq(schema.events.title, meta.title),
-              eq(schema.events.category, 'Film'),
-              eq(schema.events.kind, 'show')
-            )
-          )
-          .limit(1);
-
-        if (existing) {
-          eventId = existing.id;
-          const patch: Record<string, string> = {};
-          if (!existing.description && meta.description) patch.description = meta.description;
-          if (
-            meta.imageUrl &&
-            (!existing.imageUrl ||
-              /wiki(p|m)edia\.org/.test(existing.imageUrl))
-          ) {
-            patch.imageUrl = meta.imageUrl;
-          }
-          if (Object.keys(patch).length > 0) {
-            await db
-              .update(schema.events)
-              .set(patch)
-              .where(eq(schema.events.id, eventId));
-          }
-        } else {
-          eventId = `film-${slugify(meta.title)}-${randomBytes(3).toString('hex')}`;
-          await db.insert(schema.events).values({
-            id: eventId,
-            venueId: VENUE_ID,
-            title: meta.title,
-            description: meta.description,
-            kind: 'show',
-            imageUrl: meta.imageUrl,
-            category: 'Film',
-          });
-          result.inserted += 1;
-        }
+        const r = await findOrCreateFilmEvent(dedupeMap, {
+          title: meta.title,
+          description: meta.description,
+          imageUrl: meta.imageUrl,
+          venueId: VENUE_ID,
+        });
+        eventId = r.eventId;
+        if (r.inserted) result.inserted += 1;
         eventByRef.set(it.programRef, eventId);
       }
 
       const occId = `thepulse-show-${it.screeningId}`;
+      let seenSet = seenByEventId.get(eventId);
+      if (!seenSet) {
+        seenSet = new Set();
+        seenByEventId.set(eventId, seenSet);
+      }
+      seenSet.add(occId);
       const room = it.hall;
       const ticketUrl = `https://www.cinemathepulse.com/films/${it.programRef}`;
 
@@ -243,6 +219,15 @@ export async function scrapeThePulse(): Promise<ThePulseResult[]> {
     }
   }
   result.skipped = items.length - result.occurrencesUpserted;
+
+  for (const [eventId, seenOccIds] of seenByEventId) {
+    result.occurrencesPruned += await pruneStaleOccurrences({
+      eventId,
+      venueId: VENUE_ID,
+      seenOccIds,
+      nowMs,
+    });
+  }
   return [result];
 }
 
@@ -284,12 +269,3 @@ function decodeEntities(s: string): string {
     .replace(/&gt;/g, '>');
 }
 
-function slugify(s: string): string {
-  return s
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-|-$/g, '')
-    .slice(0, 60);
-}

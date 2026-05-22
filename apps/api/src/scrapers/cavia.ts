@@ -18,10 +18,14 @@
  * stabiel genoeg.
  */
 
-import { randomBytes } from 'node:crypto';
-import { and, eq } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 
 import { db, schema } from '../db/index.js';
+import {
+  findOrCreateFilmEvent,
+  loadFilmDedupeMap,
+  pruneStaleOccurrences,
+} from './_film-dedup.js';
 
 const VENUE_ID = 'cavia';
 const UA = 'AndreasBot/1.0 (+https://andreas.amsterdam)';
@@ -40,6 +44,7 @@ export interface CaviaResult {
   fetched: number;
   inserted: number;
   occurrencesUpserted: number;
+  occurrencesPruned: number;
   skipped: number;
   errors: string[];
 }
@@ -50,6 +55,7 @@ export async function scrapeCavia(): Promise<CaviaResult[]> {
     fetched: 0,
     inserted: 0,
     occurrencesUpserted: 0,
+    occurrencesPruned: 0,
     skipped: 0,
     errors: [],
   };
@@ -65,6 +71,13 @@ export async function scrapeCavia(): Promise<CaviaResult[]> {
       year: d.getFullYear(),
     });
   }
+
+  const dedupeMap = await loadFilmDedupeMap();
+  // Per-event seen-occurrence-set verzamelen over alle maanden — een
+  // Cavia-film kan in mei én juni draaien. pruneStaleOccurrences pas
+  // aan 't eind van de hele run, anders zou de juni-pas mei-occs
+  // weggooien (en vice versa).
+  const seenByEventId = new Map<string, Set<string>>();
 
   const nowMs = Date.now();
   for (const m of monthUrls) {
@@ -86,56 +99,23 @@ export async function scrapeCavia(): Promise<CaviaResult[]> {
           continue;
         }
 
-        const [existing] = await db
-          .select({
-            id: schema.events.id,
-            description: schema.events.description,
-            imageUrl: schema.events.imageUrl,
-          })
-          .from(schema.events)
-          .where(
-            and(
-              eq(schema.events.title, ev.title),
-              eq(schema.events.category, 'Film'),
-              eq(schema.events.kind, 'show')
-            )
-          )
-          .limit(1);
-
-        let eventId: string;
-        if (existing) {
-          eventId = existing.id;
-          const patch: Record<string, string> = {};
-          if (!existing.description && ev.description) patch.description = ev.description;
-          if (
-            ev.imageUrl &&
-            (!existing.imageUrl || /wiki(p|m)edia\.org/.test(existing.imageUrl))
-          ) {
-            patch.imageUrl = ev.imageUrl;
-          }
-          if (Object.keys(patch).length > 0) {
-            await db
-              .update(schema.events)
-              .set(patch)
-              .where(eq(schema.events.id, eventId));
-          }
-        } else {
-          eventId = `film-${slugify(ev.title)}-${randomBytes(3).toString('hex')}`;
-          await db.insert(schema.events).values({
-            id: eventId,
-            venueId: VENUE_ID,
-            title: ev.title,
-            description: ev.description,
-            kind: 'show',
-            imageUrl: ev.imageUrl,
-            category: 'Film',
-          });
-          result.inserted += 1;
-        }
+        const { eventId, inserted } = await findOrCreateFilmEvent(dedupeMap, {
+          title: ev.title,
+          description: ev.description,
+          imageUrl: ev.imageUrl,
+          venueId: VENUE_ID,
+        });
+        if (inserted) result.inserted += 1;
 
         const dateStr = `${ev.startsAt.getFullYear()}${String(ev.startsAt.getMonth() + 1).padStart(2, '0')}${String(ev.startsAt.getDate()).padStart(2, '0')}`;
         const timeStr = `${String(ev.startsAt.getHours()).padStart(2, '0')}${String(ev.startsAt.getMinutes()).padStart(2, '0')}`;
         const occId = `cavia-${ev.anchor}-${dateStr}-${timeStr}`;
+        let seenSet = seenByEventId.get(eventId);
+        if (!seenSet) {
+          seenSet = new Set();
+          seenByEventId.set(eventId, seenSet);
+        }
+        seenSet.add(occId);
 
         const [existingOcc] = await db
           .select({ id: schema.occurrences.id })
@@ -173,6 +153,18 @@ export async function scrapeCavia(): Promise<CaviaResult[]> {
         );
       }
     }
+  }
+
+  // Stale-occurrence cleanup voor elke unieke Cavia-event die we deze
+  // run gezien hebben. Doen we pas hier omdat een film in meerdere
+  // maand-pagina's kan voorkomen.
+  for (const [eventId, seenOccIds] of seenByEventId) {
+    result.occurrencesPruned += await pruneStaleOccurrences({
+      eventId,
+      venueId: VENUE_ID,
+      seenOccIds,
+      nowMs,
+    });
   }
   return [result];
 }
@@ -298,12 +290,3 @@ function decodeEntities(s: string): string {
     .replace(/&euro;/g, '€');
 }
 
-function slugify(s: string): string {
-  return s
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-|-$/g, '')
-    .slice(0, 60);
-}

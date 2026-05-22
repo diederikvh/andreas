@@ -22,12 +22,15 @@
  * vullen).
  */
 
-import { randomBytes } from 'node:crypto';
-
-import { and, eq } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 
 import { db, schema } from '../db/index.js';
 import { uploadToBunny } from '../storage/bunny.js';
+import {
+  findOrCreateFilmEvent,
+  loadFilmDedupeMap,
+  pruneStaleOccurrences,
+} from './_film-dedup.js';
 
 const AGENDA_URL = 'https://www.kriterion.nl/agenda/';
 const FILMS_API = 'https://www.kriterion.nl/api/films?populate=still&pagination%5Blimit%5D=200';
@@ -39,6 +42,7 @@ export interface KriterionResult {
   fetched: number;
   inserted: number;
   occurrencesUpserted: number;
+  occurrencesPruned: number;
   skipped: number;
   errors: string[];
 }
@@ -58,6 +62,7 @@ export async function scrapeKriterion(): Promise<KriterionResult[]> {
     fetched: 0,
     inserted: 0,
     occurrencesUpserted: 0,
+    occurrencesPruned: 0,
     skipped: 0,
     errors: [],
   };
@@ -95,77 +100,33 @@ export async function scrapeKriterion(): Promise<KriterionResult[]> {
     else byTitle.set(title, [s]);
   }
 
+  // Cross-venue dedupe-map: één query, daarna in-memory lookup. Shared
+  // helper normaliseert suffix-varianten zodat Kriterion's
+  // "Anora (ENG subs)" aan Eye's bestaande "Anora" hangt.
+  const dedupeMap = await loadFilmDedupeMap();
+
   for (const [title, items] of byTitle) {
     try {
-      // Cross-venue dedup: vind bestaand Film-event met deze titel.
-      // Werkt voor Eye-films die we al hebben — Kriterion hangt z'n
-      // occurrences daaraan. Anders nieuw event.
-      const [existing] = await db
-        .select({
-          id: schema.events.id,
-          description: schema.events.description,
-          imageUrl: schema.events.imageUrl,
-        })
-        .from(schema.events)
-        .where(
-          and(
-            eq(schema.events.title, title),
-            eq(schema.events.category, 'Film'),
-            eq(schema.events.kind, 'show')
-          )
-        )
-        .limit(1);
-
       const meta = films.get(normalizeForMatch(title));
-      let eventId: string;
-      if (existing) {
-        eventId = existing.id;
-        const patch: Record<string, string> = {};
-        // Description aanvullen als 'ie leeg is. Niet overschrijven —
-        // Eye/AI-enrich kunnen al een betere variant hebben.
-        if (!existing.description && meta?.description) {
-          patch.description = meta.description;
-        }
-        // Kriterion's stills zijn cinematic en breed (16:9) — mooier
-        // voor card-rendering dan Wikipedia's poster-thumbnails (1:1.5).
-        // Overschrijf null OF wikipedia/wikimedia URLs; laat Eye- en
-        // andere venue-stills met rust (die hebben hun eigen redactie).
-        if (
-          !existing.imageUrl ||
-          /wiki(p|m)edia\.org/.test(existing.imageUrl)
-        ) {
-          const poster = await resolveAndUploadPoster(title, films);
-          if (poster) patch.imageUrl = poster;
-        }
-        if (Object.keys(patch).length > 0) {
-          await db
-            .update(schema.events)
-            .set(patch)
-            .where(eq(schema.events.id, eventId));
-        }
-      } else {
-        eventId = `film-${slugify(title)}-${randomBytes(3).toString('hex')}`;
-        // Kriterion's agenda-description is een sjabloon, maar Strapi's
-        // beschrijving (Editor.js JSON) is echte film-tekst. Poster
-        // komt van Strapi → Bunny. Allebei null als 't niet lukt;
-        // volgende run probeert opnieuw.
-        const poster = await resolveAndUploadPoster(title, films);
-        await db.insert(schema.events).values({
-          id: eventId,
-          venueId: VENUE_ID,
-          title,
-          description: meta?.description ?? null,
-          kind: 'show',
-          imageUrl: poster,
-          category: 'Film',
-        });
-        result.inserted += 1;
-      }
+      // Poster lazy: resolveAndUploadPoster is duur (Strapi-fetch +
+      // Bunny-upload). De helper roept de fn alleen aan bij een
+      // verse insert of bij een hit waar de bestaande image
+      // leeg/Wikipedia is — niet voor films die al een venue-still
+      // hebben van een andere scraper.
+      const { eventId, inserted } = await findOrCreateFilmEvent(dedupeMap, {
+        title,
+        description: meta?.description ?? null,
+        imageUrl: () => resolveAndUploadPoster(title, films),
+        venueId: VENUE_ID,
+      });
+      if (inserted) result.inserted += 1;
 
+      const seenOccIds = new Set<string>();
       for (const s of items) {
         const showId = parseShowId(s.offers?.url);
         if (!showId) continue;
         const occId = `kriterion-show-${showId}`;
+        seenOccIds.add(occId);
         const startsAt = new Date(s.startDate);
         if (Number.isNaN(startsAt.getTime())) continue;
         const endsAt = s.endDate ? new Date(s.endDate) : null;
@@ -202,6 +163,13 @@ export async function scrapeKriterion(): Promise<KriterionResult[]> {
         }
         result.occurrencesUpserted += 1;
       }
+
+      result.occurrencesPruned += await pruneStaleOccurrences({
+        eventId,
+        venueId: VENUE_ID,
+        seenOccIds,
+        nowMs: now,
+      });
     } catch (e) {
       result.errors.push(`${title}: ${(e as Error).message ?? String(e)}`);
     }

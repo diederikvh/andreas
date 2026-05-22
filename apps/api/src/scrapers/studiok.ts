@@ -18,11 +18,14 @@
  * `id="show12345"` attribuut.
  */
 
-import { randomBytes } from 'node:crypto';
-
-import { and, eq } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 
 import { db, schema } from '../db/index.js';
+import {
+  findOrCreateFilmEvent,
+  loadFilmDedupeMap,
+  pruneStaleOccurrences,
+} from './_film-dedup.js';
 
 const AGENDA_URL = 'https://studio-k.nu/';
 const VENUE_ID = 'aa-studio-k';
@@ -33,6 +36,7 @@ export interface StudiokResult {
   fetched: number;
   inserted: number;
   occurrencesUpserted: number;
+  occurrencesPruned: number;
   skipped: number;
   errors: string[];
 }
@@ -59,6 +63,7 @@ export async function scrapeStudiok(): Promise<StudiokResult[]> {
     fetched: 0,
     inserted: 0,
     occurrencesUpserted: 0,
+    occurrencesPruned: 0,
     skipped: 0,
     errors: [],
   };
@@ -76,6 +81,11 @@ export async function scrapeStudiok(): Promise<StudiokResult[]> {
       )
     ),
   ];
+
+  // Cross-venue dedupe-map: één query, daarna in-memory lookup. Shared
+  // helper normaliseert suffix-varianten ((ENG SUBS), (4K), etc) zodat
+  // Studio/K's "Anora (ENG SUBS)" aan Eye's bestaande "Anora" hangt.
+  const dedupeMap = await loadFilmDedupeMap();
 
   const now = Date.now();
   for (const filmUrl of filmUrls) {
@@ -101,64 +111,35 @@ export async function scrapeStudiok(): Promise<StudiokResult[]> {
       const imageUrl = screening?.image ?? extractMeta(html, 'og:image');
 
       // 2) Parse HTML voor alle screenings (datum + tijd + ticket).
-      const shows = parseShowsFromHtml(html, now);
+      // Dedup binnen één film op (startsAt + ticketUrl): Studio/K's
+      // pagina toont soms dezelfde screening twee keer (in "Vandaag"
+      // én "Alle voorstellingen"-widget) met verschillende show-ids.
+      const rawShows = parseShowsFromHtml(html, now);
+      const shows: typeof rawShows = [];
+      const seenKey = new Set<string>();
+      for (const s of rawShows) {
+        const key = `${s.startsAt.toISOString()}|${s.ticketUrl}`;
+        if (seenKey.has(key)) continue;
+        seenKey.add(key);
+        shows.push(s);
+      }
       if (shows.length === 0) {
         result.skipped += 1;
         continue;
       }
 
-      // Cross-venue dedup.
-      const [existing] = await db
-        .select({
-          id: schema.events.id,
-          description: schema.events.description,
-          imageUrl: schema.events.imageUrl,
-        })
-        .from(schema.events)
-        .where(
-          and(
-            eq(schema.events.title, title),
-            eq(schema.events.category, 'Film'),
-            eq(schema.events.kind, 'show')
-          )
-        )
-        .limit(1);
+      const { eventId, inserted } = await findOrCreateFilmEvent(dedupeMap, {
+        title,
+        description,
+        imageUrl: imageUrl ?? null,
+        venueId: VENUE_ID,
+      });
+      if (inserted) result.inserted += 1;
 
-      let eventId: string;
-      if (existing) {
-        eventId = existing.id;
-        const patch: Record<string, string> = {};
-        if (!existing.description && description) {
-          patch.description = description;
-        }
-        if (
-          imageUrl &&
-          (!existing.imageUrl || /wiki(p|m)edia\.org/.test(existing.imageUrl))
-        ) {
-          patch.imageUrl = imageUrl;
-        }
-        if (Object.keys(patch).length > 0) {
-          await db
-            .update(schema.events)
-            .set(patch)
-            .where(eq(schema.events.id, eventId));
-        }
-      } else {
-        eventId = `film-${slugify(title)}-${randomBytes(3).toString('hex')}`;
-        await db.insert(schema.events).values({
-          id: eventId,
-          venueId: VENUE_ID,
-          title,
-          description,
-          kind: 'show',
-          imageUrl,
-          category: 'Film',
-        });
-        result.inserted += 1;
-      }
-
+      const seenOccIds = new Set<string>();
       for (const show of shows) {
         const occId = `studiok-show-${show.id}`;
+        seenOccIds.add(occId);
         const [existingOcc] = await db
           .select({ id: schema.occurrences.id })
           .from(schema.occurrences)
@@ -188,6 +169,16 @@ export async function scrapeStudiok(): Promise<StudiokResult[]> {
         }
         result.occurrencesUpserted += 1;
       }
+
+      // Future-occurrences van dit (event, Studio/K) die we deze run
+      // niet meer zagen → opruimen. Houdt geschiedenis intact en raakt
+      // andere venues niet.
+      result.occurrencesPruned += await pruneStaleOccurrences({
+        eventId,
+        venueId: VENUE_ID,
+        seenOccIds,
+        nowMs: now,
+      });
     } catch (e) {
       result.errors.push(
         `${filmUrl}: ${(e as Error).message ?? String(e)}`
@@ -329,14 +320,4 @@ function decodeEntities(s: string): string {
 
 function stripHtml(s: string): string {
   return decodeEntities(s.replace(/<[^>]+>/g, ' ')).replace(/\s+/g, ' ').trim();
-}
-
-function slugify(s: string): string {
-  return s
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-|-$/g, '')
-    .slice(0, 60);
 }
