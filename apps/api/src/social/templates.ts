@@ -509,7 +509,7 @@ export function outroSlide(): VNode {
             display: 'flex',
           },
         },
-        'Check dé app voor meer tips.'
+        'Meer Amsterdam in de app.'
       ),
       el(
         'div',
@@ -517,12 +517,11 @@ export function outroSlide(): VNode {
           style: {
             fontSize: 36,
             fontWeight: 500,
-            color: INK_MUTED,
-            letterSpacing: 2,
+            color: INK,
             marginTop: 8,
           },
         },
-        'Andreas Amsterdam'
+        '@andreas_amsterdam'
       )
     )
   );

@@ -1,6 +1,7 @@
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation, useScrollToTop } from '@react-navigation/native';
 import { Image } from 'expo-image';
+import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -1645,18 +1646,29 @@ function FeaturedCard({
             contentFit="cover"
           />
         )}
-        <View
-          style={[
-            StyleSheet.absoluteFill,
-            {
-              // Subtiele tint over de foto — donker op nacht voor
-              // contrast, een hint accent op dag (veel zachter dan
-              // voorheen, foto blijft duidelijk de hero).
-              backgroundColor: isNacht
-                ? 'rgba(10,10,11,0.45)'
-                : 'rgba(201,69,58,0.18)',
-            },
-          ]}
+        {/* Vertical gradient: top transparant zodat de foto fris blijft,
+            naar onderen donker voor leesbaarheid van title + meta. Nacht
+            iets diepere bottom-stop dan dag (paper-bg verdraagt zachtere
+            tint). */}
+        <LinearGradient
+          colors={
+            isNacht
+              ? [
+                  'rgba(10,10,11,0)',
+                  'rgba(10,10,11,0)',
+                  'rgba(10,10,11,0.55)',
+                  'rgba(10,10,11,0.85)',
+                ]
+              : [
+                  'rgba(0,0,0,0)',
+                  'rgba(0,0,0,0)',
+                  'rgba(0,0,0,0.45)',
+                  'rgba(0,0,0,0.72)',
+                ]
+          }
+          locations={[0, 0.35, 0.7, 1]}
+          style={StyleSheet.absoluteFill}
+          pointerEvents="none"
         />
         <View style={styles.featuredInner}>
           <View style={styles.featuredBottom}>
@@ -1691,12 +1703,14 @@ function FeaturedCard({
                 </View>
               )}
             </View>
-            <Text style={[styles.featuredTitle, { color: titleColor }]}>
-              {title}
-            </Text>
-            <Text style={[styles.featuredMeta, { color: metaColor }]}>
-              {meta}
-            </Text>
+            <View style={styles.featuredTitleBlock}>
+              <Text style={[styles.featuredTitle, { color: titleColor }]}>
+                {title}
+              </Text>
+              <Text style={[styles.featuredMeta, { color: metaColor }]}>
+                {meta}
+              </Text>
+            </View>
           </View>
         </View>
       </View>
@@ -2294,6 +2308,10 @@ const styles = StyleSheet.create({
     letterSpacing: 1.4,
     textTransform: 'uppercase',
   },
+  // Title + meta tegen elkaar i.p.v. via featuredBottom's gap:12 +
+  // marginTop:10 — visueel komen ze nu als één blok in, met enkel 4px
+  // ruimte tussen titel en datum.
+  featuredTitleBlock: { gap: 4 },
   featuredTitle: {
     fontFamily: fontFamily.display,
     fontSize: 34,
@@ -2305,7 +2323,6 @@ const styles = StyleSheet.create({
     fontSize: 10,
     letterSpacing: 1,
     textTransform: 'uppercase',
-    marginTop: 10,
   },
 
   // Chip-row — zelfde patroon als Agenda's ChipRow. Expliciete height

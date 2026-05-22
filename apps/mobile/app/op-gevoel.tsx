@@ -348,11 +348,12 @@ const SwipeCard = forwardRef<
   const isFlyingRef = useRef(false);
   // Animated depth — laat de scale + offset soepel transitioneren
   // wanneer de top-card wegvliegt en deze kaart van depth=1 naar
-  // depth=0 schuift. Zonder dit ploppen de achterste cards in een
-  // tik naar voren.
+  // depth=0 schuift. Heel snel (90ms) zodat de nieuwe top-kaart bijna
+  // direct interactief is — wachten tot 'ie naar voren is gesprongen
+  // vóór je weer kunt swipen voelt irritant.
   const depthSv = useSharedValue(depth);
   useEffect(() => {
-    depthSv.value = withSpring(depth, { damping: 20, stiffness: 160 });
+    depthSv.value = withTiming(depth, { duration: 90 });
   }, [depth, depthSv]);
 
   // Brand-kleuren per mode. Nacht krijgt punchy felle accents (acid +
@@ -372,19 +373,19 @@ const SwipeCard = forwardRef<
 
   // Programmatische fly-out — dezelfde animatie als een swipe over de
   // threshold. Wordt aangeroepen door de legenda-knoppen (skip / like).
-  // Iets langzamer dan de gesture-variant (360 vs 220ms) zodat een tap
-  // niet als een harde "klik" voelt maar als een rustige weg-glide.
+  // Gelijk aan de gesture-variant (220ms) zodat de volgende kaart niet
+  // te lang op zich laat wachten na een knop-tap.
   const flyOut = (dir: 'left' | 'right') => {
     if (isFlyingRef.current) return;
     isFlyingRef.current = true;
     translateX.value = withTiming(
       dir === 'right' ? windowWidth * 1.5 : -windowWidth * 1.5,
-      { duration: 360 },
+      { duration: 220 },
       () => {
         if (onCommit) runOnJS(onCommit)(dir, item);
       }
     );
-    translateY.value = withTiming(0, { duration: 360 });
+    translateY.value = withTiming(0, { duration: 220 });
   };
 
   useImperativeHandle(ref, () => ({
