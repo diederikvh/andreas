@@ -92,6 +92,27 @@ export const auth = betterAuth({
       maxAge: 60 * 60 * 24 * 180,
     },
   },
+  // Per-IP rate limit op de OTP-paden om SMS-bombing en Bird-credit-
+  // brand te voorkomen. Better-auth's default (100 req / 60s) blijft
+  // gelden voor alle andere auth-routes. enabled blijft undefined → aan
+  // in productie, uit in dev (better-auth-default).
+  //
+  // Storage 'memory' is per-Fly-machine; met 1-2 machines is dat ruim
+  // genoeg voor abuse-protectie. IP-rotatie tegen één telefoonnummer
+  // valt buiten scope — voeg per-phone middleware toe als dat zich
+  // voordoet.
+  rateLimit: {
+    storage: 'memory',
+    customRules: {
+      // Max 3 SMS-verzoeken per 5 min per IP. Een legit user klikt
+      // hooguit 2-3x op "verstuur opnieuw"; daarna eerst even wachten.
+      '/phone-number/send-otp': { window: 5 * 60, max: 3 },
+      // Better-auth telt zelf al max 3 mislukte verify-pogingen per
+      // OTP (allowedAttempts). Deze laag dempt automated probing dat
+      // telkens nieuwe OTPs triggert.
+      '/phone-number/verify': { window: 5 * 60, max: 10 },
+    },
+  },
   plugins: [
     expo(),
     // Mobile draagt sessie via Authorization: Bearer <token> i.p.v.
