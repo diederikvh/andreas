@@ -210,10 +210,15 @@ export type EventsFilter = {
   /** ISO datestring */
   to?: string;
   category?: ApiEvent['category'];
+  venueType?: VenueType;
   q?: string;
   /** Multi-select OR-filter — events met minstens één van deze genres. */
   genres?: string[];
   limit?: number;
+  /** Strip de zware velden (description, address, scene/subtype/priceNote
+      /imageUrl op venue, friendsSaved per occurrence, series-array) uit
+      de response. Voor rail/lijst-rendering: ~60% payload-reductie. */
+  lean?: boolean;
 };
 
 class ApiError extends Error {
@@ -230,11 +235,13 @@ export async function getEvents(filter: EventsFilter = {}): Promise<ApiEvent[]> 
   if (filter.from) params.set('from', filter.from);
   if (filter.to) params.set('to', filter.to);
   if (filter.category) params.set('category', filter.category);
+  if (filter.venueType) params.set('venueType', filter.venueType);
   if (filter.q && filter.q.trim().length > 0) params.set('q', filter.q.trim());
   if (filter.genres && filter.genres.length > 0) {
     for (const g of filter.genres) params.append('genre', g);
   }
   if (filter.limit) params.set('limit', String(filter.limit));
+  if (filter.lean) params.set('lean', '1');
   const qs = params.toString();
   // authedRequest stuurt de bearer mee als die er is, anders niet —
   // /events werkt voor uitgelogde users (zonder friendsSaved data) en
@@ -265,6 +272,96 @@ export async function getEventGenres(): Promise<ApiGenreBucket[]> {
     '/events/genres'
   );
   return genres;
+}
+
+// ─── Agenda — lean lijst-endpoint ──────────────────────────────────────
+// Dedicated endpoints voor de Agenda-tab. Splitsen van het zware /events
+// in twee lichte requests: één voor de day-strip (alleen tellingen), en
+// één per dag voor de rij-data. Bespaart 90%+ van het JSON-volume t.o.v.
+// de oude "fetch alle toekomstige events".
+
+export type AgendaFilters = {
+  categories?: ApiEvent['category'][];
+  venueTypes?: VenueType[];
+  /** Time-blocks: ochtend (6-12), middag (12-18), avond (18-23),
+      nacht (23-06). Server-side gefilterd zodat de day-strip kloppende
+      tellingen toont. */
+  blocks?: string[];
+  q?: string;
+  onlyFollowed?: boolean;
+  onlyFriends?: boolean;
+};
+
+export type AgendaDayCount = {
+  /** YYYY-MM-DD in NL-local met 06:00-cutoff (een 02:00-club-show valt
+      onder de avond ervoor). */
+  date: string;
+  count: number;
+};
+
+export type AgendaRow = {
+  /** Identieke string als `occurrenceId` — handig voor key-extractor. */
+  id: string;
+  occurrenceId: string;
+  eventId: string;
+  startsAt: string;
+  endsAt: string | null;
+  title: string;
+  category: ApiEvent['category'];
+  kind: 'show' | 'exhibition';
+  imageUrl: string | null;
+  /** Eerste genre als de event er een heeft (techno/jazz/drama/...). */
+  genre: string | null;
+  /** Eerste series-naam (bv. "ADE 2026") als het event in series zit. */
+  seriesName: string | null;
+  venueId: string;
+  venueName: string;
+  venueType: VenueType | null;
+  friendsSaved: { name: string; avatarUrl: string | null }[];
+  friendsSavedCount: number;
+  venueFollowed: boolean;
+};
+
+function buildAgendaQuery(filters: AgendaFilters): URLSearchParams {
+  const p = new URLSearchParams();
+  for (const c of filters.categories ?? []) p.append('category', c);
+  for (const vt of filters.venueTypes ?? []) p.append('venueType', vt);
+  for (const b of filters.blocks ?? []) p.append('block', b);
+  if (filters.q && filters.q.trim().length > 0) p.set('q', filters.q.trim());
+  if (filters.onlyFollowed) p.set('onlyFollowed', 'true');
+  if (filters.onlyFriends) p.set('onlyFriends', 'true');
+  return p;
+}
+
+export async function getAgendaDays(input: {
+  from: string;
+  to: string;
+  filters?: AgendaFilters;
+}): Promise<AgendaDayCount[]> {
+  const params = buildAgendaQuery(input.filters ?? {});
+  params.set('from', input.from);
+  params.set('to', input.to);
+  const { days } = await authedRequest<{ days: AgendaDayCount[] }>(
+    `/events/agenda/days?${params.toString()}`
+  );
+  return days;
+}
+
+export async function getAgendaDay(input: {
+  date: string;
+  /** Optionele cutoff: events met effectieve eindtijd vóór deze tijd
+      worden weggefilterd. Bedoeld voor "vandaag" zodat een 14:00-show
+      om 16:30 niet meer in de lijst staat. */
+  from?: string;
+  filters?: AgendaFilters;
+}): Promise<AgendaRow[]> {
+  const params = buildAgendaQuery(input.filters ?? {});
+  params.set('date', input.date);
+  if (input.from) params.set('from', input.from);
+  const { rows } = await authedRequest<{ rows: AgendaRow[] }>(
+    `/events/agenda?${params.toString()}`
+  );
+  return rows;
 }
 
 export type VenueCategory = 'Muziek' | 'Theater' | 'Literatuur' | 'Film' | 'Kunst' | 'Lezing';

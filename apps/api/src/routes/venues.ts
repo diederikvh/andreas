@@ -280,16 +280,17 @@ venuesRoute.get('/:slug', async (c) => {
     ? await getVenueFollowState(me, venue.id)
     : 'normaal';
 
-  // Per occurrence z'n eigen friends-pill + per event de series-pill,
-  // zodat ProgramRow op /venue/[slug] dezelfde rijke labels krijgt als
-  // Avond/Agenda. Bouwt op alle occurrences in range zodat een
-  // ?o=switch later zonder extra fetch werkt.
-  const allOccurrenceIds = occRange.eventIds.flatMap((id) => {
-    const occ = occRange.byEvent.get(id);
-    return occ?.all.map((o) => o.id) ?? [];
-  });
+  // Friends-pill alleen voor de nextOccurrence van elk event (= de
+  // rij die ProgramRow toont). Per-occurrence-friends voor
+  // occurrencesInRange wordt door venue/[slug] niet gerendered (zie
+  // grep: alleen `event.friendsSaved` en `occurrencesInRange[0].id`).
+  // Voorkomt N+1-achtige friends-query bij venues met veel events
+  // (Paradiso ~300 toekomstige occurrences).
+  const nextOccurrenceIds = occRange.eventIds
+    .map((id) => occRange.byEvent.get(id)?.next?.id)
+    .filter((v): v is string => Boolean(v));
   const friendsByOcc = me
-    ? await buildFriendsByOccurrence(me, allOccurrenceIds)
+    ? await buildFriendsByOccurrence(me, nextOccurrenceIds)
     : new Map();
   const seriesMap = await buildSeriesByEvent(occRange.eventIds);
 
@@ -306,14 +307,13 @@ venuesRoute.get('/:slug', async (c) => {
       // eerstvolgende voorstelling AT THIS VENUE selecteert — anders
       // valt 't terug op de globale next, die voor een multi-venue film
       // bij een ander venue kan zitten (zoals Theater de Omval i.p.v. Eye).
-      const occurrencesInRange = occ.all.map((o) => {
-        const f = friendsByOcc.get(o.id);
-        return {
-          ...o,
-          friendsSaved: f?.friends ?? [],
-          friendsSavedCount: f?.count ?? 0,
-        };
-      });
+      // Per-occurrence friends weggelaten — venue-detail rendert alleen
+      // de event-level friendsSaved (head). Scheelt N×friends-lookups.
+      const occurrencesInRange = occ.all.map((o) => ({
+        ...o,
+        friendsSaved: [],
+        friendsSavedCount: 0,
+      }));
       return {
         ...event,
         startsAt: occ.next?.startsAt ?? null,

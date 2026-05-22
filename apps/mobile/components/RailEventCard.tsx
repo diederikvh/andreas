@@ -58,6 +58,9 @@ export function RailEventCard({
   const roles = useRoles();
   const locale = useLocale();
   const { surface } = useRailCardStyles();
+  // `surface.bg`/`surface.border` worden alleen nog gebruikt voor de
+  // fallback-tint van de image-placeholder; de kaart zelf is borderless
+  // en achtergrond-loos (Letterboxd/Spotify-vibe, zoals FilmRailCard).
 
   const startsAt = occurrenceStartsAt ?? event.startsAt;
   const endsAt = occurrenceEndsAt ?? event.endsAt;
@@ -92,27 +95,23 @@ export function RailEventCard({
   return (
     <Pressable
       onPress={onPress}
-      style={[
-        styles.card,
-        wide && styles.cardWide,
-        { backgroundColor: surface.bg, borderColor: surface.border },
-      ]}
+      style={[styles.card, wide && styles.cardWide]}
     >
-      {eventImageUrl(event) ? (
-        <Image
-          source={{ uri: eventImageUrl(event)! }}
-          style={[styles.cardImg, wide && styles.cardImgWide]}
-          contentFit="cover"
-        />
-      ) : (
-        <View
-          style={[
-            styles.cardImg,
-            wide && styles.cardImgWide,
-            { backgroundColor: surface.fallback },
-          ]}
-        />
-      )}
+      <View
+        style={[
+          styles.cardImgWrap,
+          wide && styles.cardImgWrapWide,
+          { backgroundColor: surface.fallback },
+        ]}
+      >
+        {eventImageUrl(event) ? (
+          <Image
+            source={{ uri: eventImageUrl(event)! }}
+            style={styles.cardImg}
+            contentFit="cover"
+          />
+        ) : null}
+      </View>
       <View style={styles.cardBody}>
         <Text
           numberOfLines={2}
@@ -141,24 +140,29 @@ export function RailEventCard({
 const styles = StyleSheet.create({
   card: {
     width: RAIL_CARD_WIDTH,
-    borderRadius: 12,
-    borderWidth: 1,
-    overflow: 'hidden',
   },
   cardWide: {
     width: '100%',
   },
-  cardImg: {
+  // Image-wrap geeft borderRadius + clipt de Image. Background dient
+  // alleen als placeholder-tint terwijl de Image laadt of als 'r geen
+  // image is.
+  cardImgWrap: {
     width: '100%',
     height: RAIL_CARD_IMG_HEIGHT,
+    borderRadius: 10,
+    overflow: 'hidden',
   },
-  cardImgWide: {
+  cardImgWrapWide: {
     height: 220,
   },
+  cardImg: {
+    width: '100%',
+    height: '100%',
+  },
   cardBody: {
-    padding: 12,
-    gap: 6,
-    minHeight: 84,
+    paddingTop: 8,
+    gap: 4,
   },
   cardName: {
     fontFamily: fontFamily.bold,

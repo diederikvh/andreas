@@ -2,10 +2,12 @@ import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
 import { Image } from 'expo-image';
 import { router, useFocusEffect } from 'expo-router';
+import { useQueryClient } from '@tanstack/react-query';
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Modal,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -29,7 +31,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppHeader, HEADER_HEIGHT } from '@/components/AppHeader';
 import { Cross } from '@/components/Cross';
-import { TabIconAgenda, TabIconVenues } from '@/components/icons/TabIcons';
+import { RefreshBanner } from '@/components/RefreshBanner';
 import { brandEase } from '@/lib/easing';
 import type { ApiEvent, ApiFriendBadge } from '@/lib/api';
 import {
@@ -147,7 +149,22 @@ export default function Kaart() {
   const { data: events } = useEvents({
     from: todayWindow.from,
     to: todayWindow.to,
+    lean: true,
   });
+
+  const qc = useQueryClient();
+  const [refreshing, setRefreshing] = useState(false);
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    const start = Date.now();
+    try {
+      await qc.invalidateQueries({ queryKey: ['events'] });
+    } finally {
+      const elapsed = Date.now() - start;
+      if (elapsed < 700) await new Promise((r) => setTimeout(r, 700 - elapsed));
+      setRefreshing(false);
+    }
+  }, [qc]);
 
   // Filters zijn eigen aan Kaart (runtime-only) — eerder deelde
   // deze tab de useVandaagFilters store, maar dat lekte cat/type-
@@ -415,20 +432,41 @@ export default function Kaart() {
   return (
     <View style={[styles.root, { backgroundColor: roles.bg }]}>
       {view === 'list' ? (
-        <ScrollView
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={{
-            paddingTop: insets.top + HEADER_HEIGHT + CONTROLS_HEIGHT + 8,
-            paddingBottom: insets.bottom + 110,
-          }}
-        >
-          <Text style={[styles.listKicker, { color: roles.fgMuted }]}>
-            In de buurt
-          </Text>
-          {sorted.map((m) => (
-            <SheetRow key={m.id} mapEvent={m} />
-          ))}
-        </ScrollView>
+        <>
+          <RefreshBanner
+            visible={refreshing}
+            topOffset={insets.top + HEADER_HEIGHT + CONTROLS_HEIGHT + 8}
+          />
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={{
+              paddingTop: insets.top + HEADER_HEIGHT + CONTROLS_HEIGHT + 8,
+              paddingBottom: insets.bottom + 110,
+            }}
+            refreshControl={
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={onRefresh}
+                tintColor={roles.accent}
+                colors={[roles.accent]}
+                title={
+                  refreshing
+                    ? t('Vernieuwen…', 'Refreshing…')
+                    : t('Trek om te vernieuwen', 'Pull to refresh')
+                }
+                titleColor={roles.fgMuted}
+                progressViewOffset={insets.top + HEADER_HEIGHT + CONTROLS_HEIGHT + 60}
+              />
+            }
+          >
+            <Text style={[styles.listKicker, { color: roles.fgMuted }]}>
+              In de buurt
+            </Text>
+            {sorted.map((m) => (
+              <SheetRow key={m.id} mapEvent={m} />
+            ))}
+          </ScrollView>
+        </>
       ) : (
         <>
           <MapView
@@ -511,35 +549,8 @@ export default function Kaart() {
         solid={view === 'map'}
         title={t('Kaart', 'Map')}
         rightSlot={
-          // Kicker in row 1 ipv eigen rij — comprimeert de header.
-          // 'Today' (accent) + telling op één regel rechts naast de
-          // titel; flexShrink zodat 'ie netjes inkort op smalle
-          // schermen.
-          <View style={styles.headerKicker}>
-            <Text style={[styles.contextLabel, { color: roles.accent }]}>
-              {t('Vandaag', 'Today')}
-            </Text>
-            <Text
-              style={[styles.contextMeta, { color: roles.fgMuted }]}
-              numberOfLines={1}
-            >
-              {mapEvents.length}
-            </Text>
-          </View>
-        }
-      >
-        <View style={styles.toolbar}>
-          {/* Links-cluster: map/list-switch (icons-only) + filter,
-              dicht tegen elkaar zodat ze als familie ogen. */}
-          <View style={styles.toolbarLeft}>
-            <ViewSwitch view={view} onChange={setView} />
-            <FilterButton
-              count={filterCount}
-              onPress={() => setFilterOpen(true)}
-            />
-          </View>
-          {/* Rechts: sluit-knop, met zoveel mogelijk witruimte ertussen
-              via space-between op de parent. */}
+          // Sluit-knop in dezelfde stijl als /theater en /films —
+          // 36×36 ronde knop met paper2/noir2 surface en X-icoon.
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={t('Sluit kaart', 'Close map')}
@@ -552,26 +563,25 @@ export default function Kaart() {
               else router.replace('/avond');
             }}
             hitSlop={8}
-            style={[styles.closeBtn, { borderColor: roles.bgChip }]}
+            style={[
+              styles.closeBtn,
+              { backgroundColor: mode === 'nacht' ? palette.noir2 : palette.paper2 },
+            ]}
           >
-            <BlurView
-              intensity={40}
-              tint={mode === 'nacht' ? 'dark' : 'light'}
-              style={StyleSheet.absoluteFill}
-            />
-            <View
-              style={[
-                StyleSheet.absoluteFill,
-                {
-                  backgroundColor:
-                    mode === 'nacht'
-                      ? 'rgba(23,23,26,0.65)'
-                      : 'rgba(235,230,216,0.7)',
-                },
-              ]}
-            />
-            <Cross size={16} thickness={3} color={roles.fgMuted} />
+            <Ionicons name="close" size={20} color={roles.fg} />
           </Pressable>
+        }
+      >
+        <View style={styles.toolbar}>
+          {/* Links-cluster: map/list-switch (icons-only) + filter,
+              dicht tegen elkaar zodat ze als familie ogen. */}
+          <View style={styles.toolbarLeft}>
+            <ViewSwitch view={view} onChange={setView} />
+            <FilterButton
+              count={filterCount}
+              onPress={() => setFilterOpen(true)}
+            />
+          </View>
         </View>
       </AppHeader>
 
@@ -759,13 +769,13 @@ function ViewSwitch({
         ]}
       />
       <SwitchBtn
-        Icon={TabIconVenues}
+        iconName="map-outline"
         label={t('Kaart', 'Map')}
         active={view === 'map'}
         onPress={() => onChange('map')}
       />
       <SwitchBtn
-        Icon={TabIconAgenda}
+        iconName="list-outline"
         label={t('Lijst', 'List')}
         active={view === 'list'}
         onPress={() => onChange('list')}
@@ -816,12 +826,12 @@ function TransportToggle({
 }
 
 function SwitchBtn({
-  Icon,
+  iconName,
   label,
   active,
   onPress,
 }: {
-  Icon: React.ComponentType<{ color: string }>;
+  iconName: React.ComponentProps<typeof Ionicons>['name'];
   label: string;
   active: boolean;
   onPress: () => void;
@@ -838,7 +848,7 @@ function SwitchBtn({
       accessibilityState={{ selected: active }}
       style={styles.switchBtn}
     >
-      <Icon color={tint} />
+      <Ionicons name={iconName} size={20} color={tint} />
     </Pressable>
   );
 }
@@ -1180,18 +1190,14 @@ function lightenHexLocal(hex: string, amount: number): string {
 const styles = StyleSheet.create({
   root: { flex: 1 },
 
-  // Sluit-knop in de toolbar-rij. 44×44 zodat 'ie dezelfde
-  // footprint heeft als de andere toolbar-knoppen (FilterButton,
-  // recentre, ViewSwitch) — voelt visueel als één familie, met
-  // dezelfde blur + rgba-tint achtergrond.
+  // Sluit-knop in rightSlot — zelfde maat/stijl als op /theater en
+  // /films voor visuele consistentie tussen secundaire pagina's.
   closeBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 999,
-    borderWidth: 1,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
-    overflow: 'hidden',
   },
 
   // Floating overlay linksonder op de kaart — bevat de transport-

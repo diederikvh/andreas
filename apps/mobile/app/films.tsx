@@ -8,9 +8,11 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { router } from 'expo-router';
-import { useMemo } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import { useCallback, useMemo, useState } from 'react';
 import {
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -20,6 +22,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppHeader, HEADER_HEIGHT } from '@/components/AppHeader';
+import { RefreshBanner } from '@/components/RefreshBanner';
 import type { ApiEvent } from '@/lib/api';
 import { eventImageUrl } from '@/lib/eventDisplay';
 import { useLocale, useT } from '@/lib/i18n';
@@ -56,7 +59,22 @@ export default function Films() {
     from: range.from,
     to: range.to,
     category: 'Film',
+    lean: true,
   });
+
+  const qc = useQueryClient();
+  const [refreshing, setRefreshing] = useState(false);
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    const start = Date.now();
+    try {
+      await qc.invalidateQueries({ queryKey: ['events'] });
+    } finally {
+      const elapsed = Date.now() - start;
+      if (elapsed < 700) await new Promise((r) => setTimeout(r, 700 - elapsed));
+      setRefreshing(false);
+    }
+  }, [qc]);
 
   // Dedupe op event-id (occurrencesInRange kan een film meerdere keren
   // representeren als we 't via die route renderen — voor deze pagina
@@ -86,11 +104,30 @@ export default function Films() {
 
   return (
     <View style={[styles.root, { backgroundColor: roles.bg }]}>
+      <RefreshBanner
+        visible={refreshing}
+        topOffset={insets.top + HEADER_HEIGHT + 8}
+      />
       <ScrollView
         contentContainerStyle={{
           paddingTop: insets.top + HEADER_HEIGHT + 8,
           paddingBottom: insets.bottom + 24,
         }}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={roles.accent}
+            colors={[roles.accent]}
+            title={
+              refreshing
+                ? t('Vernieuwen…', 'Refreshing…')
+                : t('Trek om te vernieuwen', 'Pull to refresh')
+            }
+            titleColor={roles.fgMuted}
+            progressViewOffset={insets.top + HEADER_HEIGHT + 30}
+          />
+        }
       >
         {isLoading && (
           <View style={styles.centerWrap}>
@@ -227,12 +264,6 @@ function FilmCard({
       >
         {film.title}
       </Text>
-      <Text
-        numberOfLines={1}
-        style={[styles.venueLine, { color: roles.fgMuted }]}
-      >
-        {venueLabel}
-      </Text>
       {todayTimes.length > 0 ? (
         <Text
           numberOfLines={1}
@@ -251,6 +282,12 @@ function FilmCard({
           )}
         </Text>
       )}
+      <Text
+        numberOfLines={1}
+        style={[styles.venueLine, { color: roles.fgMuted }]}
+      >
+        {venueLabel}
+      </Text>
     </Pressable>
   );
 }
@@ -287,18 +324,24 @@ const styles = StyleSheet.create({
     letterSpacing: -0.21,
     marginBottom: 1,
   },
-  venueLine: {
-    fontFamily: fontFamily.body,
+  // Datum/tijden bold — accent-kleur blijft, maar gewicht bovenop voor
+  // visuele hiërarchie (matcht cardTime op de home-rails). Staat boven
+  // de venue-kicker.
+  timesLine: {
+    fontFamily: fontFamily.bold,
     fontSize: 12,
     lineHeight: 16,
-    letterSpacing: -0.12,
+    letterSpacing: -0.2,
     marginBottom: 2,
   },
-  timesLine: {
-    fontFamily: fontFamily.medium,
-    fontSize: 12,
-    lineHeight: 16,
-    letterSpacing: -0.12,
+  // Venue als kicker — mono uppercase, kleine letter-spacing, matcht
+  // de RailEventCard-look op Vandaag.
+  venueLine: {
+    fontFamily: fontFamily.mono,
+    fontSize: 10,
+    lineHeight: 14,
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
     marginBottom: 18,
   },
   closeBtn: {

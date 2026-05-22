@@ -586,7 +586,21 @@ function ChipRow({
     activeType.length +
     activeScene.length +
     activeSubtypes.length;
-  const filterActive = filterCount > 0;
+  // Als de huidige filter-staat exact matcht met een opgeslagen
+  // venue-zoekopdracht-chip, dan licht díe chip al op — de filter-knop
+  // blijft dan in z'n neutrale staat zodat 'r niet twee actieve knoppen
+  // naast elkaar staan.
+  const savedActive = saved.some((s) =>
+    isSavedVenueSearchActive(s, {
+      dn: activeDn,
+      type: activeType,
+      sc: activeScene,
+      st: activeSubtypes,
+      vo: onlyVolgend,
+      q: query,
+    })
+  );
+  const filterActive = filterCount > 0 && !savedActive;
   // Eerste belangrijke filter als label: venue-type > scene >
   // subtype. Render: "Podium + 1" voor primair + extra; geen
   // primair? terug naar "Filter · N".
@@ -726,7 +740,7 @@ function ChipRow({
         >
           <Ionicons
             name="options-outline"
-            size={12}
+            size={16}
             color={filterActive ? roles.bg : roles.fgMuted}
           />
           <Text

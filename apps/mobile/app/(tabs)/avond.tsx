@@ -61,7 +61,6 @@ import { useLocale, useT, type Locale } from '@/lib/i18n';
 import {
   useEvents,
   useForYouEvents,
-  useFriends,
   useMe,
   useMySaves,
   useSocialFeed,
@@ -199,13 +198,15 @@ export default function Avond() {
   // de events-lijst doen we cliënt-side via todayWindow.toMs.
   const { data: events, isLoading, error } = useEvents({
     from: todayWindow.from,
+    lean: true,
   });
   // "Voor jou" — gepersonaliseerde aanbevelingen op basis van je save-
   // historie. Lege array voor uitgelogde users of users zonder saves.
   const { data: forYouEvents } = useForYouEvents();
-  // Series + exhibitions delen één "Loopt nu"-strook bovenaan. Series
-  // komen uit /series (apart endpoint), exhibitions zitten in `events`.
-  const { data: seriesList } = useSeriesList();
+  // Series + exhibitions delen één "Loopt nu"-strook bovenaan. Alleen
+  // relevant in cmode='uit' (avond/nacht-modus); in 'expo' tonen we
+  // 'm niet, dus skippen we de query helemaal.
+  const { data: seriesList } = useSeriesList({ enabled: cmode === 'uit' });
   // Alle venues die de gebruiker volgt — onafhankelijk van wat er
   // vandaag speelt. Voor de "Jouw favorieten"-rail onder de
   // agenda-banner. Backend filtert myFollowState per venue; wij
@@ -232,10 +233,6 @@ export default function Avond() {
   const activeTypes = useVandaagFilters((s) => s.activeTypes);
   const { data: session } = useSession();
   const authed = Boolean(session?.user?.id);
-  // Friends data wordt nog gebruikt door rail-filters (friendsSaved op
-  // events). Geen friends-chip meer in de header — die zat in de oude
-  // chip-row.
-  useFriends({ enabled: authed });
   // Eigen saves + social-feed: input voor de "Planning"-rail onderaan
   // de pagina. Beide queries zijn al elders in de app actief, hier
   // herbenoemen we de cache zodat we mergen op occurrenceId.
@@ -344,13 +341,22 @@ export default function Avond() {
   // beide avonden. Exhibitions filteren we eruit — die staan los in
   // de "Doorlopend te zien"-strook (alleen dag-mode); musea zijn
   // 's nachts toch dicht.
+  // Eénmalige expansie van events naar occurrence-rows. Hieronder
+  // hebben 4 useMemo's de geëxpandeerde rows nodig — door 't hier te
+  // cachen vermijden we 4× dezelfde flatMap over ~500-2000 events bij
+  // elke re-render.
+  const allRows = useMemo<OccurrenceRow[]>(
+    () => (events ? expandToOccurrenceRows(events) : []),
+    [events]
+  );
+
   // Hoofd-lijst: vandaag's events (geen exhibitions), gefilterd op
   // tijd-blokken, vrienden en favoriete venues. Mode speelt geen rol
   // meer — die is puur stilistisch.
   const filtered = useMemo<OccurrenceRow[]>(() => {
     if (!events) return [];
     const needle = query.trim().toLowerCase();
-    return expandToOccurrenceRows(events).filter((row) => {
+    return allRows.filter((row) => {
       const e = row.event;
       if (e.kind === 'exhibition') return false;
       // Long-running events (> 7 dagen — audio tours, permanente
@@ -425,7 +431,7 @@ export default function Avond() {
   // featured-eerst en pakt de juiste subset.
   const leadsPool = useMemo<OccurrenceRow[]>(() => {
     if (!events) return [];
-    return expandToOccurrenceRows(events)
+    return allRows
       .filter((row) => {
         if (row.event.kind === 'exhibition') return false;
         if (effectiveEndsAtMs(row.occurrence) < now) return false;
@@ -444,14 +450,14 @@ export default function Avond() {
           new Date(a.occurrence.startsAt).getTime() -
           new Date(b.occurrence.startsAt).getTime()
       );
-  }, [events, now, cmode]);
+  }, [events, allRows, now, cmode]);
 
   // Bredere pool voor de Featured-fallback — bevat óók exhibitions
   // (anders zou de hero in expo-mode alleen single-day events kunnen
   // tonen, terwijl de musea/galleries-rails wél exhibitions tonen).
   const featuredFallbackPool = useMemo<OccurrenceRow[]>(() => {
     if (!events) return [];
-    return expandToOccurrenceRows(events)
+    return allRows
       .filter((row) => {
         if (effectiveEndsAtMs(row.occurrence) < now) return false;
         // Exhibitions / long-running zijn doorlopend en passen bij
@@ -474,7 +480,7 @@ export default function Avond() {
           new Date(a.occurrence.startsAt).getTime() -
           new Date(b.occurrence.startsAt).getTime()
       );
-  }, [events, now, cmode]);
+  }, [events, allRows, now, cmode]);
 
   // Featured leads: probeer eerst vandaag's featured-events. Geen
   // featured vandaag? Pak een RANDOM item uit de rails-pool (rotert
@@ -565,7 +571,7 @@ export default function Avond() {
       }
       return true;
     });
-  }, [events, activeCats, onlyFriends, onlyFavorites, query]);
+  }, [events, allRows, activeCats, onlyFriends, onlyFavorites, query]);
 
   // Rails voor 'uit'-mode — gebaseerd op `filtered` (OccurrenceRow[]
   // van vandaag, gefilterd op user-state). Per rail aanvullende
@@ -650,7 +656,7 @@ export default function Avond() {
   // erin.
   const railMorgen = useMemo<OccurrenceRow[]>(() => {
     if (!events) return [];
-    return expandToOccurrenceRows(events).filter((row) => {
+    return allRows.filter((row) => {
       const e = row.event;
       if (e.kind === 'exhibition') return false;
       if (isLongRunning(e.startsAt, e.endsAt)) return false;
@@ -664,7 +670,7 @@ export default function Avond() {
       }
       return true;
     });
-  }, [events, now, tomorrowWindow.fromMs, tomorrowWindow.toMs]);
+  }, [events, allRows, now, tomorrowWindow.fromMs, tomorrowWindow.toMs]);
   // Rails voor 'expo'-mode — gebaseerd op `expoEvents` (ApiEvent[]).
   // Doorlopende exhibitions worden gegroepeerd per type instelling
   // (musea per genre, galleries per scene) i.p.v. op tijd-framing —
@@ -1282,25 +1288,22 @@ function PlanningRailCard({
           `/event/${entry.eventId}?o=${entry.occurrenceId}&source=avond` as never
         )
       }
-      style={[
-        planningCardStyles.card,
-        { backgroundColor: surface.bg, borderColor: surface.border },
-      ]}
+      style={planningCardStyles.card}
     >
-      {thumb ? (
-        <Image
-          source={{ uri: thumb }}
-          style={planningCardStyles.img}
-          contentFit="cover"
-        />
-      ) : (
-        <View
-          style={[
-            planningCardStyles.img,
-            { backgroundColor: surface.fallback },
-          ]}
-        />
-      )}
+      <View
+        style={[
+          planningCardStyles.imgWrap,
+          { backgroundColor: surface.fallback },
+        ]}
+      >
+        {thumb ? (
+          <Image
+            source={{ uri: thumb }}
+            style={planningCardStyles.img}
+            contentFit="cover"
+          />
+        ) : null}
+      </View>
       <View style={planningCardStyles.body}>
         <Text
           numberOfLines={1}
@@ -1331,7 +1334,7 @@ function PlanningRailCard({
                     {
                       left: i * 12,
                       zIndex: totalTiles - i,
-                      borderColor: surface.bg,
+                      borderColor: roles.bg,
                       backgroundColor: roles.bg,
                     },
                   ]}
@@ -1393,16 +1396,19 @@ function PlanningRailCard({
 const planningCardStyles = StyleSheet.create({
   card: {
     width: 220,
-    borderRadius: 12,
-    borderWidth: 1,
+  },
+  imgWrap: {
+    width: '100%',
+    height: 130,
+    borderRadius: 10,
     overflow: 'hidden',
   },
   img: {
     width: '100%',
-    height: 130,
+    height: '100%',
   },
   body: {
-    padding: 12,
+    paddingTop: 8,
     gap: 4,
   },
   kicker: {
@@ -1706,7 +1712,7 @@ function OpGevoelBanner() {
       onPress={() => router.push('/op-gevoel' as never)}
       style={[
         styles.shortcutBtn,
-        { backgroundColor: roles.bgLift, borderColor: roles.bgChip },
+        { backgroundColor: roles.bgLift },
       ]}
     >
       <MaterialCommunityIcons
@@ -1718,7 +1724,7 @@ function OpGevoelBanner() {
         {t('Vibes', 'Vibes')}
       </Text>
       <Text style={[styles.shortcutTitle, { color: roles.fg }]}>
-        {t('Wat is je mood vanavond?', "What's your mood tonight?")}
+        {t('Wat is je mood.', "What's your mood.")}
       </Text>
     </Pressable>
   );
@@ -1732,7 +1738,7 @@ function TheaterBanner() {
       onPress={() => router.push('/theater' as never)}
       style={[
         styles.shortcutBtn,
-        { backgroundColor: roles.bgLift, borderColor: roles.bgChip },
+        { backgroundColor: roles.bgLift },
       ]}
     >
       <MaterialCommunityIcons
@@ -1761,7 +1767,7 @@ function ClubsBanner() {
       onPress={() => router.push('/clubs' as never)}
       style={[
         styles.shortcutBtn,
-        { backgroundColor: roles.bgLift, borderColor: roles.bgChip },
+        { backgroundColor: roles.bgLift },
       ]}
     >
       <Ionicons name="disc-outline" size={36} color={roles.accent} />
@@ -1770,8 +1776,8 @@ function ClubsBanner() {
       </Text>
       <Text style={[styles.shortcutTitle, { color: roles.fg }]}>
         {t(
-          'Achter de draaitafels deze week.',
-          'On the decks this week.'
+          'Wie staan er achter de draaitafels.',
+          "Who's on the decks."
         )}
       </Text>
     </Pressable>
@@ -1786,7 +1792,7 @@ function FilmsBanner() {
       onPress={() => router.push('/films' as never)}
       style={[
         styles.shortcutBtn,
-        { backgroundColor: roles.bgLift, borderColor: roles.bgChip },
+        { backgroundColor: roles.bgLift },
       ]}
     >
       <Ionicons name="film-outline" size={36} color={roles.accent} />
@@ -1808,15 +1814,15 @@ function LiveBanner() {
       onPress={() => router.push('/live' as never)}
       style={[
         styles.shortcutBtn,
-        { backgroundColor: roles.bgLift, borderColor: roles.bgChip },
+        { backgroundColor: roles.bgLift },
       ]}
     >
-      <Ionicons name="mic-outline" size={36} color={roles.accent} />
+      <Ionicons name="musical-notes-outline" size={36} color={roles.accent} />
       <Text style={[styles.shortcutKicker, { color: roles.fgMuted }]}>
         {t('Live', 'Live')}
       </Text>
       <Text style={[styles.shortcutTitle, { color: roles.fg }]}>
-        {t('Waar speelt de livemuziek?', "Where's the live music at?")}
+        {t('Waar live muziek te vinden is.', 'Where to catch live music.')}
       </Text>
     </Pressable>
   );
@@ -1830,7 +1836,7 @@ function KaartBanner() {
       onPress={() => router.push('/kaart' as never)}
       style={[
         styles.shortcutBtn,
-        { backgroundColor: roles.bgLift, borderColor: roles.bgChip },
+        { backgroundColor: roles.bgLift },
       ]}
     >
       <Ionicons name="map-outline" size={36} color={roles.accent} />
@@ -2580,7 +2586,6 @@ const styles = StyleSheet.create({
     gap: 10,
     padding: 14,
     borderRadius: 14,
-    borderWidth: 1,
   },
   shortcutBody: { gap: 2 },
   shortcutKicker: {

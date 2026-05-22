@@ -9,9 +9,11 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { router } from 'expo-router';
-import { useMemo, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import { useCallback, useMemo, useState } from 'react';
 import {
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -20,6 +22,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppHeader, HEADER_HEIGHT } from '@/components/AppHeader';
+import { RefreshBanner } from '@/components/RefreshBanner';
 import type { ApiEvent } from '@/lib/api';
 import {
   dowMixed,
@@ -33,6 +36,7 @@ import { useMode, useRoles } from '@/store/mode';
 import { fontFamily, palette } from '@/theme/tokens';
 
 const HORIZONTAL_PADDING = 14;
+const CHIPROW_HEIGHT = 36;
 
 type Discipline =
   | 'toneel'
@@ -93,8 +97,25 @@ export default function Theater() {
     from: range.from,
     to: range.to,
     category: 'Theater',
+    lean: true,
     limit: 2000,
   });
+
+  // Pull-to-refresh: invalideert de events-cache zodat de query opnieuw
+  // fetched. Minimum 700ms zichtbaar zodat de spinner niet weg-flitst.
+  const qc = useQueryClient();
+  const [refreshing, setRefreshing] = useState(false);
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    const start = Date.now();
+    try {
+      await qc.invalidateQueries({ queryKey: ['events'] });
+    } finally {
+      const elapsed = Date.now() - start;
+      if (elapsed < 700) await new Promise((r) => setTimeout(r, 700 - elapsed));
+      setRefreshing(false);
+    }
+  }, [qc]);
 
   // Dedupe op event-id, sorteer op eerstvolgende speeldatum. Een event
   // is alleen relevant voor discovery als 'ie minstens één occurrence
@@ -155,36 +176,31 @@ export default function Theater() {
 
   return (
     <View style={[styles.root, { backgroundColor: roles.bg }]}>
+      <RefreshBanner
+        visible={refreshing}
+        topOffset={insets.top + HEADER_HEIGHT + CHIPROW_HEIGHT + 8}
+      />
       <ScrollView
         contentContainerStyle={{
-          paddingTop: insets.top + HEADER_HEIGHT,
+          paddingTop: insets.top + HEADER_HEIGHT + CHIPROW_HEIGHT,
           paddingBottom: insets.bottom + 24,
         }}
-      >
-        {/* Discipline-chips bovenaan — sticky-look maar gewoon meeschuift.
-            Eerste chip = "Alle" om snel naar de complete lijst terug. */}
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.chipsRow}
-        >
-          <Chip
-            label={t('Alle', 'All')}
-            count={shows.length}
-            active={selected === 'all'}
-            onPress={() => setSelected('all')}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={roles.accent}
+            colors={[roles.accent]}
+            title={
+              refreshing
+                ? t('Vernieuwen…', 'Refreshing…')
+                : t('Trek om te vernieuwen', 'Pull to refresh')
+            }
+            titleColor={roles.fgMuted}
+            progressViewOffset={insets.top + HEADER_HEIGHT + CHIPROW_HEIGHT + 60}
           />
-          {visibleChips.map((d) => (
-            <Chip
-              key={d}
-              label={DISCIPLINE_LABELS[d][locale === 'en' ? 'en' : 'nl']}
-              count={counts[d]}
-              active={selected === d}
-              onPress={() => setSelected(d)}
-            />
-          ))}
-        </ScrollView>
-
+        }
+      >
         {isLoading && (
           <View style={styles.centerWrap}>
             <Text style={[styles.dim, { color: roles.fgMuted }]}>
@@ -226,7 +242,33 @@ export default function Theater() {
             <Ionicons name="close" size={20} color={roles.fg} />
           </Pressable>
         }
-      />
+      >
+        {/* Discipline-chips vast in de header zodat ze niet wegscrollen.
+            Eerste chip = "Alle" om snel naar de complete lijst terug. */}
+        <View style={{ height: CHIPROW_HEIGHT }}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.chipsRow}
+          >
+            <Chip
+              label={t('Alle', 'All')}
+              count={shows.length}
+              active={selected === 'all'}
+              onPress={() => setSelected('all')}
+            />
+            {visibleChips.map((d) => (
+              <Chip
+                key={d}
+                label={DISCIPLINE_LABELS[d][locale === 'en' ? 'en' : 'nl']}
+                count={counts[d]}
+                active={selected === d}
+                onPress={() => setSelected(d)}
+              />
+            ))}
+          </ScrollView>
+        </View>
+      </AppHeader>
     </View>
   );
 }
@@ -249,8 +291,10 @@ function Chip({
       style={[
         styles.chip,
         {
-          backgroundColor: active ? roles.accent : 'transparent',
-          borderColor: active ? roles.accent : roles.bgChip,
+          // Inactief: half-transparante bg-tint zodat de AppHeader-
+          // blur er doorheen scheen — matcht de day-chip pattern op
+          // de Agenda. Actief: accent-vlak.
+          backgroundColor: active ? roles.accent : `${roles.bg}99`,
         },
       ]}
     >
@@ -358,15 +402,16 @@ const styles = StyleSheet.create({
   root: { flex: 1 },
   chipsRow: {
     paddingHorizontal: HORIZONTAL_PADDING,
-    paddingTop: 4,
-    paddingBottom: 16,
     gap: 8,
+    alignItems: 'center',
+    height: '100%',
   },
   chip: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingHorizontal: 14,
+    height: 32,
     borderRadius: 999,
-    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   chipText: {
     fontFamily: fontFamily.bold,
@@ -395,24 +440,31 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   bannerImg: { width: '100%', height: '100%' },
+  // Pill-stijl gespiegeld aan de Featured-label op Vandaag — zelfde
+  // padding, font, letter-spacing zodat alle "label op foto" pills
+  // visueel één familie zijn.
   disciplineChip: {
     position: 'absolute',
     top: 8,
     left: 8,
     paddingHorizontal: 10,
-    paddingVertical: 4,
+    paddingVertical: 5,
     borderRadius: 999,
   },
   disciplineText: {
-    fontFamily: fontFamily.monoMedium,
+    fontFamily: fontFamily.mono,
     fontSize: 10,
-    letterSpacing: 0.6,
+    letterSpacing: 1.4,
+    textTransform: 'uppercase',
   },
   body: { gap: 0 },
+  // Venue als kicker — mono uppercase, matcht de rail-cards op Vandaag
+  // en /films voor visuele consistentie.
   venue: {
-    fontFamily: fontFamily.bold,
-    fontSize: 12,
-    letterSpacing: -0.12,
+    fontFamily: fontFamily.mono,
+    fontSize: 10,
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
     marginBottom: 2,
   },
   title: {

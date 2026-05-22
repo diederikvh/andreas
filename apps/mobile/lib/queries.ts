@@ -9,6 +9,8 @@ import {
   addGroupMembers,
   createGroup,
   declineFriendRequest,
+  getAgendaDay,
+  getAgendaDays,
   getEvent,
   getEventGenres,
   getEvents,
@@ -47,6 +49,7 @@ import {
   getMirrorByHandle,
   getMyDismisses,
   getMyMirror,
+  type AgendaFilters,
   type ApiMe,
   type EventsFilter,
   type Mirror,
@@ -63,6 +66,16 @@ export const queryKeys = {
   events: (filter: EventsFilter = {}) => ['events', filter] as const,
   event: (id: string) => ['event', id] as const,
   eventGenres: () => ['event-genres'] as const,
+  // `from`/`to` bewust NIET in de key — die schuiven elke tab-focus
+  // op (focusedNow tikt) en zouden anders steeds een nieuwe queryKey
+  // produceren waardoor je terugkomend van een detail-pagina opnieuw
+  // moet wachten op de spinner. De queryFn-closure pakt nog steeds de
+  // verse `from` bij elke refetch; staleTime (10 min) bepaalt of er
+  // achter de schermen een refetch fired.
+  agendaDays: (input: { filters: AgendaFilters }) =>
+    ['agenda-days', input.filters] as const,
+  agendaDay: (input: { date: string; filters: AgendaFilters }) =>
+    ['agenda-day', input.date, input.filters] as const,
   mirror: () => ['mirror', 'me'] as const,
   forYou: () => ['events', 'for-you'] as const,
   dismisses: () => ['dismisses'] as const,
@@ -137,6 +150,83 @@ export function useEvent(id: string) {
   });
 }
 
+/**
+ * Day-strip data voor de Agenda: één rij per logische dag (06:00-cutoff)
+ * met count. Lichte aggregate-query — geen row-data. Filters bepalen
+ * welke dagen meedoen, zodat de strip alleen dagen toont met matches.
+ */
+export function useAgendaDays(input: {
+  from: string;
+  to: string;
+  filters: AgendaFilters;
+  enabled?: boolean;
+}) {
+  return useQuery({
+    queryKey: queryKeys.agendaDays({ filters: input.filters }),
+    queryFn: () =>
+      getAgendaDays({
+        from: input.from,
+        to: input.to,
+        filters: input.filters,
+      }),
+    enabled: input.enabled ?? true,
+    staleTime: 10 * 60_000,
+    refetchOnWindowFocus: true,
+  });
+}
+
+/**
+ * Lean rows voor één logische agenda-dag. Window-fetch: nieuwe `date`
+ * = nieuwe query, dus cache per dag. Voorgaande/volgende dag worden
+ * via prefetch warmgehouden zodat tap-navigatie instant aanvoelt.
+ */
+export function useAgendaDay(input: {
+  date: string | null;
+  /** Cutoff voor verlopen events op "vandaag" — laat undefined voor
+      toekomstige dagen (geen no-op, scheelt 'm uit de query-key). */
+  from?: string;
+  filters: AgendaFilters;
+  enabled?: boolean;
+}) {
+  return useQuery({
+    queryKey: queryKeys.agendaDay({
+      date: input.date ?? '',
+      filters: input.filters,
+    }),
+    queryFn: () =>
+      getAgendaDay({
+        date: input.date!,
+        from: input.from,
+        filters: input.filters,
+      }),
+    enabled: Boolean(input.date) && (input.enabled ?? true),
+    staleTime: 10 * 60_000,
+    refetchOnWindowFocus: true,
+  });
+}
+
+export function useAgendaDayPrefetch() {
+  const qc = useQueryClient();
+  return (input: {
+    date: string;
+    from?: string;
+    filters: AgendaFilters;
+  }) =>
+    qc.prefetchQuery({
+      queryKey: queryKeys.agendaDay({
+        date: input.date,
+        filters: input.filters,
+      }),
+      queryFn: () =>
+        getAgendaDay({
+          date: input.date,
+          from: input.from,
+          filters: input.filters,
+        }),
+      staleTime: 10 * 60_000,
+    });
+}
+
 export function useEventGenres() {
   return useQuery({
     queryKey: queryKeys.eventGenres(),
@@ -209,11 +299,12 @@ export function useSeries(slug: string) {
 }
 
 export function useSeriesList(
-  input: { q?: string; category?: VenueCategory } = {}
+  input: { q?: string; category?: VenueCategory; enabled?: boolean } = {}
 ) {
   return useQuery({
     queryKey: queryKeys.seriesList({ q: input.q, category: input.category }),
     queryFn: () => getSeriesList(input),
+    enabled: input.enabled ?? true,
     staleTime: 10 * 60_000,
     refetchOnWindowFocus: true,
   });

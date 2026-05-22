@@ -90,6 +90,7 @@ export default function OpGevoel() {
   const cmode = useContentMode();
   const { data: events } = useEvents({
     from: new Date(new Date().setHours(0, 0, 0, 0)).toISOString(),
+    lean: true,
   });
   const { data: saves } = useMySaves();
   const { data: dismissedIds } = useMyDismisses();
@@ -434,18 +435,26 @@ const SwipeCard = forwardRef<
       [-12, 0, 12],
       Extrapolation.CLAMP
     );
-    // Diepte: kaarten erachter iets kleiner + lager. Top = depth 0.
-    // depthSv interpoleert vloeiend tussen depths (spring) bij re-rank.
-    const baseScale = 1 - depthSv.value * 0.04;
-    const baseTranslateY = depthSv.value * 8;
+    // Diepte: achterste kaarten peeken naar boven én iets opzij, met
+    // een lichte rotate-fan zodat 't lijkt op een stapel kaartjes die
+    // half uit elkaar is geschoven. Visueel signaal: "er liggen meer
+    // kaartjes onder deze, swipe maar".
+    //
+    // depthSv interpoleert vloeiend tussen depths (spring) bij re-rank
+    // — anders ploppen achterste cards in een tik naar voren wanneer
+    // de top eraf vliegt.
+    const baseScale = 1 - depthSv.value * 0.05;
+    const baseTranslateY = -depthSv.value * 14;
+    const baseTranslateX = depthSv.value * 10;
+    const baseRotate = depthSv.value * 3;
     return {
       transform: [
-        { translateX: translateX.value },
+        { translateX: translateX.value + baseTranslateX },
         { translateY: translateY.value + baseTranslateY },
-        { rotateZ: `${rotate}deg` },
+        { rotateZ: `${rotate + baseRotate}deg` },
         { scale: baseScale },
       ],
-      opacity: 1 - depthSv.value * 0.15,
+      opacity: 1 - depthSv.value * 0.1,
       zIndex: 10 - depth,
     };
   });

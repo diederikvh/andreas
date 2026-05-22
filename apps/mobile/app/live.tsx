@@ -11,9 +11,11 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { router } from 'expo-router';
-import { useMemo, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import { useCallback, useMemo, useState } from 'react';
 import {
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -22,6 +24,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppHeader, HEADER_HEIGHT } from '@/components/AppHeader';
+import { RefreshBanner } from '@/components/RefreshBanner';
 import type { ApiEvent, ApiOccurrence } from '@/lib/api';
 import {
   dowMixed,
@@ -35,6 +38,7 @@ import { useMode, useRoles } from '@/store/mode';
 import { fontFamily, palette } from '@/theme/tokens';
 
 const HORIZONTAL_PADDING = 14;
+const CHIPROW_HEIGHT = 36;
 
 interface LiveShow {
   id: string;
@@ -109,8 +113,24 @@ export default function Live() {
   const { data: events, isLoading, error } = useEvents({
     from: range.from,
     to: range.to,
+    category: 'Muziek',
+    lean: true,
     limit: 2000,
   });
+
+  const qc = useQueryClient();
+  const [refreshing, setRefreshing] = useState(false);
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    const start = Date.now();
+    try {
+      await qc.invalidateQueries({ queryKey: ['events'] });
+    } finally {
+      const elapsed = Date.now() - start;
+      if (elapsed < 700) await new Promise((r) => setTimeout(r, 700 - elapsed));
+      setRefreshing(false);
+    }
+  }, [qc]);
 
   // Filter: venue.type='podium' AND category='Muziek' EN start < 23:00
   // (late shows behoren bij clubs-page). Bimhuis (jazz, 20:30), Q-
@@ -183,35 +203,44 @@ export default function Live() {
 
   return (
     <View style={[styles.root, { backgroundColor: roles.bg }]}>
+      <RefreshBanner
+        visible={refreshing}
+        topOffset={
+          insets.top +
+          HEADER_HEIGHT +
+          (visibleChips.length > 0 ? CHIPROW_HEIGHT : 0) +
+          8
+        }
+      />
       <ScrollView
         contentContainerStyle={{
-          paddingTop: insets.top + HEADER_HEIGHT,
+          paddingTop:
+            insets.top +
+            HEADER_HEIGHT +
+            (visibleChips.length > 0 ? CHIPROW_HEIGHT : 0),
           paddingBottom: insets.bottom + 24,
         }}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={roles.accent}
+            colors={[roles.accent]}
+            title={
+              refreshing
+                ? t('Vernieuwen…', 'Refreshing…')
+                : t('Trek om te vernieuwen', 'Pull to refresh')
+            }
+            titleColor={roles.fgMuted}
+            progressViewOffset={
+              insets.top +
+              HEADER_HEIGHT +
+              (visibleChips.length > 0 ? CHIPROW_HEIGHT : 0) +
+              60
+            }
+          />
+        }
       >
-        {visibleChips.length > 0 && (
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.chipsRow}
-          >
-            <Chip
-              label={t('Alle', 'All')}
-              count={shows.length}
-              active={selected === 'all'}
-              onPress={() => setSelected('all')}
-            />
-            {visibleChips.map((b) => (
-              <Chip
-                key={b}
-                label={BUCKET_LABELS[b][locale === 'en' ? 'en' : 'nl']}
-                count={counts[b]}
-                active={selected === b}
-                onPress={() => setSelected(b)}
-              />
-            ))}
-          </ScrollView>
-        )}
         {isLoading && (
           <View style={styles.centerWrap}>
             <Text style={[styles.dim, { color: roles.fgMuted }]}>
@@ -277,7 +306,33 @@ export default function Live() {
             <Ionicons name="close" size={20} color={roles.fg} />
           </Pressable>
         }
-      />
+      >
+        {visibleChips.length > 0 && (
+          <View style={{ height: CHIPROW_HEIGHT }}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.chipsRow}
+            >
+              <Chip
+                label={t('Alle', 'All')}
+                count={shows.length}
+                active={selected === 'all'}
+                onPress={() => setSelected('all')}
+              />
+              {visibleChips.map((b) => (
+                <Chip
+                  key={b}
+                  label={BUCKET_LABELS[b][locale === 'en' ? 'en' : 'nl']}
+                  count={counts[b]}
+                  active={selected === b}
+                  onPress={() => setSelected(b)}
+                />
+              ))}
+            </ScrollView>
+          </View>
+        )}
+      </AppHeader>
     </View>
   );
 }
@@ -300,8 +355,9 @@ function Chip({
       style={[
         styles.chip,
         {
-          backgroundColor: active ? roles.accent : 'transparent',
-          borderColor: active ? roles.accent : roles.bgChip,
+          // Inactief: half-transparante bg-tint zodat de AppHeader-
+          // blur er doorheen scheen. Actief: accent-vlak. Geen border.
+          backgroundColor: active ? roles.accent : `${roles.bg}99`,
         },
       ]}
     >
@@ -341,7 +397,7 @@ function LiveShowCard({
   const isSoldOut = occurrence.status === 'sold_out';
 
   const dayLabel = (() => {
-    if (isToday) return null;
+    if (isToday) return t('Vandaag', 'Today');
     const d = new Date(occurrence.startsAt);
     const dow = dowMixed(d.getDay(), locale);
     const month = monthShort(d.getMonth(), locale).toLowerCase();
@@ -391,7 +447,12 @@ function LiveShowCard({
       <View style={styles.body}>
         <View style={styles.metaRow}>
           {dayLabel && (
-            <Text style={[styles.dayChip, { color: roles.accent }]}>
+            <Text
+              style={[
+                styles.dayChip,
+                { color: isToday ? roles.accent : roles.fg },
+              ]}
+            >
               {dayLabel}
             </Text>
           )}
@@ -433,15 +494,16 @@ const styles = StyleSheet.create({
   root: { flex: 1 },
   chipsRow: {
     paddingHorizontal: HORIZONTAL_PADDING,
-    paddingTop: 4,
-    paddingBottom: 16,
     gap: 8,
+    alignItems: 'center',
+    height: '100%',
   },
   chip: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingHorizontal: 14,
+    height: 32,
     borderRadius: 999,
-    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   chipText: {
     fontFamily: fontFamily.bold,
@@ -509,10 +571,13 @@ const styles = StyleSheet.create({
     fontSize: 13,
     letterSpacing: -0.13,
   },
+  // Venue als kicker — mono uppercase, matcht de rail-cards op Vandaag
+  // en /films voor visuele consistentie.
   venue: {
-    fontFamily: fontFamily.bold,
-    fontSize: 12,
-    letterSpacing: -0.12,
+    fontFamily: fontFamily.mono,
+    fontSize: 10,
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
     flexShrink: 1,
   },
   soldOut: {
@@ -534,16 +599,19 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     letterSpacing: -0.13,
   },
+  // Pill-stijl gespiegeld aan de Featured-label op Vandaag — zelfde
+  // padding, font, letter-spacing zodat alle "label op foto" pills
+  // visueel één familie zijn.
   genreChip: {
     paddingHorizontal: 10,
-    paddingVertical: 4,
+    paddingVertical: 5,
     borderRadius: 999,
   },
   genreText: {
-    fontFamily: fontFamily.monoMedium,
+    fontFamily: fontFamily.mono,
     fontSize: 10,
-    letterSpacing: 0.6,
-    textTransform: 'lowercase',
+    letterSpacing: 1.4,
+    textTransform: 'uppercase',
   },
   closeBtn: {
     width: 36,

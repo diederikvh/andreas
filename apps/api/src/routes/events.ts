@@ -1,5 +1,5 @@
 import { aliasedTable, and, asc, count, desc, eq, gt, ilike, inArray, isNull, ne, not, or, sql, type SQL } from 'drizzle-orm';
-import { Hono } from 'hono';
+import { Hono, type Context } from 'hono';
 
 import { db, schema } from '../db/index.js';
 import {
@@ -14,7 +14,19 @@ import {
   getFollowedVenueIds,
 } from './venue-follows.js';
 
+type EventCategory = 'Muziek' | 'Theater' | 'Literatuur' | 'Film' | 'Kunst' | 'Lezing';
 const VALID_CATEGORIES = new Set(['Muziek', 'Theater', 'Literatuur', 'Film', 'Kunst', 'Lezing']);
+const VALID_VENUE_TYPES = new Set([
+  'galerie', 'museum', 'podium', 'club', 'film', 'ruimte', 'boekhandel-cafe',
+]);
+const VALID_TIME_BLOCKS = new Set(['ochtend', 'middag', 'avond', 'nacht']);
+/** NL-local uren per tijd-blok. nacht omspant middernacht (23 + 0-5). */
+const BLOCK_HOURS: Record<string, number[]> = {
+  ochtend: [6, 7, 8, 9, 10, 11],
+  middag: [12, 13, 14, 15, 16, 17],
+  avond: [18, 19, 20, 21, 22],
+  nacht: [23, 0, 1, 2, 3, 4, 5],
+};
 
 /**
  * Exhibitions hebben geen specifieke aanvangstijd — ze lopen tijdens
@@ -55,9 +67,16 @@ eventsRoute.get('/', async (c) => {
   const from = c.req.query('from');
   const to = c.req.query('to');
   const category = c.req.query('category');
+  const venueType = c.req.query('venueType');
   const q = c.req.query('q');
   // ?genre= kan herhaald worden voor multi-select OR-filter.
   const genres = c.req.queries('genre') ?? [];
+  // `lean=1` → strip de zware velden die voor rail/list-rendering niet
+  // nodig zijn (description, address, scene/subtype/priceNote/imageUrl
+  // op venue, friendsSaved per occurrence, series-array). Voor Vandaag,
+  // Films, Clubs, Live, Kaart een ~60% payload-reductie t.o.v. de fat
+  // variant. Detail-pagina's gebruiken een aparte `/events/:id` route.
+  const lean = c.req.query('lean') === '1';
 
   // Bepaal eerst welke events relevant zijn op basis van event-properties
   // (published, venue published, category, genre, search, blocked venues).
@@ -77,6 +96,9 @@ eventsRoute.get('/', async (c) => {
         category as 'Muziek' | 'Theater' | 'Literatuur' | 'Film' | 'Kunst' | 'Lezing'
       )
     );
+  }
+  if (venueType && VALID_VENUE_TYPES.has(venueType)) {
+    eventConditions.push(sql`${schema.venues.type} = ${venueType}`);
   }
   if (q && q.trim().length > 0) {
     const needle = `%${q.trim()}%`;
@@ -103,33 +125,63 @@ eventsRoute.get('/', async (c) => {
     }
   }
 
-  const eligibleEvents = await db
-    .select({
-      id: schema.events.id,
-      title: schema.events.title,
-      description: schema.events.description,
-      kind: schema.events.kind,
-      imageUrl: schema.events.imageUrl,
-      category: schema.events.category,
-      featured: schema.events.featured,
-      genres: schema.events.genres,
-      venue: {
-        id: schema.venues.id,
-        slug: schema.venues.slug,
-        name: schema.venues.name,
-        address: schema.venues.address,
-        lat: schema.venues.lat,
-        lng: schema.venues.lng,
-        type: schema.venues.type,
-        scene: schema.venues.scene,
-        subtype: schema.venues.subtype,
-        imageUrl: schema.venues.imageUrl,
-        priceNote: schema.venues.priceNote,
-      },
-    })
-    .from(schema.events)
-    .innerJoin(schema.venues, eq(schema.events.venueId, schema.venues.id))
-    .where(and(...eventConditions));
+  // In lean-mode laten we de zware venue-kolommen (address/scene/subtype/
+  // imageUrl/priceNote) en event.description weg uit de SELECT. Scheelt
+  // database-bytes én JSON-bytes; geen consumer van /events?lean=1 leest
+  // die velden (zie audit).
+  const eligibleEvents = lean
+    ? await db
+        .select({
+          id: schema.events.id,
+          title: schema.events.title,
+          kind: schema.events.kind,
+          imageUrl: schema.events.imageUrl,
+          category: schema.events.category,
+          featured: schema.events.featured,
+          genres: schema.events.genres,
+          venue: {
+            id: schema.venues.id,
+            slug: schema.venues.slug,
+            name: schema.venues.name,
+            lat: schema.venues.lat,
+            lng: schema.venues.lng,
+            type: schema.venues.type,
+            // imageUrl behouden in lean voor de fallback wanneer een
+            // event zelf geen image heeft (theater/live banner valt
+            // dan terug op venue-image). Voegt 1 string per event toe.
+            imageUrl: schema.venues.imageUrl,
+          },
+        })
+        .from(schema.events)
+        .innerJoin(schema.venues, eq(schema.events.venueId, schema.venues.id))
+        .where(and(...eventConditions))
+    : await db
+        .select({
+          id: schema.events.id,
+          title: schema.events.title,
+          description: schema.events.description,
+          kind: schema.events.kind,
+          imageUrl: schema.events.imageUrl,
+          category: schema.events.category,
+          featured: schema.events.featured,
+          genres: schema.events.genres,
+          venue: {
+            id: schema.venues.id,
+            slug: schema.venues.slug,
+            name: schema.venues.name,
+            address: schema.venues.address,
+            lat: schema.venues.lat,
+            lng: schema.venues.lng,
+            type: schema.venues.type,
+            scene: schema.venues.scene,
+            subtype: schema.venues.subtype,
+            imageUrl: schema.venues.imageUrl,
+            priceNote: schema.venues.priceNote,
+          },
+        })
+        .from(schema.events)
+        .innerJoin(schema.venues, eq(schema.events.venueId, schema.venues.id))
+        .where(and(...eventConditions));
 
   if (eligibleEvents.length === 0) return c.json({ events: [] });
 
@@ -150,24 +202,32 @@ eventsRoute.get('/', async (c) => {
     .filter((x) => x.event);
 
   const eventIds = ordered.map((x) => x.event.id);
-  const allOccurrenceIds = ordered.flatMap(({ occ }) =>
-    occ.all.map((o) => o.id)
-  );
+  // Lean: friends-lookup alleen voor de nextOccurrence van elk event
+  // (= de pill op de rail-card). De per-occurrence friends-array op
+  // `occurrencesInRange` is in lean leeg — geen consumer rendert die.
+  // Voor de fat-variant haalt 'ie nog steeds álle occurrence-ids.
+  const occurrenceIdsForFriends = lean
+    ? ordered.map(({ occ }) => occ.next?.id).filter((v): v is string => Boolean(v))
+    : ordered.flatMap(({ occ }) => occ.all.map((o) => o.id));
   const friendsByOcc = me
-    ? await buildFriendsByOccurrence(me, allOccurrenceIds)
+    ? await buildFriendsByOccurrence(me, occurrenceIdsForFriends)
     : new Map();
-  const seriesMap = await buildSeriesByEvent(eventIds);
+  // Series-array idem: in lean wordt 'ie niet op rail-cards getoond.
+  const seriesMap = lean
+    ? new Map()
+    : await buildSeriesByEvent(eventIds);
   const followedVenueIds = me
     ? new Set(await getFollowedVenueIds(me))
     : new Set<string>();
 
   const events = ordered.map(({ event, occ }) => {
     // Per occurrence: friendsSaved van vrienden die díe specifieke
-    // voorstelling/avond gesaved hebben. Een film op woensdag toont
-    // niet de friends van de maandag-occurrence.
+    // voorstelling/avond gesaved hebben. In lean-mode laten we deze
+    // info weg — de event-level friendsSaved (van nextOccurrence) is
+    // genoeg voor rail-cards.
     const isExhibition = event.kind === 'exhibition';
     const occurrencesInRange = occ.all.map((o) => {
-      const f = friendsByOcc.get(o.id);
+      const f = lean ? undefined : friendsByOcc.get(o.id);
       return {
         ...o,
         startsAt: isExhibition
@@ -199,9 +259,10 @@ eventsRoute.get('/', async (c) => {
       ticketUrl: occ.next?.ticketUrl ?? null,
       occurrenceCount: occ.count,
       nextOccurrenceVenue: occ.next?.venue ?? null,
-      // Volledige lijst occurrences in de gevraagde range — Agenda en
-      // Avond gebruiken dit om per moment één rij te tonen ipv één per
-      // event. Een 3-daags festival verschijnt zo op alle 3 dagen.
+      // Volledige lijst occurrences in de gevraagde range — Films en
+      // Kaart gebruiken dit om per moment één rij te tonen of multi-
+      // venue-films op de kaart te pinnen. Een 3-daags festival
+      // verschijnt zo op alle 3 dagen.
       occurrencesInRange,
       friendsSaved: headFriends?.friends ?? [],
       friendsSavedCount: headFriends?.count ?? 0,
@@ -211,6 +272,400 @@ eventsRoute.get('/', async (c) => {
   });
 
   return c.json({ events });
+});
+
+// ────────────────────────────────────────────────────────────────────
+// Agenda — lichte, op een dag-window of één-dag gerichte endpoints.
+//
+// Achtergrond: het oude `/events` haalt voor de Agenda álle toekomstige
+// events op (cap 5000) met een dikke row-shape (volledig venue-object,
+// occurrencesInRange, friendsByOccurrence per ALLE occurrences, series,
+// etc.) en duwt dat in één SectionList. Dat schaalt slecht en levert
+// minutenlange scrollToLocation-animaties op bij tap op een verre dag.
+//
+// Strategie: twee lichte endpoints die exact passen op de Agenda-UI:
+//   • /events/agenda/days  — telling per logische dag (06:00-cutoff)
+//                            voor de day-strip. Geen row-data.
+//   • /events/agenda?date= — lean rows voor één logische dag.
+//                            Sorteervolgorde startsAt ASC. Friends-pill
+//                            + series + venueFollowed mee-genriched.
+// Filters (category/venueType/q/onlyFollowed/onlyFriends) gelden voor
+// beide endpoints zodat de strip-tellingen kloppen met wat je per dag
+// rendert. Tijd-blokken blijven client-side — de per-dag set is klein.
+// ────────────────────────────────────────────────────────────────────
+
+type AgendaFilters = {
+  categories: EventCategory[];
+  venueTypes: string[];
+  blocks: string[];
+  q: string | null;
+  onlyFollowed: boolean;
+  onlyFriends: boolean;
+};
+
+function parseAgendaFilters(c: Context): AgendaFilters {
+  const cats = (c.req.queries('category') ?? []).filter((v): v is EventCategory =>
+    VALID_CATEGORIES.has(v)
+  );
+  const vts = (c.req.queries('venueType') ?? []).filter((v) =>
+    VALID_VENUE_TYPES.has(v)
+  );
+  const blocks = (c.req.queries('block') ?? []).filter((v) =>
+    VALID_TIME_BLOCKS.has(v)
+  );
+  const q = c.req.query('q')?.trim();
+  return {
+    categories: cats,
+    venueTypes: vts,
+    blocks,
+    q: q && q.length > 0 ? q : null,
+    onlyFollowed: c.req.query('onlyFollowed') === 'true',
+    onlyFriends: c.req.query('onlyFriends') === 'true',
+  };
+}
+
+async function getFriendIdsFor(meId: string): Promise<string[]> {
+  const rows = await db
+    .select({
+      fromUserId: schema.friendships.fromUserId,
+      toUserId: schema.friendships.toUserId,
+    })
+    .from(schema.friendships)
+    .where(
+      and(
+        eq(schema.friendships.status, 'accepted'),
+        or(
+          eq(schema.friendships.fromUserId, meId),
+          eq(schema.friendships.toUserId, meId)
+        )
+      )
+    );
+  return rows.map((r) =>
+    r.fromUserId === meId ? r.toUserId : r.fromUserId
+  );
+}
+
+/**
+ * Bouwt de gedeelde WHERE-condities voor /agenda en /agenda/days. Het
+ * window (`from`/`to`) wordt door de caller meegegeven omdat de twee
+ * endpoints 'm verschillend bepalen (open range vs. single-day cutoff).
+ *
+ * Gefilterd uit:
+ *   - unpublished events / venues
+ *   - kind='exhibition' (museums tonen via Vandaag-rails, niet per dag)
+ *   - cancelled occurrences
+ *   - long-running occurrences (>7d) — meestal audio tours / installaties
+ *   - geblokkeerde venues van de huidige gebruiker
+ *
+ * Plus de actieve filter-chips (cat/venueType/q/onlyFollowed/onlyFriends).
+ */
+function buildAgendaWhere(opts: {
+  filters: AgendaFilters;
+  blockedVenueIds: string[];
+  followedVenueIds: string[];
+  friendIds: string[];
+  windowStart: SQL | Date;
+  windowEnd: SQL | Date;
+}): SQL[] {
+  const conditions: SQL[] = [
+    eq(schema.events.published, true),
+    eq(schema.venues.published, true),
+    sql`${schema.events.kind} <> 'exhibition'`,
+    sql`${schema.occurrences.status} <> 'cancelled'`,
+    // Long-running: alleen filteren als endsAt gezet is. Null endsAt =
+    // default 4u, dus per definitie niet long-running.
+    sql`(${schema.occurrences.endsAt} IS NULL OR ${schema.occurrences.endsAt} - ${schema.occurrences.startsAt} <= INTERVAL '7 days')`,
+    // Effectieve eindtijd ≥ windowStart (event nog niet voorbij)
+    sql`COALESCE(${schema.occurrences.endsAt}, ${schema.occurrences.startsAt} + INTERVAL '4 hours') >= ${opts.windowStart}`,
+    // Start < windowEnd (event nog binnen window)
+    sql`${schema.occurrences.startsAt} < ${opts.windowEnd}`,
+  ];
+  if (opts.filters.categories.length > 0) {
+    conditions.push(inArray(schema.events.category, opts.filters.categories));
+  }
+  if (opts.filters.venueTypes.length > 0) {
+    conditions.push(
+      sql`${schema.venues.type} IN (${sql.join(
+        opts.filters.venueTypes.map((v) => sql`${v}`),
+        sql`, `
+      )})`
+    );
+  }
+  if (opts.filters.blocks.length > 0) {
+    // Per blok: set NL-local uren. Union over alle gekozen blokken.
+    // EXTRACT(HOUR FROM ts AT TIME ZONE 'Europe/Amsterdam') geeft het
+    // NL-uur 0-23 ongeacht DST. nacht omspant middernacht — staat al
+    // in BLOCK_HOURS uitgevouwen.
+    const hours = new Set<number>();
+    for (const b of opts.filters.blocks) {
+      for (const h of BLOCK_HOURS[b] ?? []) hours.add(h);
+    }
+    if (hours.size > 0) {
+      conditions.push(
+        sql`EXTRACT(HOUR FROM ${schema.occurrences.startsAt} AT TIME ZONE 'Europe/Amsterdam') IN (${sql.join(
+          [...hours].map((h) => sql`${h}`),
+          sql`, `
+        )})`
+      );
+    }
+  }
+  if (opts.filters.q) {
+    const needle = `%${opts.filters.q}%`;
+    const combined = or(
+      ilike(schema.events.title, needle),
+      ilike(schema.venues.name, needle),
+      ilike(schema.events.description, needle),
+      sql`EXISTS(SELECT 1 FROM unnest(${schema.events.genres}) g WHERE g ILIKE ${needle})`
+    );
+    if (combined) conditions.push(combined);
+  }
+  if (opts.blockedVenueIds.length > 0) {
+    conditions.push(not(inArray(schema.venues.id, opts.blockedVenueIds)));
+  }
+  if (opts.filters.onlyFollowed) {
+    // Caller short-circuit'te al als followedVenueIds leeg is.
+    conditions.push(inArray(schema.venues.id, opts.followedVenueIds));
+  }
+  if (opts.filters.onlyFriends && opts.friendIds.length > 0) {
+    // EXISTS-subquery i.p.v. pre-fetch+IN: één SQL-round-trip,
+    // en de planner kan 'm goed indexen via saves(occurrence_id, user_id).
+    // We honoreren 'friends' en 'favorites' visibility; voor
+    // 'favorites' wordt de visibility client-side gegated in de
+    // friends-pill — voor de filter is "minstens één vriend" genoeg.
+    conditions.push(
+      sql`EXISTS (
+        SELECT 1 FROM ${schema.saves} s
+        INNER JOIN ${schema.users} u ON u.id = s.user_id
+        WHERE s.occurrence_id = ${schema.occurrences.id}
+          AND s.user_id IN (${sql.join(
+            opts.friendIds.map((id) => sql`${id}`),
+            sql`, `
+          )})
+          AND u.saves_visibility IN ('friends', 'favorites')
+      )`
+    );
+  }
+  return conditions;
+}
+
+/** Logische dag (06:00 NL-local cutoff) als YYYY-MM-DD string in SQL. */
+const LOGICAL_DAY_SQL = sql`to_char((${schema.occurrences.startsAt} - INTERVAL '6 hours') AT TIME ZONE 'Europe/Amsterdam', 'YYYY-MM-DD')`;
+
+/**
+ * Day-summary: per logische dag het aantal events na filters. Geen
+ * row-data, alleen `{date, count}` zodat de day-strip in mobile direct
+ * gerenderd kan worden. Default-window = nu → +90 dagen.
+ */
+eventsRoute.get('/agenda/days', async (c) => {
+  const filters = parseAgendaFilters(c);
+  const fromParam = c.req.query('from');
+  const toParam = c.req.query('to');
+  const from = fromParam ? new Date(fromParam) : new Date();
+  const to = toParam
+    ? new Date(toParam)
+    : new Date(from.getTime() + 90 * 86400_000);
+  if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) {
+    return c.json({ error: 'ongeldige from/to' }, 400);
+  }
+
+  const me = await maybeUserId(c);
+  const blockedVenueIds = me ? await getBlockedVenueIds(me) : [];
+  const followedVenueIds =
+    me && filters.onlyFollowed ? await getFollowedVenueIds(me) : [];
+  const friendIds =
+    me && filters.onlyFriends ? await getFriendIdsFor(me) : [];
+
+  if (filters.onlyFollowed && followedVenueIds.length === 0) {
+    return c.json({ days: [] });
+  }
+  if (filters.onlyFriends && friendIds.length === 0) {
+    return c.json({ days: [] });
+  }
+
+  const conditions = buildAgendaWhere({
+    filters,
+    blockedVenueIds,
+    followedVenueIds,
+    friendIds,
+    windowStart: from,
+    windowEnd: to,
+  });
+
+  const rows = await db
+    .select({
+      date: LOGICAL_DAY_SQL.as('logical_day'),
+      count: count(),
+    })
+    .from(schema.occurrences)
+    .innerJoin(schema.events, eq(schema.events.id, schema.occurrences.eventId))
+    .innerJoin(schema.venues, eq(schema.venues.id, schema.events.venueId))
+    .where(and(...conditions))
+    .groupBy(sql`logical_day`)
+    .orderBy(sql`logical_day ASC`);
+
+  return c.json({
+    days: rows.map((r) => ({
+      date: r.date,
+      count: Number(r.count),
+    })),
+  });
+});
+
+/**
+ * Rows voor één logische dag. `date` = YYYY-MM-DD (NL-local). Het
+ * window draait 06:00 → next-day 06:00 zodat een 02:00-club-event bij
+ * de avond ervoor hoort (zelfde regel als mobile's
+ * groupOccurrenceRowsByDay). Sortering: startsAt ASC.
+ *
+ * Lean row-shape — geen volledig venue-object, geen occurrencesInRange,
+ * geen series-array (alleen de eerste naam). Friends-pill: top 3 +
+ * totaal. Venue: occurrence-venue als die afwijkt, anders event-venue.
+ */
+eventsRoute.get('/agenda', async (c) => {
+  const filters = parseAgendaFilters(c);
+  const dateParam = c.req.query('date');
+  if (!dateParam || !/^\d{4}-\d{2}-\d{2}$/.test(dateParam)) {
+    return c.json({ error: 'date param vereist (YYYY-MM-DD)' }, 400);
+  }
+  // Optionele cutoff voor "verlopen events op vandaag": mobile stuurt
+  // de huidige tijd mee zodat een 14:00-show om 16:30 niet meer in de
+  // lijst staat. Voor toekomstige dagen heeft 't geen effect (alle
+  // events in dat window vallen ná `from`). Foutieve waarde =>
+  // negeren (val terug op windowStart als enige effective-end filter).
+  const fromParam = c.req.query('from');
+  const fromDate = fromParam ? new Date(fromParam) : null;
+  const effectiveFrom =
+    fromDate && !Number.isNaN(fromDate.getTime()) ? fromDate : null;
+
+  // Window = dateParam 06:00 NL-local → next-day 06:00 NL-local.
+  // AT TIME ZONE op een naïeve timestamp interpreteert hem ALS lokale
+  // tijd en geeft 'm terug als timestamptz (UTC) voor vergelijking.
+  const windowStart = sql`(${dateParam}::text || ' 06:00:00')::timestamp AT TIME ZONE 'Europe/Amsterdam'`;
+  const windowEnd = sql`((${dateParam}::date + 1)::text || ' 06:00:00')::timestamp AT TIME ZONE 'Europe/Amsterdam'`;
+  // Effectieve windowStart voor het "nog niet voorbij"-filter: max van
+  // windowStart en de meegegeven cut-off. Voor toekomstige dagen pakt
+  // GREATEST sowieso windowStart; voor vandaag pakt 'ie focusedNow.
+  const effectiveWindowStart = effectiveFrom
+    ? sql`GREATEST(${windowStart}, ${effectiveFrom})`
+    : windowStart;
+
+  const me = await maybeUserId(c);
+  const blockedVenueIds = me ? await getBlockedVenueIds(me) : [];
+  const followedVenueIds = me ? await getFollowedVenueIds(me) : [];
+  const followedSet = new Set(followedVenueIds);
+  const friendIds = me && filters.onlyFriends ? await getFriendIdsFor(me) : [];
+
+  if (filters.onlyFollowed && followedVenueIds.length === 0) {
+    return c.json({ rows: [] });
+  }
+  if (filters.onlyFriends && friendIds.length === 0) {
+    return c.json({ rows: [] });
+  }
+
+  const conditions = buildAgendaWhere({
+    filters,
+    blockedVenueIds,
+    followedVenueIds,
+    friendIds,
+    windowStart: effectiveWindowStart,
+    windowEnd,
+  });
+
+  const rows = await db
+    .select({
+      occId: schema.occurrences.id,
+      occVenueId: schema.occurrences.venueId,
+      startsAt: schema.occurrences.startsAt,
+      endsAt: schema.occurrences.endsAt,
+      eventId: schema.events.id,
+      title: schema.events.title,
+      category: schema.events.category,
+      kind: schema.events.kind,
+      imageUrl: schema.events.imageUrl,
+      genres: schema.events.genres,
+      eventVenueId: schema.venues.id,
+      eventVenueName: schema.venues.name,
+      eventVenueType: schema.venues.type,
+    })
+    .from(schema.occurrences)
+    .innerJoin(schema.events, eq(schema.events.id, schema.occurrences.eventId))
+    .innerJoin(schema.venues, eq(schema.venues.id, schema.events.venueId))
+    .where(and(...conditions))
+    .orderBy(asc(schema.occurrences.startsAt));
+
+  if (rows.length === 0) return c.json({ rows: [] });
+
+  // Occurrence-venue overrides: voor films die in meerdere bioscopen
+  // draaien wijkt occ.venueId af van event.venueId. Apart fetchen,
+  // niet via JOIN — drizzle's aliasedTable speelt slecht samen met de
+  // TS-inferentie en de N is sowieso klein (max ~50 rows per dag).
+  // Eén pass i.p.v. O(n²): collect alle occ-venue-ids die niet matchen
+  // met de event-venue-id van dezelfde row.
+  const overrideVenueIds = [
+    ...new Set(
+      rows
+        .filter((r) => r.occVenueId && r.occVenueId !== r.eventVenueId)
+        .map((r) => r.occVenueId as string)
+    ),
+  ];
+  const occVenueMap = new Map<
+    string,
+    { name: string; type: string | null }
+  >();
+  if (overrideVenueIds.length > 0) {
+    const vrows = await db
+      .select({
+        id: schema.venues.id,
+        name: schema.venues.name,
+        type: schema.venues.type,
+      })
+      .from(schema.venues)
+      .where(inArray(schema.venues.id, overrideVenueIds));
+    for (const v of vrows) occVenueMap.set(v.id, { name: v.name, type: v.type });
+  }
+
+  const occIds = rows.map((r) => r.occId);
+  const eventIds = [...new Set(rows.map((r) => r.eventId))];
+  const friendsByOcc = me
+    ? await buildFriendsByOccurrence(me, occIds)
+    : new Map();
+  const seriesByEvent = await buildSeriesByEvent(eventIds);
+
+  const out = rows.map((r) => {
+    const f = friendsByOcc.get(r.occId);
+    const series = seriesByEvent.get(r.eventId);
+    const override =
+      r.occVenueId && r.occVenueId !== r.eventVenueId
+        ? occVenueMap.get(r.occVenueId)
+        : undefined;
+    const venueId = r.occVenueId ?? r.eventVenueId;
+    return {
+      id: r.occId,
+      occurrenceId: r.occId,
+      eventId: r.eventId,
+      startsAt: r.startsAt,
+      endsAt: r.endsAt,
+      title: r.title,
+      category: r.category,
+      kind: r.kind,
+      imageUrl: r.imageUrl,
+      genre: r.genres?.[0] ?? null,
+      seriesName: series?.[0]?.name ?? null,
+      venueId,
+      venueName: override?.name ?? r.eventVenueName,
+      venueType: override?.type ?? r.eventVenueType ?? null,
+      friendsSaved: (f?.friends ?? []).map(
+        (fr: { name: string; avatarUrl: string | null }) => ({
+          name: fr.name,
+          avatarUrl: fr.avatarUrl,
+        })
+      ),
+      friendsSavedCount: f?.count ?? 0,
+      venueFollowed: followedSet.has(venueId),
+    };
+  });
+
+  return c.json({ rows: out });
 });
 
 /**

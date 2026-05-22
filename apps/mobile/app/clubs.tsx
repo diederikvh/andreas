@@ -10,9 +10,11 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { router } from 'expo-router';
-import { useMemo } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import { useCallback, useMemo, useState } from 'react';
 import {
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -21,6 +23,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppHeader, HEADER_HEIGHT } from '@/components/AppHeader';
+import { RefreshBanner } from '@/components/RefreshBanner';
 import type { ApiEvent, ApiOccurrence } from '@/lib/api';
 import {
   dowMixed,
@@ -65,11 +68,31 @@ export default function Clubs() {
 
   // Default limit van /events is 200 — voor een week met veel films
   // is dat te klein om alle weekend-feesten mee te krijgen. Cap hoog.
+  // category=Muziek dekt clubs (DJ-feesten zijn altijd Muziek). Type-
+  // filter (club vs. podium-met-nachtprogramma) is té breed voor de
+  // server omdat Paradiso/Melkweg (type='podium') ook club-nachten
+  // hosten — die filtert `nights` hieronder client-side op begintijd.
   const { data: events, isLoading, error } = useEvents({
     from: range.from,
     to: range.to,
+    category: 'Muziek',
+    lean: true,
     limit: 2000,
   });
+
+  const qc = useQueryClient();
+  const [refreshing, setRefreshing] = useState(false);
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    const start = Date.now();
+    try {
+      await qc.invalidateQueries({ queryKey: ['events'] });
+    } finally {
+      const elapsed = Date.now() - start;
+      if (elapsed < 700) await new Promise((r) => setTimeout(r, 700 - elapsed));
+      setRefreshing(false);
+    }
+  }, [qc]);
 
   // Verzamel club-occurrences. Definitie van "club-nacht":
   //   - Venue is een echte club (type='club'), of
@@ -127,11 +150,30 @@ export default function Clubs() {
 
   return (
     <View style={[styles.root, { backgroundColor: roles.bg }]}>
+      <RefreshBanner
+        visible={refreshing}
+        topOffset={insets.top + HEADER_HEIGHT + 8}
+      />
       <ScrollView
         contentContainerStyle={{
           paddingTop: insets.top + HEADER_HEIGHT,
           paddingBottom: insets.bottom + 24,
         }}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={roles.accent}
+            colors={[roles.accent]}
+            title={
+              refreshing
+                ? t('Vernieuwen…', 'Refreshing…')
+                : t('Trek om te vernieuwen', 'Pull to refresh')
+            }
+            titleColor={roles.fgMuted}
+            progressViewOffset={insets.top + HEADER_HEIGHT + 60}
+          />
+        }
       >
         {isLoading && (
           <View style={styles.centerWrap}>
@@ -382,10 +424,13 @@ const styles = StyleSheet.create({
     fontSize: 13,
     letterSpacing: -0.13,
   },
+  // Venue als kicker — mono uppercase, matcht de rail-cards op Vandaag
+  // en /films voor visuele consistentie.
   venue: {
-    fontFamily: fontFamily.bold,
-    fontSize: 12,
-    letterSpacing: -0.12,
+    fontFamily: fontFamily.mono,
+    fontSize: 10,
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
     flexShrink: 1,
   },
   soldOut: {
@@ -416,16 +461,19 @@ const styles = StyleSheet.create({
     gap: 4,
     maxWidth: '70%',
   },
+  // Pill-stijl gespiegeld aan de Featured-label op Vandaag — zelfde
+  // padding, font, letter-spacing zodat alle "label op foto" pills
+  // visueel één familie zijn.
   genreChip: {
     paddingHorizontal: 10,
-    paddingVertical: 4,
+    paddingVertical: 5,
     borderRadius: 999,
   },
   genreText: {
-    fontFamily: fontFamily.monoMedium,
+    fontFamily: fontFamily.mono,
     fontSize: 10,
-    letterSpacing: 0.6,
-    textTransform: 'lowercase',
+    letterSpacing: 1.4,
+    textTransform: 'uppercase',
   },
   closeBtn: {
     width: 36,

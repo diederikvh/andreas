@@ -7,6 +7,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   Alert,
+  FlatList,
   KeyboardAvoidingView,
   Modal,
   type NativeScrollEvent,
@@ -15,13 +16,10 @@ import {
   Pressable,
   RefreshControl,
   ScrollView,
-  SectionList,
-  type SectionListData,
   StyleSheet,
   Text,
   TextInput,
   View,
-  type ViewToken,
 } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -32,34 +30,28 @@ import { Cross } from '@/components/Cross';
 import { EventListRow } from '@/components/EventListRow';
 import { RefreshBanner } from '@/components/RefreshBanner';
 import { SpinningCross } from '@/components/SpinningCross';
-import type { ApiEvent, VenueType } from '@/lib/api';
+import type { AgendaRow as AgendaRowData, ApiEvent, VenueType } from '@/lib/api';
 import {
-  eventImageUrl,
   CATEGORY_TICK,
   VENUE_TYPE_TICK,
   getVenueTypeChips,
   translateVenueType,
   dowMixed,
-  effectiveEndsAtMs,
-  expandToOccurrenceRows,
   rowTimeLabel,
-  getTimeBlock,
-  groupOccurrenceRowsByDay,
-  isLongRunning,
   monthShort,
   translateCategory,
-  type OccurrenceGroup,
-  type OccurrenceRow,
   type TimeBlock,
   useFocusedNow,
-  useNowMinute,
   useTimeBlocks,
 } from '@/lib/eventDisplay';
 import { softTap, tinyTap } from '@/lib/haptics';
 import { useLocale, useT } from '@/lib/i18n';
+import type { Locale } from '@/lib/i18n';
 import { useSession } from '@/lib/authClient';
 import {
-  useEvents,
+  useAgendaDay,
+  useAgendaDayPrefetch,
+  useAgendaDays,
   useFriends,
 } from '@/lib/queries';
 import { useResetFiltersOnTabBlur } from '@/lib/useResetFiltersOnTabBlur';
@@ -79,6 +71,10 @@ const MONTH_LABEL_HEIGHT = 14;
 const DAYSTRIP_HEIGHT = 76;
 const DAYSTRIP_INNER_HEIGHT = DAYSTRIP_HEIGHT - MONTH_LABEL_HEIGHT;
 const CHIPROW_HEIGHT = 60;
+/** Hoever in de toekomst de day-strip kijkt vanaf vandaag. 90 dagen
+    dekt het gros van wat venues geannonceerd hebben staan — verder
+    kunnen we later infinite-paginaten als het nodig is. */
+const AGENDA_WINDOW_DAYS = 90;
 
 const CATEGORIES: ApiEvent['category'][] = [
   'Muziek',
@@ -89,9 +85,21 @@ const CATEGORIES: ApiEvent['category'][] = [
   'Film',
 ];
 
-// Categorie-titels per mode — zelfde mapping als op Vandaag, zodat de
-// kleur van een "Muziek"-sub-kop in de Agenda matcht met de tag-pill
-// op de event-row én met het cat-kopje op Vandaag.
+// Day-strip-item: 1 op 1 wat de UI nodig heeft om een chip te tekenen.
+// Server geeft alleen {date, count} terug — dow/num/month derive'n we
+// hier, locale-aware.
+type DaySummary = {
+  id: string;
+  date: string;
+  dow: string;
+  num: string;
+  month: string;
+  count: number;
+};
+
+// Categorie-tinten per mode — zelfde mapping als op Vandaag, zodat een
+// "Muziek"-sub-kop in de Agenda matcht met de tag-pill op de event-row
+// én met het cat-kopje op Vandaag.
 const TONE: Record<
   'nacht' | 'dag',
   Record<'acid' | 'flare' | 'plum' | 'azure' | 'saffron' | 'cobalt', string>
@@ -114,31 +122,60 @@ const TONE: Record<
   },
 };
 
-// Item-types in een dag-sectie: een cat-header markeert de start van
-// een hoofdcategorie binnen die dag, gevolgd door één of meer rows.
+// FlatList-items binnen de geselecteerde dag: cat-header die collapse-
+// state beheert, gevolgd door 0+ rij-items (verborgen als ingeklapt).
 type AgendaItem =
   | {
-      type: 'cat-header';
+      type: 'header';
       id: string;
       category: ApiEvent['category'];
       count: number;
+      collapsed: boolean;
     }
-  | { type: 'row'; id: string; row: OccurrenceRow };
+  | { type: 'row'; id: string; row: AgendaRowData };
+
+function deriveDay(date: string, count: number, locale: Locale): DaySummary {
+  // Noon-tijd vermijdt rare TZ-edges rondom middernacht (DST etc.).
+  const d = new Date(`${date}T12:00:00`);
+  return {
+    id: date,
+    date,
+    dow: dowMixed(d.getDay(), locale),
+    num: String(d.getDate()).padStart(2, '0'),
+    month: monthShort(d.getMonth(), locale),
+    count,
+  };
+}
+
+function logicalTodayDate(now: Date): string {
+  // Logische dag-shift: vóór 06:00 → kalenderdag - 1.
+  const d = new Date(now);
+  if (d.getHours() < 6) d.setDate(d.getDate() - 1);
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+function addDaysToDate(date: string, days: number): string {
+  const d = new Date(`${date}T12:00:00`);
+  d.setDate(d.getDate() + days);
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+}
 
 export default function Agenda() {
   const roles = useRoles();
-  const mode = useMode();
   const insets = useSafeAreaInsets();
   const t = useT();
   const locale = useLocale();
-  const timeBlocks = useTimeBlocks();
-  const sectionListRef = useRef<SectionList<AgendaItem, OccurrenceGroup>>(null);
-  // useScrollToTop accepteert ook een ref met scrollToLocation — past
-  // 'm zonder fuss op SectionList.
-  useScrollToTop(sectionListRef);
+  const listRef = useRef<FlatList<AgendaItem>>(null);
+  useScrollToTop(listRef);
 
-  // Filter-state komt nu uit de persistente Zustand-store ipv URL-params
-  // — zo blijft je keuze actief bij tab-wissels en app-restart.
+  // Filter-state uit persistente Zustand-store — blijft actief over
+  // tab-wissels en app-restart.
   const query = useAgendaFilters((s) => s.query);
   const onlyFriends = useAgendaFilters((s) => s.onlyFriends);
   const onlyFavorites = useAgendaFilters((s) => s.onlyFavorites);
@@ -154,8 +191,7 @@ export default function Agenda() {
   const resetFilters = useAgendaFilters((s) => s.reset);
 
   // Stack-persistent filter-state: reset bij tab-wissel, behoud bij
-  // tap-naar-detail-en-terug. Caller markeert een stack-push vóór elke
-  // router.push naar een detail-route (zie onRowTap hieronder).
+  // tap-naar-detail-en-terug.
   const markPush = useResetFiltersOnTabBlur(resetFilters);
   const onRowTap = useCallback(
     (path: string) => {
@@ -165,11 +201,8 @@ export default function Agenda() {
     [markPush]
   );
 
-  // Deeplink-merge: Vandaag's "Meer →"-knop pusht naar /agenda?cat=X.
-  // Bij eerste arrival mergen we die in de store (en wissen de URL-param
-  // zodat-ie niet bij elke heractivatie opnieuw triggert). Daarnaast
-  // accepteren we `?q=<term>` zodat genre-chips op een vriend-profiel
-  // direct kunnen filteren ("tap techno" → agenda met search=techno).
+  // Deeplink-merge: Vandaag's "Meer →"-knop pusht naar /agenda?cat=X,
+  // genre-chips op een vriend-profiel pushen naar /agenda?q=techno.
   const params = useLocalSearchParams<{ cat?: string; q?: string }>();
   useEffect(() => {
     const incoming = (params.cat ?? '')
@@ -191,115 +224,129 @@ export default function Agenda() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params.q]);
 
-  // Cmode-flip wist géén filters meer: in Agenda is dag/nacht puur
-  // cosmetisch (kleur-thema), niet content-bepalend. Alle 5 cats zijn
-  // in beide modi geldig — een club die overdag iets doet hoort
-  // gewoon zichtbaar te zijn in dag-mode, een avond-boekpresentatie in
-  // nacht-mode.
   const { data: session } = useSession();
   const { data: friends } = useFriends({
     enabled: Boolean(session?.user?.id),
   });
   const showFriendsChip = (friends?.length ?? 0) > 0;
+  // Geen volledige events-cache meer om "heb ik überhaupt favorieten?"
+  // af te leiden. We tonen de chip dus voor iedereen die ingelogd is —
+  // klik zonder follows → server retourneert geen rijen, en de
+  // "geen events"-state legt 't uit. Eenvoudiger dan apart endpoint.
+  const showFavoritesChip = Boolean(session?.user?.id);
 
-  // Vanaf vandaag 00:00 — geen verleden events op de Agenda. Refreshed
-  // bij tab-focus en app-resume (niet continuous), dus tijdens
-  // scrollen blijft de query-key stabiel ook als middernacht passeert.
-  // Bij volgende focus zit je automatisch op de nieuwe dag.
+  // Window: logische dag-start + 90 dagen vooruit. `focusedNow` ververst
+  // alleen bij tab-focus zodat de query-key niet middenin het scrollen
+  // verandert. Bij volgende focus zit je vanzelf op de nieuwe dag.
   const focusedNow = useFocusedNow();
-  const todayStartIso = useMemo(() => {
-    const d = new Date(focusedNow);
-    d.setHours(0, 0, 0, 0);
-    return d.toISOString();
-  }, [focusedNow]);
-
-  // Agenda toont alles vanaf vandaag tot ver in de toekomst — vraag een
-  // ruime limit zodat we niet gecapped worden op de server-default. ~2k
-  // toekomstige events past in ~500KB JSON, prima fetchbaar.
-  const { data: events, isLoading, error } = useEvents({
-    from: todayStartIso,
-    limit: 5000,
-  });
-  // Cliëntside filter op event-eigenschappen (category/genre/search) —
-  // tijd-blok wordt apart per occurrence toegepast zodat een film met
-  // matinee (14:00) én avondvoorstelling (22:00) bij beide blokken
-  // verschijnt op de juiste tijden.
-  const filteredEvents = useMemo(() => {
-    if (!events) return [];
-    const needle = query.trim().toLowerCase();
-    return events.filter((e) => {
-      // Geen mode-coupling meer in Agenda: dag/nacht is hier puur
-      // cosmetisch. Filter-chips (cats/types/genres/blocks) blijven
-      // expliciete user-narrowing.
-      if (activeCats.length > 0 && !activeCats.includes(e.category)) return false;
-      if (activeTypes.length > 0) {
-        if (!e.venue.type || !activeTypes.includes(e.venue.type)) return false;
-      }
-      if (onlyFriends && (e.friendsSaved?.length ?? 0) === 0) return false;
-      if (onlyFavorites && !e.venueFollowed) return false;
-      if (needle.length > 0) {
-        const inTitle = e.title.toLowerCase().includes(needle);
-        const inVenue = e.venue.name.toLowerCase().includes(needle);
-        const inDesc = (e.description ?? '').toLowerCase().includes(needle);
-        const inGenres = (e.genres ?? []).some((g) =>
-          g.toLowerCase().includes(needle)
-        );
-        if (!inTitle && !inVenue && !inDesc && !inGenres) return false;
-      }
-      return true;
-    });
-  }, [
-    events,
-    activeCats,
-    activeTypes,
-    query,
-    onlyFriends,
-    onlyFavorites,
-  ]);
-
-  const showFavoritesChip = useMemo(
-    () => Boolean(events?.some((e) => e.venueFollowed)),
-    [events]
+  const fromDate = useMemo(
+    () => logicalTodayDate(new Date(focusedNow)),
+    [focusedNow]
+  );
+  const toDate = useMemo(
+    () => addDaysToDate(fromDate, AGENDA_WINDOW_DAYS),
+    [fromDate]
   );
 
-  // Tikt elke 60s zodat occurrences waarvan de eindtijd voorbij is
-  // automatisch wegvallen tussen server-refetches door.
-  const now = useNowMinute();
+  // Server-side filters voor beide agenda-endpoints. Time-blocks
+  // óók server-side zodat de day-strip-tellingen er rekening mee houden
+  // (anders zou een Bookshop+Nacht-filter een dag tonen die wél
+  // Bookshop-events heeft maar niet 's nachts → klikbaar in lege ruimte).
+  const apiFilters = useMemo(
+    () => ({
+      categories: activeCats,
+      venueTypes: activeTypes,
+      blocks: activeBlocks,
+      q: query || undefined,
+      onlyFollowed: onlyFavorites,
+      onlyFriends,
+    }),
+    [activeCats, activeTypes, activeBlocks, query, onlyFavorites, onlyFriends]
+  );
 
-  // Expand naar één rij per occurrence en groepeer per dag. Een
-  // 3-daagse festival komt zo op alle 3 dagen voor (via de per-dag
-  // expansie in expandToOccurrenceRows); een wekelijks feest op elke
-  // maandag binnen de gevraagde range. Long-running events (>7 dagen,
-  // dus exhibitions en lang-lopende shows zoals audio tours) filteren
-  // we eruit — in de dag-buckets zouden ze repetitief op elke dag
-  // verschijnen voor iets dat maanden loopt; die staan al via de
-  // musea/galleries-rails op Vandaag.
-  const days = useMemo(() => {
-    const rows = expandToOccurrenceRows(filteredEvents).filter((row) => {
-      if (row.event.kind === 'exhibition') return false;
-      if (isLongRunning(row.event.startsAt, row.event.endsAt)) return false;
-      if (effectiveEndsAtMs(row.occurrence) < now) return false;
-      if (activeBlocks.length === 0) return true;
-      const block = getTimeBlock(new Date(row.occurrence.startsAt).getHours());
-      return activeBlocks.includes(block);
-    });
-    return groupOccurrenceRowsByDay(rows);
-  }, [filteredEvents, activeBlocks, now]);
+  // Day-strip: lichte aggregate-query per logische dag. Geen row-data.
+  // `from` = huidige tijd (niet middernacht), zodat een late-night-club
+  // die om 02:00 stopt niet als "gisteren had 12 events" verschijnt op
+  // een 10:00-bezoek. Late-night events die nog lopen blijven wél
+  // zichtbaar — de logical-day-cutoff doet de rest.
+  const {
+    data: agendaDays,
+    isLoading: daysLoading,
+    error: daysError,
+  } = useAgendaDays({
+    from: new Date(focusedNow).toISOString(),
+    to: `${toDate}T00:00:00.000Z`,
+    filters: apiFilters,
+  });
 
-  const [selected, setSelected] = useState<string | null>(null);
+  const days: DaySummary[] = useMemo(() => {
+    if (!agendaDays) return [];
+    return agendaDays.map((d) => deriveDay(d.date, d.count, locale));
+  }, [agendaDays, locale]);
 
-  // Pull-to-refresh: invalideert events-cache zodat de query opnieuw
-  // fetched. Minimum 700ms zichtbaar zodat de banner/spinner niet
-  // weg-flitst op snelle netwerken.
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
+
+  // Auto-select wanneer eerste data binnenkomt of huidige selectie door
+  // een filter-wijziging uit de lijst verdwijnt.
+  useEffect(() => {
+    if (days.length === 0) {
+      if (selectedDate !== null) setSelectedDate(null);
+      return;
+    }
+    if (!selectedDate || !days.find((d) => d.id === selectedDate)) {
+      setSelectedDate(days[0].id);
+    }
+  }, [days, selectedDate]);
+
+  // Lean rows voor de geselecteerde dag. `from` is alleen relevant
+  // voor de huidige logische dag (filtert verlopen events); voor
+  // toekomstige dagen passeert 't onschadelijk via GREATEST in SQL.
+  const {
+    data: rows = [],
+    isLoading: rowsLoading,
+    error: rowsError,
+  } = useAgendaDay({
+    date: selectedDate,
+    from: new Date(focusedNow).toISOString(),
+    filters: apiFilters,
+  });
+
+  // Prefetch ±1 dag zodat tap op volgende/vorige chip instant rendert.
+  const prefetchDay = useAgendaDayPrefetch();
+  useEffect(() => {
+    if (!selectedDate) return;
+    const idx = days.findIndex((d) => d.id === selectedDate);
+    if (idx < 0) return;
+    const fromIso = new Date(focusedNow).toISOString();
+    const next = days[idx + 1]?.id;
+    const prev = days[idx - 1]?.id;
+    if (next)
+      prefetchDay({ date: next, from: fromIso, filters: apiFilters });
+    if (prev)
+      prefetchDay({ date: prev, from: fromIso, filters: apiFilters });
+  }, [selectedDate, days, apiFilters, prefetchDay, focusedNow]);
+
+  // -8 om de day-strip + chip-row 8px omhoog te trekken, dichter
+  // tegen de "Andreas" wordmark aan.
+  const stickyOffset =
+    insets.top + HEADER_HEIGHT + DAYSTRIP_HEIGHT + CHIPROW_HEIGHT - 8;
+
+  const selectDay = useCallback((id: string) => {
+    setSelectedDate(id);
+  }, []);
+
+  // Pull-to-refresh: invalideert beide agenda-caches zodat én de day-
+  // strip én de huidige dag opnieuw fetchen.
   const qc = useQueryClient();
   const [refreshing, setRefreshing] = useState(false);
   const onRefresh = useCallback(async () => {
-    // eslint-disable-next-line no-console
-    console.log('[agenda] pull-to-refresh triggered');
     setRefreshing(true);
     const start = Date.now();
     try {
-      await qc.invalidateQueries({ queryKey: ['events'] });
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ['agenda-days'] }),
+        qc.invalidateQueries({ queryKey: ['agenda-day'] }),
+      ]);
     } finally {
       const elapsed = Date.now() - start;
       if (elapsed < 700) {
@@ -309,235 +356,123 @@ export default function Agenda() {
     }
   }, [qc]);
 
-  // Reset selectie wanneer de eerste echte day-group binnenkomt of
-  // wanneer een filter de huidige selectie weghaalt.
+  const selectedDay = days.find((d) => d.id === selectedDate) ?? null;
+  const hasActiveFilter =
+    activeCats.length > 0 ||
+    activeTypes.length > 0 ||
+    activeBlocks.length > 0 ||
+    query.length > 0 ||
+    onlyFriends ||
+    onlyFavorites;
+
+  // Per-categorie collapse-state. Reset bij dag-wissel zodat alles
+  // open is wanneer je naar een nieuwe dag tikt (anders zou je
+  // verwachten alles te zien maar krijg je een ingeklapte view).
+  const [collapsedCats, setCollapsedCats] = useState<Set<string>>(
+    () => new Set()
+  );
   useEffect(() => {
-    if (days.length === 0) {
-      if (selected !== null) setSelected(null);
-      return;
-    }
-    if (!selected || !days.find((d) => d.id === selected)) {
-      setSelected(days[0].id);
-    }
-  }, [days, selected]);
+    setCollapsedCats(new Set());
+  }, [selectedDate]);
 
-  // -8 om de day-strip + chip-row 8px omhoog te trekken, dichter
-  // tegen de "Andreas" wordmark aan (zie marginTop op de strip-wrapper).
-  const stickyOffset =
-    insets.top + HEADER_HEIGHT + DAYSTRIP_HEIGHT + CHIPROW_HEIGHT - 8;
-
-  // Sections voor de SectionList — `data` is een gemengde lijst van
-  // cat-headers + rows: binnen elke dag groeperen we events op
-  // hoofdcategorie (Muziek/Theater/Kunst/Literatuur/Film), met een
-  // gekleurd sub-kopje boven elke groep. Cat-volgorde is vast (zelfde
-  // als op Vandaag) zodat de visuele ritme dag-op-dag stabiel blijft.
-  const sections = useMemo(() => {
-    return days.map((d) => {
-      const byCategory = new Map<ApiEvent['category'], OccurrenceRow[]>();
-      for (const row of d.rows) {
-        const cat = row.event.category;
-        const arr = byCategory.get(cat) ?? [];
-        arr.push(row);
-        byCategory.set(cat, arr);
-      }
-      const data: AgendaItem[] = [];
-      for (const cat of CATEGORIES) {
-        const items = byCategory.get(cat);
-        if (!items || items.length === 0) continue;
-        data.push({
-          type: 'cat-header',
-          id: `${d.id}::cat::${cat}`,
-          category: cat,
-          count: items.length,
-        });
-        for (const row of items) {
-          data.push({ type: 'row', id: row.id, row });
-        }
-      }
-      return { ...d, data };
+  const toggleCollapse = useCallback((cat: ApiEvent['category']) => {
+    setCollapsedCats((cur) => {
+      const next = new Set(cur);
+      if (next.has(cat)) next.delete(cat);
+      else next.add(cat);
+      return next;
     });
-  }, [days]);
+  }, []);
 
-  // Onthoudt waar we naartoe willen, voor de retry vanuit
-  // onScrollToIndexFailed wanneer de target-sectie nog niet
-  // gemount is in de virtualized lijst.
-  const pendingSectionRef = useRef<number | null>(null);
-  // Vlag: staat aan tijdens een tap-geinitieerde scroll (selectDay
-  // → scrollToLocation). onViewableItemsChanged onderdrukken we
-  // dan, anders pakt de chip elke tussenliggende sectie mee tijdens
-  // het overscrollen — onrustig, en bij landing pakt 'ie de sectie
-  // vóór de target (off-by-one). Geclr'd op momentum-end.
-  const isProgrammaticScroll = useRef(false);
-
-  const selectDay = (id: string) => {
-    setSelected(id);
-    const sectionIndex = sections.findIndex((s) => s.id === id);
-    if (sectionIndex < 0) return;
-    pendingSectionRef.current = sectionIndex;
-    isProgrammaticScroll.current = true;
-    sectionListRef.current?.scrollToLocation({
-      sectionIndex,
-      itemIndex: 0,
-      // viewOffset ≈ stickyOffset zorgt dat de DateAnchor net onder
-      // de gefixeerde DayStrip valt ipv erachter te verdwijnen.
-      viewOffset: stickyOffset,
-      animated: true,
-    });
-  };
-
-  // Wanneer de target-sectie buiten de render-window valt kan
-  // scrollToLocation niet exact berekenen waar te landen — op iOS
-  // Fabric crasht 't dan zelfs in de native ShadowNode-tree
-  // (EXC_BAD_ACCESS in ModalHostViewShadowNode dealloc). Standaard
-  // RN-fallback: grof scrollen naar de averageItemLength × index,
-  // wachten tot rendering bijgekomen is, dan opnieuw scrollToLocation.
-  const onScrollToIndexFailed = useCallback(
-    (info: {
-      index: number;
-      highestMeasuredFrameIndex: number;
-      averageItemLength: number;
-    }) => {
-      sectionListRef.current?.getScrollResponder()?.scrollTo({
-        y: Math.max(0, info.averageItemLength * info.index - stickyOffset),
-        animated: true,
+  // Items voor de FlatList: cat-headers + rows, gegroepeerd in vaste
+  // CATEGORIES-volgorde (matcht Vandaag's rail-volgorde). Een ingeklapte
+  // categorie laat alleen de header staan zodat je de groep visueel
+  // kan overslaan.
+  const items: AgendaItem[] = useMemo(() => {
+    const byCat = new Map<ApiEvent['category'], AgendaRowData[]>();
+    for (const row of rows) {
+      const arr = byCat.get(row.category) ?? [];
+      arr.push(row);
+      byCat.set(row.category, arr);
+    }
+    const out: AgendaItem[] = [];
+    for (const cat of CATEGORIES) {
+      const arr = byCat.get(cat);
+      if (!arr || arr.length === 0) continue;
+      const collapsed = collapsedCats.has(cat);
+      out.push({
+        type: 'header',
+        id: `header::${cat}`,
+        category: cat,
+        count: arr.length,
+        collapsed,
       });
-      setTimeout(() => {
-        const target = pendingSectionRef.current;
-        if (target !== null) {
-          sectionListRef.current?.scrollToLocation({
-            sectionIndex: target,
-            itemIndex: 0,
-            viewOffset: stickyOffset,
-            animated: true,
-          });
+      if (!collapsed) {
+        for (const row of arr) {
+          out.push({ type: 'row', id: row.id, row });
         }
-      }, 200);
-    },
-    [stickyOffset]
-  );
-
-  // Sync de active chip met de huidige zichtbare sectie. In een
-  // virtualized SectionList zijn niet-zichtbare items niet gemount,
-  // dus onScroll + Y-positie meten werkt niet meer — gebruik
-  // onViewableItemsChanged. Twee gotcha's voor stabiliteit:
-  //  1) viewableItems[0] is de topmost row, vaak nog van de vorige
-  //     dag bij sectie-grenzen (1px zichtbaar telt). We pakken in
-  //     plaats daarvan de sectie die het meest vertegenwoordigd is
-  //     in de zichtbare items — dat is wat de gebruiker écht ziet.
-  //  2) Tijdens een tap-geinitieerde scroll (isProgrammaticScroll)
-  //     skippen we updates volledig zodat tussenliggende secties
-  //     de chip niet flickeren tot landing. onMomentumScrollEnd
-  //     clear't de flag.
-  const onViewableItemsChanged = useRef(
-    ({ viewableItems }: { viewableItems: ViewToken[] }) => {
-      if (isProgrammaticScroll.current) return;
-      if (viewableItems.length === 0) return;
-      const counts = new Map<string, number>();
-      for (const v of viewableItems) {
-        const sid = (v.section as OccurrenceGroup | undefined)?.id;
-        if (sid) counts.set(sid, (counts.get(sid) ?? 0) + 1);
-      }
-      let bestId: string | undefined;
-      let bestCount = 0;
-      for (const [id, c] of counts.entries()) {
-        if (c > bestCount) {
-          bestCount = c;
-          bestId = id;
-        }
-      }
-      if (bestId) {
-        setSelected((cur) => (cur === bestId ? cur : bestId!));
       }
     }
-  ).current;
-  // 50% threshold: een rij telt pas als 'ie voor de helft binnen is.
-  // Voorkomt dat de 1-pixel-staartrij van de vorige sectie steeds als
-  // 'eerste viewable' meedoet en de chip naar de vorige dag spurt.
-  const viewabilityConfig = useRef({
-    itemVisiblePercentThreshold: 50,
-  }).current;
-
-  // Pas wanneer de gebruiker zélf de lijst aanraakt (vinger op het
-  // scherm voor een nieuwe scroll) clear'en we de programmatic-flag.
-  // Op momentum-end clear'en bleek te vroeg: scrollToLocation kan
-  // intermediate momentum-events vuren, en bij scrollToIndexFailed
-  // gebeurt 'r een tweede scroll — daartussen vlogen alle dagen
-  // langs als 'visible' en stuiterde de DayStrip-chip mee. De flag
-  // blijft nu staan tot een echte user-touch op de lijst.
-  //
-  // Op Android stopt de animatie van scrollToLocation níet vanzelf
-  // wanneer de gebruiker tegen-swiped — die animatie blijft door-
-  // duwen naar z'n target. We snappen daarom expliciet naar de
-  // huidige Y-positie (animated: false), wat de lopende animatie
-  // killt zodat de drag het overneemt. iOS doet dit zelf en heeft
-  // deze interventie niet nodig.
-  const onScrollBeginDrag = useCallback(
-    (e: NativeSyntheticEvent<NativeScrollEvent>) => {
-      const wasProgrammatic = isProgrammaticScroll.current;
-      isProgrammaticScroll.current = false;
-      pendingSectionRef.current = null;
-      if (Platform.OS === 'android' && wasProgrammatic) {
-        const y = e.nativeEvent.contentOffset.y;
-        sectionListRef.current
-          ?.getScrollResponder()
-          ?.scrollTo({ y, animated: false });
-      }
-    },
-    []
-  );
+    return out;
+  }, [rows, collapsedCats]);
 
   return (
     <View style={[styles.root, { backgroundColor: roles.bg }]}>
       <RefreshBanner visible={refreshing} topOffset={stickyOffset + 8} />
-      {/* SectionList virtualiseert de event-rijen — alleen wat in de
-          viewport (+ overscan) zit wordt gemount. Schaalt naar 2k+ rows
-          zonder dat de UI gaat trekken. ScrollView-cousin behoudt het
-          scroll-gedrag (refreshControl, scroll-to-top, etc.). */}
-      <SectionList
-        ref={sectionListRef}
-        sections={isLoading || error ? [] : sections}
+      <FlatList
+        ref={listRef}
+        data={items}
         keyExtractor={(item) => item.id}
         renderItem={({ item }) =>
-          item.type === 'cat-header' ? (
-            <CategoryHeader category={item.category} count={item.count} />
+          item.type === 'header' ? (
+            <CategoryHeader
+              category={item.category}
+              count={item.count}
+              collapsed={item.collapsed}
+              onPress={() => toggleCollapse(item.category)}
+            />
           ) : (
-            <AgendaRow row={item.row} onTap={onRowTap} />
+            <AgendaRowItem row={item.row} onTap={onRowTap} />
           )
         }
-        renderSectionHeader={({ section }) => (
-          <DateAnchor
-            day={section as SectionListData<AgendaItem, OccurrenceGroup>}
-          />
-        )}
-        stickySectionHeadersEnabled={false}
         ListHeaderComponent={
           <Animated.View entering={FadeIn.duration(220)}>
-            {isLoading && (
+            {(daysLoading || rowsLoading) && (
               <View style={styles.loadingWrap}>
                 <SpinningCross size={28} color={roles.fgPlaceholder} />
               </View>
             )}
-            {error && (
+            {(daysError || rowsError) && (
               <ListState
                 text={t('Kon agenda niet laden.', 'Couldn’t load agenda.')}
                 tone="error"
               />
             )}
-            {!isLoading && !error && days.length === 0 && (
-              <ListState
-                text={
-                  activeCats.length > 0 ||
-                  activeTypes.length > 0 ||
-                  activeBlocks.length > 0 ||
-                  query
-                    ? t(
-                        'Geen events voor deze filter.',
-                        'No events for this filter.'
-                      )
-                    : t('Nog geen events.', 'No events yet.')
-                }
-              />
-            )}
+            {!daysLoading &&
+              !daysError &&
+              days.length === 0 && (
+                <ListState
+                  text={
+                    hasActiveFilter
+                      ? t(
+                          'Geen events voor deze filter.',
+                          'No events for this filter.'
+                        )
+                      : t('Nog geen events.', 'No events yet.')
+                  }
+                />
+              )}
+            {!rowsLoading &&
+              !rowsError &&
+              days.length > 0 &&
+              rows.length === 0 && (
+                <ListState
+                  text={t(
+                    'Geen events op deze dag voor deze filter.',
+                    'No events on this day for this filter.'
+                  )}
+                />
+              )}
           </Animated.View>
         }
         showsVerticalScrollIndicator={false}
@@ -560,28 +495,11 @@ export default function Agenda() {
             progressViewOffset={stickyOffset}
           />
         }
-        onViewableItemsChanged={onViewableItemsChanged}
-        viewabilityConfig={viewabilityConfig}
-        onScrollBeginDrag={onScrollBeginDrag}
-        onScrollToIndexFailed={onScrollToIndexFailed}
-        // Render-window: standaard 21 (10 rows above + 10 below + 1
-        // visible). Voor variable-height rows met images is dat aan
-        // de hoge kant — verlagen tot 11 (5/5/1) houdt scroll
-        // butter-smooth en bespaart geheugen.
         windowSize={11}
         removeClippedSubviews
         initialNumToRender={12}
       />
       <AppHeader title={t('Agenda', 'Agenda')} showContentMode>
-        <View style={{ height: DAYSTRIP_HEIGHT, marginTop: -8 }}>
-          {days.length > 0 && selected && (
-            <DayStrip
-              days={days}
-              selectedId={selected}
-              onSelect={selectDay}
-            />
-          )}
-        </View>
         <ChipRow
           activeCats={activeCats}
           query={query}
@@ -598,6 +516,15 @@ export default function Agenda() {
           onToggleFriends={() => setOnlyFriends(!onlyFriends)}
           onToggleFavorites={() => setOnlyFavorites(!onlyFavorites)}
         />
+        <View style={{ height: DAYSTRIP_HEIGHT }}>
+          {days.length > 0 && selectedDate && (
+            <DayStrip
+              days={days}
+              selectedId={selectedDate}
+              onSelect={selectDay}
+            />
+          )}
+        </View>
       </AppHeader>
       <FilterHint />
     </View>
@@ -679,7 +606,20 @@ function ChipRow({
 
   const filterCount =
     activeCats.length + activeBlocks.length + activeTypes.length;
-  const filterActive = filterCount > 0;
+  // Als de huidige filter-staat exact matcht met een opgeslagen
+  // zoekopdracht-chip, dan licht díe chip al op — de filter-knop blijft
+  // dan in z'n neutrale staat zodat 'r niet twee actieve knoppen naast
+  // elkaar staan.
+  const savedActive = saved.some((s) =>
+    isSavedSearchActive(s, {
+      cats: activeCats,
+      tb: activeBlocks,
+      vt: activeTypes,
+      gn: [],
+      q: query,
+    })
+  );
+  const filterActive = filterCount > 0 && !savedActive;
   // Eerste belangrijke filter als label: categorie > venue-type.
   // Render: "Cinema + 2" voor primair + extra; geen primair?
   // terug naar "Filter · N" zoals voorheen.
@@ -1336,7 +1276,7 @@ function DayStrip({
   selectedId,
   onSelect,
 }: {
-  days: OccurrenceGroup[];
+  days: DaySummary[];
   selectedId: string;
   onSelect: (id: string) => void;
 }) {
@@ -1426,7 +1366,7 @@ function DayChip({
   onPress,
   onLayout,
 }: {
-  day: OccurrenceGroup;
+  day: DaySummary;
   active: boolean;
   onPress: () => void;
   onLayout: (x: number, width: number) => void;
@@ -1438,7 +1378,15 @@ function DayChip({
       onLayout={(e) =>
         onLayout(e.nativeEvent.layout.x, e.nativeEvent.layout.width)
       }
-      style={[styles.dayChip, active && { backgroundColor: roles.accent }]}
+      style={[
+        styles.dayChip,
+        // Inactieve chips krijgen een half-transparante bg-tint zodat ze
+        // niet in de gradient-blur van de AppHeader verdwijnen — vooral
+        // belangrijk nu de strip onder de filter-chips zit. Active chip
+        // overschrijft met accent.
+        { backgroundColor: `${roles.bg}99` },
+        active && { backgroundColor: roles.accent },
+      ]}
     >
       <Text
         style={[
@@ -1463,99 +1411,107 @@ function DayChip({
 function CategoryHeader({
   category,
   count,
+  collapsed,
+  onPress,
 }: {
   category: ApiEvent['category'];
   count: number;
+  collapsed: boolean;
+  onPress: () => void;
 }) {
   const mode = useMode();
   const roles = useRoles();
   const locale = useLocale();
   const tone = TONE[mode][CATEGORY_TICK[category]];
   return (
-    <View style={styles.catHeader}>
-      <Text style={[styles.catHeaderLabel, { color: tone }]}>
-        {translateCategory(category, locale)}
-      </Text>
+    <Pressable
+      onPress={() => {
+        tinyTap();
+        onPress();
+      }}
+      style={styles.catHeader}
+    >
+      <View style={styles.catHeaderLeft}>
+        <Text style={[styles.catHeaderLabel, { color: tone }]}>
+          {translateCategory(category, locale)}
+        </Text>
+        <Ionicons
+          name={collapsed ? 'chevron-forward' : 'chevron-down'}
+          size={14}
+          color={tone}
+        />
+      </View>
       <Text style={[styles.catHeaderCount, { color: roles.fgPlaceholder }]}>
         {count}
       </Text>
-    </View>
+    </Pressable>
   );
 }
 
-function DateAnchor({ day }: { day: OccurrenceGroup }) {
+function DateAnchor({
+  dow,
+  num,
+  month,
+  count,
+}: {
+  dow: string;
+  num: string;
+  month: string;
+  count: number;
+}) {
   const roles = useRoles();
   const t = useT();
   return (
     <View style={styles.dateAnchor}>
       <View style={styles.dateAnchorLeft}>
         <Text style={[styles.dateAnchorDow, { color: roles.fg }]}>
-          {day.dow} {day.num}
+          {dow} {num}
         </Text>
         <Text style={[styles.dateAnchorMonth, { color: roles.fgMuted }]}>
-          {day.month}
+          {month}
         </Text>
       </View>
       <Text style={[styles.dateAnchorCount, { color: roles.fgPlaceholder }]}>
-        {day.count}{' '}
-        {day.count === 1
-          ? t('plan', 'plan')
-          : t('plannen', 'plans')}
+        {count}{' '}
+        {count === 1 ? t('plan', 'plan') : t('plannen', 'plans')}
       </Text>
     </View>
   );
 }
 
-function AgendaRow({
+function AgendaRowItem({
   row,
   onTap,
 }: {
-  row: OccurrenceRow;
+  row: AgendaRowData;
   onTap: (path: string) => void;
 }) {
-  const { event, occurrence } = row;
   const locale = useLocale();
-  // Friend-pill is occurrence-specific: alleen vrienden die díe avond
-  // gesaved hebben, niet alle die de film "in het algemeen" volgen.
-  // Server zet ze op occurrence.friendsSaved; fallback op event-level
-  // voor pre-refactor responses (cachebusts vrijwel direct).
-  const rawFriends = occurrence.friendsSaved ?? event.friendsSaved ?? [];
-  const friends = rawFriends.map((f) => ({
+  const friends = row.friendsSaved.map((f) => ({
     name: f.name,
     avatar: f.avatarUrl,
   }));
-  // Synthetische occurrence-id (`evt::next`) komt vanuit fallback-pad
-  // wanneer er geen occurrencesInRange zijn — dan geen ?o= in de URL
-  // omdat die geen echte server-side ID is.
-  const isSynthetic = occurrence.id.endsWith('::next');
-  const path = isSynthetic
-    ? `/event/${event.id}?source=agenda`
-    : `/event/${event.id}?source=agenda&o=${occurrence.id}`;
-  // Venue krijgt een tone-pill (eerste in tag-row) op basis van
-  // venue.type — categorie-tag komt erna. Voor venues zonder type
-  // valt de pill weg en blijft venue in de subline staan. Pill is
-  // bewust NIET tappable — eerder toggelde 'ie het venue-type-filter
-  // wat verwarrend was: je tikt "Paradiso" maar krijgt een filter op
-  // alle podia. Type-filteren gaat via de filter-sheet.
-  const venueType = event.venue.type;
-  const venueTone = venueType ? VENUE_TYPE_TICK[venueType] : undefined;
+  const path = `/event/${row.eventId}?source=agenda&o=${row.occurrenceId}`;
+  const venueTone = row.venueType
+    ? VENUE_TYPE_TICK[row.venueType]
+    : undefined;
   return (
     <EventListRow
-      time={rowTimeLabel(occurrence.startsAt, occurrence.endsAt, locale)}
-      thumb={eventImageUrl(event) ?? ''}
-      title={event.title}
-      venue={occurrence.venue?.name ?? event.venue.name}
+      time={rowTimeLabel(row.startsAt, row.endsAt, locale)}
+      thumb={row.imageUrl ?? ''}
+      title={row.title}
+      venue={row.venueName}
       venueTone={venueTone}
       tags={[
         {
-          label: translateCategory(event.category, locale),
-          tone: CATEGORY_TICK[event.category],
+          label: translateCategory(row.category, locale),
+          tone: CATEGORY_TICK[row.category],
         },
       ]}
-      seriesLabel={event.series?.[0]?.name}
-      genreLabel={event.genres?.[0]}
-      friends={friends && friends.length > 0 ? friends : undefined}
-      tick={CATEGORY_TICK[event.category]}
+      seriesLabel={row.seriesName ?? undefined}
+      genreLabel={row.genre ?? undefined}
+      friends={friends.length > 0 ? friends : undefined}
+      tick={CATEGORY_TICK[row.category]}
       onPress={() => onTap(path)}
     />
   );
@@ -1634,12 +1590,17 @@ const styles = StyleSheet.create({
   // matcht met de Vandaag-kopjes en de tag-pills op de rows.
   catHeader: {
     flexDirection: 'row',
-    alignItems: 'baseline',
+    alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 22,
-    paddingTop: 10,
-    paddingBottom: 4,
+    paddingTop: 12,
+    paddingBottom: 6,
     gap: 10,
+  },
+  catHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
   },
   catHeaderLabel: {
     fontFamily: fontFamily.display,
