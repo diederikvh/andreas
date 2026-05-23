@@ -357,7 +357,20 @@ export const events = pgTable(
         `exhibition` voor doorlopende programmering. Stuurt UI-weergave
         van datum/tijd. Default `show`. */
     kind: eventKind().notNull().default('show'),
+    /** "Best beschikbare beeld" — legacy gemengd poster/still. Voor
+        nieuwe Film-events wordt dit veld leeg gelaten en zijn
+        `posterUrl`/`stillUrl` de bron van waarheid. Display-prioriteit:
+        lijsten = posterUrl ?? imageUrl, detail = stillUrl ?? imageUrl. */
     imageUrl: text(),
+    /** Verticale film-poster (TMDb of venue-poster), gemirrored naar
+        Bunny. Nullable; alleen gevuld voor Film-events met een match. */
+    posterUrl: text(),
+    /** Landscape sfeerbeeld voor de detail-hero (TMDb backdrop of
+        venue-still), gemirrored naar Bunny. Nullable. */
+    stillUrl: text(),
+    /** Full YouTube/Vimeo URL voor films met een trailer beschikbaar
+        via TMDb's videos endpoint. Nullable. */
+    trailerUrl: text(),
     category: eventCategory().notNull(),
     /** Editorial-pick voor de Avond-tab. Curator zet deze aan. */
     featured: boolean().notNull().default(false),
