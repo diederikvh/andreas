@@ -10,7 +10,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { router } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import {
   Pressable,
   RefreshControl,
@@ -81,6 +81,14 @@ export default function Theater() {
   const t = useT();
   const locale = useLocale();
   const [selected, setSelected] = useState<Discipline | 'all'>('all');
+  // ScrollView ref + helper voor chip-switch: nieuwe filter = nieuwe
+  // lijst, dus altijd terug naar top. Zonder dit blijf je op de oude
+  // scroll-positie staan en mis je items bovenaan de nieuwe selectie.
+  const scrollRef = useRef<ScrollView>(null);
+  const selectChip = useCallback((d: Discipline | 'all') => {
+    setSelected(d);
+    scrollRef.current?.scrollTo({ y: 0, animated: true });
+  }, []);
 
   // Venster: komende 14 dagen. Theater wordt vaak weken vooruit
   // geboekt; 2 weken voelt als de juiste mix tussen "wat speelt nu"
@@ -181,8 +189,11 @@ export default function Theater() {
         topOffset={insets.top + HEADER_HEIGHT + CHIPROW_HEIGHT + 8}
       />
       <ScrollView
+        ref={scrollRef}
         contentContainerStyle={{
-          paddingTop: insets.top + HEADER_HEIGHT + CHIPROW_HEIGHT,
+          // +16 extra gap tussen chip-row en eerste card — zonder dit
+          // plakt de eerste banner tegen de chips aan.
+          paddingTop: insets.top + HEADER_HEIGHT + CHIPROW_HEIGHT + 16,
           paddingBottom: insets.bottom + 24,
         }}
         refreshControl={
@@ -255,7 +266,7 @@ export default function Theater() {
               label={t('Alle', 'All')}
               count={shows.length}
               active={selected === 'all'}
-              onPress={() => setSelected('all')}
+              onPress={() => selectChip('all')}
             />
             {visibleChips.map((d) => (
               <Chip
@@ -263,7 +274,7 @@ export default function Theater() {
                 label={DISCIPLINE_LABELS[d][locale === 'en' ? 'en' : 'nl']}
                 count={counts[d]}
                 active={selected === d}
-                onPress={() => setSelected(d)}
+                onPress={() => selectChip(d)}
               />
             ))}
           </ScrollView>
@@ -345,6 +356,24 @@ function ShowCard({ show, locale }: { show: ApiEvent; locale: Locale }) {
   const visibleDates = dates.slice(0, 5);
   const extra = dates.length - visibleDates.length;
 
+  // Vandaag bepalen voor de inline-highlight: zelfde dag-grens als
+  // de dates-filter (00:00 vandaag → 00:00 morgen) zodat een matinee
+  // én een avond-show op zelfde dag allebei "vandaag" zijn.
+  const todayStart = useMemo(() => {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    return d.getTime();
+  }, []);
+  const tomorrowStart = todayStart + 24 * 60 * 60 * 1000;
+  const formatDate = (d: Date) => {
+    const dow = dowMixed(d.getDay(), locale);
+    const day = d.getDate();
+    const month = monthShort(d.getMonth(), locale).toLowerCase();
+    const hh = String(d.getHours()).padStart(2, '0');
+    const mm = String(d.getMinutes()).padStart(2, '0');
+    return `${dow} ${day} ${month} ${hh}:${mm}`;
+  };
+
   return (
     <Pressable
       onPress={() =>
@@ -380,16 +409,25 @@ function ShowCard({ show, locale }: { show: ApiEvent; locale: Locale }) {
         </Text>
         {visibleDates.length > 0 && (
           <Text style={[styles.dates, { color: roles.fgRead }]}>
-            {visibleDates
-              .map((d) => {
-                const dow = dowMixed(d.getDay(), locale);
-                const day = d.getDate();
-                const month = monthShort(d.getMonth(), locale).toLowerCase();
-                const hh = String(d.getHours()).padStart(2, '0');
-                const mm = String(d.getMinutes()).padStart(2, '0');
-                return `${dow} ${day} ${month} ${hh}:${mm}`;
-              })
-              .join(' · ')}
+            {visibleDates.map((d, i) => {
+              const isToday =
+                d.getTime() >= todayStart && d.getTime() < tomorrowStart;
+              const sep = i > 0 ? ' · ' : '';
+              return (
+                <Text key={i}>
+                  {sep}
+                  <Text
+                    style={
+                      isToday
+                        ? { color: roles.accent, fontFamily: fontFamily.bold }
+                        : undefined
+                    }
+                  >
+                    {formatDate(d)}
+                  </Text>
+                </Text>
+              );
+            })}
             {extra > 0 ? ` · +${extra}` : ''}
           </Text>
         )}
@@ -434,7 +472,7 @@ const styles = StyleSheet.create({
   },
   banner: {
     width: '100%',
-    aspectRatio: 16 / 9,
+    aspectRatio: 1,
     borderRadius: 10,
     overflow: 'hidden',
     marginBottom: 10,

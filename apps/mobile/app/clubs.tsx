@@ -401,7 +401,7 @@ const styles = StyleSheet.create({
   },
   banner: {
     width: '100%',
-    aspectRatio: 16 / 9,
+    aspectRatio: 1,
     borderRadius: 10,
     overflow: 'hidden',
     marginBottom: 10,

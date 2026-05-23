@@ -941,9 +941,7 @@ export default function Avond() {
             <Rail
               kicker={t('Live op de podia', 'Live on stage')}
               moreLabel={t('Meer →', 'More →')}
-              onMore={() =>
-                router.push({ pathname: '/agenda', params: { cat: 'Muziek' } })
-              }
+              onMore={() => router.push('/live' as never)}
             >
               {railLivePodium.map((r) => (
                 <RailEventCard

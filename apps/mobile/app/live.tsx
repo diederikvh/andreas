@@ -12,7 +12,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { router } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import {
   Pressable,
   RefreshControl,
@@ -98,6 +98,14 @@ export default function Live() {
   const t = useT();
   const locale = useLocale();
   const [selected, setSelected] = useState<GenreBucket | 'all'>('all');
+  // Scroll-naar-top bij chip-switch — nieuwe filter, nieuwe lijst,
+  // anders blijf je midden in de oude scroll-positie staan en mis je
+  // items bovenaan de selectie.
+  const scrollRef = useRef<ScrollView>(null);
+  const selectChip = useCallback((b: GenreBucket | 'all') => {
+    setSelected(b);
+    scrollRef.current?.scrollTo({ y: 0, animated: true });
+  }, []);
 
   // Vandaag t/m eerstvolgende zondag (zelfde patroon als /clubs).
   const range = useMemo(() => {
@@ -213,6 +221,7 @@ export default function Live() {
         }
       />
       <ScrollView
+        ref={scrollRef}
         contentContainerStyle={{
           paddingTop:
             insets.top +
@@ -318,7 +327,7 @@ export default function Live() {
                 label={t('Alle', 'All')}
                 count={shows.length}
                 active={selected === 'all'}
-                onPress={() => setSelected('all')}
+                onPress={() => selectChip('all')}
               />
               {visibleChips.map((b) => (
                 <Chip
@@ -326,7 +335,7 @@ export default function Live() {
                   label={BUCKET_LABELS[b][locale === 'en' ? 'en' : 'nl']}
                   count={counts[b]}
                   active={selected === b}
-                  onPress={() => setSelected(b)}
+                  onPress={() => selectChip(b)}
                 />
               ))}
             </ScrollView>
@@ -539,7 +548,7 @@ const styles = StyleSheet.create({
   },
   banner: {
     width: '100%',
-    aspectRatio: 16 / 9,
+    aspectRatio: 1,
     borderRadius: 10,
     overflow: 'hidden',
     marginBottom: 10,
