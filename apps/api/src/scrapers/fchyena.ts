@@ -19,6 +19,7 @@
 import { eq } from 'drizzle-orm';
 
 import { db, schema } from '../db/index.js';
+import { fetchJsonWithTimeout } from './_fetch.js';
 import {
   findOrCreateFilmEvent,
   loadFilmDedupeMap,
@@ -60,19 +61,15 @@ export async function scrapeFchyena(): Promise<FchyenaResult[]> {
     errors: [],
   };
 
-  let json: { movies?: Record<string, HyenaShow[]> } | null = null;
-  try {
-    const r = await fetch(SHOWS_URL, { headers: { 'User-Agent': UA } });
-    if (!r.ok) {
-      result.errors.push(`shows.json fetch ${r.status}`);
-      return [result];
-    }
-    json = (await r.json()) as { movies?: Record<string, HyenaShow[]> };
-  } catch (e) {
-    result.errors.push(`shows.json: ${(e as Error).message}`);
+  const json = await fetchJsonWithTimeout<{ movies?: Record<string, HyenaShow[]> }>(
+    SHOWS_URL,
+    { ua: UA }
+  );
+  if (!json) {
+    result.errors.push('shows.json fetch failed');
     return [result];
   }
-  if (!json?.movies) {
+  if (!json.movies) {
     result.errors.push('no movies in shows.json');
     return [result];
   }

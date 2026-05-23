@@ -21,6 +21,7 @@
 import { eq } from 'drizzle-orm';
 
 import { db, schema } from '../db/index.js';
+import { fetchTextWithTimeout } from './_fetch.js';
 import {
   findOrCreateFilmEvent,
   loadFilmDedupeMap,
@@ -192,13 +193,7 @@ export async function scrapeStudiok(): Promise<StudiokResult[]> {
 // ─── Helpers ────────────────────────────────────────────────────────────
 
 async function fetchText(url: string): Promise<string | null> {
-  try {
-    const r = await fetch(url, { headers: { 'User-Agent': UA } });
-    if (!r.ok) return null;
-    return await r.text();
-  } catch {
-    return null;
-  }
+  return fetchTextWithTimeout(url, { ua: UA });
 }
 
 function parseJsonLdScreening(html: string): ScreeningEventLd | null {

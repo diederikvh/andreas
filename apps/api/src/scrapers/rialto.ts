@@ -19,6 +19,7 @@
 import { eq } from 'drizzle-orm';
 
 import { db, schema } from '../db/index.js';
+import { fetchJsonWithTimeout, fetchTextWithTimeout } from './_fetch.js';
 import {
   findOrCreateFilmEvent,
   loadFilmDedupeMap,
@@ -217,26 +218,14 @@ export async function scrapeRialto(): Promise<RialtoResult[]> {
 }
 
 async function fetchFeed(locationId: number): Promise<FeedDay[] | null> {
-  try {
-    const r = await fetch(
-      `https://rialtofilm.nl/feed/nl/program/${locationId}/${DAYS_AHEAD}`,
-      { headers: { 'User-Agent': UA, Accept: 'application/json' } }
-    );
-    if (!r.ok) return null;
-    return (await r.json()) as FeedDay[];
-  } catch {
-    return null;
-  }
+  return fetchJsonWithTimeout<FeedDay[]>(
+    `https://rialtofilm.nl/feed/nl/program/${locationId}/${DAYS_AHEAD}`,
+    { ua: UA }
+  );
 }
 
 async function fetchText(url: string): Promise<string | null> {
-  try {
-    const r = await fetch(url, { headers: { 'User-Agent': UA } });
-    if (!r.ok) return null;
-    return await r.text();
-  } catch {
-    return null;
-  }
+  return fetchTextWithTimeout(url, { ua: UA });
 }
 
 function decodeEntities(s: string): string {
