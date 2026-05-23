@@ -1498,16 +1498,16 @@ function AgendaRowItem({
   return (
     <EventListRow
       time={rowTimeLabel(row.startsAt, row.endsAt, locale)}
-      thumb={row.imageUrl ?? ''}
+      // Fallback naar venue-image als event geen eigen image heeft —
+      // anders shift de hele rij naar links en oogt de lijst rommelig.
+      thumb={row.imageUrl ?? row.venueImageUrl ?? ''}
+      thumbSize={96}
       title={row.title}
       venue={row.venueName}
       venueTone={venueTone}
-      tags={[
-        {
-          label: translateCategory(row.category, locale),
-          tone: CATEGORY_TICK[row.category],
-        },
-      ]}
+      // Geen category-chip: rijen zitten al onder een category-header
+      // (Music / Theatre / etc) — de chip zou alleen ruis zijn. De
+      // category-color zit nog wel in de tick-stripe rechts.
       seriesLabel={row.seriesName ?? undefined}
       genreLabel={row.genre ?? undefined}
       friends={friends.length > 0 ? friends : undefined}

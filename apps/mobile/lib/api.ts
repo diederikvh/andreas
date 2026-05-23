@@ -317,6 +317,9 @@ export type AgendaRow = {
   venueId: string;
   venueName: string;
   venueType: VenueType | null;
+  /** Venue-image als fallback voor de thumb wanneer event.imageUrl
+      ontbreekt — voorkomt lege thumb in agenda-rijen. */
+  venueImageUrl: string | null;
   friendsSaved: { name: string; avatarUrl: string | null }[];
   friendsSavedCount: number;
   venueFollowed: boolean;

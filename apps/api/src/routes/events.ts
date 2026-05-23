@@ -586,6 +586,7 @@ eventsRoute.get('/agenda', async (c) => {
       eventVenueId: schema.venues.id,
       eventVenueName: schema.venues.name,
       eventVenueType: schema.venues.type,
+      eventVenueImageUrl: schema.venues.imageUrl,
     })
     .from(schema.occurrences)
     .innerJoin(schema.events, eq(schema.events.id, schema.occurrences.eventId))
@@ -610,7 +611,7 @@ eventsRoute.get('/agenda', async (c) => {
   ];
   const occVenueMap = new Map<
     string,
-    { name: string; type: string | null }
+    { name: string; type: string | null; imageUrl: string | null }
   >();
   if (overrideVenueIds.length > 0) {
     const vrows = await db
@@ -618,10 +619,12 @@ eventsRoute.get('/agenda', async (c) => {
         id: schema.venues.id,
         name: schema.venues.name,
         type: schema.venues.type,
+        imageUrl: schema.venues.imageUrl,
       })
       .from(schema.venues)
       .where(inArray(schema.venues.id, overrideVenueIds));
-    for (const v of vrows) occVenueMap.set(v.id, { name: v.name, type: v.type });
+    for (const v of vrows)
+      occVenueMap.set(v.id, { name: v.name, type: v.type, imageUrl: v.imageUrl });
   }
 
   const occIds = rows.map((r) => r.occId);
@@ -654,6 +657,9 @@ eventsRoute.get('/agenda', async (c) => {
       venueId,
       venueName: override?.name ?? r.eventVenueName,
       venueType: override?.type ?? r.eventVenueType ?? null,
+      // Venue-image als fallback voor de thumb wanneer event.imageUrl
+      // ontbreekt — voorkomt de lege-thumb-shift in de agenda-lijst.
+      venueImageUrl: override?.imageUrl ?? r.eventVenueImageUrl ?? null,
       friendsSaved: (f?.friends ?? []).map(
         (fr: { name: string; avatarUrl: string | null }) => ({
           name: fr.name,

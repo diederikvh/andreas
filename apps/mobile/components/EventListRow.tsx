@@ -65,6 +65,9 @@ type Props = {
   featured?: boolean;
   /** Side accent stripe colour. */
   tick: BadgeTone;
+  /** Optional: override thumb size (default 76). Agenda gebruikt 96 om
+      het beeld meer ruimte te geven naast de tekst-zware rij. */
+  thumbSize?: number;
   /** Wanneer aan: tijd + datum verschijnen als kleine bold-regel
       bóven de titel, in een iets lichtere kleur dan de titel.
       Vervangt de mono-uppercase subline boven de tags. Gebruikt op de
@@ -94,6 +97,7 @@ export function EventListRow({
   friends,
   featured = false,
   tick,
+  thumbSize,
   dateAbove = false,
   onPress,
 }: Props) {
@@ -131,7 +135,10 @@ export function EventListRow({
       <View style={[styles.row, { borderColor: roles.bgChip }]}>
         <Image
           source={{ uri: thumb }}
-          style={styles.rowThumb}
+          style={[
+            styles.rowThumb,
+            thumbSize ? { width: thumbSize, height: thumbSize } : null,
+          ]}
           contentFit="cover"
         />
         <View style={styles.rowBody}>
