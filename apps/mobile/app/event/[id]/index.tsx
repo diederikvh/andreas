@@ -370,6 +370,13 @@ export default function EventDetail() {
             </Text>
           )}
 
+          {event.trailerUrl && (
+            <TrailerCard
+              trailerUrl={event.trailerUrl}
+              stillUrl={event.stillUrl ?? event.imageUrl ?? null}
+            />
+          )}
+
           {/* === Content-blokken in vaste volgorde:
                 lineup → nodig iemand uit → tickets → alle voorstellingen
               === */}
@@ -468,7 +475,6 @@ export default function EventDetail() {
             </Text>
           </Animated.View>
           <View style={styles.heroActions}>
-            {event.trailerUrl ? <TrailerButton url={event.trailerUrl} /> : null}
             <HeartButton
               occurrenceId={selectedOccurrenceId}
               saveSource={navSource}
@@ -1380,20 +1386,52 @@ function toViewModel(
   };
 }
 
-/** Trailer-knop in de hero-actions. Opent YouTube/Vimeo in browser of
-    YouTube-app via deeplink. Alleen gerenderd als event.trailerUrl
-    bestaat — dus typisch voor films met TMDb-match. */
-function TrailerButton({ url }: { url: string }) {
+/** Inline trailer-card onder de description. Links: stillUrl-thumb met
+    play-icon overlay; rechts: "Bekijk de trailer"-label + "YouTube"-
+    subline. Tap opent expo-web-browser's in-app browser sheet (iOS
+    SafariViewController, Android Chrome Custom Tabs) — YouTube speelt
+    daarin embedded zonder dat we de gebruiker uit de app jagen. */
+function TrailerCard({
+  trailerUrl,
+  stillUrl,
+}: {
+  trailerUrl: string;
+  stillUrl: string | null;
+}) {
+  const roles = useRoles();
+  const t = useT();
   return (
     <Pressable
-      onPress={async () => {
-        const can = await Linking.canOpenURL(url);
-        if (can) await Linking.openURL(url);
-      }}
-      style={styles.circleBtn}
-      hitSlop={6}
+      onPress={() => WebBrowser.openBrowserAsync(trailerUrl)}
+      style={[styles.trailerCard, { backgroundColor: roles.bgLift }]}
     >
-      <Ionicons name="play" size={18} color={palette.ink} />
+      <View style={styles.trailerThumbWrap}>
+        {stillUrl ? (
+          <Image
+            source={{ uri: stillUrl }}
+            style={styles.trailerThumb}
+            contentFit="cover"
+          />
+        ) : (
+          <View
+            style={[
+              styles.trailerThumb,
+              { backgroundColor: roles.bgChip },
+            ]}
+          />
+        )}
+        <View style={styles.trailerPlayOverlay}>
+          <Ionicons name="play" size={20} color="#fff" />
+        </View>
+      </View>
+      <View style={styles.trailerTextWrap}>
+        <Text style={[styles.trailerTitle, { color: roles.fg }]}>
+          {t('Bekijk de trailer', 'Watch the trailer')}
+        </Text>
+        <Text style={[styles.trailerSub, { color: roles.fgMuted }]}>
+          YouTube
+        </Text>
+      </View>
     </Pressable>
   );
 }
@@ -1682,6 +1720,49 @@ const styles = StyleSheet.create({
     fontSize: 14.5,
     lineHeight: 20.8,
     marginBottom: 12,
+  },
+
+  // Inline trailer-card onder de description. Compacte horizontale
+  // tile: still-thumb links (16:9), tekst rechts ("Bekijk de
+  // trailer" + "YouTube"-subline). Tap opent een in-app browser sheet.
+  trailerCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    borderRadius: 12,
+    padding: 8,
+    marginBottom: 14,
+  },
+  trailerThumbWrap: {
+    position: 'relative',
+    width: 120,
+    aspectRatio: 16 / 9,
+    borderRadius: 8,
+    overflow: 'hidden',
+  },
+  trailerThumb: {
+    width: '100%',
+    height: '100%',
+  },
+  trailerPlayOverlay: {
+    position: 'absolute',
+    top: 0, left: 0, right: 0, bottom: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(0,0,0,0.32)',
+  },
+  trailerTextWrap: { flex: 1 },
+  trailerTitle: {
+    fontFamily: fontFamily.bold,
+    fontSize: 14,
+    letterSpacing: -0.17,
+    marginBottom: 2,
+  },
+  trailerSub: {
+    fontFamily: fontFamily.mono,
+    fontSize: 10,
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
   },
 
   // Invite-banner — verschijnt tussen meta-rij en description wanneer
