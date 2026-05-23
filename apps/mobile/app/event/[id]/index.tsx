@@ -44,6 +44,7 @@ import { useSession } from '@/lib/authClient';
 import {
   dowMixed,
   eventImageUrl,
+  eventStillUrl,
   formatDateRange,
   formatPrice,
   formatTimeRange,
@@ -467,6 +468,7 @@ export default function EventDetail() {
             </Text>
           </Animated.View>
           <View style={styles.heroActions}>
+            {event.trailerUrl ? <TrailerButton url={event.trailerUrl} /> : null}
             <HeartButton
               occurrenceId={selectedOccurrenceId}
               saveSource={navSource}
@@ -1369,10 +1371,31 @@ function toViewModel(
     // event.venue zodat dit niets verandert.
     venue: occ?.venue?.name ?? event.venue.name,
     description: event.description,
-    photo: eventImageUrl(event),
+    // Voor de hero willen we het sfeerbeeld (still/backdrop) — geeft
+    // meer atmosfeer dan een poster. eventStillUrl prefereert
+    // stillUrl, valt terug op imageUrl, dan venue-image.
+    photo: eventStillUrl(event),
     price: formatPrice(sourcePriceCents, locale),
     priceNote,
   };
+}
+
+/** Trailer-knop in de hero-actions. Opent YouTube/Vimeo in browser of
+    YouTube-app via deeplink. Alleen gerenderd als event.trailerUrl
+    bestaat — dus typisch voor films met TMDb-match. */
+function TrailerButton({ url }: { url: string }) {
+  return (
+    <Pressable
+      onPress={async () => {
+        const can = await Linking.canOpenURL(url);
+        if (can) await Linking.openURL(url);
+      }}
+      style={styles.circleBtn}
+      hitSlop={6}
+    >
+      <Ionicons name="play" size={18} color={palette.ink} />
+    </Pressable>
+  );
 }
 
 function ShareButton({ event }: { event: ApiEvent }) {

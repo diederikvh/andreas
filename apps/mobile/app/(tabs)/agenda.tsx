@@ -1498,9 +1498,10 @@ function AgendaRowItem({
   return (
     <EventListRow
       time={rowTimeLabel(row.startsAt, row.endsAt, locale)}
-      // Fallback naar venue-image als event geen eigen image heeft —
-      // anders shift de hele rij naar links en oogt de lijst rommelig.
-      thumb={row.imageUrl ?? row.venueImageUrl ?? ''}
+      // Display-prioriteit: TMDb poster (films) → event-imageUrl →
+      // venue-image als laatste fallback (anders shift de rij naar
+      // links bij events zonder image).
+      thumb={row.posterUrl ?? row.imageUrl ?? row.venueImageUrl ?? ''}
       thumbSize={96}
       title={row.title}
       venue={row.venueName}

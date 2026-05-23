@@ -579,6 +579,7 @@ export default function Jij() {
             <NotificationsSection />
             <PrivacySection me={me} onUpdated={refetchMe} />
             <LanguageSection />
+            <CreditsSection />
           </View>
         )}
       </ScrollView>
@@ -877,6 +878,43 @@ function ModalCloseBtn({ onPress }: { onPress?: () => void }) {
     >
       <Cross size={10} thickness={2.2} color={roles.fg} />
     </Pressable>
+  );
+}
+
+/** Credits-sectie. Bevat de verplichte TMDb-attribution voor het
+    gebruik van de TMDb API onder hun non-commercial licentie. Tekst
+    + link, geen logo (TMDb staat "tekst-only" attribution toe).
+    Tap → opent TMDb.org. */
+function CreditsSection() {
+  const roles = useRoles();
+  const t = useT();
+  return (
+    <>
+      <SectionHead label={t('Bronnen', 'Credits')} />
+      <View style={styles.privacyWrap}>
+        <View style={styles.privacyBlock}>
+          <Text style={[styles.privacyLabel, { color: roles.fg }]}>
+            {t('Film-data', 'Film data')}
+          </Text>
+          <Pressable
+            onPress={() => Linking.openURL('https://www.themoviedb.org')}
+            hitSlop={6}
+          >
+            <Text style={[styles.privacySub, { color: roles.fgMuted }]}>
+              {t(
+                'Posters, sfeerbeelden en trailers van ',
+                'Posters, stills and trailers powered by '
+              )}
+              <Text style={{ color: roles.accent }}>The Movie Database (TMDb)</Text>
+              {t(
+                '. Andreas wordt niet onderschreven of gecertificeerd door TMDb.',
+                '. This product uses the TMDb API but is not endorsed or certified by TMDb.'
+              )}
+            </Text>
+          </Pressable>
+        </View>
+      </View>
+    </>
   );
 }
 

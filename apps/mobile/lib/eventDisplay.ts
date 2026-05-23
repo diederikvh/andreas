@@ -20,6 +20,27 @@ export function eventImageUrl(event: {
   return event.imageUrl ?? event.venue.imageUrl ?? null;
 }
 
+/** Poster-first beeld voor lijst-thumbs (rails, /films, Agenda).
+    Voor films met TMDb-match wint de verticale poster; anders fallback
+    naar imageUrl, daarna venue-image. */
+export function eventPosterUrl(event: {
+  imageUrl: string | null;
+  posterUrl?: string | null;
+  venue: { imageUrl?: string | null };
+}): string | null {
+  return event.posterUrl ?? event.imageUrl ?? event.venue.imageUrl ?? null;
+}
+
+/** Still-first beeld voor de detail-hero. Voor films met TMDb-match
+    wint het landscape sfeerbeeld; anders fallback naar imageUrl. */
+export function eventStillUrl(event: {
+  imageUrl: string | null;
+  stillUrl?: string | null;
+  venue: { imageUrl?: string | null };
+}): string | null {
+  return event.stillUrl ?? event.imageUrl ?? event.venue.imageUrl ?? null;
+}
+
 export const DOW_NL_UPPER = ['ZO', 'MA', 'DI', 'WO', 'DO', 'VR', 'ZA'] as const;
 export const DOW_NL_MIXED = ['Zo', 'Ma', 'Di', 'Wo', 'Do', 'Vr', 'Za'] as const;
 export const DOW_NL_FULL = [

@@ -13,7 +13,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import type { ApiEvent } from '@/lib/api';
 import {
-  eventImageUrl,
+  eventPosterUrl,
   isAllDayRange,
   isMultiDay,
   rowTimeLabel,
@@ -57,7 +57,7 @@ export function FilmRailCard({
   };
 
   const venueName = occurrenceVenueName ?? event.venue.name;
-  const poster = eventImageUrl(event);
+  const poster = eventPosterUrl(event);
 
   return (
     <Pressable onPress={onPress} style={{ width: CARD_WIDTH }}>

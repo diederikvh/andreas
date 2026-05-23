@@ -24,7 +24,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppHeader, HEADER_HEIGHT } from '@/components/AppHeader';
 import { RefreshBanner } from '@/components/RefreshBanner';
 import type { ApiEvent } from '@/lib/api';
-import { eventImageUrl } from '@/lib/eventDisplay';
+import { eventPosterUrl } from '@/lib/eventDisplay';
 import { useLocale, useT } from '@/lib/i18n';
 import { useEvents } from '@/lib/queries';
 import { useMode, useRoles } from '@/store/mode';
@@ -200,7 +200,7 @@ function FilmCard({
   t: ReturnType<typeof useT>;
 }) {
   const roles = useRoles();
-  const poster = eventImageUrl(film);
+  const poster = eventPosterUrl(film);
 
   // Venue-samenvatting: unieke venues uit occurrencesInRange. Pak de
   // primary venue als display-naam en hint bij ≥ 2 venues "+ N".

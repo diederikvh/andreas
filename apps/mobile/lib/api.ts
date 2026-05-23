@@ -87,6 +87,15 @@ export type ApiEvent = {
       festival komt zo op alle 3 dagen in de Agenda terug. */
   occurrencesInRange?: ApiOccurrence[];
   imageUrl: string | null;
+  /** Verticale poster (TMDb of venue-poster), gemirrored naar Bunny.
+      Display-prioriteit in lijst-thumbs: `posterUrl ?? imageUrl`. */
+  posterUrl?: string | null;
+  /** Landscape sfeerbeeld voor de detail-hero (TMDb backdrop of
+      venue-still). Display-prioriteit: `stillUrl ?? imageUrl`. */
+  stillUrl?: string | null;
+  /** Full YouTube/Vimeo URL voor films met een official trailer.
+      Alleen tonen als niet null. */
+  trailerUrl?: string | null;
   category: 'Muziek' | 'Theater' | 'Literatuur' | 'Film' | 'Kunst' | 'Lezing';
   featured: boolean;
   /** Venue van de eerstvolgende occurrence. Voor films met multi-venue
@@ -310,6 +319,9 @@ export type AgendaRow = {
   category: ApiEvent['category'];
   kind: 'show' | 'exhibition';
   imageUrl: string | null;
+  /** Verticale poster (TMDb of venue-poster), voor lijst-thumb.
+      Fallback-chain: posterUrl → imageUrl → venueImageUrl. */
+  posterUrl: string | null;
   /** Eerste genre als de event er een heeft (techno/jazz/drama/...). */
   genre: string | null;
   /** Eerste series-naam (bv. "ADE 2026") als het event in series zit. */
