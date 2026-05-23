@@ -8,6 +8,7 @@ import {
   enrichGenresFromKeywords,
 } from '../../scrapers/_genre-enrich.js';
 import { enrichFilmsFromOmdb } from '../../scrapers/_omdb-enrich.js';
+import { enrichFilmsFromTmdb } from '../../scrapers/_tmdb-enrich.js';
 import { extractFromUrl } from '../../scrapers/extract-from-url.js';
 import { scrapers, type ScraperName } from '../../scrapers/index.js';
 import { uploadToBunny } from '../../storage/bunny.js';
@@ -852,6 +853,33 @@ adminApi.post('/enrich-films-omdb', async (c) => {
   const startedAt = Date.now();
   try {
     const result = await enrichFilmsFromOmdb();
+    return c.json({
+      durationMs: Date.now() - startedAt,
+      ...result,
+    });
+  } catch (e) {
+    return c.json(
+      {
+        durationMs: Date.now() - startedAt,
+        error: (e as Error).message,
+      },
+      500
+    );
+  }
+});
+
+// ─── TMDb-enrichment ────────────────────────────────────────────────
+//
+// Vult posterUrl + stillUrl + trailerUrl voor Film+show events die
+// nog gaps hebben. TMDb is veel completer dan OMDb voor arthouse en
+// heeft year-disambiguatie + stills + trailers. Aangeroepen door
+// scrape-stager.yml's post-step na de film-scrapers. Idempotent.
+// Vereist TMDB_API_KEY in env.
+
+adminApi.post('/enrich-films-tmdb', async (c) => {
+  const startedAt = Date.now();
+  try {
+    const result = await enrichFilmsFromTmdb();
     return c.json({
       durationMs: Date.now() - startedAt,
       ...result,
