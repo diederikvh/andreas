@@ -39,6 +39,32 @@ import { db as dbDefault, schema } from '../db/index.js';
 type Db = typeof dbDefault;
 
 /**
+ * Decodeer HTML-entities zodat dezelfde film-titel uit verschillende
+ * scrapers naar dezelfde string normaliseert. CLAUDE.md waarschuwt
+ * hier expliciet voor: per-scraper decoders missen vaak `&#039;` of
+ * `&#38;` (leading-zero variants), of werken alleen op de description.
+ * Door dit centraal in de dedup-helper te doen vangen we de gevallen
+ * dat een scraper z'n decoder vergeet of incompleet is.
+ *
+ * Handelt af: `&#nnn;` (decimal), `&#xNN;` (hex) én een set named
+ * entities die in praktijk in titels voorkomen.
+ */
+const NAMED_ENTITIES: Record<string, string> = {
+  amp: '&', lt: '<', gt: '>', quot: '"', apos: "'",
+  nbsp: ' ', ndash: '–', mdash: '—',
+  lsquo: '‘', rsquo: '’', ldquo: '“', rdquo: '”', hellip: '…',
+};
+
+export function decodeHtmlEntities(s: string): string {
+  return s
+    .replace(/&#(\d+);/g, (_, code) => String.fromCodePoint(parseInt(code, 10)))
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) =>
+      String.fromCodePoint(parseInt(hex, 16))
+    )
+    .replace(/&([a-zA-Z]+);/g, (m, name) => NAMED_ENTITIES[name] ?? m);
+}
+
+/**
  * Marker-keywords die we herkennen binnen een paren/bracket-suffix.
  * Wanneer een `(...)` of `[...]`-block er één of meer van bevat,
  * strippen we het hele block (incl. omringende "ENG, ", "met ",
@@ -111,7 +137,7 @@ const STRIP_PATTERNS: RegExp[] = [
  *   "Michael - Studio/K"                           → "michael"
  */
 export function normalizeFilmTitle(raw: string): string {
-  let s = raw
+  let s = decodeHtmlEntities(raw)
     .normalize('NFD')
     // Diacritics weg (combining marks).
     .replace(/[̀-ͯ]/g, '')
@@ -228,7 +254,11 @@ export async function findOrCreateFilmEvent(
   input: FilmEventInput,
   db: Db = dbDefault
 ): Promise<FilmEventResult> {
-  const key = normalizeFilmTitle(input.title);
+  // Decode entities meteen — `&#039;` of `&amp;` in een ingekomen title
+  // hoort nooit als-is in de DB. Centraal hier i.p.v. afhankelijk van
+  // elke per-scraper decoder.
+  const title = decodeHtmlEntities(input.title);
+  const key = normalizeFilmTitle(title);
   if (!key) {
     throw new Error(`findOrCreateFilmEvent: lege title-key voor "${input.title}"`);
   }
@@ -253,8 +283,8 @@ export async function findOrCreateFilmEvent(
     // Display-titel: bij gelijke key kiest de kortste variant. Zo wint
     // "Anora" van "Anora (ENG SUBS)" of "Anora (4K Restoration)" voor
     // de display, ongeacht welke scraper eerst draait.
-    if (input.title.length < existing.title.length) {
-      patch.title = input.title;
+    if (title.length < existing.title.length) {
+      patch.title = title;
     }
     if (Object.keys(patch).length > 0) {
       await db.update(schema.events).set(patch).where(eq(schema.events.id, existing.id));
@@ -268,12 +298,12 @@ export async function findOrCreateFilmEvent(
   }
 
   const prefix = input.slugPrefix ?? 'film';
-  const eventId = `${prefix}-${slugify(input.title)}-${randomBytes(3).toString('hex')}`;
+  const eventId = `${prefix}-${slugify(title)}-${randomBytes(3).toString('hex')}`;
   const imageUrl = await resolveImageUrl();
   await db.insert(schema.events).values({
     id: eventId,
     venueId: input.venueId,
-    title: input.title,
+    title,
     description: input.description ?? null,
     kind: 'show',
     imageUrl,
@@ -281,7 +311,7 @@ export async function findOrCreateFilmEvent(
   });
   map.set(key, {
     id: eventId,
-    title: input.title,
+    title,
     description: input.description ?? null,
     imageUrl,
   });

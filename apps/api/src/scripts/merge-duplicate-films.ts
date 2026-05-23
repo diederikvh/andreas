@@ -35,7 +35,7 @@
 import { and, eq, inArray, sql as drizzleSql } from 'drizzle-orm';
 
 import { db, schema } from '../db/index.js';
-import { normalizeFilmTitle } from '../scrapers/_film-dedup.js';
+import { decodeHtmlEntities, normalizeFilmTitle } from '../scrapers/_film-dedup.js';
 
 const COMMIT = process.argv.includes('--commit');
 
@@ -52,6 +52,38 @@ interface EventRow {
 
 async function main() {
   console.log(`Mode: ${COMMIT ? 'COMMIT (writes to DB)' : 'DRY-RUN'}\n`);
+
+  // Stap 0: decode HTML-entities in bestaande event-titles. Doen we
+  // vóór de collision-detectie, anders matched "The President&#039;s
+  // Cake" niet met "The President's Cake" en blijven ze als losse
+  // events bestaan. normalizeFilmTitle decodeert wel intern voor de
+  // key, maar dat fixt de display-title niet.
+  const allEvents = await db
+    .select({ id: schema.events.id, title: schema.events.title })
+    .from(schema.events)
+    .where(
+      and(
+        eq(schema.events.category, 'Film'),
+        eq(schema.events.kind, 'show')
+      )
+    );
+  const entityFixes = allEvents
+    .map((e) => ({ ...e, decoded: decodeHtmlEntities(e.title) }))
+    .filter((e) => e.decoded !== e.title);
+  console.log(`=== Stap 0: entity-decode ===`);
+  console.log(`Events met HTML-entities in title: ${entityFixes.length}`);
+  for (const e of entityFixes) {
+    console.log(`  "${e.title}" → "${e.decoded}"`);
+  }
+  if (COMMIT && entityFixes.length > 0) {
+    for (const e of entityFixes) {
+      await db
+        .update(schema.events)
+        .set({ title: e.decoded })
+        .where(eq(schema.events.id, e.id));
+    }
+    console.log(`  → ${entityFixes.length} titels gedecodeerd.\n`);
+  }
 
   const events = await db
     .select({
