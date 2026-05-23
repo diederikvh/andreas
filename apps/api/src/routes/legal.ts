@@ -422,6 +422,17 @@ const AUTEURSRECHT_BODY = `
   het doel waarvoor de venues het materiaal hebben gepubliceerd.
 </p>
 
+<h2>Film-data via TMDb</h2>
+<p>
+  Filmposters, sfeerbeelden en trailer-links worden aangevuld via
+  <a href="https://www.themoviedb.org" target="_blank" rel="noopener">The Movie Database (TMDb)</a>.
+  Andreas gebruikt de TMDb-API maar wordt niet onderschreven of
+  gecertificeerd door TMDb. Het auteursrecht op de via TMDb opgehaalde
+  poster- en stillafbeeldingen ligt bij de filmstudio's en oorspronkelijke
+  rechthebbenden; Andreas toont het materiaal in redactionele context,
+  ter aankondiging van vertoningen in Amsterdamse bioscopen.
+</p>
+
 <h2>Tekstuele inhoud</h2>
 <p>
   Beschrijvingen, line-ups, prijsinformatie en data komen uit publiek
@@ -695,6 +706,17 @@ const COPYRIGHT_BODY_EN = `
   uses it in editorial context, to announce the relevant event — a use
   that in practice matches the purpose for which the venues published the
   material.
+</p>
+
+<h2>Film data via TMDb</h2>
+<p>
+  Film posters, stills and trailer links are enriched via
+  <a href="https://www.themoviedb.org" target="_blank" rel="noopener">The Movie Database (TMDb)</a>.
+  This product uses the TMDb API but is not endorsed or certified by
+  TMDb. Copyright of posters and stills retrieved through TMDb rests with
+  the film studios and original rights-holders; Andreas displays the
+  material in editorial context, to announce screenings at Amsterdam
+  cinemas.
 </p>
 
 <h2>Textual content</h2>
