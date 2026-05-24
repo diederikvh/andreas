@@ -11,6 +11,7 @@ import { logger } from 'hono/logger';
 import { auth } from './auth.js';
 import { db, schema } from './db/index.js';
 import { adminRoute } from './routes/admin/index.js';
+import { artistsRoute } from './routes/artists.js';
 import { eventsRoute } from './routes/events.js';
 import { friendsRoute, usersRoute } from './routes/friends.js';
 import { groupsRoute } from './routes/groups.js';
@@ -270,6 +271,7 @@ app.post('/me/avatar', async (c) => {
 });
 
 app.route('/events', eventsRoute);
+app.route('/artists', artistsRoute);
 app.route('/venues', venuesRoute);
 app.route('/series', seriesRoute);
 app.route('/saves', savesRoute);

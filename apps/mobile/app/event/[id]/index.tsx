@@ -1055,38 +1055,65 @@ function Lineup({
         )}
       </View>
       <View style={[styles.lineupBlock, { borderColor: roles.bgChip }]}>
-        {lineup.map((entry, i) => (
-          <View
-            key={`${entry.name}-${i}`}
-            style={[
-              styles.lineupRow,
-              i > 0 && { borderTopColor: roles.bgChip, borderTopWidth: StyleSheet.hairlineWidth },
-            ]}
-          >
-            <Text
-              numberOfLines={1}
-              style={[
-                styles.lineupName,
-                {
-                  color: roles.fg,
-                  fontFamily:
-                    entry.role === 'headliner'
-                      ? fontFamily.display
-                      : fontFamily.medium,
-                  fontSize: entry.role === 'headliner' ? 17 : 14.5,
-                  letterSpacing: entry.role === 'headliner' ? -0.34 : -0.14,
-                },
-              ]}
-            >
-              {entry.name}
-            </Text>
-            {entry.role && (
-              <Text style={[styles.lineupRole, { color: roles.fgMuted }]}>
-                {ROLE_LABEL[entry.role]}
+        {lineup.map((entry, i) => {
+          const inner = (
+            <>
+              <Text
+                numberOfLines={1}
+                style={[
+                  styles.lineupName,
+                  {
+                    color: roles.fg,
+                    fontFamily:
+                      entry.role === 'headliner'
+                        ? fontFamily.display
+                        : fontFamily.medium,
+                    fontSize: entry.role === 'headliner' ? 17 : 14.5,
+                    letterSpacing: entry.role === 'headliner' ? -0.34 : -0.14,
+                  },
+                ]}
+              >
+                {entry.name}
               </Text>
-            )}
-          </View>
-        ))}
+              {entry.artistId && (
+                <Ionicons
+                  name="chevron-forward"
+                  size={14}
+                  color={roles.fgMuted}
+                  style={{ marginLeft: 4 }}
+                />
+              )}
+              {entry.role && (
+                <Text style={[styles.lineupRole, { color: roles.fgMuted }]}>
+                  {ROLE_LABEL[entry.role]}
+                </Text>
+              )}
+            </>
+          );
+          const rowStyle = [
+            styles.lineupRow,
+            i > 0 && { borderTopColor: roles.bgChip, borderTopWidth: StyleSheet.hairlineWidth },
+          ];
+          // Klikbaar alleen als we een artist-record hebben — eerlijk
+          // signaal dat er een echte pagina achter zit. Anders gewoon
+          // tekst (geen valse beloftes).
+          if (entry.artistId) {
+            return (
+              <Pressable
+                key={`${entry.name}-${i}`}
+                onPress={() => router.push(`/artist/${entry.artistId}` as never)}
+                style={rowStyle}
+              >
+                {inner}
+              </Pressable>
+            );
+          }
+          return (
+            <View key={`${entry.name}-${i}`} style={rowStyle}>
+              {inner}
+            </View>
+          );
+        })}
       </View>
     </>
   );

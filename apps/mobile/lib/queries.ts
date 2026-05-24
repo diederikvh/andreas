@@ -11,6 +11,7 @@ import {
   declineFriendRequest,
   getAgendaDay,
   getAgendaDays,
+  getArtist,
   getEvent,
   getEventGenres,
   getEvents,
@@ -79,6 +80,7 @@ export const queryKeys = {
   mirror: () => ['mirror', 'me'] as const,
   forYou: () => ['events', 'for-you'] as const,
   dismisses: () => ['dismisses'] as const,
+  artist: (slug: string) => ['artist', slug] as const,
   venue: (slug: string) => ['venue', slug] as const,
   venues: (input: { q?: string; category?: string } = {}) =>
     ['venues', input.q ?? '', input.category ?? ''] as const,
@@ -145,6 +147,16 @@ export function useEvent(id: string) {
     queryKey: queryKeys.event(id),
     queryFn: () => getEvent(id),
     enabled: Boolean(id),
+    staleTime: 10 * 60_000,
+    refetchOnWindowFocus: true,
+  });
+}
+
+export function useArtist(slug: string) {
+  return useQuery({
+    queryKey: queryKeys.artist(slug),
+    queryFn: () => getArtist(slug),
+    enabled: Boolean(slug),
     staleTime: 10 * 60_000,
     refetchOnWindowFocus: true,
   });

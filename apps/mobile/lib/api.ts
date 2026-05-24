@@ -24,6 +24,10 @@ export type OccurrenceStatus = 'scheduled' | 'cancelled' | 'sold_out';
 export type ApiLineupEntry = {
   name: string;
   role?: 'dj' | 'support' | 'headliner' | 'act';
+  /** Pointer naar `artists.id` als de naam gematched is aan een
+      canonical artist-record (via MusicBrainz-enrichment). UI maakt
+      lineup-rij klikbaar naar /artist/{slug} alleen als deze set is. */
+  artistId?: string;
 };
 
 export type ApiOccurrence = {
@@ -281,6 +285,52 @@ export async function getEventGenres(): Promise<ApiGenreBucket[]> {
     '/events/genres'
   );
   return genres;
+}
+
+// ─── Artists ───────────────────────────────────────────────────────────
+
+export type ApiArtist = {
+  id: string;
+  name: string;
+  description: string | null;
+  imageUrl: string | null;
+  spotifyUrl: string | null;
+  appleMusicUrl: string | null;
+  bandcampUrl: string | null;
+  youtubeUrl: string | null;
+  officialUrl: string | null;
+  genres: string[];
+};
+
+export type ApiArtistEvent = {
+  id: string;
+  title: string;
+  imageUrl: string | null;
+  posterUrl: string | null;
+  stillUrl: string | null;
+  category: ApiEvent['category'];
+  nextOccurrence: {
+    id: string;
+    startsAt: string;
+    endsAt: string | null;
+  };
+  venue: {
+    id: string;
+    slug: string;
+    name: string;
+    type: VenueType | null;
+  };
+};
+
+export type ApiArtistDetail = {
+  artist: ApiArtist;
+  events: ApiArtistEvent[];
+};
+
+export async function getArtist(slug: string): Promise<ApiArtistDetail> {
+  return await authedRequest<ApiArtistDetail>(
+    `/artists/${encodeURIComponent(slug)}`
+  );
 }
 
 // ─── Agenda — lean lijst-endpoint ──────────────────────────────────────
