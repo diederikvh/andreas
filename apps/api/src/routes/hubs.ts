@@ -105,11 +105,11 @@ const HUBS: HubConfig[] = [
   {
     slug: 'film',
     title: 'Film in Amsterdam',
-    pageTitle: 'Film in Amsterdam — filmhuizen, premières, retrospectives | ANDREAS',
+    pageTitle: 'Film in Amsterdam — filmhuizen & bioscopen, premières | ANDREAS',
     description:
-      'Filmvoorstellingen, premières en retrospectives in Amsterdamse filmhuizen. EYE, Lab111, FilmHallen, Kriterion, The Movies en meer.',
+      'Filmvoorstellingen, premières en retrospectives in Amsterdamse filmhuizen en bioscopen. EYE, Lab111, FilmHallen, Kriterion, The Movies en meer.',
     intro:
-      'Alle <strong>filmvoorstellingen</strong> in Amsterdam — premières, retrospectives en arthouse in EYE, FilmHallen, Lab111, Kriterion, The Movies en andere filmhuizen.',
+      'Alle <strong>filmvoorstellingen</strong> in Amsterdam — premières, retrospectives en arthouse in EYE, FilmHallen, Lab111, Kriterion, The Movies en andere <strong>filmhuizen en bioscopen</strong> van de stad.',
     venuesHeading: 'Filmhuizen in Amsterdam',
     kind: 'category',
     category: 'Film',
@@ -180,11 +180,11 @@ const HUBS: HubConfig[] = [
   {
     slug: 'filmhuizen',
     title: 'Filmhuizen in Amsterdam',
-    pageTitle: 'Filmhuizen in Amsterdam — komende screenings | ANDREAS',
+    pageTitle: 'Filmhuizen Amsterdam — arthouse bioscopen & komende screenings | ANDREAS',
     description:
-      'Komende filmvoorstellingen in Amsterdamse filmhuizen. EYE, Lab111, FilmHallen, Kriterion, The Movies, De Uitkijk, Cinecenter.',
+      'Komende filmvoorstellingen in Amsterdamse filmhuizen — de arthouse-bioscopen van de stad. EYE, Lab111, FilmHallen, Kriterion, The Movies, De Uitkijk, Cinecenter.',
     intro:
-      'Komende <strong>filmvoorstellingen in de Amsterdamse filmhuizen</strong> — EYE, FilmHallen, Lab111, Kriterion, The Movies, De Uitkijk en de andere arthouse-zalen.',
+      'Komende <strong>filmvoorstellingen in de Amsterdamse filmhuizen</strong> — de arthouse-bioscopen van de stad: EYE, FilmHallen, Lab111, Kriterion, The Movies, De Uitkijk en andere zalen.',
     venuesHeading: 'Alle filmhuizen in Amsterdam',
     kind: 'venueType',
     venueType: 'film',

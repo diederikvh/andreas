@@ -9,11 +9,15 @@
  * (shape `{ type, props: { style, children } }`). Geen JSX want
  * `hono/jsx` is incompatibel met React's vnode-shape die Satori wil.
  *
- * Slide-formaat: 1080×1350 (4:5 — IG-feed-portrait). Nacht-modus.
+ * Slide-formaat: 1080×1920 (9:16 — IG Reels/Stories + feed-portrait,
+ * universele post-maat sinds IG-roadmap 2024+). Nacht-modus. Hero-
+ * images zijn `objectFit: cover` dus adapteren naar de langere frame
+ * (croppen waar nodig); bestaande beelden hoeven niet opnieuw te
+ * worden aangeleverd.
  */
 
 export const SLIDE_WIDTH = 1080;
-export const SLIDE_HEIGHT = 1350;
+export const SLIDE_HEIGHT = 1920;
 
 const NOIR = '#0a0a0b';
 const NOIR2 = '#17171a';
@@ -258,12 +262,11 @@ export interface EventSlideInput {
 }
 
 export function eventSlide(input: EventSlideInput): VNode {
+  // Geen eind-tijd op de carousel-slides: te druk en geeft een verkeerd
+  // signaal (alsof de show maar tot dat moment is). Start-tijd is
+  // voldoende; bezoekers checken eind-tijd in de app/site.
   const fullDay = isFullDay(input.startsAt, input.endsAt);
   const time = fullDay ? 'Hele dag' : formatTimeNl(input.startsAt);
-  const duration =
-    !fullDay && input.endsAt && input.endsAt.getTime() > input.startsAt.getTime()
-      ? `– ${formatTimeNl(input.endsAt)}`
-      : null;
 
   return el(
     'div',
@@ -368,6 +371,8 @@ export function eventSlide(input: EventSlideInput): VNode {
             width: '100%',
           },
         },
+        // Datum + tijd op één regel: "VR 25 MEI · 20:00". Minder
+        // verticale ruimte, meer compact.
         el(
           'div',
           {
@@ -379,43 +384,7 @@ export function eventSlide(input: EventSlideInput): VNode {
               textTransform: 'uppercase',
             },
           },
-          formatDateNl(input.startsAt)
-        ),
-        el(
-          'div',
-          {
-            style: {
-              display: 'flex',
-              flexDirection: 'row',
-              gap: 14,
-              alignItems: 'baseline',
-            },
-          },
-          el(
-            'div',
-            {
-              style: {
-                fontSize: 56,
-                fontWeight: 900,
-                color: ACID,
-                letterSpacing: -1,
-              },
-            },
-            time
-          ),
-          duration
-            ? el(
-                'div',
-                {
-                  style: {
-                    fontSize: 36,
-                    fontWeight: 500,
-                    color: INK,
-                  },
-                },
-                duration
-              )
-            : null
+          `${formatDateNl(input.startsAt)} · ${time}`
         )
       ),
       // Title
