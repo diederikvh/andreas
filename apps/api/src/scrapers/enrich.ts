@@ -24,7 +24,7 @@ const SYSTEM_PROMPT =
   '\n' +
   'Aanwijzingen per veld:\n' +
   '- genres: lowercase tags (max 4) zoals techno, house, jazz, hip-hop, arthouse, drama, dans, kunst, lezing, klassiek, performance, ambient, queer. Alleen als de bron een genre noemt of context onmiskenbaar is. Bij twijfel: lege array.\n' +
-  '- lineup: artiesten/acts EXPLICIET genoemd in de tekst, met optionele rol. Geldige rollen: "dj", "support", "headliner", "act". Geen guessing op titel-basis. Bij geen expliciete vermelding: null.\n' +
+  '- lineup: artiesten/acts EXPLICIET genoemd in de tekst, met optionele rol. Geldige rollen: "dj", "support", "headliner", "act". Geen guessing op titel-basis. Bij geen expliciete vermelding: null. GEEN generieke placeholders als naam ("support", "special guest", "tba", "opening act", "onbekend"); zulke aanduidingen horen alleen in `role`, niet in `name`. Skip ze als er geen echte naam bij staat.\n' +
   '- room: zaal binnen het venue (bv. "Grote Zaal", "Kleine Zaal", "Tomastheater") — alleen als zaal-naam expliciet vermeld. Adres of stad telt NIET. Bij twijfel: null.\n' +
   '- priceNote: ALLEEN als de tekst een notitie OVER PRIJS bevat: bv. "lidmaatschap vereist", "donatie", "pay-what-you-can", "CJP-korting", "studentenkorting beschikbaar", "vanaf €5". NIET voor leeftijdsgrenzen ("21+", "18+"), huisregels (geen telefoon, geen foto), of dresscode. Bij twijfel: null.\n' +
   '- kind: "show" voor concert/club/voorstelling/film/lezing/opening. "exhibition" voor doorlopende tentoonstelling. Default: "show".\n' +
@@ -98,6 +98,20 @@ const TOOL_DEF = {
 
 const ALLOWED_ROLES = ['dj', 'support', 'headliner', 'act'] as const;
 type Role = (typeof ALLOWED_ROLES)[number];
+
+/**
+ * Lineup-`name`-waardes die geen echte artiestnaam zijn maar generieke
+ * placeholders ("support", "tba", "special guest", "onbekend"). Zulke
+ * entries leveren een dood-linkje op de artist-pagina ("naast hoofd-act
+ * Allegaeon staat ook nog 'support'") en moeten dus eruit. De rol mag
+ * apart in `role` staan; alleen de naam verwerpen we.
+ */
+const LINEUP_PLACEHOLDER_NAME =
+  /^(support|special guest|guest|opening act|opener|tba|t\.b\.a\.|to be announced|onbekend|nnb|n\.n\.b\.|nog niet bekend|nog onbekend|line[\s-]?up tba|line[\s-]?up t\.b\.a\.|various|various artists|aanvullende artiest|aanvulling)$/i;
+
+export function isLineupPlaceholderName(name: string): boolean {
+  return LINEUP_PLACEHOLDER_NAME.test(name.trim());
+}
 
 export type EnrichInput = {
   title: string;
@@ -236,7 +250,7 @@ export async function enrichEvent(input: EnrichInput): Promise<EnrichOutput> {
       }
       return out;
     })
-    .filter((l) => l.name.length > 0);
+    .filter((l) => l.name.length > 0 && !isLineupPlaceholderName(l.name));
   const lineup = lineupCleaned.length > 0 ? lineupCleaned : null;
 
   const room =

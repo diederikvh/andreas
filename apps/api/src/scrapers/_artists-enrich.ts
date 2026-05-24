@@ -24,6 +24,7 @@
 import { and, eq, gte, inArray, isNull, lt, or, sql } from 'drizzle-orm';
 
 import { db, schema } from '../db/index.js';
+import { isLineupPlaceholderName } from './enrich.js';
 
 const UA = 'Andreas/1.0 ( diederik@wend.nl )';
 // 2500ms — MB's officiele limiet is 1/sec, maar bij 1500ms hebben we
@@ -228,6 +229,10 @@ export async function enrichLineupArtists(
     lineup.forEach((item, idx) => {
       const raw = item?.name?.trim();
       if (!raw) return;
+      // Defense-in-depth: ook al filtert enrich.ts placeholders al weg,
+      // we skippen ze hier ook zodat we geen MB-search doen op "support"
+      // en geen artist-record aanmaken voor een woord dat geen naam is.
+      if (isLineupPlaceholderName(raw)) return;
       const lower = raw.toLowerCase();
       const entry = nameToCallsites.get(lower);
       if (entry) {

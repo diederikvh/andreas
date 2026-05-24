@@ -15,6 +15,7 @@ import {
   jsonLd,
   renderCtaCard,
   renderEventMeta,
+  renderFeaturedCard,
   renderMobileStickyCta,
   renderSiteFooter,
   renderThumb,
@@ -356,7 +357,22 @@ function renderHubPage(
     { name: hub.title, path: `/${hub.slug}` },
   ]);
 
+  const HUB_FEATURED = 2;
+  const eventsFeaturedHtml = events
+    .slice(0, HUB_FEATURED)
+    .map((e) =>
+      renderFeaturedCard({
+        href: `/e/${e.eventId}`,
+        imageUrl: e.imageUrl,
+        when: formatRowWhen(e),
+        title: e.title,
+        meta: renderEventMeta(e.venueName, e.genres),
+      })
+    )
+    .join('\n      ');
+
   const eventsHtml = events
+    .slice(HUB_FEATURED)
     .map(
       (e) => `<li>
         <a class="row-link" href="/e/${escapeHtml(e.eventId)}">
@@ -517,9 +533,10 @@ function renderHubPage(
       <div class="page-main">
         ${
           events.length > 0
-            ? `<ul class="lines">
+            ? `${eventsFeaturedHtml ? `<div class="featured-grid">${eventsFeaturedHtml}</div>` : ''}
+        ${eventsHtml ? `<ul class="lines">
           ${eventsHtml}
-        </ul>`
+        </ul>` : ''}`
             : emptyState
         }
         ${

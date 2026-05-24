@@ -22,6 +22,7 @@ import {
   renderAppBanner,
   renderCtaCard,
   renderEventMeta,
+  renderFeaturedCard,
   renderHead,
   renderHeroImage,
   renderMobileStickyCta,
@@ -560,6 +561,7 @@ function renderEventSeoPage(opts: {
   const lineup = (primaryOcc?.lineup ?? []) as Array<{
     name: string;
     role?: 'dj' | 'support' | 'headliner' | 'act';
+    artistId?: string;
   }>;
 
   const performers = lineup.length > 0
@@ -823,15 +825,23 @@ function renderEventSeoPage(opts: {
       <p>${escapeHtml(event.venue.name)} ligt aan ${escapeHtml(event.venue.address)} in Amsterdam. <a href="/v/${escapeHtml(event.venue.slug)}">Bekijk de venue-pagina</a>.</p>
     `;
 
-  // Lineup-lijst.
+  // Lineup-lijst. Items met een gematchte `artistId` worden klikbaar
+  // naar de artist-pagina — interne link-cluster voor SEO + extra
+  // diepte voor bezoekers ("wie is deze headliner eigenlijk?").
   const lineupHtml = lineup.length > 0
     ? `
       <h2>Line-up</h2>
       <ul class="lineup">
         ${lineup
-          .map(
-            (l) => `<li><span>${escapeHtml(l.name)}</span>${l.role ? `<span class="role">${escapeHtml(l.role)}</span>` : ''}</li>`
-          )
+          .map((l) => {
+            const nameHtml = l.artistId
+              ? `<a href="/a/${escapeHtml(l.artistId)}">${escapeHtml(l.name)}</a>`
+              : `<span>${escapeHtml(l.name)}</span>`;
+            const roleHtml = l.role
+              ? `<span class="role">${escapeHtml(l.role)}</span>`
+              : '';
+            return `<li>${nameHtml}${roleHtml}</li>`;
+          })
           .join('\n        ')}
       </ul>
     `
@@ -905,18 +915,34 @@ function renderEventSeoPage(opts: {
   // op dezelfde venue of in dezelfde category. Versterkt topical authority
   // én geeft bezoekers een logische volgende stap zonder de app-CTA in de
   // weg te zitten.
-  const relatedHtml = relatedEvents.length > 0
-    ? `
-      <h2>Vergelijkbaar</h2>
-      <ul class="lines">
-        ${relatedEvents
-          .map((e) => {
-            const when = e.kind === 'exhibition' && e.endsAt
-              ? `t/m ${e.endsAt.toLocaleDateString('nl-NL', {
-                  day: 'numeric', month: 'short', timeZone: 'Europe/Amsterdam',
-                })}`
-              : formatShort(e.startsAt);
-            return `<li>
+  const relatedWhen = (re: RelatedEvent): string =>
+    re.kind === 'exhibition' && re.endsAt
+      ? `t/m ${re.endsAt.toLocaleDateString('nl-NL', {
+          day: 'numeric',
+          month: 'short',
+          timeZone: 'Europe/Amsterdam',
+        })}`
+      : formatShort(re.startsAt);
+
+  const RELATED_FEATURED = 2;
+  const relatedFeaturedHtml = relatedEvents
+    .slice(0, RELATED_FEATURED)
+    .map((e) =>
+      renderFeaturedCard({
+        href: `/e/${e.eventId}`,
+        imageUrl: e.imageUrl,
+        when: relatedWhen(e),
+        title: e.title,
+        meta: e.venueName,
+      })
+    )
+    .join('\n      ');
+
+  const relatedListHtml = relatedEvents
+    .slice(RELATED_FEATURED)
+    .map((e) => {
+      const when = relatedWhen(e);
+      return `<li>
           <a class="row-link" href="/e/${escapeHtml(e.eventId)}">
             ${renderThumb(e.imageUrl, e.title)}
             <span class="row-text">
@@ -926,9 +952,16 @@ function renderEventSeoPage(opts: {
             </span>
           </a>
         </li>`;
-          })
-          .join('\n        ')}
-      </ul>
+    })
+    .join('\n        ');
+
+  const relatedHtml = relatedEvents.length > 0
+    ? `
+      <h2>Vergelijkbaar</h2>
+      ${relatedFeaturedHtml ? `<div class="featured-grid">${relatedFeaturedHtml}</div>` : ''}
+      ${relatedListHtml ? `<ul class="lines">
+        ${relatedListHtml}
+      </ul>` : ''}
     `
     : '';
 
@@ -1270,6 +1303,763 @@ function renderVenueSeoPage(opts: {
 </body>
 </html>`;
 }
+
+/* ========================================================================
+ * /a/:slug  —  artist-SEO-pagina
+ * ====================================================================== */
+
+shareRoute.get('/a/:slug', async (c) => {
+  const slug = c.req.param('slug');
+
+  const [artist] = await db
+    .select()
+    .from(schema.artists)
+    .where(eq(schema.artists.id, slug))
+    .limit(1);
+
+  if (!artist) {
+    return c.body(renderNotFound('Artist niet gevonden'), 404, {
+      'Content-Type': 'text/html; charset=utf-8',
+      'Cache-Control': 'no-store',
+    });
+  }
+
+  // Komende shows: dezelfde JSONB-containment-query als de mobile API.
+  // We pakken de eerstvolgende occurrence per event, dedupen op eventId
+  // zodat een residency niet 5× verschijnt, en sorteren op datum.
+  const upcomingRows = await db
+    .select({
+      eventId: schema.events.id,
+      title: schema.events.title,
+      imageUrl: schema.events.imageUrl,
+      occId: schema.occurrences.id,
+      startsAt: schema.occurrences.startsAt,
+      endsAt: schema.occurrences.endsAt,
+      venueId: schema.venues.id,
+      venueSlug: schema.venues.slug,
+      venueName: schema.venues.name,
+    })
+    .from(schema.occurrences)
+    .innerJoin(schema.events, eq(schema.events.id, schema.occurrences.eventId))
+    .innerJoin(schema.venues, eq(schema.venues.id, schema.events.venueId))
+    .where(
+      and(
+        eq(schema.events.category, 'Muziek'),
+        eq(schema.events.published, true),
+        eq(schema.venues.published, true),
+        sql`COALESCE(${schema.occurrences.endsAt}, ${schema.occurrences.startsAt} + INTERVAL '4 hours') >= NOW()`,
+        sql`${schema.occurrences.status} <> 'cancelled'`,
+        sql`${schema.occurrences.lineup} @> ${JSON.stringify([{ artistId: artist.id }])}::jsonb`
+      )
+    )
+    .orderBy(asc(schema.occurrences.startsAt));
+
+  const seenEvents = new Set<string>();
+  const upcoming: Array<{
+    eventId: string;
+    title: string;
+    imageUrl: string | null;
+    startsAt: Date;
+    endsAt: Date | null;
+    venueSlug: string;
+    venueName: string;
+  }> = [];
+  for (const r of upcomingRows) {
+    if (seenEvents.has(r.eventId)) continue;
+    seenEvents.add(r.eventId);
+    upcoming.push({
+      eventId: r.eventId,
+      title: r.title,
+      imageUrl: r.imageUrl,
+      startsAt: r.startsAt,
+      endsAt: r.endsAt,
+      venueSlug: r.venueSlug,
+      venueName: r.venueName,
+    });
+  }
+
+  const appLink = `andreas://artist/${encodeURIComponent(slug)}`;
+  const html = renderArtistSeoPage({ artist, upcoming, appLink });
+
+  return c.body(html, 200, {
+    'Content-Type': 'text/html; charset=utf-8',
+    // 10-15 min vers; artists worden niet vaker dan dagelijks ge-enrichd
+    // en upcoming-rij verandert alleen bij nieuwe scrape-rondes.
+    'Cache-Control': 'public, max-age=600, s-maxage=900, stale-while-revalidate=3600',
+  });
+});
+
+/* ========================================================================
+ * /artists  —  index van artists met komende shows in Amsterdam
+ * ====================================================================== */
+
+shareRoute.get('/artists', async (c) => {
+  // Filter (WHERE): artists met >=1 future occurrence ÉN minimaal één
+  // streaming-link of officiële site (= MB-enriched).
+  // Kwaliteits-bar (HAVING): bio aanwezig ÓF >=2 shows. Dat snijdt de
+  // eenmalige openers eruit en houdt artists over waar Google + bezoeker
+  // wat aan hebben.
+  const rows = await db
+    .selectDistinct({
+      id: schema.artists.id,
+      name: schema.artists.name,
+      genres: schema.artists.genres,
+      description: schema.artists.description,
+      spotifyUrl: schema.artists.spotifyUrl,
+      appleMusicUrl: schema.artists.appleMusicUrl,
+      bandcampUrl: schema.artists.bandcampUrl,
+      youtubeUrl: schema.artists.youtubeUrl,
+      officialUrl: schema.artists.officialUrl,
+      nextStart: sql<Date>`MIN(${schema.occurrences.startsAt})`.as('next_start'),
+      showCount: sql<number>`COUNT(DISTINCT ${schema.events.id})`.as('show_count'),
+    })
+    .from(schema.artists)
+    .innerJoin(
+      schema.occurrences,
+      sql`${schema.occurrences.lineup} @> jsonb_build_array(jsonb_build_object('artistId', ${schema.artists.id}))`
+    )
+    .innerJoin(schema.events, eq(schema.events.id, schema.occurrences.eventId))
+    .innerJoin(schema.venues, eq(schema.venues.id, schema.events.venueId))
+    .where(
+      and(
+        eq(schema.events.category, 'Muziek'),
+        eq(schema.events.published, true),
+        eq(schema.venues.published, true),
+        sql`COALESCE(${schema.occurrences.endsAt}, ${schema.occurrences.startsAt} + INTERVAL '4 hours') >= NOW()`,
+        sql`${schema.occurrences.status} <> 'cancelled'`,
+        or(
+          sql`${schema.artists.spotifyUrl} IS NOT NULL`,
+          sql`${schema.artists.appleMusicUrl} IS NOT NULL`,
+          sql`${schema.artists.bandcampUrl} IS NOT NULL`,
+          sql`${schema.artists.youtubeUrl} IS NOT NULL`,
+          sql`${schema.artists.officialUrl} IS NOT NULL`
+        )
+      )
+    )
+    .groupBy(
+      schema.artists.id,
+      schema.artists.name,
+      schema.artists.genres,
+      schema.artists.description,
+      schema.artists.spotifyUrl,
+      schema.artists.appleMusicUrl,
+      schema.artists.bandcampUrl,
+      schema.artists.youtubeUrl,
+      schema.artists.officialUrl
+    )
+    // Kwaliteits-bar: alleen artists met >=2 komende shows. MB-bio bleek
+    // geen bruikbaar signaal (de enrich-helper zet "disambiguation" als
+    // bio — typisch "Dutch DJ" of "soprano", maar 100% van de enriched
+    // artists heeft het, dus filter-waarde = 0). Multi-show pakt
+    // recurring acts en sluit eenmalige openers uit; brengt het van 377
+    // naar ~80 artists — scanbaar genoeg voor één pagina.
+    .having(sql`COUNT(DISTINCT ${schema.events.id}) >= 2`)
+    .orderBy(asc(schema.artists.name));
+
+  const html = renderArtistsIndexPage({ artists: rows });
+
+  return c.body(html, 200, {
+    'Content-Type': 'text/html; charset=utf-8',
+    // 30 min — index hoeft niet realtime maar wel binnen een dag na een
+    // nieuwe scrape-batch verse content tonen.
+    'Cache-Control': 'public, max-age=1800, s-maxage=1800, stale-while-revalidate=86400',
+  });
+});
+
+/* ========================================================================
+ * Artist SEO-templates
+ * ====================================================================== */
+
+type ArtistRow = typeof schema.artists.$inferSelect;
+
+type ArtistShow = {
+  eventId: string;
+  title: string;
+  imageUrl: string | null;
+  startsAt: Date;
+  endsAt: Date | null;
+  venueSlug: string;
+  venueName: string;
+};
+
+type StreamingPlatform = 'spotify' | 'apple' | 'bandcamp' | 'youtube' | 'website';
+
+/**
+ * Inline SVG-iconen per platform. Brand-paden komen uit simple-icons.org
+ * (CC0/MIT). `fill="currentColor"` zodat 't icoon mee-kleurt met de
+ * button-state (fg in rust, acid op hover). 18×18 past goed naast 14px
+ * Archivo-tekst. Bandcamp en Website hebben simpele geometrie zelf
+ * geschreven.
+ */
+function streamingIconSvg(platform: StreamingPlatform): string {
+  const attrs = `width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"`;
+  switch (platform) {
+    case 'spotify':
+      return `<svg ${attrs}><path d="M12 0a12 12 0 1 0 0 24 12 12 0 0 0 0-24Zm5.5 17.3a.75.75 0 0 1-1.03.25c-2.82-1.72-6.37-2.1-10.55-1.15a.75.75 0 1 1-.34-1.46c4.58-1.04 8.5-.6 11.66 1.33.36.22.47.69.26 1.03Zm1.47-3.27a.94.94 0 0 1-1.29.31c-3.23-1.98-8.14-2.56-11.95-1.4a.94.94 0 0 1-.55-1.8c4.36-1.32 9.77-.68 13.48 1.6.44.27.58.86.31 1.29Zm.13-3.41C15.3 8.32 8.78 8.08 5.06 9.2a1.13 1.13 0 0 1-.66-2.15C8.66 5.76 15.86 6.05 20.06 8.5a1.13 1.13 0 0 1-1.16 1.94Z"/></svg>`;
+    case 'apple':
+      return `<svg ${attrs}><path d="M23.97 6.43c-.13-2.96-2.42-5.4-5.4-5.4H5.43C2.45 1.03.16 3.47.03 6.43L0 6.96v10.08l.03.53c.13 2.96 2.42 5.4 5.4 5.4h13.14c2.98 0 5.27-2.44 5.4-5.4l.03-.53V6.96l-.03-.53ZM17.2 17.04c0 .79-.49 1.48-1.22 1.74l-.42.13c-1.5.44-2.46-.5-2.46-1.45 0-1 .77-1.47 1.83-1.71.31-.07 1.05-.2 1.35-.27.41-.1.49-.16.49-.5V8.7L9.05 10.4v7.97c0 .79-.49 1.48-1.22 1.74l-.42.13c-1.5.44-2.47-.5-2.47-1.45 0-1 .77-1.47 1.84-1.71.3-.07 1.05-.2 1.35-.27.41-.1.49-.16.49-.5V7.97c0-.81.48-1.18 1.2-1.34l6.04-1.21c.4-.08.84-.18 1.16-.18.95 0 1.18.7 1.18 1.45v10.35Z"/></svg>`;
+    case 'bandcamp':
+      return `<svg ${attrs}><path d="M0 18.75 7.437 5.25H24l-7.438 13.5Z"/></svg>`;
+    case 'youtube':
+      return `<svg ${attrs}><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814ZM9.545 15.568V8.432L15.818 12l-6.273 3.568Z"/></svg>`;
+    case 'website':
+      return `<svg ${attrs} fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a14 14 0 0 1 0 18 14 14 0 0 1 0-18Z"/></svg>`;
+  }
+}
+
+/**
+ * Bouw een lijst van streaming-/web-links voor een artist. Alleen platforms
+ * waarvoor een URL bekend is, in een vaste volgorde (Spotify eerst — meest
+ * herkenbaar voor het NL-publiek). Externe links openen in nieuw tabblad
+ * met `rel="noopener"`.
+ */
+function artistLinks(a: ArtistRow): Array<{
+  platform: StreamingPlatform;
+  label: string;
+  url: string;
+}> {
+  const out: Array<{ platform: StreamingPlatform; label: string; url: string }> = [];
+  if (a.spotifyUrl) out.push({ platform: 'spotify', label: 'Spotify', url: a.spotifyUrl });
+  if (a.appleMusicUrl) out.push({ platform: 'apple', label: 'Apple Music', url: a.appleMusicUrl });
+  if (a.bandcampUrl) out.push({ platform: 'bandcamp', label: 'Bandcamp', url: a.bandcampUrl });
+  if (a.youtubeUrl) out.push({ platform: 'youtube', label: 'YouTube', url: a.youtubeUrl });
+  if (a.officialUrl) out.push({ platform: 'website', label: 'Website', url: a.officialUrl });
+  return out;
+}
+
+function renderArtistSeoPage(opts: {
+  artist: ArtistRow;
+  upcoming: ArtistShow[];
+  appLink: string;
+}): string {
+  const { artist, upcoming, appLink } = opts;
+  const links = artistLinks(artist);
+
+  // ---------- titel + description ----------
+
+  const venueList = [...new Set(upcoming.slice(0, 3).map((s) => s.venueName))];
+  const pageTitle =
+    upcoming.length > 0
+      ? `${artist.name} in Amsterdam · Komende shows | ANDREAS`
+      : `${artist.name} | ANDREAS`;
+
+  const descParts: string[] = [];
+  if (upcoming.length > 0) {
+    descParts.push(
+      `${artist.name} speelt binnenkort in Amsterdam: ${venueList.join(', ')}.`
+    );
+  } else {
+    descParts.push(`${artist.name} op ANDREAS — uitgaan in Amsterdam.`);
+  }
+  if (artist.genres.length > 0) {
+    descParts.push(artist.genres.slice(0, 3).join(', ') + '.');
+  }
+  if (links.length > 0) {
+    descParts.push(`Luister op ${links.slice(0, 2).map((l) => l.label).join(' & ')}.`);
+  }
+  const desc = descParts.join(' ').slice(0, 158);
+
+  // ---------- JSON-LD: MusicGroup ----------
+
+  const sameAs = links.map((l) => l.url);
+  const musicGroupLd = {
+    '@context': 'https://schema.org',
+    '@type': 'MusicGroup',
+    name: artist.name,
+    ...(artist.description ? { description: artist.description } : {}),
+    ...(artist.genres.length > 0 ? { genre: artist.genres } : {}),
+    ...(sameAs.length > 0 ? { sameAs } : {}),
+    url: `${PUBLIC_BASE_URL}/a/${artist.id}`,
+  };
+
+  // ---------- JSON-LD: ItemList van komende shows ----------
+
+  const upcomingLd = upcoming.length > 0
+    ? {
+        '@context': 'https://schema.org',
+        '@type': 'ItemList',
+        itemListElement: upcoming.slice(0, 20).map((s, i) => ({
+          '@type': 'ListItem',
+          position: i + 1,
+          item: {
+            '@type': 'MusicEvent',
+            name: s.title,
+            startDate: s.startsAt,
+            ...(s.endsAt ? { endDate: s.endsAt } : {}),
+            url: `${PUBLIC_BASE_URL}/e/${s.eventId}`,
+            location: {
+              '@type': 'MusicVenue',
+              name: s.venueName,
+              url: `${PUBLIC_BASE_URL}/v/${s.venueSlug}`,
+            },
+            performer: { '@type': 'MusicGroup', name: artist.name },
+          },
+        })),
+      }
+    : null;
+
+  // ---------- JSON-LD: breadcrumb ----------
+
+  const breadcrumb = breadcrumbJsonLd([
+    { name: 'ANDREAS', path: '/' },
+    { name: 'Artists', path: '/artists' },
+    { name: artist.name, path: `/a/${artist.id}` },
+  ]);
+
+  const jsonLdBlocks = [jsonLd(musicGroupLd), breadcrumb];
+  if (upcomingLd) jsonLdBlocks.push(jsonLd(upcomingLd));
+
+  // ---------- head ----------
+
+  const head = renderHead({
+    title: pageTitle,
+    description: desc,
+    canonicalPath: `/a/${artist.id}`,
+    ogImage: artist.imageUrl,
+    ogType: 'article',
+    apple: { appId: APPLE_APP_ID, appArgument: appLink },
+    jsonLdBlocks,
+    extraStyles: PAGE_GRID_STYLES + LIST_STYLES + ARTIST_PAGE_STYLES,
+  });
+
+  // ---------- body ----------
+
+  const nextShow = upcoming[0];
+  const leadParts: string[] = [];
+  if (nextShow) {
+    leadParts.push(
+      `<strong>${escapeHtml(artist.name)}</strong> speelt op ${escapeHtml(
+        formatShort(nextShow.startsAt)
+      )} in <a href="/v/${escapeHtml(nextShow.venueSlug)}">${escapeHtml(
+        nextShow.venueName
+      )}</a>.`
+    );
+  } else {
+    leadParts.push(
+      `<strong>${escapeHtml(artist.name)}</strong> op ANDREAS.`
+    );
+  }
+  if (artist.genres.length > 0) {
+    leadParts.push(escapeHtml(artist.genres.slice(0, 3).join(', ')) + '.');
+  }
+
+  const genreHtml = artist.genres.length > 0
+    ? `<div class="tags">${artist.genres
+        .slice(0, 8)
+        .map((g) => `<span class="tag">${escapeHtml(g)}</span>`)
+        .join('')}</div>`
+    : '';
+
+  // Streaming-links als substantiële buttons (bgLift-vlak, 6px radius)
+  // met platform-icoontje links en label rechts — zelfde recept als de
+  // mobile-tiles. Inline SVG zodat we geen icon-font of externe deps
+  // nodig hebben.
+  const linksHtml = links.length > 0
+    ? `<div class="streaming-btns">${links
+        .map(
+          (l) =>
+            `<a class="streaming-btn" href="${escapeHtml(l.url)}" target="_blank" rel="noopener"><span class="streaming-icon">${streamingIconSvg(l.platform)}</span><span class="streaming-label">${escapeHtml(l.label)}</span></a>`
+        )
+        .join('')}</div>`
+    : '';
+
+  const aboutHtml = artist.description && artist.description.length > 40
+    ? `<h2>Over ${escapeHtml(artist.name)}</h2><p>${escapeHtml(artist.description)}</p>`
+    : '';
+
+  const ARTIST_FEATURED = 2;
+  const artistFeaturedHtml = upcoming
+    .slice(0, ARTIST_FEATURED)
+    .map((s) =>
+      renderFeaturedCard({
+        href: `/e/${s.eventId}`,
+        imageUrl: s.imageUrl,
+        when: formatShort(s.startsAt),
+        title: s.title,
+        meta: s.venueName,
+      })
+    )
+    .join('\n      ');
+
+  const artistListHtml = upcoming
+    .slice(ARTIST_FEATURED)
+    .map((s) => {
+      const when = formatShort(s.startsAt);
+      return `<li>
+          <a class="row-link" href="/e/${escapeHtml(s.eventId)}">
+            ${renderThumb(s.imageUrl, s.title)}
+            <span class="row-text">
+              <span class="when">${escapeHtml(when)}</span>
+              <span class="title">${escapeHtml(s.title)}</span>
+              <span class="meta">${escapeHtml(s.venueName)}</span>
+            </span>
+          </a>
+        </li>`;
+    })
+    .join('\n        ');
+
+  const upcomingHtml = upcoming.length > 0
+    ? `
+      <h2>Komende shows in Amsterdam</h2>
+      ${artistFeaturedHtml ? `<div class="featured-grid">${artistFeaturedHtml}</div>` : ''}
+      ${artistListHtml ? `<ul class="lines">
+        ${artistListHtml}
+      </ul>` : ''}
+    `
+    : `<p>Geen geplande shows in Amsterdam op dit moment. Bewaar ${escapeHtml(
+        artist.name
+      )} in de ANDREAS-app om een melding te krijgen zodra er één bij komt.</p>`;
+
+  const breadcrumbHtml = `
+    <nav class="breadcrumb" aria-label="Kruimelpad">
+      <a href="/">ANDREAS</a><span>›</span>
+      <a href="/artists">Artists</a><span>›</span>
+      ${escapeHtml(artist.name)}
+    </nav>
+  `;
+
+  return `<!doctype html>
+<html lang="nl">
+<head>${head}</head>
+<body class="has-sticky-cta">
+  ${renderAppBanner(appLink, artist.name)}
+  ${renderMobileStickyCta(appLink, artist.name)}
+  <main>
+    <article>
+      ${breadcrumbHtml}
+      <div class="hero">
+        <h1>${escapeHtml(artist.name)}</h1>
+        <p class="lead">${leadParts.join(' ')}</p>
+      </div>
+      ${genreHtml}
+      <div class="page-grid">
+        <div class="page-main">
+          ${linksHtml}
+          ${aboutHtml}
+          ${upcomingHtml}
+        </div>
+        <aside class="page-aside">
+          ${renderCtaCard({
+            deeplink: appLink,
+            title: `Volg ${artist.name} in ANDREAS`,
+            body: 'Krijg een melding zodra er een nieuwe show in Amsterdam bij komt, en zie welke vrienden ook gaan.',
+            qrUrl: `${PUBLIC_BASE_URL}/a/${artist.id}`,
+          })}
+        </aside>
+      </div>
+    </article>
+    ${renderSiteFooter()}
+  </main>
+</body>
+</html>`;
+}
+
+type ArtistsIndexRow = {
+  id: string;
+  name: string;
+  genres: string[];
+  description: string | null;
+  spotifyUrl: string | null;
+  appleMusicUrl: string | null;
+  bandcampUrl: string | null;
+  youtubeUrl: string | null;
+  officialUrl: string | null;
+  nextStart: Date;
+  showCount: number;
+};
+
+function renderArtistsIndexPage(opts: {
+  artists: ArtistsIndexRow[];
+}): string {
+  const { artists } = opts;
+  const TOP_COUNT = 30;
+
+  const pageTitle = 'Artists in Amsterdam · Komende shows | ANDREAS';
+  const desc =
+    `Wie staat er binnenkort in Amsterdam op de bühne? ${artists.length} ` +
+    `artists met komende concerten en clubavonden — met links naar Spotify, ` +
+    `Apple Music en meer.`;
+
+  // Top tier: meest-geprogrammeerde acts eerst (showCount desc, dan
+  // alfabetisch). Geeft bezoekers direct de herkenbare namen; long-tail
+  // staat eronder in een collapsible alfabetische browse.
+  const top = [...artists]
+    .sort(
+      (a, b) =>
+        b.showCount - a.showCount || a.name.localeCompare(b.name)
+    )
+    .slice(0, TOP_COUNT);
+
+  // Alfabetische groepering over ALLE artists (incl. de top — zo blijft
+  // browse-by-letter compleet). Groepen 0-9 als '#'.
+  const groups = new Map<string, ArtistsIndexRow[]>();
+  for (const a of artists) {
+    const first = a.name.trim().charAt(0).toUpperCase();
+    const key = /[A-Z]/.test(first) ? first : '#';
+    const list = groups.get(key) ?? [];
+    list.push(a);
+    groups.set(key, list);
+  }
+  const sortedKeys = [...groups.keys()].sort((a, b) => {
+    if (a === '#') return 1;
+    if (b === '#') return -1;
+    return a.localeCompare(b);
+  });
+
+  // ItemList JSON-LD — geeft Google + AI's de volledige lijst als
+  // structured data. We cappen op 100 zodat de payload niet ontspoort
+  // (bij groei: pagineer later).
+  const itemListLd = {
+    '@context': 'https://schema.org',
+    '@type': 'ItemList',
+    itemListElement: artists.slice(0, 100).map((a, i) => ({
+      '@type': 'ListItem',
+      position: i + 1,
+      url: `${PUBLIC_BASE_URL}/a/${a.id}`,
+      name: a.name,
+    })),
+  };
+
+  const breadcrumb = breadcrumbJsonLd([
+    { name: 'ANDREAS', path: '/' },
+    { name: 'Artists', path: '/artists' },
+  ]);
+
+  const head = renderHead({
+    title: pageTitle,
+    description: desc,
+    canonicalPath: '/artists',
+    ogType: 'website',
+    apple: { appId: APPLE_APP_ID, appArgument: 'andreas://muziek' },
+    jsonLdBlocks: [jsonLd(itemListLd), breadcrumb],
+    extraStyles: PAGE_GRID_STYLES + LIST_STYLES + ARTIST_INDEX_STYLES,
+  });
+
+  const lead =
+    `Artists die binnenkort meerdere keren in Amsterdam te zien zijn. ` +
+    `${artists.length} totaal — klik door voor data, venues en luister-links.`;
+
+  const renderArtistRow = (a: ArtistsIndexRow) => {
+    const meta = [
+      a.showCount === 1 ? '1 show' : `${a.showCount} shows`,
+      a.genres.slice(0, 2).join(', '),
+    ]
+      .filter(Boolean)
+      .join(' · ');
+    return `<li>
+        <a class="row-link" href="/a/${escapeHtml(a.id)}">
+          <span class="thumb thumb-placeholder" aria-hidden="true"></span>
+          <span class="row-text">
+            <span class="title">${escapeHtml(a.name)}</span>
+            <span class="meta">${escapeHtml(meta)}</span>
+          </span>
+        </a>
+      </li>`;
+  };
+
+  const topHtml = top.map(renderArtistRow).join('\n      ');
+
+  const alphabetNav = `
+    <nav class="alpha-nav" aria-label="Spring naar letter">
+      ${sortedKeys
+        .map((k) => `<a href="#letter-${escapeHtml(k)}">${escapeHtml(k)}</a>`)
+        .join('')}
+    </nav>
+  `;
+
+  const groupsHtml = sortedKeys
+    .map((k) => {
+      const list = groups.get(k)!;
+      const rows = list.map(renderArtistRow).join('\n      ');
+      return `
+      <h2 id="letter-${escapeHtml(k)}" class="alpha-heading">${escapeHtml(k)}</h2>
+      <ul class="lines">
+        ${rows}
+      </ul>
+    `;
+    })
+    .join('\n');
+
+  const breadcrumbHtml = `
+    <nav class="breadcrumb" aria-label="Kruimelpad">
+      <a href="/">ANDREAS</a><span>›</span>
+      Artists
+    </nav>
+  `;
+
+  return `<!doctype html>
+<html lang="nl">
+<head>${head}</head>
+<body class="has-sticky-cta">
+  ${renderAppBanner('andreas://muziek', 'Muziek in Amsterdam')}
+  ${renderMobileStickyCta('andreas://muziek', 'Muziek in Amsterdam')}
+  <main>
+    <article>
+      ${breadcrumbHtml}
+      <div class="hero">
+        <h1>Artists binnenkort in Amsterdam</h1>
+        <p class="lead">${escapeHtml(lead)}</p>
+      </div>
+      <div class="page-grid">
+        <div class="page-main">
+          ${artists.length === 0
+            ? '<p>Nog geen artists in beeld — kom morgen terug.</p>'
+            : `
+              <div class="section-head">
+                <h2>Meest geprogrammeerd</h2>
+                <span class="section-count">top ${top.length}</span>
+              </div>
+              <ul class="lines">
+                ${topHtml}
+              </ul>
+              ${artists.length > TOP_COUNT
+                ? `<details class="artists-more">
+                    <summary>Bekijk alle ${artists.length} artists alfabetisch</summary>
+                    ${alphabetNav}
+                    ${groupsHtml}
+                  </details>`
+                : ''}
+            `}
+        </div>
+        <aside class="page-aside">
+          ${renderCtaCard({
+            deeplink: 'andreas://muziek',
+            title: 'Volg muziek in ANDREAS',
+            body: 'Bewaar artists, krijg een melding bij nieuwe shows, en ontdek meer in Amsterdam.',
+            qrUrl: `${PUBLIC_BASE_URL}/artists`,
+          })}
+        </aside>
+      </div>
+    </article>
+    ${renderSiteFooter()}
+  </main>
+</body>
+</html>`;
+}
+
+/**
+ * Extra CSS voor de /a/:slug artist-pagina: substantiële streaming-
+ * buttons in een rij, ipv tag-pillen. 6px radius zoals gevraagd, bgLift
+ * voor diepte, ↗-pijl via ::after.
+ */
+const ARTIST_PAGE_STYLES = `
+  .streaming-btns {
+    display: flex; flex-wrap: wrap; gap: 8px;
+    margin: 8px 0 32px;
+  }
+  .streaming-btn {
+    display: inline-flex; align-items: center; gap: 10px;
+    padding: 12px 18px;
+    background: var(--bg-lift);
+    color: var(--fg);
+    border-radius: 6px;
+    font-family: 'Archivo', sans-serif;
+    font-weight: 600;
+    font-size: 14px;
+    letter-spacing: -0.1px;
+    transition: background 120ms, color 120ms;
+  }
+  .streaming-btn:hover {
+    background: var(--bg-chip);
+    color: var(--acid);
+    text-decoration: none;
+  }
+  /* Platform-icoon meet 18px; flex-shrink: 0 zorgt dat 'ie niet
+     samentrekt als de container krap wordt. Color via currentColor
+     erfeert van de button (fg → acid op hover). */
+  .streaming-icon {
+    display: inline-flex; align-items: center;
+    flex-shrink: 0;
+    width: 18px; height: 18px;
+  }
+  .streaming-icon svg { display: block; }
+`;
+
+/**
+ * Extra CSS voor de /artists-index: alfabet-navbar bovenaan en wat
+ * extra ademruimte tussen letter-secties. Apart van SEO_STYLES omdat
+ * 't alleen op deze pagina nodig is.
+ */
+const ARTIST_INDEX_STYLES = `
+  /* Section-header voor "Meest geprogrammeerd" — kicker + count rechts. */
+  .section-head {
+    display: flex; align-items: baseline; gap: 18px;
+    margin: 8px 0 16px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border-soft);
+  }
+  .section-head h2 {
+    margin: 0;
+  }
+  .section-head .section-count {
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-size: 11px; letter-spacing: 1.4px; text-transform: uppercase;
+    color: var(--fg-faint);
+    margin-left: auto;
+  }
+  /* "Bekijk alle X artists alfabetisch" toggle — zelfde stijl als
+     details.venues-more op de homepage: strakke lijn, acid +/- indicator,
+     mono uppercase summary. */
+  details.artists-more {
+    margin: 24px 0 32px;
+  }
+  details.artists-more > summary {
+    cursor: pointer;
+    list-style: none;
+    padding: 16px 0;
+    border-top: 1px solid var(--border-soft);
+    border-bottom: 1px solid var(--border-soft);
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-size: 12px; letter-spacing: 1.2px; text-transform: uppercase;
+    color: var(--fg-muted);
+    transition: color 120ms;
+    position: relative;
+    padding-right: 32px;
+  }
+  details.artists-more > summary:hover { color: var(--acid); }
+  details.artists-more > summary::-webkit-details-marker { display: none; }
+  details.artists-more > summary::after {
+    content: "+"; position: absolute; right: 4px; top: 50%;
+    transform: translateY(-50%); font-size: 18px;
+    color: var(--acid);
+    font-weight: 700;
+  }
+  details.artists-more[open] > summary::after { content: "−"; }
+  details.artists-more[open] > summary { color: var(--acid); }
+  .alpha-nav {
+    display: flex; flex-wrap: wrap; gap: 6px;
+    margin: 24px 0 32px;
+    padding: 14px 18px;
+    background: var(--bg-lift);
+    border-radius: 12px;
+  }
+  .alpha-nav a {
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-size: 13px; letter-spacing: 1px;
+    padding: 6px 10px; border-radius: 6px;
+    color: var(--fg);
+    min-width: 28px; text-align: center;
+  }
+  .alpha-nav a:hover {
+    background: var(--bg-chip); color: var(--acid);
+    text-decoration: none;
+  }
+  .alpha-heading {
+    font-size: 14px; letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--fg-muted);
+    border-bottom: 1px solid var(--border-soft);
+    padding-bottom: 8px;
+    margin: 32px 0 0;
+    font-weight: 600;
+    scroll-margin-top: 24px;
+  }
+  .alpha-heading:first-of-type { margin-top: 8px; }
+  /* Onder de letter-heading staat een ul.lines — overlap de top-border
+     met de heading-border zodat het er als één scheidingslijn uitziet. */
+  .alpha-heading + ul.lines { margin-top: 0; }
+  .alpha-heading + ul.lines li:first-child { border-top: 0; }
+`;
 
 /* ========================================================================
  * Share-redirect-pagina's (legacy `?ref=` pad)
@@ -1804,7 +2594,26 @@ shareRoute.get('/', async (c) => {
   ];
   const homeFaqLd = faqJsonLd(homeFaq);
 
+  // Featured = eerste 2 items als grote 16:9 cards; rest als compacte
+  // row-links. Mengt magazine-gevoel met scanbare lijst, zonder de
+  // interne link-density te verlagen die voor SEO telt.
+  const FEATURED_COUNT = 2;
+
+  const showsFeaturedHtml = upcomingShows
+    .slice(0, FEATURED_COUNT)
+    .map((e) =>
+      renderFeaturedCard({
+        href: `/e/${e.eventId}`,
+        imageUrl: e.imageUrl,
+        when: formatShort(e.startsAt),
+        title: e.title,
+        meta: renderEventMeta(e.venueName, e.genres),
+      })
+    )
+    .join('\n      ');
+
   const showsHtml = upcomingShows
+    .slice(FEATURED_COUNT)
     .map((e) => {
       return `<li>
         <a class="row-link" href="/e/${escapeHtml(e.eventId)}">
@@ -1819,18 +2628,36 @@ shareRoute.get('/', async (c) => {
     })
     .join('\n      ');
 
+  const exhibitionWhen = (endsAt: Date | null) =>
+    endsAt
+      ? `t/m ${endsAt.toLocaleDateString('nl-NL', {
+          day: 'numeric',
+          month: 'short',
+          timeZone: 'Europe/Amsterdam',
+        })}`
+      : '';
+
+  const exhibitionsFeaturedHtml = upcomingExhibitions
+    .slice(0, FEATURED_COUNT)
+    .map((e) =>
+      renderFeaturedCard({
+        href: `/e/${e.eventId}`,
+        imageUrl: e.imageUrl,
+        when: exhibitionWhen(e.endsAt),
+        title: e.title,
+        meta: renderEventMeta(e.venueName, e.genres),
+      })
+    )
+    .join('\n      ');
+
   const exhibitionsHtml = upcomingExhibitions
+    .slice(FEATURED_COUNT)
     .map((e) => {
-      const when = e.endsAt
-        ? `t/m ${e.endsAt.toLocaleDateString('nl-NL', {
-            day: 'numeric', month: 'short', timeZone: 'Europe/Amsterdam',
-          })}`
-        : '';
       return `<li>
         <a class="row-link" href="/e/${escapeHtml(e.eventId)}">
           ${renderThumb(e.imageUrl, e.title)}
           <span class="row-text">
-            <span class="when">${escapeHtml(when)}</span>
+            <span class="when">${escapeHtml(exhibitionWhen(e.endsAt))}</span>
             <span class="title">${escapeHtml(e.title)}</span>
             <span class="meta">${renderEventMeta(e.venueName, e.genres)}</span>
           </span>
@@ -2212,6 +3039,7 @@ shareRoute.get('/', async (c) => {
       <a href="/dit-weekend">Dit weekend</a>
       <span class="sep">·</span>
       <a href="/muziek">Muziek</a>
+      <a href="/artists">Artists</a>
       <a href="/theater">Theater</a>
       <a href="/film">Film</a>
       <a href="/kunst">Kunst</a>
@@ -2229,9 +3057,10 @@ shareRoute.get('/', async (c) => {
         <h2>Komende events</h2>
         <span class="count">eerstvolgende ${upcomingShows.length}</span>
       </div>
-      <ul class="lines">
+      ${showsFeaturedHtml ? `<div class="featured-grid">${showsFeaturedHtml}</div>` : ''}
+      ${showsHtml ? `<ul class="lines">
         ${showsHtml}
-      </ul>
+      </ul>` : ''}
     </section>
 
     ${upcomingExhibitions.length > 0 ? `<section>
@@ -2239,9 +3068,10 @@ shareRoute.get('/', async (c) => {
         <h2>Lopende exhibitions</h2>
         <span class="count">sluit eerst</span>
       </div>
-      <ul class="lines">
+      ${exhibitionsFeaturedHtml ? `<div class="featured-grid">${exhibitionsFeaturedHtml}</div>` : ''}
+      ${exhibitionsHtml ? `<ul class="lines">
         ${exhibitionsHtml}
-      </ul>
+      </ul>` : ''}
     </section>` : ''}
 
     <section>

@@ -467,6 +467,23 @@ export const SEO_STYLES = `
     color: var(--fg);
   }
   ul.lineup li:last-child { border-bottom: 0; }
+  /* Naam zelf in normale fg-kleur — alleen subtiel hover-effect zodat
+     de rij niet als acid-link-soup oogt in een lange line-up. */
+  ul.lineup a {
+    color: var(--fg); border-bottom: 1px solid var(--border);
+    display: inline-flex; align-items: baseline; gap: 6px;
+  }
+  ul.lineup a:hover { color: var(--acid); border-color: var(--acid); text-decoration: none; }
+  /* Chevron achter de naam: signaalt direct dat de naam doorklikt naar de
+     artist-pagina. Acid-kleur zodat 't ondanks de subtielere onderlijn
+     duidelijk eruit ziet als interactie. */
+  ul.lineup a::after {
+    content: "›";
+    color: var(--acid);
+    font-weight: 700;
+    font-size: 14px;
+    line-height: 1;
+  }
   ul.lineup .role {
     font-family: 'JetBrains Mono', ui-monospace, monospace;
     font-size: 11px; letter-spacing: 1px; text-transform: uppercase;
@@ -750,6 +767,52 @@ export function renderThumb(imageUrl: string | null, alt: string): string {
 }
 
 /**
+ * Render een 16:9 image-block voor in een featured-card. Twee Bunny-
+ * varianten (1x/2x) zorgen voor scherp beeld op retina zonder bytes te
+ * verspillen op standard-dpi. Voor cards zonder image: placeholder-vlak
+ * met een transparant kruisje.
+ */
+export function renderCardImage(imageUrl: string | null, alt: string): string {
+  if (!imageUrl) {
+    return `<span class="card-img card-img-placeholder" aria-hidden="true"></span>`;
+  }
+  const src1x = bunnyResize(imageUrl, 640);
+  const src2x = bunnyResize(imageUrl, 1280);
+  if (src1x && src2x) {
+    return `<img class="card-img" src="${escapeHtml(src1x)}" srcset="${escapeHtml(src1x)} 1x, ${escapeHtml(src2x)} 2x" alt="${escapeHtml(alt)}" loading="lazy" decoding="async" />`;
+  }
+  return `<img class="card-img" src="${escapeHtml(imageUrl)}" alt="${escapeHtml(alt)}" loading="lazy" decoding="async" />`;
+}
+
+/**
+ * Featured-card: groter, magazine-stijl alternatief voor de compacte
+ * `ul.lines` row. Gebruikt voor de eerste 2 items van een sectie
+ * (homepage, venue, artist, event-related) zodat de pagina niet als
+ * platte data-feed leest. Hover-lift signaalt interactie zonder JS.
+ *
+ * Caller geeft `href`, `imageUrl`, `when` (label boven titel, mono caps),
+ * `title`, `meta` (venue + genre regel onder). De wrapper-component is
+ * verantwoordelijk voor de `featured-grid`-container (2-koloms op desktop,
+ * 1-koloms mobile).
+ */
+export function renderFeaturedCard(opts: {
+  href: string;
+  imageUrl: string | null;
+  when: string;
+  title: string;
+  meta: string;
+}): string {
+  return `<a class="featured-card" href="${escapeHtml(opts.href)}">
+    <span class="card-img-wrap">${renderCardImage(opts.imageUrl, opts.title)}</span>
+    <span class="card-body">
+      <span class="card-when">${escapeHtml(opts.when)}</span>
+      <span class="card-title">${escapeHtml(opts.title)}</span>
+      <span class="card-meta">${escapeHtml(opts.meta)}</span>
+    </span>
+  </a>`;
+}
+
+/**
  * Render een hero-image met srcset voor responsive loading. Op desktop
  * (1080px main) heeft de hero ~1036px breedte; op mobile ~500px. We bieden
  * 800w/1200w/1600w varianten via Bunny voor scherpe weergave op retina-
@@ -780,16 +843,23 @@ export function renderEventMeta(venueName: string, genres: string[]): string {
 }
 
 /**
- * Gedeelde CSS voor de "lijn-lijst" component (homepage + hub-pagina's).
- * Wordt naast SEO_STYLES geïnjecteerd op pagina's die lijsten tonen.
+ * Gedeelde CSS voor de "lijn-lijst" component + featured-cards. Beide
+ * naast SEO_STYLES geïnjecteerd op pagina's die lijsten tonen.
+ *
+ * Listing → row-link met 96px thumb (was 56) + subtle hover-lift.
+ * Magazine → featured-card met 16:9 image en titel-blok eronder.
+ *
+ * Doel: minder "scraped data feed" en meer "echte website". De rij-
+ * layout met grotere thumb voelt al meteen kalmer; de featured-cards
+ * bovenaan elke sectie geven het magazine-gevoel.
  */
 export const LIST_STYLES = `
   ul.lines { list-style: none; padding: 0; margin: 0 0 56px; }
   ul.lines li { border-bottom: 1px solid var(--border-soft); }
   ul.lines li:first-child { border-top: 1px solid var(--border-soft); }
   ul.lines .thumb {
-    width: 56px; height: 56px;
-    border-radius: 6px;
+    width: 96px; height: 96px;
+    border-radius: 8px;
     background: var(--bg-lift);
     object-fit: cover;
     flex-shrink: 0;
@@ -799,21 +869,21 @@ export const LIST_STYLES = `
   ul.lines .thumb-placeholder::before,
   ul.lines .thumb-placeholder::after {
     content: ""; position: absolute; top: 50%; left: 22%;
-    width: 56%; height: 5px; margin-top: -2.5px;
+    width: 56%; height: 8px; margin-top: -4px;
     background: var(--acid); opacity: 0.45;
   }
   ul.lines .thumb-placeholder::before { transform: rotate(45deg); }
   ul.lines .thumb-placeholder::after { transform: rotate(-45deg); }
   ul.lines a.row-link {
-    display: flex; align-items: center; gap: 16px;
+    display: flex; align-items: center; gap: 18px;
     padding: 14px 0;
     color: var(--fg); text-decoration: none;
-    transition: color 120ms;
+    transition: color 120ms, transform 200ms;
   }
-  ul.lines a.row-link:hover { color: var(--acid); }
+  ul.lines a.row-link:hover { color: var(--acid); transform: translateX(2px); }
   ul.lines a.row-link:hover .meta { color: var(--acid); }
   ul.lines .row-text {
-    display: flex; flex-direction: column; gap: 2px;
+    display: flex; flex-direction: column; gap: 4px;
     flex: 1; min-width: 0;
   }
   ul.lines .row-text .when {
@@ -823,8 +893,8 @@ export const LIST_STYLES = `
     color: var(--fg-muted);
   }
   ul.lines .row-text .title {
-    font-weight: 600; font-size: 15px;
-    letter-spacing: -0.1px;
+    font-weight: 700; font-size: 16px;
+    letter-spacing: -0.2px;
     line-height: 1.25;
   }
   ul.lines .row-text .meta {
@@ -832,7 +902,83 @@ export const LIST_STYLES = `
     transition: color 120ms;
   }
   @media (max-width: 540px) {
-    ul.lines .thumb { width: 48px; height: 48px; }
+    ul.lines .thumb { width: 80px; height: 80px; }
+    ul.lines a.row-link { gap: 14px; }
+    ul.lines .row-text .title { font-size: 15px; }
+  }
+
+  /* ---------- Featured-cards (magazine-stijl, eerste 2 items) ---------- */
+  .featured-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 16px;
+    margin: 0 0 24px;
+  }
+  @media (min-width: 640px) {
+    .featured-grid { grid-template-columns: 1fr 1fr; gap: 20px; }
+  }
+  .featured-card {
+    display: flex; flex-direction: column;
+    background: var(--bg-lift);
+    border-radius: 14px;
+    overflow: hidden;
+    color: var(--fg);
+    text-decoration: none;
+    transition: transform 220ms, box-shadow 220ms;
+  }
+  .featured-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 14px 32px rgba(0, 0, 0, 0.45);
+    text-decoration: none;
+  }
+  .featured-card .card-img-wrap {
+    display: block;
+    aspect-ratio: 16 / 9;
+    background: var(--bg);
+    overflow: hidden;
+    position: relative;
+  }
+  .featured-card .card-img {
+    width: 100%; height: 100%;
+    object-fit: cover;
+    display: block;
+    transition: transform 480ms;
+  }
+  .featured-card:hover .card-img { transform: scale(1.04); }
+  .featured-card .card-img-placeholder {
+    width: 100%; height: 100%;
+    display: block; position: relative;
+  }
+  .featured-card .card-img-placeholder::before,
+  .featured-card .card-img-placeholder::after {
+    content: ""; position: absolute; top: 50%; left: 28%;
+    width: 44%; height: 14px; margin-top: -7px;
+    background: var(--acid); opacity: 0.35;
+  }
+  .featured-card .card-img-placeholder::before { transform: rotate(45deg); }
+  .featured-card .card-img-placeholder::after { transform: rotate(-45deg); }
+  .featured-card .card-body {
+    display: flex; flex-direction: column; gap: 4px;
+    padding: 16px 20px 20px;
+  }
+  .featured-card .card-when {
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-size: 11px; letter-spacing: 1.4px;
+    text-transform: uppercase;
+    color: var(--acid);
+  }
+  .featured-card .card-title {
+    font-family: 'Archivo', sans-serif;
+    font-weight: 800;
+    font-size: 18px;
+    line-height: 1.2;
+    letter-spacing: -0.3px;
+    color: var(--fg);
+  }
+  .featured-card .card-meta {
+    color: var(--fg-muted);
+    font-size: 13px;
+    margin-top: 2px;
   }
 `;
 
