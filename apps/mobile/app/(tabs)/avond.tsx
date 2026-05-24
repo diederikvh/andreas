@@ -28,7 +28,7 @@ import { Cross } from '@/components/Cross';
 import { Rail, useRailCardStyles } from '@/components/Rail';
 import { FilmRailCard } from '@/components/FilmRailCard';
 import { RailEventCard } from '@/components/RailEventCard';
-import { VenueRailCard } from '@/components/VenueRailCard';
+import { VenueSquareRailCard } from '@/components/VenueSquareRailCard';
 import { RefreshBanner } from '@/components/RefreshBanner';
 import { RunningStrip } from '@/components/RunningStrip';
 import { SpinningCross } from '@/components/SpinningCross';
@@ -721,6 +721,7 @@ export default function Avond() {
     return new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime();
   };
 
+
   // Musea/galleries-rails zijn kunst-rails — gate op category='Kunst'
   // zodat een daytime concert of literatuur-event in een museum-venue
   // niet per ongeluk hier landt (sinds Muziek/Theater nu óók in
@@ -1181,12 +1182,11 @@ export default function Avond() {
             onMore={() => router.push('/venues' as never)}
           >
             {followedVenues.map((v) => (
-              <VenueRailCard
+              <VenueSquareRailCard
                 key={v.id}
                 slug={v.slug}
                 name={v.name}
                 imageUrl={v.imageUrl}
-                type={v.type}
               />
             ))}
           </Rail>

@@ -715,6 +715,7 @@ function RecapRow({ item, locale }: { item: StackEvent; locale: Locale }) {
     <EventListRow
       time={rowTimeLabel(item.startsAt, item.endsAt, locale)}
       thumb={eventImageUrl(item.event) ?? ''}
+      thumbSize={96}
       title={item.event.title}
       venue={item.venueName}
       venueTone={venueTone}

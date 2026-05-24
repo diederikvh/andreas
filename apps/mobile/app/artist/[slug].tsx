@@ -21,7 +21,6 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { AppHeader, HEADER_HEIGHT } from '@/components/AppHeader';
 import { EventListRow } from '@/components/EventListRow';
 import type { ApiArtistEvent } from '@/lib/api';
 import {
@@ -75,7 +74,9 @@ export default function ArtistPage() {
     <View style={[styles.root, { backgroundColor: roles.bg }]}>
       <ScrollView
         contentContainerStyle={{
-          paddingTop: insets.top + HEADER_HEIGHT + 16,
+          // Geen AppHeader meer (was te zwaar voor deze pagina). Wel
+          // safe-area + ruimte voor de floating back-button.
+          paddingTop: insets.top + 56,
           paddingBottom: insets.bottom + 24,
         }}
       >
@@ -209,22 +210,26 @@ export default function ArtistPage() {
         )}
       </ScrollView>
 
-      <AppHeader
-        title={t('Artist', 'Artist')}
-        hideAvatar
-        rightSlot={
-          <Pressable
-            onPress={() => router.back()}
-            hitSlop={8}
-            style={[
-              styles.closeBtn,
-              { backgroundColor: isNacht ? palette.noir2 : palette.paper2 },
-            ]}
-          >
-            <Ionicons name="close" size={20} color={roles.fg} />
-          </Pressable>
-        }
-      />
+      {/* Floating back-button linksboven — geen header-strook ervoor.
+          De artist-naam fungeert zelf als titel onder in de body. */}
+      <View
+        style={[
+          styles.backButtonWrap,
+          { top: insets.top + 8 },
+        ]}
+        pointerEvents="box-none"
+      >
+        <Pressable
+          onPress={() => router.back()}
+          hitSlop={8}
+          style={[
+            styles.backBtn,
+            { backgroundColor: isNacht ? palette.noir2 : palette.paper2 },
+          ]}
+        >
+          <Ionicons name="chevron-back" size={20} color={roles.fg} />
+        </Pressable>
+      </View>
     </View>
   );
 }
@@ -330,7 +335,13 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
     textTransform: 'uppercase',
   },
-  closeBtn: {
+  // Floating back-button — absolute positioning bovenaan links, geen
+  // header-strook. Top wordt run-time gezet op insets.top + 8.
+  backButtonWrap: {
+    position: 'absolute',
+    left: 14,
+  },
+  backBtn: {
     width: 36,
     height: 36,
     borderRadius: 18,

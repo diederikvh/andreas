@@ -1472,7 +1472,7 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
-  thumb: { width: 76, height: 76, borderRadius: 10 },
+  thumb: { width: 96, height: 96, borderRadius: 10 },
   body: { flex: 1, minWidth: 0, gap: 4 },
   name: {
     fontFamily: fontFamily.bold,

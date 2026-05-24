@@ -267,6 +267,7 @@ export default function InvitationDetail() {
               venue: { imageUrl: null },
             }) ?? ''
           }
+          thumbSize={96}
           title={invitation.event.title}
           venue=""
           tags={[

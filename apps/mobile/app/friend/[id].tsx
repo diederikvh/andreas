@@ -846,6 +846,7 @@ function SamenPane({
                 venue: { imageUrl: null },
               }) ?? ''
             }
+            thumbSize={96}
             title={inv.event.title}
             venue=""
             tags={[
@@ -886,6 +887,7 @@ function FriendSavedRow({ event }: { event: ApiEvent }) {
     <EventListRow
       time={rowTimeLabel(event.startsAt, event.endsAt, locale)}
       thumb={eventImageUrl(event) ?? ''}
+      thumbSize={96}
       title={event.title}
       venue={event.nextOccurrenceVenue?.name ?? event.venue.name}
       tags={[

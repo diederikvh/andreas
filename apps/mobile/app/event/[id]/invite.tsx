@@ -251,6 +251,7 @@ export default function InviteModal() {
           <EventListRow
             time={rowTimeLabel(resolvedOccurrence.startsAt, resolvedOccurrence.endsAt, locale)}
             thumb={eventImageUrl(event) ?? ''}
+            thumbSize={96}
             title={event.title}
             venue={resolvedOccurrence.venue?.name ?? event.venue.name}
             tags={[

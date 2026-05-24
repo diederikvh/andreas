@@ -246,6 +246,7 @@ function ProgramRow({ event }: { event: ApiEvent }) {
       time={rowTimeLabel(event.startsAt, event.endsAt, locale)}
       duration={`${dow} ${num} ${month}`}
       thumb={eventImageUrl(event) ?? ''}
+      thumbSize={96}
       title={event.title}
       venue={event.nextOccurrenceVenue?.name ?? event.venue.name}
       tags={[

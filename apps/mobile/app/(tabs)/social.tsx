@@ -664,6 +664,7 @@ function MergedRow({
             venue: { imageUrl: venue.imageUrl ?? null },
           }) ?? ''
         }
+        thumbSize={96}
         title={e.title}
         venue={venue.name}
         venueTone={venueTone}
