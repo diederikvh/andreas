@@ -10,9 +10,9 @@
 
 import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
-import * as WebBrowser from 'expo-web-browser';
 import { useMemo } from 'react';
 import {
+  Linking,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -134,23 +134,29 @@ export default function ArtistPage() {
               )}
 
               {links.length > 0 && (
-                <View style={styles.linksGrid}>
-                  {links.map((l) => (
-                    <LinkButton key={l.key} label={l.label} url={l.url} icon={l.icon} />
-                  ))}
-                </View>
+                <StreamingRail tiles={links} />
               )}
 
               {fallback.length > 0 && (
-                <View style={{ gap: 8, marginTop: 18 }}>
-                  <Text style={[styles.fallbackHint, { color: roles.fgMuted }]}>
+                <View style={{ marginTop: 14, gap: 8 }}>
+                  <Text
+                    style={[
+                      styles.fallbackHint,
+                      { color: roles.fgMuted, marginBottom: 4 },
+                    ]}
+                  >
                     {t(
                       'Nog geen directe links — probeer een zoekopdracht:',
                       'No direct links yet — try a search:'
                     )}
                   </Text>
                   {fallback.map((l) => (
-                    <LinkButton key={l.key} label={l.label} url={l.url} icon={l.icon} />
+                    <FallbackButton
+                      key={l.key}
+                      label={l.label}
+                      url={l.url}
+                      icon={l.icon}
+                    />
                   ))}
                 </View>
               )}
@@ -234,7 +240,48 @@ export default function ArtistPage() {
   );
 }
 
-function LinkButton({
+/**
+ * Horizontaal-scrollende rail met streaming-tiles. Edge-to-edge: breekt
+ * uit de 22px parent-padding via marginHorizontal: -22 en pakt de
+ * padding zelf op in contentContainerStyle, zodat de eerste tile netjes
+ * uitlijnt met de tekst eromheen.
+ */
+function StreamingRail({
+  tiles,
+}: {
+  tiles: Array<{
+    key: string;
+    label: string;
+    url: string;
+    icon: keyof typeof Ionicons.glyphMap;
+  }>;
+}) {
+  return (
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      style={styles.streamingRail}
+      contentContainerStyle={styles.streamingRailContent}
+    >
+      {tiles.map((l) => (
+        <StreamingTile key={l.key} label={l.label} url={l.url} icon={l.icon} />
+      ))}
+    </ScrollView>
+  );
+}
+
+/**
+ * Tile in dezelfde stijl als de Vandaag-shortcut-banners (Films / Live
+ * / Clubs / Theater): één bgLift-container met icoon links-uitgelijnd
+ * bovenaan en label eronder, fixed-width 155px zodat ~2 zichtbaar zijn
+ * en de derde peekt — uitnodiging om te swipen.
+ *
+ * Open URL met `Linking.openURL` — iOS pikt https://open.spotify.com /
+ * music.apple.com / youtube.com automatisch op via Universal Links als
+ * de bijbehorende app geïnstalleerd is, anders Safari. Dat is wat we
+ * willen: native app als 't kan, browser als laatste redmiddel.
+ */
+function StreamingTile({
   label,
   url,
   icon,
@@ -246,12 +293,47 @@ function LinkButton({
   const roles = useRoles();
   return (
     <Pressable
-      onPress={() => WebBrowser.openBrowserAsync(url)}
-      style={[styles.linkBtn, { backgroundColor: roles.bgLift }]}
+      onPress={() => {
+        Linking.openURL(url).catch(() => {});
+      }}
+      style={[styles.tile, { backgroundColor: roles.bgLift }]}
+    >
+      <Ionicons name={icon} size={28} color={roles.accent} />
+      <Text
+        numberOfLines={2}
+        style={[styles.tileLabel, { color: roles.fg }]}
+      >
+        {label}
+      </Text>
+    </Pressable>
+  );
+}
+
+/**
+ * Volle-breedte fallback-button. Verschijnt alleen als er geen
+ * specifieke streaming-URLs bekend zijn — een "Zoek op Spotify"-actie
+ * heeft meer uitleg nodig dan een tile aan kan, en is bovendien een
+ * minder zelfverzekerde call-to-action dan een directe link.
+ */
+function FallbackButton({
+  label,
+  url,
+  icon,
+}: {
+  label: string;
+  url: string;
+  icon: keyof typeof Ionicons.glyphMap;
+}) {
+  const roles = useRoles();
+  return (
+    <Pressable
+      onPress={() => {
+        Linking.openURL(url).catch(() => {});
+      }}
+      style={[styles.fallbackBtn, { backgroundColor: roles.bgLift }]}
     >
       <Ionicons name={icon} size={20} color={roles.accent} />
-      <Text style={[styles.linkLabel, { color: roles.fg }]}>{label}</Text>
-      <Ionicons name="chevron-forward" size={16} color={roles.fg} />
+      <Text style={[styles.fallbackLabel, { color: roles.fg }]}>{label}</Text>
     </Pressable>
   );
 }
@@ -293,16 +375,42 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     marginBottom: 16,
   },
-  linksGrid: { gap: 8, marginTop: 8 },
-  linkBtn: {
+  // Horizontaal-scrollende tile-rail. Edge-to-edge: -22 marge canceleert
+  // de parent (intro) 22 padding, contentContainerStyle herstelt 'm zodat
+  // de eerste tile uitlijnt met de tekst eromheen.
+  streamingRail: { marginTop: 4, marginHorizontal: -22 },
+  streamingRailContent: { paddingHorizontal: 22, gap: 10 },
+  // Vierkante tiles, 108×108, zodat 3 zichtbaar zijn op een 393px
+  // viewport en de 4e net peekt (393 - 44 padding - 2×10 gap = 329 / 3
+  // ≈ 109). Zelfde maat-formule als VenueSquareRailCard. Icoon
+  // links-uitgelijnd bovenaan + label eronder, beide binnen één
+  // bgLift-container.
+  tile: {
+    width: 108,
+    aspectRatio: 1,
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    padding: 12,
+    borderRadius: 14,
+  },
+  tileLabel: {
+    fontFamily: fontFamily.bold,
+    fontSize: 13,
+    lineHeight: 16,
+    letterSpacing: -0.14,
+  },
+  // Volle-breedte fallback-button — krijgt meer ruimte voor uitleg
+  // ("Zoek op Spotify") dan een tile aan kan, en heeft tegelijk minder
+  // visuele lading dan een tile-rail (deze is een laatste redmiddel).
+  fallbackBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 14,
     paddingVertical: 12,
     borderRadius: 12,
-    gap: 10,
+    gap: 12,
   },
-  linkLabel: {
+  fallbackLabel: {
     flex: 1,
     fontFamily: fontFamily.bold,
     fontSize: 14,
