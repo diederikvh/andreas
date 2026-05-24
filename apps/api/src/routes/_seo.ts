@@ -109,7 +109,7 @@ export function venueTypeLabel(type: ApiVenue['type']): string | null {
     case 'galerie': return 'Galerie';
     case 'podium': return 'Podium';
     case 'club': return 'Club';
-    case 'film': return 'Bioscoop';
+    case 'film': return 'Filmhuis';
     case 'boekhandel-cafe': return 'Boekhandel & café';
     case 'ruimte': return 'Ruimte';
     default: return null;
@@ -222,6 +222,325 @@ export function formatPrice(priceCents: number | null): string {
 /* ---------- gedeelde Nacht-styling (inline CSS) ---------- */
 
 /**
+ * Store-button styles (App Store / Google Play in card-vorm). Apart
+ * exportbaar zodat homepage en CTA-cards op detail-pagina's exact
+ * dezelfde stijl delen. Icon links in acid, kicker (mono uppercase) +
+ * titel (Archivo black) eronder.
+ */
+export const STORE_BTN_STYLES = `
+  .store-btn {
+    flex: 1; min-width: 180px;
+    display: inline-flex; align-items: center; gap: 14px;
+    padding: 14px 18px;
+    border-radius: 12px;
+    background: var(--bg-lift);
+    color: var(--fg);
+    text-decoration: none;
+    transition: background 120ms;
+  }
+  .store-btn:hover { background: var(--bg-chip); text-decoration: none; }
+  .store-btn .store-icon {
+    flex-shrink: 0;
+    color: var(--acid);
+  }
+  .store-btn > div { min-width: 0; }
+  .store-btn small {
+    display: block;
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-size: 10px; letter-spacing: 1.2px; text-transform: uppercase;
+    color: var(--acid);
+    margin-bottom: 3px;
+    font-weight: 600;
+  }
+  .store-btn span {
+    font-weight: 800; font-size: 17px; letter-spacing: -0.2px;
+    color: var(--fg);
+  }
+`;
+
+/**
+ * Icons voor de App Store + Google Play store-buttons. Geëxporteerd
+ * zodat zowel renderCtaCard als de homepage hetzelfde SVG-pad gebruiken.
+ */
+export const APPLE_STORE_ICON = `<svg class="store-icon" width="28" height="28" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M17.05 20.28c-.98.95-2.05.8-3.08.35-1.09-.46-2.09-.48-3.24 0-1.44.62-2.2.44-3.06-.35C2.79 15.25 3.51 7.59 9.05 7.31c1.35.07 2.29.74 3.08.8 1.18-.24 2.31-.93 3.57-.84 1.51.12 2.65.72 3.4 1.8-3.12 1.87-2.38 5.98.48 7.13-.57 1.5-1.31 2.99-2.54 4.09ZM12.03 7.25c-.15-2.23 1.66-4.07 3.74-4.25.29 2.58-2.34 4.5-3.74 4.25Z"/></svg>`;
+export const PLAY_STORE_ICON = `<svg class="store-icon" width="28" height="28" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M3.609 1.814 13.792 12 3.61 22.186a.996.996 0 0 1-.61-.92V2.734a1 1 0 0 1 .609-.92Zm10.89 10.893 2.302 2.302-10.937 6.333 8.635-8.635Zm3.199-3.198 2.807 1.626a1 1 0 0 1 0 1.73l-2.808 1.626L15.206 12l2.492-2.491ZM5.864 2.658 16.802 8.99l-2.303 2.303-8.635-8.635Z"/></svg>`;
+
+/**
+ * Header-styles (banner + dropdown-menu + saves-button + mobile). Apart
+ * geëxporteerd zodat de homepage 'm naast z'n eigen inline styles kan
+ * laden — die heeft geen renderHead/SEO_STYLES-stack. Wordt ook
+ * geïnterpoleerd in SEO_STYLES voor de detail-pagina's.
+ */
+export const HEADER_STYLES = `
+  /* Smart app banner / site-header. iOS toont z'n eigen native banner
+     via apple-itunes-app meta; dit is de fallback voor desktop +
+     Android, en tegelijk de globale navigatie van de site.
+     Layout: links logo+label, rechts dropdown + "X bewaard" + "Open". */
+  .banner {
+    position: sticky; top: 0; z-index: 50;
+    /* Frosted glass: dezelfde achtergrondkleur als de pagina, maar
+       semi-transparant zodat content er onderdoor schuift met een
+       blur erop. Voelt direct meer als product, minder als losse
+       boven-balk. */
+    background: rgba(10, 10, 11, 0.72);
+    backdrop-filter: blur(14px) saturate(140%);
+    -webkit-backdrop-filter: blur(14px) saturate(140%);
+    border-bottom: 1px solid var(--border-soft);
+    padding: 10px 18px;
+    display: flex; align-items: center; gap: 10px;
+    font-size: 13px;
+  }
+  /* Alle anchor-elementen in de header krijgen géén underline — het
+     zijn buttons / nav-items, geen body-tekst. Defense-in-depth zodat
+     'ie ook klopt op pagina's die SEO_STYLES niet inline laden
+     (homepage heeft een eigen style-blok). */
+  .banner a { text-decoration: none; }
+  .banner a:hover { text-decoration: none; }
+  .banner .brand {
+    display: inline-flex; align-items: center; gap: 7px;
+    flex-shrink: 0;
+    color: var(--fg); text-decoration: none;
+  }
+  .banner .brand:hover { text-decoration: none; }
+  .banner .brand strong {
+    color: var(--fg); font-weight: 800;
+    font-size: 13px; letter-spacing: -0.1px;
+    font-family: 'Archivo', sans-serif;
+  }
+  .banner .cross-mini {
+    position: relative; width: 14px; height: 14px; flex-shrink: 0;
+  }
+  .banner .cross-mini::before, .banner .cross-mini::after {
+    content: ""; position: absolute; top: 50%; left: 0;
+    width: 100%; height: 3px; margin-top: -1.5px; background: var(--acid);
+  }
+  .banner .cross-mini::before { transform: rotate(45deg); }
+  .banner .cross-mini::after { transform: rotate(-45deg); }
+  .banner .label {
+    flex: 1; color: var(--fg-muted);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    min-width: 0;
+  }
+  /* Dropdown-menu (categorieën). Gebruikt <details> zodat 't werkt
+     zonder JS. Op mobile valt 'm onder de "Browse"-knop, op desktop
+     verschijnt 'ie rechts uitgelijnd vanaf de summary.
+
+     Defensive resets: SEO_STYLES heeft een generieke "details {...}"
+     en "details summary::after {...}" voor de FAQ. Die lekken anders
+     door op de header-menu (border-bottom + padding 14px op de
+     details-wrapper, en "+"-pseudo absoluut rechts op de summary). */
+  .header-menu {
+    position: relative;
+    flex-shrink: 0;
+    padding: 0;
+    border: 0;
+    border-bottom: 0;
+    /* Wanneer .label er is, eet die met flex:1 alle ruimte op zodat
+       margin-left:auto hier 0 ruimte heeft (header-menu zit dan dicht
+       op label). Als .label op mobile verdwijnt (display:none), kickt
+       margin-left:auto in en duwt header-menu (+ wat erna komt) naar
+       rechts — saves + Open blijven rechts uitgelijnd. */
+    margin-left: auto;
+  }
+  .header-menu > summary {
+    list-style: none;
+    cursor: pointer;
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 6px 12px;
+    border-radius: 999px;
+    background: transparent;
+    color: var(--fg);
+    font-family: 'Archivo', sans-serif;
+    font-weight: 600; font-size: 12px;
+    position: static;
+  }
+  .header-menu > summary::-webkit-details-marker { display: none; }
+  .header-menu > summary::after {
+    content: "▾"; font-size: 10px; color: var(--fg-muted);
+    transition: transform 160ms;
+    /* Reset positie-leak van de FAQ "details summary::after"-regel
+       die anders ▾ rechtsboven over de pagina trekt. */
+    position: static;
+    right: auto; top: auto;
+    transform: none;
+  }
+  .header-menu[open] > summary::after { transform: rotate(180deg); }
+  .header-menu .dropdown {
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 0;
+    min-width: 220px;
+    background: var(--bg-lift);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 8px;
+    box-shadow: 0 14px 32px rgba(0, 0, 0, 0.45);
+    display: flex; flex-direction: column;
+  }
+  .header-menu .dropdown a {
+    display: block;
+    padding: 9px 12px;
+    border-radius: 8px;
+    color: var(--fg);
+    font-family: 'Archivo', sans-serif;
+    font-weight: 600; font-size: 14px;
+    text-decoration: none;
+    transition: background 120ms, color 120ms;
+  }
+  .header-menu .dropdown a:hover {
+    background: var(--bg-chip);
+    color: var(--acid);
+    text-decoration: none;
+  }
+  .header-menu .dropdown hr {
+    border: 0; border-top: 1px solid var(--border-soft);
+    margin: 6px 4px;
+  }
+  .header-menu .dropdown .group-label {
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-size: 10px; letter-spacing: 1.4px; text-transform: uppercase;
+    color: var(--fg-faint);
+    padding: 10px 12px 4px;
+  }
+  /* Search-icon in de header. Klik opent een full-width floating
+     search-bar net onder de banner (position: fixed). Zelfde <details>-
+     truc als het Browse-menu zodat geen JS nodig is. */
+  .header-search {
+    position: static;
+    flex-shrink: 0;
+    padding: 0; border: 0; border-bottom: 0;
+  }
+  .header-search > summary {
+    list-style: none;
+    cursor: pointer;
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 30px; height: 30px;
+    border-radius: 999px;
+    background: transparent;
+    color: var(--fg);
+    transition: background 120ms, color 120ms;
+    /* Defensive reset: SEO_STYLES "details summary {...}" zet padding-right:
+       24px en position: relative — anders staat het search-icoon
+       links-uit-midden en is de hover-cirkel niet centered. */
+    position: static;
+    padding: 0;
+    font-size: 0;
+  }
+  .header-search > summary:hover { background: var(--bg-chip); color: var(--acid); }
+  .header-search > summary::-webkit-details-marker { display: none; }
+  .header-search > summary::after { content: none; }
+  /* Generic "details[open] summary::after { content: '−' }" overrult mijn
+     reset hierboven door gelijke specificity + latere cascade-volgorde.
+     Met [open]+>summary maak ik 'm sterker. */
+  .header-search[open] > summary::after { content: none; }
+  .header-search[open] > summary { background: var(--bg-chip); color: var(--acid); }
+  .header-search .search-floating {
+    position: fixed;
+    top: 56px;
+    left: 12px;
+    right: 12px;
+    z-index: 60;
+    background: var(--bg-lift);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 12px;
+    box-shadow: 0 14px 32px rgba(0, 0, 0, 0.5);
+  }
+  .header-search .search-floating form {
+    display: flex; gap: 8px;
+  }
+  .header-search .search-floating input[type="search"] {
+    flex: 1; min-width: 0;
+    padding: 12px 16px;
+    background: var(--bg-chip);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--fg);
+    font-family: 'Archivo', sans-serif;
+    font-size: 15px;
+    -webkit-appearance: none;
+    appearance: none;
+  }
+  .header-search .search-floating input[type="search"]:focus {
+    outline: none;
+    border-color: var(--acid);
+  }
+  .header-search .search-floating input::placeholder { color: var(--fg-faint); }
+  .header-search .search-floating button {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 48px; flex-shrink: 0;
+    background: var(--acid); color: var(--bg);
+    border: 0; border-radius: 8px;
+    cursor: pointer;
+    transition: opacity 120ms;
+  }
+  .header-search .search-floating button:hover { opacity: 0.88; }
+  @media (min-width: 720px) {
+    /* Op desktop floating-bar gecentreerd en gemaximeerd, niet
+       full-width — past beter bij de bredere banner. */
+    .header-search .search-floating {
+      left: 50%;
+      right: auto;
+      transform: translateX(-50%);
+      width: min(560px, calc(100vw - 24px));
+    }
+  }
+  /* "X bewaard"-button in de header. Hidden tot er minimaal 1 save is
+     (data-saves-visible). */
+  .banner a.header-saves {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 6px 12px;
+    border-radius: 999px;
+    background: var(--bg-chip);
+    color: var(--fg);
+    font-family: 'Archivo', sans-serif;
+    font-weight: 600; font-size: 12px;
+    flex-shrink: 0;
+    transition: background 120ms;
+  }
+  .banner a.header-saves:hover {
+    background: var(--border);
+    text-decoration: none;
+  }
+  .banner a.header-saves svg { flex-shrink: 0; }
+  .banner a.header-saves .header-saves-count {
+    display: inline-flex; align-items: center; justify-content: center;
+    min-width: 16px; height: 16px;
+    padding: 0 5px;
+    background: var(--acid); color: var(--bg);
+    border-radius: 999px;
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-size: 10px; font-weight: 700;
+  }
+  /* Mobile: tekst-labels in de buttons inkorten zodat alles past op
+     390px viewport. Label verbergen, dropdown-label naar "≡", saves-
+     label weg. Dropdown wordt full-width (met side-margins) zodat 'ie
+     niet rechts buiten beeld valt — anders rekent right:0 t.o.v. de
+     summary-knop die zelf al ergens in 't midden zit. */
+  @media (max-width: 600px) {
+    .banner { padding: 8px 14px; gap: 8px; }
+    .banner .label { display: none; }
+    .header-menu > summary { padding: 6px 10px; font-size: 0; }
+    .header-menu > summary::before {
+      content: "Browse"; font-size: 12px;
+    }
+    .banner a.header-saves .header-saves-label { display: none; }
+    .banner a.header-saves { padding: 6px 10px; }
+    /* Dropdown vrijbreken uit de relative-parent zodat 'ie vol breed
+       onder de header verschijnt, met margin links + rechts. */
+    .header-menu .dropdown {
+      position: fixed;
+      top: calc(env(safe-area-inset-top) + 56px);
+      left: 12px;
+      right: 12px;
+      min-width: 0;
+      max-height: calc(100vh - 80px);
+      overflow-y: auto;
+    }
+  }
+`;
+
+/**
  * Inline CSS voor de SEO-pagina's. Geen externe stylesheet — eerste byte
  * is een complete pagina, AI-crawlers parsen zonder JS uit te voeren.
  * Tokens komen 1-op-1 uit `apps/mobile/theme/tokens.ts` (nacht-rol).
@@ -253,51 +572,8 @@ export const SEO_STYLES = `
   a { color: var(--acid); text-decoration: none; }
   a:hover { text-decoration: underline; }
 
-  /* Smart app banner — iOS toont 'm zelf via apple-itunes-app meta, dit
-     is de fallback voor desktop + Android. */
-  .banner {
-    position: sticky; top: 0; z-index: 10;
-    background: var(--bg-lift);
-    border-bottom: 1px solid var(--border-soft);
-    padding: 10px 18px;
-    display: flex; align-items: center; gap: 10px;
-    font-size: 13px;
-  }
-  /* Op mobile is de sticky-bottom-cta al de prominente actie; top-banner
-     scrollt dan gewoon mee weg in plaats van plek af te snoepen. */
-  @media (max-width: 899px) {
-    .banner { position: static; }
-  }
-  .banner .brand {
-    display: inline-flex; align-items: center; gap: 7px;
-    flex-shrink: 0;
-  }
-  .banner .brand strong {
-    color: var(--fg); font-weight: 800;
-    font-size: 13px; letter-spacing: -0.1px;
-    font-family: 'Archivo', sans-serif;
-  }
-  .banner .cross-mini {
-    position: relative; width: 14px; height: 14px; flex-shrink: 0;
-  }
-  .banner .cross-mini::before, .banner .cross-mini::after {
-    content: ""; position: absolute; top: 50%; left: 0;
-    width: 100%; height: 3px; margin-top: -1.5px; background: var(--acid);
-  }
-  .banner .cross-mini::before { transform: rotate(45deg); }
-  .banner .cross-mini::after { transform: rotate(-45deg); }
-  .banner .label {
-    flex: 1; color: var(--fg-muted);
-    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-    min-width: 0;
-  }
-  .banner a.open {
-    background: var(--acid); color: var(--bg);
-    padding: 6px 14px; border-radius: 999px;
-    font-weight: 600; font-size: 12px;
-    flex-shrink: 0;
-  }
-  .banner a.open:hover { text-decoration: none; opacity: 0.9; }
+  ${HEADER_STYLES}
+  ${STORE_BTN_STYLES}
 
   main {
     max-width: 720px; margin: 0 auto; padding: 32px 22px 96px;
@@ -567,28 +843,62 @@ export const SEO_STYLES = `
     font-weight: 700; font-size: 14px;
   }
   .cta-card a.primary:hover { opacity: 0.9; text-decoration: none; }
-  /* Secondary store-buttons — een tint boven de card-achtergrond zodat ze
-     leesbaar uitsteken, maar niet concurreren met de primary acid-knop. */
+  /* Secondary store-buttons — een tint boven de card-achtergrond zodat
+     ze leesbaar uitsteken, maar niet concurreren met de primary acid-knop.
+     Klein icoontje vooraan in acid-kleur (Apple/Play) zodat 't herkenbaar
+     is, label blijft compact tekst. */
   .cta-card a.secondary {
+    display: inline-flex; align-items: center; gap: 8px;
     background: var(--bg-chip); color: var(--fg);
-    padding: 12px 18px; border-radius: 999px;
+    padding: 10px 16px; border-radius: 999px;
     font-weight: 700; font-size: 14px;
   }
   .cta-card a.secondary:hover {
     background: var(--border); text-decoration: none;
   }
+  .cta-card a.secondary svg {
+    color: var(--acid);
+    flex-shrink: 0;
+  }
 
-  /* QR-block: alleen zichtbaar op desktop (≥900px). Op die viewport
-     vervangt de QR de "Open in ANDREAS"-knop — scannen-met-telefoon is
-     dáár nuttig, een knop niet. Op tablet/mobile blijft de knop staan. */
+  /* CTA-platforming. SAVES_LIB zet data-platform op <html>:
+       desktop → toon QR, verberg primary "Open in ANDREAS"
+       ios     → toon App Store + primary, verberg Play + QR
+       android → toon Google Play + primary, verberg App Store + QR
+
+     No-JS fallback (zonder data-platform): viewport-based — QR op
+     ≥900px, beide store-buttons op kleinere schermen. */
   .cta-card .qr { display: none; }
   .cta-card .qr-hint { display: none; }
+  .cta-card .qr-platforms { display: none; }
+  /* Platform-row binnen de CTA-card (zichtbaar wanneer QR getoond wordt
+     via desktop-platform of viewport-fallback). Icoontjes en label op
+     eigen regel, beide gecentreerd. */
+  .cta-card .qr-platforms {
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    margin: 0 0 8px;
+  }
+  .cta-card .qr-platforms-icons {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--acid);
+  }
+  .cta-card .qr-platforms-label {
+    color: var(--fg-muted);
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-size: 10px; letter-spacing: 1.3px; text-transform: uppercase;
+    text-align: center;
+  }
+  /* Viewport-fallback (no JS / unknown platform). */
   @media (min-width: 900px) {
     .cta-card.with-qr a.primary { display: none; }
     .cta-card.with-qr .qr {
       display: block;
       width: 160px; height: 160px;
-      margin: 0 auto 10px;
+      margin: 0 auto 20px;
       padding: 12px;
       background: #fff;
       border-radius: 12px;
@@ -596,14 +906,130 @@ export const SEO_STYLES = `
     .cta-card.with-qr .qr svg {
       width: 100%; height: 100%; display: block;
     }
+    .cta-card.with-qr .qr-platforms {
+      display: inline-flex;
+    }
     .cta-card.with-qr .qr-hint {
       display: block;
-      color: var(--fg-muted);
-      font-size: 12px;
-      margin: 0 0 14px;
+      color: var(--fg);
+      font-size: 14px;
+      font-weight: 700;
+      letter-spacing: -0.1px;
+      margin: 0 0 18px;
     }
   }
+  /* Platform-aware overrides — winnen door hogere specificity. */
+  /* iOS: alleen App Store + open-app, verberg Play + QR (CTA-card). */
+  html[data-platform="ios"] [data-cta="playstore"],
+  html[data-platform="ios"] .cta-card.with-qr .qr,
+  html[data-platform="ios"] .cta-card.with-qr .qr-hint {
+    display: none;
+  }
+  html[data-platform="ios"] .cta-card.with-qr a[data-cta="open-app"] {
+    display: inline-flex;
+  }
+  /* Android: alleen Google Play + open-app, verberg App Store + QR. */
+  html[data-platform="android"] [data-cta="appstore"],
+  html[data-platform="android"] .cta-card.with-qr .qr,
+  html[data-platform="android"] .cta-card.with-qr .qr-hint {
+    display: none;
+  }
+  html[data-platform="android"] .cta-card.with-qr a[data-cta="open-app"] {
+    display: inline-flex;
+  }
+  /* Desktop: alleen QR, verberg alle store-buttons en open-app. */
+  html[data-platform="desktop"] [data-cta="appstore"],
+  html[data-platform="desktop"] [data-cta="playstore"],
+  html[data-platform="desktop"] [data-cta="open-app"] {
+    display: none;
+  }
+  html[data-platform="desktop"] .cta-card.with-qr .qr {
+    display: block;
+    width: 160px; height: 160px;
+    margin: 0 auto 20px;
+    padding: 12px;
+    background: #fff;
+    border-radius: 12px;
+  }
+  html[data-platform="desktop"] .cta-card.with-qr .qr svg {
+    width: 100%; height: 100%; display: block;
+  }
+  html[data-platform="desktop"] .cta-card.with-qr .qr-platforms {
+    display: inline-flex;
+  }
+  html[data-platform="desktop"] .cta-card.with-qr .qr-hint {
+    display: block;
+    color: var(--fg);
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: -0.1px;
+    margin: 0 0 18px;
+  }
 
+  /* Hero-actions: actie-rij voor events zonder eigen foto. Save +
+     later eventueel andere buttons (share, ICS). */
+  .hero-actions {
+    display: flex; flex-wrap: wrap; gap: 8px;
+    margin: 0 0 18px;
+  }
+  /* Hero-image-wrap: positioned container voor de save+share-overlay
+     rechtsboven op de event-foto. */
+  .hero-image-wrap {
+    position: relative;
+    margin-bottom: 6px;
+  }
+  /* Overlay-rij met save + share rechtsboven over de foto. */
+  .hero-overlay-actions {
+    position: absolute;
+    top: 14px; right: 14px;
+    z-index: 5;
+    display: flex; gap: 8px;
+  }
+  /* Save/share-buttons in de overlay: stevig translucent + blur zodat
+     de tekst leesbaar blijft op elke foto-achtergrond. Geen shadow:
+     blur + acid hover doen het werk al, schaduw maakt 't zwaar. */
+  .hero-overlay-actions .save-btn {
+    background: rgba(10, 10, 11, 0.42);
+    backdrop-filter: blur(18px) saturate(160%);
+    -webkit-backdrop-filter: blur(18px) saturate(160%);
+    border-color: rgba(255, 255, 255, 0.15);
+    color: var(--fg);
+  }
+  .hero-overlay-actions .save-btn:hover {
+    background: rgba(10, 10, 11, 0.6);
+    border-color: rgba(255, 255, 255, 0.25);
+  }
+  /* In "bewaard"-state acid-bg blijft acid (overschrijft de translucent
+     bg) zodat de bevestiging duidelijk is. */
+  /* Save-button (op event-detail) — strakke pill met bookmark-icon.
+     "Bewaard"-state krijgt acid-bg om de actie te bevestigen. */
+  .save-btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 10px 16px;
+    border: 1px solid var(--border);
+    background: var(--bg-lift);
+    color: var(--fg);
+    border-radius: 999px;
+    font-family: 'Archivo', sans-serif;
+    font-weight: 600;
+    font-size: 13px;
+    letter-spacing: -0.1px;
+    cursor: pointer;
+    transition: background 120ms, color 120ms, border-color 120ms;
+  }
+  .save-btn:hover {
+    background: var(--bg-chip);
+    border-color: var(--fg-muted);
+  }
+  /* Bewaard-state: geen acid-bg + "Bewaard ✓"-tekst meer. Gewoon een
+     geel-gekleurde bladwijzer als visueel signaal, label verborgen
+     zodat 't compact blijft. */
+  .save-btn[data-saved="true"] {
+    color: var(--acid);
+  }
+  .save-btn[data-saved="true"] .save-label { display: none; }
+  .save-btn .save-icon { display: inline-flex; flex-shrink: 0; }
+  .save-btn .save-icon svg { display: block; }
   /* Footer — kleine print onder elke pagina. */
   footer.site {
     border-top: 1px solid var(--border-soft);
@@ -641,20 +1067,74 @@ export type AppleAppMeta = {
 };
 
 /**
- * Render het Smart-App-Banner blok bovenaan de pagina. iOS Safari toont
- * automatisch een eigen banner via `apple-itunes-app` meta — voor de
- * andere browsers tonen we deze sticky bar zodat de CTA altijd binnen
- * bereik blijft zonder de pagina af te kapen.
+ * Globale site-header / smart-app-banner. iOS Safari toont z'n eigen
+ * native banner via `apple-itunes-app` meta — voor de andere browsers
+ * (en op alle pagina's binnen onze app, inclusief homepage) tonen we
+ * deze sticky bar zodat brand, dropdown-navigatie, "X bewaard" en
+ * "Open in app" altijd binnen bereik zijn.
+ *
+ * Layout van links naar rechts:
+ *   - brand (logo + ANDREAS-cross), klikbaar naar /
+ *   - label (subtle, mid)
+ *   - dropdown (Browse ▾)  — categorieën in een details/summary
+ *   - X bewaard            — alleen zichtbaar als saves > 0
+ *   - Open in app          — primary CTA
  */
 export function renderAppBanner(deeplink: string, label: string): string {
   return `
     <div class="banner" role="banner">
-      <span class="brand">
+      <a class="brand" href="/">
         <strong>ANDREAS</strong>
         <span class="cross-mini" aria-hidden="true"></span>
-      </span>
+      </a>
       <span class="label">${escapeHtml(label)}</span>
-      <a class="open" href="${escapeHtml(deeplink)}">Open in app</a>
+      <details class="header-menu">
+        <summary>Browse</summary>
+        <div class="dropdown" role="menu">
+          <span class="group-label">Wanneer</span>
+          <a href="/vandaag">Vandaag</a>
+          <a href="/dit-weekend">Dit weekend</a>
+          <hr>
+          <span class="group-label">Categorieën</span>
+          <a href="/muziek">Muziek</a>
+          <a href="/artists">Artists</a>
+          <a href="/theater">Theater</a>
+          <a href="/film">Film</a>
+          <a href="/kunst">Kunst</a>
+          <a href="/literatuur">Literatuur</a>
+          <hr>
+          <span class="group-label">Venues</span>
+          <a href="/clubs">Clubs</a>
+          <a href="/podia">Podia</a>
+          <a href="/musea">Musea</a>
+          <a href="/galeries">Galeries</a>
+          <a href="/filmhuizen">Filmhuizen</a>
+        </div>
+      </details>
+      <details class="header-search">
+        <summary aria-label="Zoeken">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+        </summary>
+        <div class="search-floating">
+          <form action="/zoeken" method="get" role="search">
+            <input
+              type="search"
+              name="q"
+              placeholder="Zoek een venue, artist of event…"
+              autocomplete="off"
+              aria-label="Zoeken op andreas.amsterdam"
+            />
+            <button type="submit" aria-label="Zoeken">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+            </button>
+          </form>
+        </div>
+      </details>
+      <a class="header-saves" href="/mijn-lijst" data-saves-visible style="display:none">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21 12 16l-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2Z"/></svg>
+        <span class="header-saves-label">Bewaard</span>
+        <span class="header-saves-count" data-saves-count>0</span>
+      </a>
     </div>
   `;
 }
@@ -708,7 +1188,14 @@ export function renderCtaCard(opts: {
   const qrBlock = opts.qrUrl
     ? `
         <div class="qr" aria-hidden="true">${renderQrSvg(opts.qrUrl)}</div>
-        <p class="qr-hint">Scan met je telefoon</p>
+        <span class="qr-platforms" aria-hidden="true">
+          <span class="qr-platforms-icons">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M17.05 20.28c-.98.95-2.05.8-3.08.35-1.09-.46-2.09-.48-3.24 0-1.44.62-2.2.44-3.06-.35C2.79 15.25 3.51 7.59 9.05 7.31c1.35.07 2.29.74 3.08.8 1.18-.24 2.31-.93 3.57-.84 1.51.12 2.65.72 3.4 1.8-3.12 1.87-2.38 5.98.48 7.13-.57 1.5-1.31 2.99-2.54 4.09ZM12.03 7.25c-.15-2.23 1.66-4.07 3.74-4.25.29 2.58-2.34 4.5-3.74 4.25Z"/></svg>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M17.523 15.34a1.13 1.13 0 1 1 1.131-1.13 1.13 1.13 0 0 1-1.131 1.13Zm-11.06 0a1.13 1.13 0 1 1 1.131-1.13 1.13 1.13 0 0 1-1.131 1.13Zm11.46-6.16 2.26-3.91a.47.47 0 0 0-.81-.47l-2.29 3.96a14.06 14.06 0 0 0-11.18 0L3.62 4.8a.47.47 0 1 0-.81.47l2.26 3.91A13.06 13.06 0 0 0 0 17.66h24a13.06 13.06 0 0 0-5.077-8.48Z"/></svg>
+          </span>
+          <span class="qr-platforms-label">Beschikbaar voor iPhone en Android</span>
+        </span>
+        <p class="qr-hint">Scan om ANDREAS te downloaden</p>
       `
     : '';
   const cardClass = opts.qrUrl ? 'cta-card with-qr' : 'cta-card';
@@ -719,9 +1206,15 @@ export function renderCtaCard(opts: {
       <p>${escapeHtml(opts.body)}</p>
       ${qrBlock}
       <div class="actions">
-        <a class="primary" href="${escapeHtml(opts.deeplink)}">Open in ANDREAS</a>
-        <a class="secondary" href="${escapeHtml(APP_STORE_URL)}">App Store</a>
-        <a class="secondary" href="${escapeHtml(PLAY_STORE_URL)}">Google Play</a>
+        <a class="primary" data-cta="open-app" href="${escapeHtml(opts.deeplink)}">Open in ANDREAS</a>
+        <a class="secondary" data-cta="appstore" href="${escapeHtml(APP_STORE_URL)}">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M17.05 20.28c-.98.95-2.05.8-3.08.35-1.09-.46-2.09-.48-3.24 0-1.44.62-2.2.44-3.06-.35C2.79 15.25 3.51 7.59 9.05 7.31c1.35.07 2.29.74 3.08.8 1.18-.24 2.31-.93 3.57-.84 1.51.12 2.65.72 3.4 1.8-3.12 1.87-2.38 5.98.48 7.13-.57 1.5-1.31 2.99-2.54 4.09ZM12.03 7.25c-.15-2.23 1.66-4.07 3.74-4.25.29 2.58-2.34 4.5-3.74 4.25Z"/></svg>
+          App Store
+        </a>
+        <a class="secondary" data-cta="playstore" href="${escapeHtml(PLAY_STORE_URL)}">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M3.609 1.814 13.792 12 3.61 22.186a.996.996 0 0 1-.61-.92V2.734a1 1 0 0 1 .609-.92Zm10.89 10.893 2.302 2.302-10.937 6.333 8.635-8.635Zm3.199-3.198 2.807 1.626a1 1 0 0 1 0 1.73l-2.808 1.626L15.206 12l2.492-2.491ZM5.864 2.658 16.802 8.99l-2.303 2.303-8.635-8.635Z"/></svg>
+          Google Play
+        </a>
       </div>
     </aside>
   `;
@@ -980,6 +1473,78 @@ export const LIST_STYLES = `
     font-size: 13px;
     margin-top: 2px;
   }
+
+  /* ---------- Venue-cards (4-col grid, 1:1 image bovenaan) ---------- */
+  .venues-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 14px;
+    margin: 0 0 24px;
+  }
+  @media (min-width: 540px) {
+    .venues-grid { grid-template-columns: 1fr 1fr; }
+  }
+  @media (min-width: 900px) {
+    .venues-grid { grid-template-columns: repeat(4, 1fr); gap: 16px; }
+  }
+  .venue-card {
+    display: flex; flex-direction: column;
+    background: var(--bg-lift);
+    border-radius: 12px;
+    overflow: hidden;
+    color: var(--fg);
+    text-decoration: none;
+    transition: transform 220ms, box-shadow 220ms;
+  }
+  .venue-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.45);
+    text-decoration: none;
+  }
+  .venue-card-img-wrap {
+    display: block;
+    aspect-ratio: 1 / 1;
+    background: var(--bg);
+    overflow: hidden;
+    position: relative;
+  }
+  .venue-card-img {
+    width: 100%; height: 100%;
+    object-fit: cover;
+    display: block;
+    transition: transform 480ms;
+  }
+  .venue-card:hover .venue-card-img { transform: scale(1.04); }
+  .venue-card-img-placeholder {
+    width: 100%; height: 100%;
+    display: block; position: relative;
+  }
+  .venue-card-img-placeholder::before,
+  .venue-card-img-placeholder::after {
+    content: ""; position: absolute; top: 50%; left: 28%;
+    width: 44%; height: 10px; margin-top: -5px;
+    background: var(--acid); opacity: 0.35;
+  }
+  .venue-card-img-placeholder::before { transform: rotate(45deg); }
+  .venue-card-img-placeholder::after { transform: rotate(-45deg); }
+  .venue-card-body {
+    display: flex; flex-direction: column; gap: 2px;
+    padding: 10px 12px 14px;
+  }
+  .venue-card-title {
+    font-family: 'Archivo', sans-serif;
+    font-weight: 700;
+    font-size: 14px;
+    letter-spacing: -0.2px;
+    line-height: 1.2;
+    color: var(--fg);
+  }
+  .venue-card-meta {
+    color: var(--fg-muted);
+    font-size: 11px;
+    letter-spacing: 0.2px;
+    margin-top: 2px;
+  }
 `;
 
 /**
@@ -1011,11 +1576,244 @@ export const PAGE_GRID_STYLES = `
     }
     .page-aside {
       position: sticky;
-      top: 24px;
+      /* Sticky-aside komt onder de sticky topmenu (~48px hoog) met
+         een ademruimte van 20px ertussen. Anders schuift de CTA-card
+         onder de header langs en raakt 'm onleesbaar afgesneden. */
+      top: 68px;
       align-self: start;
     }
   }
 `;
+
+/**
+ * Save-zonder-login: kleine zelfstandige JS die in localStorage
+ * bewaard welke events de bezoeker als "voor later" heeft gemarkeerd.
+ * Geen login, geen backend-roundtrip. Snapshot (titel + venue + datum
+ * + image) wordt mee-opgeslagen zodat /mijn-lijst direct kan renderen
+ * zonder nog een fetch te doen.
+ *
+ * Wordt op alle SEO-pagina's geladen — `renderSaveButton()` op event-
+ * detail rendert dan de button die deze API aanspreekt. Op /mijn-lijst
+ * leest de pagina-script `window.andreasSaves.list()` en bouwt de UI.
+ *
+ * Versie-prefix `v1` zodat we later de storage-shape kunnen wijzigen
+ * zonder oude data te corrumperen.
+ */
+export const SAVES_LIB = `
+  (function () {
+    var KEY = 'andreas:saves:v1';
+    function read() {
+      try { return JSON.parse(localStorage.getItem(KEY) || '[]'); }
+      catch (e) { return []; }
+    }
+    function write(list) {
+      try { localStorage.setItem(KEY, JSON.stringify(list)); }
+      catch (e) {}
+      subs.forEach(function (cb) { try { cb(list); } catch (e) {} });
+    }
+    var subs = [];
+    window.andreasSaves = {
+      list: function () { return read(); },
+      count: function () { return read().length; },
+      has: function (id) { return read().some(function (s) { return s.id === id; }); },
+      toggle: function (snap) {
+        var list = read();
+        var i = list.findIndex(function (s) { return s.id === snap.id; });
+        if (i >= 0) { list.splice(i, 1); }
+        else { list.unshift(Object.assign({}, snap, { savedAt: Date.now() })); }
+        write(list);
+        return i < 0;
+      },
+      remove: function (id) {
+        var list = read().filter(function (s) { return s.id !== id; });
+        write(list);
+      },
+      subscribe: function (cb) { subs.push(cb); cb(read()); },
+    };
+    // Platform-detectie: zet data-platform op <html> zodat CSS de juiste
+    // CTA-buttons kan tonen (iOS → App Store, Android → Google Play,
+    // anders → desktop met QR). Doe dit zo vroeg mogelijk in de IIFE
+    // zodat er geen flash van verkeerde knoppen is.
+    (function () {
+      var ua = navigator.userAgent || '';
+      var platform = 'desktop';
+      if (/iPad|iPhone|iPod/.test(ua) && !window.MSStream) platform = 'ios';
+      else if (/Android/.test(ua)) platform = 'android';
+      document.documentElement.setAttribute('data-platform', platform);
+    })();
+
+    // Sluit header-dropdowns (Browse + search) zodra de gebruiker
+    // buiten de open <details> klikt — standaard sluit <details>
+    // alleen bij klik op z'n eigen summary. Werkt voor alle elementen
+    // met klasse "header-menu" of "header-search" die open zijn.
+    document.addEventListener('click', function (e) {
+      var openDetails = document.querySelectorAll(
+        'details.header-menu[open], details.header-search[open]'
+      );
+      openDetails.forEach(function (det) {
+        if (!det.contains(e.target)) det.removeAttribute('open');
+      });
+    });
+
+    // Header-badge: alle elementen met data-saves-count krijgen de count.
+    // Elementen met data-saves-visible (zoals de hele pill-wrapper)
+    // worden enkel getoond/verborgen op basis van count.
+    function syncBadges(list) {
+      var n = list.length;
+      document.querySelectorAll('[data-saves-count]').forEach(function (el) {
+        el.textContent = String(n);
+      });
+      document.querySelectorAll('[data-saves-visible]').forEach(function (el) {
+        el.style.display = n > 0 ? '' : 'none';
+      });
+    }
+    window.andreasSaves.subscribe(syncBadges);
+  })();
+`;
+
+/**
+ * Render een save-button voor de event-detail-pagina. De button heeft
+ * een snapshot-payload in data-attribuut; de save-script (via SAVES_LIB)
+ * leest die op click en zet 'm in localStorage.
+ *
+ * State (bewaard ja/nee) wordt client-side op DOM-load gezet door het
+ * begeleidende SAVE_BUTTON_SCRIPT-blok.
+ */
+/**
+ * Render een deel-knop met dezelfde pill-stijl als de save-knop.
+ * Klik triggert navigator.share() (native share-sheet op iOS/Android),
+ * met clipboard-fallback op desktop. Event-data zit in data-share-*
+ * attributen die SAVE_BUTTON_SCRIPT uitleest.
+ */
+export function renderShareButton(opts: {
+  title: string;
+  url: string;
+  text?: string;
+}): string {
+  return `<button class="save-btn share-btn" type="button"
+    data-share-url="${escapeHtml(opts.url)}"
+    data-share-title="${escapeHtml(opts.title)}"
+    data-share-text="${escapeHtml(opts.text ?? '')}">
+    <span class="save-icon" aria-hidden="true">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
+    </span>
+    <span class="share-label">Delen</span>
+  </button>`;
+}
+
+export function renderSaveButton(opts: {
+  id: string;
+  title: string;
+  venueName: string;
+  startsAt?: string | null;
+  imageUrl?: string | null;
+}): string {
+  const snap = {
+    id: opts.id,
+    title: opts.title,
+    venue: opts.venueName,
+    startsAt: opts.startsAt ?? null,
+    imageUrl: opts.imageUrl ?? null,
+    url: `/e/${opts.id}`,
+  };
+  const json = JSON.stringify(snap)
+    .replace(/'/g, '&#39;')
+    .replace(/"/g, '&quot;');
+  return `<button class="save-btn" type="button" data-save-snap="${json}">
+    <span class="save-icon" aria-hidden="true">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21 12 16l-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2Z"/></svg>
+    </span>
+    <span class="save-label">Bewaar voor later</span>
+  </button>`;
+}
+
+/**
+ * Inline script dat na DOM-load alle save-btn elementen initialiseert:
+ *   - kijkt of 't event al in localStorage zit → kleurt knop "bewaard"
+ *   - hangt click-handler die toggled en label/state bijwerkt
+ *
+ * Wordt alleen geladen op pagina's met een save-button (event-detail).
+ */
+export const SAVE_BUTTON_SCRIPT = `
+  (function () {
+    function decode(s) {
+      var d = document.createElement('div');
+      d.innerHTML = s;
+      return d.textContent || '';
+    }
+    function applyState(btn, saved) {
+      btn.dataset.saved = saved ? 'true' : 'false';
+    }
+    document.querySelectorAll('.save-btn').forEach(function (btn) {
+      var raw = btn.getAttribute('data-save-snap');
+      if (!raw) return;
+      var snap;
+      try { snap = JSON.parse(decode(raw)); } catch (e) { return; }
+      applyState(btn, window.andreasSaves.has(snap.id));
+      btn.addEventListener('click', function () {
+        var nowSaved = window.andreasSaves.toggle(snap);
+        applyState(btn, nowSaved);
+      });
+    });
+
+    // Share-button: navigator.share (native) waar beschikbaar (vooral
+    // mobile Safari/Chrome), anders clipboard met "Gekopieerd!" als
+    // korte feedback. Beide paden zijn no-op-veilig.
+    document.querySelectorAll('.share-btn').forEach(function (btn) {
+      var url = btn.getAttribute('data-share-url') || window.location.href;
+      var title = btn.getAttribute('data-share-title') || document.title;
+      var text = btn.getAttribute('data-share-text') || '';
+      var label = btn.querySelector('.share-label');
+      var defaultText = label ? label.textContent : '';
+      btn.addEventListener('click', function () {
+        if (navigator.share) {
+          navigator.share({ title: title, text: text, url: url })
+            .catch(function () {});
+          return;
+        }
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(url).then(function () {
+            if (!label) return;
+            label.textContent = 'Gekopieerd ✓';
+            setTimeout(function () { label.textContent = defaultText; }, 1800);
+          });
+        }
+      });
+    });
+  })();
+`;
+
+/**
+ * Auto-focus het zoekveld zodra de bezoeker op het search-icoon klikt.
+ * <details> heeft geen ingebouwde focus-trigger op toggle, dus dit
+ * kleine snippet hangt een toggle-listener op de header-search en
+ * focust het input zodra `open` true wordt.
+ */
+const SEARCH_FOCUS_SCRIPT = `
+  (function () {
+    var det = document.querySelector('.header-search');
+    if (!det) return;
+    det.addEventListener('toggle', function () {
+      if (!det.open) return;
+      var inp = det.querySelector('input[type="search"]');
+      if (inp) inp.focus();
+    });
+  })();
+`;
+
+/**
+ * Bundel van body-end scripts: localStorage saves-lib (altijd),
+ * search-focus (altijd, no-op als de search-knop niet op de pagina
+ * staat) + optioneel het save-button-init script (alleen op
+ * event-detail). "Mijn lijst (X)"-button zit niet meer als losse
+ * pill — die is geïntegreerd in renderAppBanner (header) en wordt
+ * door SAVES_LIB zichtbaar/onzichtbaar gemaakt via data-saves-visible.
+ */
+export function renderSiteScripts(opts: { withSaveButton?: boolean } = {}): string {
+  const scripts = [SAVES_LIB, SEARCH_FOCUS_SCRIPT];
+  if (opts.withSaveButton) scripts.push(SAVE_BUTTON_SCRIPT);
+  return scripts.map((s) => `<script>${s}</script>`).join('\n  ');
+}
 
 /** Site-footer zoals op `/`. */
 export function renderSiteFooter(): string {

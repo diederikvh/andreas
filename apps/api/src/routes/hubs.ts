@@ -13,11 +13,13 @@ import {
   eventSchemaType,
   formatShort,
   jsonLd,
+  renderAppBanner,
   renderCtaCard,
   renderEventMeta,
   renderFeaturedCard,
   renderMobileStickyCta,
   renderSiteFooter,
+  renderSiteScripts,
   renderThumb,
   venueTypeLabel,
 } from './_seo.js';
@@ -31,7 +33,7 @@ import {
  * Strategie:
  *   • Categorie-hubs (5) — `/muziek`, `/theater`, `/film`, `/kunst`,
  *     `/literatuur`. Filter op `events.category`.
- *   • Venue-type-hubs (5) — `/clubs`, `/musea`, `/podia`, `/bioscopen`,
+ *   • Venue-type-hubs (5) — `/clubs`, `/musea`, `/podia`, `/filmhuizen`,
  *     `/galeries`. Filter op `venues.type`.
  *   • Tijd-hubs (2) — `/vandaag`, `/dit-weekend`. Filter op
  *     `occurrences.startsAt`-range.
@@ -103,12 +105,12 @@ const HUBS: HubConfig[] = [
   {
     slug: 'film',
     title: 'Film in Amsterdam',
-    pageTitle: 'Film in Amsterdam — bioscopen, premières, retrospectives | ANDREAS',
+    pageTitle: 'Film in Amsterdam — filmhuizen, premières, retrospectives | ANDREAS',
     description:
-      'Filmvoorstellingen, premières en retrospectives in Amsterdamse bioscopen. EYE, Lab111, FilmHallen, Kriterion, The Movies en meer.',
+      'Filmvoorstellingen, premières en retrospectives in Amsterdamse filmhuizen. EYE, Lab111, FilmHallen, Kriterion, The Movies en meer.',
     intro:
-      'Alle <strong>filmvoorstellingen</strong> in Amsterdam — premières, retrospectives en arthouse in EYE, FilmHallen, Lab111, Kriterion, The Movies en andere bioscopen.',
-    venuesHeading: 'Bioscopen in Amsterdam',
+      'Alle <strong>filmvoorstellingen</strong> in Amsterdam — premières, retrospectives en arthouse in EYE, FilmHallen, Lab111, Kriterion, The Movies en andere filmhuizen.',
+    venuesHeading: 'Filmhuizen in Amsterdam',
     kind: 'category',
     category: 'Film',
   },
@@ -176,14 +178,14 @@ const HUBS: HubConfig[] = [
     eventKind: 'show',
   },
   {
-    slug: 'bioscopen',
-    title: 'Bioscopen in Amsterdam',
-    pageTitle: 'Bioscopen in Amsterdam — komende screenings | ANDREAS',
+    slug: 'filmhuizen',
+    title: 'Filmhuizen in Amsterdam',
+    pageTitle: 'Filmhuizen in Amsterdam — komende screenings | ANDREAS',
     description:
-      'Komende filmvoorstellingen in Amsterdamse bioscopen. EYE, Lab111, FilmHallen, Kriterion, The Movies, De Uitkijk, Cinecenter.',
+      'Komende filmvoorstellingen in Amsterdamse filmhuizen. EYE, Lab111, FilmHallen, Kriterion, The Movies, De Uitkijk, Cinecenter.',
     intro:
-      'Komende <strong>filmvoorstellingen in de Amsterdamse bioscopen</strong> — EYE, FilmHallen, Lab111, Kriterion, The Movies, De Uitkijk en de andere arthouse-zalen.',
-    venuesHeading: 'Alle bioscopen in Amsterdam',
+      'Komende <strong>filmvoorstellingen in de Amsterdamse filmhuizen</strong> — EYE, FilmHallen, Lab111, Kriterion, The Movies, De Uitkijk en de andere arthouse-zalen.',
+    venuesHeading: 'Alle filmhuizen in Amsterdam',
     kind: 'venueType',
     venueType: 'film',
     eventKind: 'show',
@@ -306,7 +308,50 @@ type VenueRow = {
   name: string;
   wijk: string | null;
   type: EventRow['venueType'];
+  imageUrl: string | null;
 };
+
+/**
+ * Tijd-hubs (vandaag/dit-weekend) groeperen de events in herkenbare
+ * clusters: muziek-op-podia, muziek-in-clubs, theater, film, kunst,
+ * literatuur, lezing. "Muziek elders" vangt muziek-events op locaties
+ * die geen podium of club zijn (musea, ruimtes, boekhandels).
+ *
+ * Volgorde is bewust: muziek eerst (grootste catalogus + meest gezocht),
+ * dan podium-arts, film, beeldende kunst, en pas daarna literatuur +
+ * lezing als kleinere clusters. Lege groepen vallen weg.
+ */
+function groupEventsByType(
+  events: EventRow[]
+): Array<{ key: string; heading: string; events: EventRow[] }> {
+  const buckets: Record<string, { key: string; heading: string; events: EventRow[] }> = {};
+  const ensure = (key: string, heading: string) => {
+    if (!buckets[key]) buckets[key] = { key, heading, events: [] };
+    return buckets[key];
+  };
+  for (const e of events) {
+    if (e.category === 'Muziek') {
+      if (e.venueType === 'podium') ensure('music-podium', 'Muziek op de podia').events.push(e);
+      else if (e.venueType === 'club') ensure('music-club', 'Muziek in de clubs').events.push(e);
+      else ensure('music-other', 'Muziek elders').events.push(e);
+    } else if (e.category === 'Theater') ensure('theater', 'Theater').events.push(e);
+    else if (e.category === 'Film') ensure('film', 'Film').events.push(e);
+    else if (e.category === 'Kunst') ensure('kunst', 'Kunst').events.push(e);
+    else if (e.category === 'Literatuur') ensure('literatuur', 'Literatuur').events.push(e);
+    else if (e.category === 'Lezing') ensure('lezing', 'Lezing').events.push(e);
+  }
+  const order = [
+    'music-podium',
+    'music-club',
+    'music-other',
+    'theater',
+    'film',
+    'kunst',
+    'literatuur',
+    'lezing',
+  ];
+  return order.map((k) => buckets[k]).filter((g): g is { key: string; heading: string; events: EventRow[] } => Boolean(g));
+}
 
 function formatRowWhen(e: EventRow): string {
   if (e.kind === 'exhibition' && e.endsAt) {
@@ -358,23 +403,8 @@ function renderHubPage(
   ]);
 
   const HUB_FEATURED = 2;
-  const eventsFeaturedHtml = events
-    .slice(0, HUB_FEATURED)
-    .map((e) =>
-      renderFeaturedCard({
-        href: `/e/${e.eventId}`,
-        imageUrl: e.imageUrl,
-        when: formatRowWhen(e),
-        title: e.title,
-        meta: renderEventMeta(e.venueName, e.genres),
-      })
-    )
-    .join('\n      ');
 
-  const eventsHtml = events
-    .slice(HUB_FEATURED)
-    .map(
-      (e) => `<li>
+  const renderEventListItem = (e: EventRow) => `<li>
         <a class="row-link" href="/e/${escapeHtml(e.eventId)}">
           ${renderThumb(e.imageUrl, e.title)}
           <span class="row-text">
@@ -383,9 +413,86 @@ function renderHubPage(
             <span class="meta">${renderEventMeta(e.venueName, e.genres)}</span>
           </span>
         </a>
-      </li>`
-    )
-    .join('\n        ');
+      </li>`;
+
+  const renderEventFeatured = (e: EventRow) =>
+    renderFeaturedCard({
+      href: `/e/${e.eventId}`,
+      imageUrl: e.imageUrl,
+      when: formatRowWhen(e),
+      title: e.title,
+      meta: renderEventMeta(e.venueName, e.genres),
+    });
+
+  /** Render één event-cluster: section-head + featured + (optioneel)
+   *  rest als compacte lijst. Met `allCards: true` worden alle items
+   *  als featured-card getoond — gebruikt op vandaag/dit-weekend waar
+   *  visuele rijkdom belangrijker is dan compactheid. */
+  const renderEventSection = (
+    heading: string,
+    group: EventRow[],
+    allCards = false
+  ) => {
+    const cardsList = allCards ? group : group.slice(0, HUB_FEATURED);
+    const featured = cardsList.map(renderEventFeatured).join('\n      ');
+    const rest = allCards
+      ? ''
+      : group.slice(HUB_FEATURED).map(renderEventListItem).join('\n        ');
+    return `
+      <section>
+        <div class="section-head">
+          <h2>${escapeHtml(heading)}</h2>
+          <span class="count">${group.length} ${group.length === 1 ? 'event' : 'events'}</span>
+        </div>
+        ${featured ? `<div class="featured-grid">${featured}</div>` : ''}
+        ${rest ? `<ul class="lines">
+          ${rest}
+        </ul>` : ''}
+      </section>
+    `;
+  };
+
+  // Voor tijd-hubs (vandaag/dit-weekend) groeperen we de events naar
+  // type — muziek-op-podia, muziek-in-clubs, theater, film, kunst,
+  // literatuur, lezing. Voor categorie/venue-type hubs heeft één lijst
+  // volstaan (die was al gefilterd op het thema).
+  const isTimeHub = hub.kind === 'today' || hub.kind === 'weekend';
+  let mainEventsHtml = '';
+  if (events.length === 0) {
+    mainEventsHtml = '';
+  } else if (isTimeHub) {
+    const groups = groupEventsByType(events);
+    mainEventsHtml = groups
+      .map((g) => renderEventSection(g.heading, g.events, true))
+      .join('\n');
+  } else {
+    // Flat: featured + rest binnen één impliciete sectie (geen h2 want
+    // de hub-h1 dekt de lading al).
+    const featured = events.slice(0, HUB_FEATURED).map(renderEventFeatured).join('\n      ');
+    const rest = events.slice(HUB_FEATURED).map(renderEventListItem).join('\n        ');
+    mainEventsHtml = `${featured ? `<div class="featured-grid">${featured}</div>` : ''}
+        ${rest ? `<ul class="lines">
+          ${rest}
+        </ul>` : ''}`;
+  }
+
+  const renderVenueCard = (v: VenueRow) => {
+    const label = venueTypeLabel(v.type);
+    const meta = [label, v.wijk]
+      .filter(Boolean)
+      .map((s) => escapeHtml(String(s)))
+      .join(' · ');
+    const imgHtml = v.imageUrl
+      ? `<img class="venue-card-img" src="${escapeHtml(v.imageUrl)}" alt="${escapeHtml(v.name)}" loading="lazy" />`
+      : `<span class="venue-card-img venue-card-img-placeholder" aria-hidden="true"></span>`;
+    return `<a class="venue-card" href="/v/${escapeHtml(v.slug)}">
+        <span class="venue-card-img-wrap">${imgHtml}</span>
+        <span class="venue-card-body">
+          <span class="venue-card-title">${escapeHtml(v.name)}</span>
+          <span class="venue-card-meta">${meta}</span>
+        </span>
+      </a>`;
+  };
 
   const venuesHtml = venues
     .map((v) => {
@@ -404,6 +511,8 @@ function renderHubPage(
       </li>`;
     })
     .join('\n        ');
+
+  const venuesGridHtml = venues.map(renderVenueCard).join('\n        ');
 
   // JSON-LD voor de venues-sectie — een tweede ItemList. Helpt AI-engines
   // zien dat deze hub-pagina ook een venue-cluster is, niet alleen events.
@@ -517,6 +626,7 @@ function renderHubPage(
   </style>
 </head>
 <body class="has-sticky-cta">
+  ${renderAppBanner('andreas://', hub.title)}
   ${renderMobileStickyCta('andreas://', hub.title)}
   <main>
     <nav class="breadcrumb" aria-label="Kruimelpad">
@@ -531,14 +641,7 @@ function renderHubPage(
     </header>
     <div class="page-grid">
       <div class="page-main">
-        ${
-          events.length > 0
-            ? `${eventsFeaturedHtml ? `<div class="featured-grid">${eventsFeaturedHtml}</div>` : ''}
-        ${eventsHtml ? `<ul class="lines">
-          ${eventsHtml}
-        </ul>` : ''}`
-            : emptyState
-        }
+        ${events.length > 0 ? mainEventsHtml : emptyState}
         ${
           venues.length > 0
             ? `<section>
@@ -546,9 +649,9 @@ function renderHubPage(
             <h2>${escapeHtml(hub.venuesHeading)}</h2>
             <span class="count">${venues.length} ${venues.length === 1 ? 'venue' : 'venues'}</span>
           </div>
-          <ul class="lines">
-            ${venuesHtml}
-          </ul>
+          ${isTimeHub
+            ? `<div class="venues-grid">${venuesGridHtml}</div>`
+            : `<ul class="lines">${venuesHtml}</ul>`}
         </section>`
             : ''
         }
@@ -567,6 +670,7 @@ function renderHubPage(
     </div>
     ${renderSiteFooter()}
   </main>
+  ${renderSiteScripts()}
 </body>
 </html>`;
 }
@@ -574,6 +678,12 @@ function renderHubPage(
 /* ============================================================
  * Route-registratie
  * ============================================================ */
+
+// Legacy 301-redirect: /bioscopen → /filmhuizen. Hernoemd om beter aan
+// te sluiten bij hoe de Amsterdamse arthouse-zalen zichzelf positioneren
+// (filmhuis vs commerciële bioscoop). Permanent zodat Google de
+// indexering verplaatst naar de nieuwe URL.
+hubsRoute.get('/bioscopen', (c) => c.redirect('/filmhuizen', 301));
 
 for (const hub of HUBS) {
   hubsRoute.get(`/${hub.slug}`, async (c) => {
@@ -595,6 +705,7 @@ for (const hub of HUBS) {
         venueSlug: schema.venues.slug,
         venueWijk: schema.venues.wijk,
         venueType: schema.venues.type,
+        venueImageUrl: schema.venues.imageUrl,
       })
       .from(schema.events)
       .innerJoin(schema.venues, eq(schema.venues.id, schema.events.venueId))
@@ -633,6 +744,7 @@ for (const hub of HUBS) {
           name: schema.venues.name,
           wijk: schema.venues.wijk,
           type: schema.venues.type,
+          imageUrl: schema.venues.imageUrl,
         })
         .from(schema.venues)
         .where(
@@ -656,6 +768,7 @@ for (const hub of HUBS) {
           name: r.venueName,
           wijk: r.venueWijk,
           type: r.venueType,
+          imageUrl: r.venueImageUrl,
         }))
         .sort((a, b) => a.name.localeCompare(b.name))
         .slice(0, 40);

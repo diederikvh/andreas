@@ -430,7 +430,7 @@ const AUTEURSRECHT_BODY = `
   gecertificeerd door TMDb. Het auteursrecht op de via TMDb opgehaalde
   poster- en stillafbeeldingen ligt bij de filmstudio's en oorspronkelijke
   rechthebbenden; Andreas toont het materiaal in redactionele context,
-  ter aankondiging van vertoningen in Amsterdamse bioscopen.
+  ter aankondiging van vertoningen in Amsterdamse filmhuizen.
 </p>
 
 <h2>Tekstuele inhoud</h2>

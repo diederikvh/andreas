@@ -4,6 +4,7 @@ import { Hono } from 'hono';
 import { db, schema } from '../db/index.js';
 import {
   APP_STORE_URL,
+  HEADER_STYLES,
   LIST_STYLES,
   OG_IMAGE_URL,
   PAGE_GRID_STYLES,
@@ -26,7 +27,11 @@ import {
   renderHead,
   renderHeroImage,
   renderMobileStickyCta,
+  renderQrSvg,
+  renderSaveButton,
+  renderShareButton,
   renderSiteFooter,
+  renderSiteScripts,
   renderThumb,
   streetAddress,
   ticketDomain,
@@ -347,6 +352,8 @@ shareRoute.get('/v/:slug', async (c) => {
       title: schema.events.title,
       kind: schema.events.kind,
       category: schema.events.category,
+      imageUrl: schema.events.imageUrl,
+      genres: schema.events.genres,
       startsAt: schema.occurrences.startsAt,
       endsAt: schema.occurrences.endsAt,
     })
@@ -983,8 +990,41 @@ function renderEventSeoPage(opts: {
     <article>
       ${breadcrumbHtml}
       <div class="hero">
-        ${event.imageUrl ? renderHeroImage(event.imageUrl, event.title) : ''}
-        ${event.imageUrl ? `<p class="credit">Foto via ${escapeHtml(event.venue.name)}</p>` : ''}
+        ${event.imageUrl ? `
+          <div class="hero-image-wrap">
+            ${renderHeroImage(event.imageUrl, event.title)}
+            <div class="hero-overlay-actions">
+              ${renderShareButton({
+                title: event.title,
+                url: `${PUBLIC_BASE_URL}/e/${event.id}`,
+                text: `${event.title} in ${event.venue.name}`,
+              })}
+              ${renderSaveButton({
+                id: event.id,
+                title: event.title,
+                venueName: event.venue.name,
+                startsAt: primaryOcc?.startsAt.toISOString() ?? null,
+                imageUrl: event.imageUrl,
+              })}
+            </div>
+          </div>
+          <p class="credit">Foto via ${escapeHtml(event.venue.name)}</p>
+        ` : `
+          <div class="hero-actions">
+            ${renderShareButton({
+              title: event.title,
+              url: `${PUBLIC_BASE_URL}/e/${event.id}`,
+              text: `${event.title} in ${event.venue.name}`,
+            })}
+            ${renderSaveButton({
+              id: event.id,
+              title: event.title,
+              venueName: event.venue.name,
+              startsAt: primaryOcc?.startsAt.toISOString() ?? null,
+              imageUrl: event.imageUrl,
+            })}
+          </div>
+        `}
         <h1>${escapeHtml(event.title)}</h1>
         <p class="lead">${leadParts.join(' ')}</p>
       </div>
@@ -1013,6 +1053,7 @@ function renderEventSeoPage(opts: {
     </article>
     ${renderSiteFooter()}
   </main>
+  ${renderSiteScripts({ withSaveButton: true })}
 </body>
 </html>`;
 }
@@ -1027,6 +1068,8 @@ type UpcomingEvent = {
   title: string;
   kind: 'show' | 'exhibition';
   category: 'Muziek' | 'Theater' | 'Literatuur' | 'Film' | 'Kunst' | 'Lezing';
+  imageUrl: string | null;
+  genres: string[];
   startsAt: Date;
   endsAt: Date | null;
 };
@@ -1200,19 +1243,52 @@ function renderVenueSeoPage(opts: {
     `
     : '';
 
+  const VENUE_UPCOMING_FEATURED = 2;
+  const venueUpcomingWhen = (e: UpcomingEvent): string =>
+    e.kind === 'exhibition' && e.endsAt
+      ? `t/m ${e.endsAt.toLocaleDateString('nl-NL', {
+          day: 'numeric',
+          month: 'short',
+          timeZone: 'Europe/Amsterdam',
+        })}`
+      : formatShort(e.startsAt);
+
+  const venueUpcomingFeatured = upcoming
+    .slice(0, VENUE_UPCOMING_FEATURED)
+    .map((e) =>
+      renderFeaturedCard({
+        href: `/e/${e.id}`,
+        imageUrl: e.imageUrl,
+        when: venueUpcomingWhen(e),
+        title: e.title,
+        meta: e.genres.length > 0 ? e.genres.slice(0, 2).join(', ') : e.category,
+      })
+    )
+    .join('\n      ');
+
+  const venueUpcomingList = upcoming
+    .slice(VENUE_UPCOMING_FEATURED)
+    .map(
+      (e) => `<li>
+        <a class="row-link" href="/e/${escapeHtml(e.id)}">
+          ${renderThumb(e.imageUrl, e.title)}
+          <span class="row-text">
+            <span class="when">${escapeHtml(venueUpcomingWhen(e))}</span>
+            <span class="title">${escapeHtml(e.title)}</span>
+            <span class="meta">${escapeHtml(e.genres.slice(0, 2).join(', ') || e.category)}</span>
+          </span>
+        </a>
+      </li>`
+    )
+    .join('\n        ');
+
   const upcomingHtml = upcoming.length > 0
     ? `
       <h2>Komende events</h2>
-      <ul class="upcoming">
-        ${upcoming
-          .map(
-            (e) => `<li>
-          <span class="when">${escapeHtml(formatShort(e.startsAt))}</span>
-          <span class="what"><a href="/e/${escapeHtml(e.id)}">${escapeHtml(e.title)}</a></span>
-        </li>`
-          )
-          .join('\n        ')}
-      </ul>
+      ${venueUpcomingFeatured ? `<div class="featured-grid">${venueUpcomingFeatured}</div>` : ''}
+      ${venueUpcomingList ? `<ul class="lines">
+        ${venueUpcomingList}
+      </ul>` : ''}
     `
     : `
       <h2>Komende events</h2>
@@ -1300,6 +1376,507 @@ function renderVenueSeoPage(opts: {
     </article>
     ${renderSiteFooter()}
   </main>
+  ${renderSiteScripts()}
+</body>
+</html>`;
+}
+
+/* ========================================================================
+ * /zoeken  —  cross-category search (events / venues / artists).
+ *             Server-rendered, ILIKE-search op naam/titel — geen FTS-
+ *             index nodig voor de huidige catalogus-grootte.
+ * ====================================================================== */
+
+shareRoute.get('/zoeken', async (c) => {
+  const rawQuery = (c.req.query('q') ?? '').trim().slice(0, 100);
+  // ILIKE-pattern voorbereiden — basic escape voor LIKE-wildcards die
+  // de gebruiker letterlijk wil zoeken (zeldzaam maar correct).
+  const q = rawQuery.replace(/[\\%_]/g, (m) => `\\${m}`);
+  const pattern = `%${q}%`;
+
+  // Bij een lege query: geen DB-hit, lege resultaten. Pagina toont
+  // dan alleen het zoekformulier + lege state.
+  let events: Array<{
+    id: string;
+    title: string;
+    imageUrl: string | null;
+    startsAt: Date;
+    venueName: string;
+    venueSlug: string;
+  }> = [];
+  let venues: Array<{
+    slug: string;
+    name: string;
+    type: ApiVenueType;
+    wijk: string | null;
+  }> = [];
+  let artists: Array<{
+    id: string;
+    name: string;
+    genres: string[];
+  }> = [];
+
+  if (rawQuery.length >= 2) {
+    [events, venues, artists] = await Promise.all([
+      db
+        .selectDistinct({
+          id: schema.events.id,
+          title: schema.events.title,
+          imageUrl: schema.events.imageUrl,
+          startsAt: schema.occurrences.startsAt,
+          venueName: schema.venues.name,
+          venueSlug: schema.venues.slug,
+        })
+        .from(schema.events)
+        .innerJoin(schema.venues, eq(schema.venues.id, schema.events.venueId))
+        .innerJoin(
+          schema.occurrences,
+          eq(schema.occurrences.eventId, schema.events.id)
+        )
+        .where(
+          and(
+            eq(schema.events.published, true),
+            eq(schema.venues.published, true),
+            sql`${schema.occurrences.status} <> 'cancelled'`,
+            sql`COALESCE(${schema.occurrences.endsAt}, ${schema.occurrences.startsAt} + INTERVAL '4 hours') >= NOW()`,
+            sql`${schema.events.title} ILIKE ${pattern}`
+          )
+        )
+        .orderBy(asc(schema.occurrences.startsAt))
+        .limit(20),
+      db
+        .select({
+          slug: schema.venues.slug,
+          name: schema.venues.name,
+          type: schema.venues.type,
+          wijk: schema.venues.wijk,
+        })
+        .from(schema.venues)
+        .where(
+          and(
+            eq(schema.venues.published, true),
+            sql`${schema.venues.name} ILIKE ${pattern}`
+          )
+        )
+        .orderBy(asc(schema.venues.name))
+        .limit(15)
+        .then((rows) => rows.map((r) => ({ ...r, type: r.type as ApiVenueType }))),
+      db
+        .select({
+          id: schema.artists.id,
+          name: schema.artists.name,
+          genres: schema.artists.genres,
+        })
+        .from(schema.artists)
+        .where(sql`${schema.artists.name} ILIKE ${pattern}`)
+        .orderBy(asc(schema.artists.name))
+        .limit(15),
+    ]);
+  }
+
+  // Eerste event dedup op id (een residency in meerdere occurrences zou
+  // anders 5× kunnen voorkomen).
+  const seenEvents = new Set<string>();
+  const uniqueEvents = events.filter((e) => {
+    if (seenEvents.has(e.id)) return false;
+    seenEvents.add(e.id);
+    return true;
+  });
+
+  const html = renderSearchPage({
+    query: rawQuery,
+    events: uniqueEvents,
+    venues,
+    artists,
+  });
+
+  return c.body(html, 200, {
+    'Content-Type': 'text/html; charset=utf-8',
+    // Zoekresultaten verschillen per query; korte cache, geen shared.
+    'Cache-Control': 'public, max-age=120',
+  });
+});
+
+function renderSearchPage(opts: {
+  query: string;
+  events: Array<{
+    id: string;
+    title: string;
+    imageUrl: string | null;
+    startsAt: Date;
+    venueName: string;
+    venueSlug: string;
+  }>;
+  venues: Array<{
+    slug: string;
+    name: string;
+    type: ApiVenueType;
+    wijk: string | null;
+  }>;
+  artists: Array<{ id: string; name: string; genres: string[] }>;
+}): string {
+  const { query, events, venues, artists } = opts;
+  const totalResults = events.length + venues.length + artists.length;
+  const hasQuery = query.length >= 2;
+
+  const pageTitle = hasQuery
+    ? `Zoeken: ${query} | ANDREAS`
+    : 'Zoeken | ANDREAS';
+  const desc = hasQuery
+    ? `${totalResults} resultaten voor "${query}" in ANDREAS — events, venues, artists in Amsterdam.`
+    : 'Zoek door alle events, venues en artists in ANDREAS.';
+
+  const head = renderHead({
+    title: pageTitle,
+    description: desc,
+    canonicalPath: '/zoeken',
+    ogType: 'website',
+    jsonLdBlocks: [],
+    extraStyles: PAGE_GRID_STYLES + LIST_STYLES + SEARCH_STYLES,
+  });
+  // Zoekresultaten-pagina's hebben weinig SEO-waarde (thin content,
+  // duplicate-risk). Noindex zodat Google ze niet als landings pakt.
+  const headNoindex = head.replace(
+    /<meta name="robots"[^>]*\/>/,
+    '<meta name="robots" content="noindex, follow" />'
+  );
+
+  const formHtml = `
+    <form class="search-form" action="/zoeken" method="get" role="search">
+      <input
+        type="search"
+        name="q"
+        placeholder="Zoek events, venues, artists…"
+        value="${escapeHtml(query)}"
+        autofocus
+        autocomplete="off"
+      />
+      <button type="submit">Zoeken</button>
+    </form>
+  `;
+
+  const eventRow = (e: typeof events[number]) => `<li>
+        <a class="row-link" href="/e/${escapeHtml(e.id)}">
+          ${renderThumb(e.imageUrl, e.title)}
+          <span class="row-text">
+            <span class="when">${escapeHtml(formatShort(e.startsAt))}</span>
+            <span class="title">${escapeHtml(e.title)}</span>
+            <span class="meta">${escapeHtml(e.venueName)}</span>
+          </span>
+        </a>
+      </li>`;
+  const venueRow = (v: typeof venues[number]) => {
+    const label = venueTypeLabel(v.type);
+    const meta = [label, v.wijk]
+      .filter(Boolean)
+      .map((s) => escapeHtml(String(s)))
+      .join(' · ');
+    return `<li>
+        <a class="row-link" href="/v/${escapeHtml(v.slug)}">
+          <span class="thumb thumb-placeholder" aria-hidden="true"></span>
+          <span class="row-text">
+            <span class="title">${escapeHtml(v.name)}</span>
+            <span class="meta">${meta}</span>
+          </span>
+        </a>
+      </li>`;
+  };
+  const artistRow = (a: typeof artists[number]) => {
+    const meta = a.genres.slice(0, 2).join(', ');
+    return `<li>
+        <a class="row-link" href="/a/${escapeHtml(a.id)}">
+          <span class="thumb thumb-placeholder" aria-hidden="true"></span>
+          <span class="row-text">
+            <span class="title">${escapeHtml(a.name)}</span>
+            <span class="meta">${escapeHtml(meta)}</span>
+          </span>
+        </a>
+      </li>`;
+  };
+
+  const section = (heading: string, rows: string[]) =>
+    rows.length === 0
+      ? ''
+      : `
+      <div class="section-head">
+        <h2>${escapeHtml(heading)}</h2>
+        <span class="count">${rows.length}</span>
+      </div>
+      <ul class="lines">
+        ${rows.join('\n        ')}
+      </ul>
+    `;
+
+  const resultsHtml = !hasQuery
+    ? '<p class="search-hint">Typ minstens 2 tekens om te zoeken — bijvoorbeeld een venuenaam, artiest of event-titel.</p>'
+    : totalResults === 0
+    ? `<p class="search-hint">Geen resultaten voor "${escapeHtml(query)}". Probeer een andere term — of bekijk <a href="/vandaag">wat er vandaag is</a>.</p>`
+    : [
+        section('Events', events.map(eventRow)),
+        section('Venues', venues.map(venueRow)),
+        section('Artists', artists.map(artistRow)),
+      ].join('');
+
+  return `<!doctype html>
+<html lang="nl">
+<head>${headNoindex}</head>
+<body class="has-sticky-cta">
+  ${renderAppBanner('andreas://', 'Zoeken in ANDREAS')}
+  ${renderMobileStickyCta('andreas://', 'Open in app')}
+  <main>
+    <article>
+      <nav class="breadcrumb" aria-label="Kruimelpad">
+        <a href="/">ANDREAS</a><span>›</span>
+        Zoeken
+      </nav>
+      <div class="hero">
+        <h1>Zoeken</h1>
+        ${formHtml}
+      </div>
+      <div class="page-grid">
+        <div class="page-main">
+          ${resultsHtml}
+        </div>
+        <aside class="page-aside">
+          ${renderCtaCard({
+            deeplink: 'andreas://',
+            title: 'Vind sneller in ANDREAS',
+            body: 'In de app heb je filters, opgeslagen zoekopdrachten en vrienden-zicht.',
+            qrUrl: `${PUBLIC_BASE_URL}/zoeken`,
+          })}
+        </aside>
+      </div>
+    </article>
+    ${renderSiteFooter()}
+  </main>
+  ${renderSiteScripts()}
+</body>
+</html>`;
+}
+
+/**
+ * CSS voor de /zoeken-pagina: zoekveld + button, en wat tekst-tweaks
+ * voor de empty/no-results state. Apart van LIST_STYLES omdat 't
+ * alleen op deze pagina nodig is.
+ */
+const SEARCH_STYLES = `
+  /* CTA-aside op /zoeken een stukje lager laten beginnen zodat 'ie
+     niet visueel aan de zoekbalk vastplakt. De sticky positie blijft
+     gewoon werken — start lager, plakt nog steeds 68px van top zodra
+     je scrollt. */
+  .page-aside { margin-top: 88px; }
+  @media (max-width: 899px) {
+    /* Op mobile vouwt 'ie onder de search/main; geen margin nodig. */
+    .page-aside { margin-top: 0; }
+  }
+  .search-form {
+    display: flex; gap: 8px;
+    margin: 16px 0 0;
+  }
+  .search-form input[type="search"] {
+    flex: 1;
+    padding: 14px 18px;
+    background: var(--bg-lift);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--fg);
+    font-family: 'Archivo', sans-serif;
+    font-size: 15px;
+    -webkit-appearance: none;
+    appearance: none;
+  }
+  .search-form input[type="search"]:focus {
+    outline: none;
+    border-color: var(--acid);
+  }
+  .search-form input[type="search"]::placeholder { color: var(--fg-faint); }
+  .search-form button {
+    padding: 14px 22px;
+    background: var(--acid); color: var(--bg);
+    border: 0; border-radius: 8px;
+    font-family: 'Archivo', sans-serif;
+    font-weight: 700; font-size: 14px;
+    cursor: pointer;
+  }
+  .search-form button:hover { opacity: 0.9; }
+  .search-hint {
+    color: var(--fg-muted);
+    font-size: 15px;
+    margin: 24px 0;
+    font-style: italic;
+  }
+  /* Section-head reuse uit ARTIST_INDEX_STYLES — kan generic worden
+     ooit, voor nu inline. */
+  .section-head {
+    display: flex; align-items: baseline; gap: 18px;
+    margin: 16px 0 12px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border-soft);
+  }
+  .section-head h2 { margin: 0; }
+  .section-head .count {
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-size: 11px; letter-spacing: 1.4px; text-transform: uppercase;
+    color: var(--fg-faint);
+    margin-left: auto;
+  }
+`;
+
+/* ========================================================================
+ * /mijn-lijst  —  client-side rendering van localStorage-saves.
+ *                 Geen server-side data; alleen een shell die JS vult.
+ *                 Noindex zodat Google deze persoonlijke pagina niet
+ *                 oppakt.
+ * ====================================================================== */
+
+shareRoute.get('/mijn-lijst', async (c) => {
+  const html = renderMyListPage();
+  return c.body(html, 200, {
+    'Content-Type': 'text/html; charset=utf-8',
+    'Cache-Control': 'public, max-age=300',
+  });
+});
+
+function renderMyListPage(): string {
+  const extraStyles = PAGE_GRID_STYLES + LIST_STYLES;
+  const head = renderHead({
+    title: 'Mijn lijst | ANDREAS',
+    description:
+      'Events die je in ANDREAS hebt bewaard voor later — een snelle lijst zonder login.',
+    canonicalPath: '/mijn-lijst',
+    ogType: 'website',
+    jsonLdBlocks: [],
+    extraStyles,
+  });
+  // Pagina is persoonlijk per browser (localStorage); Google indexeren
+  // heeft geen waarde — we overrulen daarom de default robots-meta.
+  const headNoindex = head.replace(
+    /<meta name="robots"[^>]*\/>/,
+    '<meta name="robots" content="noindex, follow" />'
+  );
+
+  // Render-script: leest snapshots uit localStorage en bouwt de
+  // event-rows. Bij een leeg lijstje: empty-state. Verwijder-icoon per
+  // rij dat alleen de save weghaalt (niet naar /e navigeert).
+  const renderScript = `
+    (function () {
+      function fmtWhen(iso) {
+        if (!iso) return '';
+        try {
+          var d = new Date(iso);
+          return d.toLocaleString('nl-NL', {
+            weekday: 'short', day: 'numeric', month: 'short',
+            hour: '2-digit', minute: '2-digit',
+            timeZone: 'Europe/Amsterdam',
+          });
+        } catch (e) { return ''; }
+      }
+      function escape(s) {
+        return String(s == null ? '' : s)
+          .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      }
+      function render() {
+        var list = window.andreasSaves.list();
+        var empty = document.getElementById('empty-state');
+        var ul = document.getElementById('my-list');
+        var countEl = document.getElementById('saves-count-display');
+        if (countEl) countEl.textContent = String(list.length);
+        if (list.length === 0) {
+          empty.style.display = '';
+          ul.style.display = 'none';
+          return;
+        }
+        empty.style.display = 'none';
+        ul.style.display = '';
+        ul.innerHTML = list.map(function (s) {
+          var when = escape(fmtWhen(s.startsAt));
+          var thumb = s.imageUrl
+            ? '<img class="thumb" src="' + escape(s.imageUrl) + '" alt="" loading="lazy" />'
+            : '<span class="thumb thumb-placeholder" aria-hidden="true"></span>';
+          return '<li>'
+            + '<a class="row-link" href="' + escape(s.url) + '">'
+            + thumb
+            + '<span class="row-text">'
+            +   '<span class="when">' + when + '</span>'
+            +   '<span class="title">' + escape(s.title) + '</span>'
+            +   '<span class="meta">' + escape(s.venue) + '</span>'
+            + '</span>'
+            + '</a>'
+            + '<button class="my-list-remove" data-remove-id="' + escape(s.id) + '" aria-label="Verwijder uit lijst">×</button>'
+          + '</li>';
+        }).join('');
+        ul.querySelectorAll('[data-remove-id]').forEach(function (btn) {
+          btn.addEventListener('click', function (e) {
+            e.preventDefault();
+            window.andreasSaves.remove(btn.getAttribute('data-remove-id'));
+            render();
+          });
+        });
+      }
+      // Initial + iedere keer dat de saves veranderen.
+      window.andreasSaves.subscribe(render);
+    })();
+  `;
+
+  return `<!doctype html>
+<html lang="nl">
+<head>${headNoindex}
+<style>
+  /* Lokaal extra: cross-knop rechts van elke row. Niet in LIST_STYLES
+     omdat 't alleen op deze pagina nuttig is. */
+  ul.lines li { display: flex; align-items: center; gap: 8px; }
+  ul.lines li a.row-link { flex: 1; min-width: 0; }
+  .my-list-remove {
+    flex-shrink: 0;
+    background: transparent; border: none;
+    color: var(--fg-faint);
+    font-size: 22px; line-height: 1;
+    padding: 8px 12px;
+    cursor: pointer;
+    transition: color 120ms;
+    font-family: inherit;
+  }
+  .my-list-remove:hover { color: var(--flare); }
+</style>
+</head>
+<body class="has-sticky-cta">
+  ${renderAppBanner('andreas://saves', 'Mijn lijst')}
+  ${renderMobileStickyCta('andreas://saves', 'Open mijn lijst in app')}
+  <main>
+    <article>
+      <nav class="breadcrumb" aria-label="Kruimelpad">
+        <a href="/">ANDREAS</a><span>›</span>
+        Mijn lijst
+      </nav>
+      <div class="hero">
+        <h1>Mijn lijst</h1>
+        <p class="lead">
+          Events die je hebt bewaard voor later — <span id="saves-count-display">0</span> in totaal.
+          Bewaard zonder login, alleen op dit apparaat. Voor pings, agenda-export en
+          vrienden-zicht: open dezelfde lijst in de ANDREAS-app.
+        </p>
+      </div>
+      <div class="page-grid">
+        <div class="page-main">
+          <p id="empty-state" style="display:none; color: var(--fg-muted); font-style: italic;">
+            Nog geen events bewaard. Open een event en klik op <em>Bewaar voor later</em> om 'm hier terug te zien.
+          </p>
+          <ul id="my-list" class="lines" style="display:none;"></ul>
+        </div>
+        <aside class="page-aside">
+          ${renderCtaCard({
+            deeplink: 'andreas://saves',
+            title: 'Open mijn lijst in ANDREAS',
+            body: 'In de app sync je je lijst tussen apparaten en krijg je pings voor wat eraan komt.',
+            qrUrl: `${PUBLIC_BASE_URL}/mijn-lijst`,
+          })}
+        </aside>
+      </div>
+    </article>
+    ${renderSiteFooter()}
+  </main>
+  ${renderSiteScripts()}
+  <script>${renderScript}</script>
 </body>
 </html>`;
 }
@@ -1750,6 +2327,7 @@ function renderArtistSeoPage(opts: {
     </article>
     ${renderSiteFooter()}
   </main>
+  ${renderSiteScripts()}
 </body>
 </html>`;
 }
@@ -1933,6 +2511,7 @@ function renderArtistsIndexPage(opts: {
     </article>
     ${renderSiteFooter()}
   </main>
+  ${renderSiteScripts()}
 </body>
 </html>`;
 }
@@ -2487,13 +3066,15 @@ shareRoute.get('/', async (c) => {
       .orderBy(asc(schema.occurrences.endsAt))
       .limit(20),
     // Alle gepubliceerde venues alfabetisch — geeft Google en AI's één
-    // pad-met-alle-venues-anchors om in te crawlen.
+    // pad-met-alle-venues-anchors om in te crawlen. imageUrl erbij voor
+    // de homepage venue-card-grid.
     db
       .select({
         slug: schema.venues.slug,
         name: schema.venues.name,
         type: schema.venues.type,
         wijk: schema.venues.wijk,
+        imageUrl: schema.venues.imageUrl,
       })
       .from(schema.venues)
       .where(eq(schema.venues.published, true))
@@ -2584,7 +3165,7 @@ shareRoute.get('/', async (c) => {
     },
     {
       question: 'Welke venues staan in ANDREAS?',
-      answer: `Op dit moment ${venues.length} Amsterdamse venues, waaronder Paradiso, Melkweg, OCCII, OT301, Stedelijk Museum, Rijksmuseum, FOAM, Concertgebouw, Bimhuis, EYE Filmmuseum, Carré en DeLaMar. Van clubs tot musea en van bioscopen tot literaire podia.`,
+      answer: `Op dit moment ${venues.length} Amsterdamse venues, waaronder Paradiso, Melkweg, OCCII, OT301, Stedelijk Museum, Rijksmuseum, FOAM, Concertgebouw, Bimhuis, EYE Filmmuseum, Carré en DeLaMar. Van clubs tot musea en van filmhuizen tot literaire podia.`,
     },
     {
       question: 'Werkt ANDREAS in andere steden?',
@@ -2594,13 +3175,9 @@ shareRoute.get('/', async (c) => {
   ];
   const homeFaqLd = faqJsonLd(homeFaq);
 
-  // Featured = eerste 2 items als grote 16:9 cards; rest als compacte
-  // row-links. Mengt magazine-gevoel met scanbare lijst, zonder de
-  // interne link-density te verlagen die voor SEO telt.
-  const FEATURED_COUNT = 2;
-
+  // Alle events als grote 16:9 magazine-cards — homepage als visueel
+  // spectakel. De fallback-list is eruit; we tonen elk event volwaardig.
   const showsFeaturedHtml = upcomingShows
-    .slice(0, FEATURED_COUNT)
     .map((e) =>
       renderFeaturedCard({
         href: `/e/${e.eventId}`,
@@ -2610,22 +3187,6 @@ shareRoute.get('/', async (c) => {
         meta: renderEventMeta(e.venueName, e.genres),
       })
     )
-    .join('\n      ');
-
-  const showsHtml = upcomingShows
-    .slice(FEATURED_COUNT)
-    .map((e) => {
-      return `<li>
-        <a class="row-link" href="/e/${escapeHtml(e.eventId)}">
-          ${renderThumb(e.imageUrl, e.title)}
-          <span class="row-text">
-            <span class="when">${escapeHtml(formatShort(e.startsAt))}</span>
-            <span class="title">${escapeHtml(e.title)}</span>
-            <span class="meta">${renderEventMeta(e.venueName, e.genres)}</span>
-          </span>
-        </a>
-      </li>`;
-    })
     .join('\n      ');
 
   const exhibitionWhen = (endsAt: Date | null) =>
@@ -2638,7 +3199,6 @@ shareRoute.get('/', async (c) => {
       : '';
 
   const exhibitionsFeaturedHtml = upcomingExhibitions
-    .slice(0, FEATURED_COUNT)
     .map((e) =>
       renderFeaturedCard({
         href: `/e/${e.eventId}`,
@@ -2650,22 +3210,6 @@ shareRoute.get('/', async (c) => {
     )
     .join('\n      ');
 
-  const exhibitionsHtml = upcomingExhibitions
-    .slice(FEATURED_COUNT)
-    .map((e) => {
-      return `<li>
-        <a class="row-link" href="/e/${escapeHtml(e.eventId)}">
-          ${renderThumb(e.imageUrl, e.title)}
-          <span class="row-text">
-            <span class="when">${escapeHtml(exhibitionWhen(e.endsAt))}</span>
-            <span class="title">${escapeHtml(e.title)}</span>
-            <span class="meta">${renderEventMeta(e.venueName, e.genres)}</span>
-          </span>
-        </a>
-      </li>`;
-    })
-    .join('\n      ');
-
   // Venues: eerste 30 visible, rest in <details>. Beide secties zitten
   // gewoon in de HTML — Google crawlt en indexeert <details>-content,
   // dus alle 197 venue-links blijven volwaardig anchors voor PageRank.
@@ -2673,6 +3217,30 @@ shareRoute.get('/', async (c) => {
   const venuesVisible = venues.slice(0, VENUE_VISIBLE_COUNT);
   const venuesHidden = venues.slice(VENUE_VISIBLE_COUNT);
 
+  // Venue als compacte card met 1:1 image bovenaan + naam + meta-rij.
+  // 4 op een rij in het home-feed grid op desktop, 2 op tablet, 1 op
+  // mobile. Image is square (anders dan event-cards 16:9) zodat we 4
+  // cards per row krijgen zonder dat ze té hoog worden.
+  const renderVenueCard = (v: typeof venues[number]) => {
+    const label = venueTypeLabel(v.type as ApiVenueType);
+    const meta = [label, v.wijk]
+      .filter(Boolean)
+      .map((s) => escapeHtml(String(s)))
+      .join(' · ');
+    const imgHtml = v.imageUrl
+      ? `<img class="venue-card-img" src="${escapeHtml(v.imageUrl)}" alt="${escapeHtml(v.name)}" loading="lazy" />`
+      : `<span class="venue-card-img venue-card-img-placeholder" aria-hidden="true"></span>`;
+    return `<a class="venue-card" href="/v/${escapeHtml(v.slug)}">
+        <span class="venue-card-img-wrap">${imgHtml}</span>
+        <span class="venue-card-body">
+          <span class="venue-card-title">${escapeHtml(v.name)}</span>
+          <span class="venue-card-meta">${meta}</span>
+        </span>
+      </a>`;
+  };
+
+  // Voor de collapsible "Toon alle venues"-rest: lichter, lijst-style
+  // ipv cards (anders te veel beeld). Behoud van interne link-density.
   const renderVenueRow = (v: typeof venues[number]) => {
     const label = venueTypeLabel(v.type as ApiVenueType);
     const meta = [label, v.wijk]
@@ -2689,7 +3257,7 @@ shareRoute.get('/', async (c) => {
       </li>`;
   };
 
-  const venuesVisibleHtml = venuesVisible.map(renderVenueRow).join('\n      ');
+  const venuesVisibleHtml = venuesVisible.map(renderVenueCard).join('\n      ');
   const venuesHiddenHtml = venuesHidden.map(renderVenueRow).join('\n      ');
 
   const html = `<!doctype html>
@@ -2752,11 +3320,107 @@ shareRoute.get('/', async (c) => {
       -webkit-font-smoothing: antialiased;
     }
     main {
-      max-width: 720px; width: 100%;
+      max-width: 1100px; width: 100%;
       margin: 0 auto; padding: 64px 28px 96px;
     }
-    /* Hero */
-    .hero { text-align: left; margin-bottom: 56px; }
+    /* Hero — bovenaan de linker home-intro kolom, links uitgelijnd. */
+    .hero { text-align: left; margin-bottom: 32px; }
+    /* Home-grid: links sticky verhaal+stores, rechts scroll-feed met
+       events + venues + FAQ. Single column op mobile. */
+    .home-grid {
+      display: grid;
+      gap: 56px;
+      grid-template-columns: 1fr;
+    }
+    @media (min-width: 900px) {
+      .home-grid {
+        grid-template-columns: minmax(320px, 400px) 1fr;
+        gap: 72px;
+        align-items: start;
+      }
+      .home-intro {
+        position: sticky;
+        /* Onder het topmenu (~48px) met 20px ademruimte. Zelfde formule
+           als .page-aside op detail-pagina's. */
+        top: 68px;
+        align-self: start;
+      }
+    }
+    .home-intro { min-width: 0; }
+    .home-feed { min-width: 0; }
+    /* Venues als 4-koloms cards-grid op desktop, 2-col tablet, 1-col
+       mobile. 1:1 image bovenaan + naam + type/wijk eronder.
+       Magazine-feel, geen lange tekst-lijst. */
+    .venues-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 14px;
+      margin: 0 0 24px;
+    }
+    @media (min-width: 540px) {
+      .venues-grid { grid-template-columns: 1fr 1fr; }
+    }
+    @media (min-width: 900px) {
+      .venues-grid { grid-template-columns: repeat(4, 1fr); gap: 16px; }
+    }
+    .venue-card {
+      display: flex; flex-direction: column;
+      background: var(--bg-lift);
+      border-radius: 12px;
+      overflow: hidden;
+      color: var(--fg);
+      text-decoration: none;
+      transition: transform 220ms, box-shadow 220ms;
+    }
+    .venue-card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 12px 28px rgba(0, 0, 0, 0.45);
+      text-decoration: none;
+    }
+    .venue-card-img-wrap {
+      display: block;
+      aspect-ratio: 1 / 1;
+      background: var(--bg);
+      overflow: hidden;
+      position: relative;
+    }
+    .venue-card-img {
+      width: 100%; height: 100%;
+      object-fit: cover;
+      display: block;
+      transition: transform 480ms;
+    }
+    .venue-card:hover .venue-card-img { transform: scale(1.04); }
+    .venue-card-img-placeholder {
+      width: 100%; height: 100%;
+      display: block; position: relative;
+    }
+    .venue-card-img-placeholder::before,
+    .venue-card-img-placeholder::after {
+      content: ""; position: absolute; top: 50%; left: 28%;
+      width: 44%; height: 10px; margin-top: -5px;
+      background: var(--acid); opacity: 0.35;
+    }
+    .venue-card-img-placeholder::before { transform: rotate(45deg); }
+    .venue-card-img-placeholder::after { transform: rotate(-45deg); }
+    .venue-card-body {
+      display: flex; flex-direction: column; gap: 2px;
+      padding: 10px 12px 14px;
+    }
+    .venue-card-title {
+      font-family: 'Archivo', sans-serif;
+      font-weight: 700;
+      font-size: 14px;
+      letter-spacing: -0.2px;
+      line-height: 1.2;
+      color: var(--fg);
+    }
+    .venue-card-meta {
+      color: var(--fg-muted);
+      font-size: 11px;
+      letter-spacing: 0.2px;
+      margin-top: 2px;
+    }
     .logo { display: inline-flex; align-items: center; gap: 18px; }
     .logo-text {
       font-family: 'Archivo', sans-serif; font-weight: 900;
@@ -2807,24 +3471,83 @@ shareRoute.get('/', async (c) => {
     .stores {
       display: flex; gap: 10px; flex-wrap: wrap;
       margin: 0 0 80px;
+      align-items: center;
     }
+    /* QR-blok in de home-stores: standaard verborgen, alleen zichtbaar
+       als data-platform="desktop". Vul de hele container-breedte;
+       QR-image links, hint-tekst rechts. */
+    .home-qr {
+      display: none;
+      align-items: center; gap: 18px;
+      padding: 16px 20px;
+      background: var(--bg-lift);
+      border-radius: 12px;
+      width: 100%;
+      box-sizing: border-box;
+    }
+    .home-qr-image {
+      width: 120px; height: 120px;
+      padding: 8px;
+      background: #fff;
+      border-radius: 8px;
+      flex-shrink: 0;
+    }
+    .home-qr-image svg { width: 100%; height: 100%; display: block; }
+    .home-qr-body {
+      display: flex; flex-direction: column; gap: 6px;
+      min-width: 0;
+    }
+    .home-qr-platforms {
+      display: inline-flex; align-items: center; gap: 6px;
+      color: var(--acid);
+    }
+    .home-qr-kicker {
+      color: var(--fg-muted);
+      font-family: 'JetBrains Mono', ui-monospace, monospace;
+      font-size: 11px; letter-spacing: 1.4px; text-transform: uppercase;
+    }
+    .home-qr-hint {
+      color: var(--fg);
+      font-family: 'Archivo', sans-serif;
+      font-weight: 700;
+      font-size: 16px;
+      letter-spacing: -0.2px;
+      line-height: 1.3;
+    }
+    html[data-platform="desktop"] .home-qr { display: flex; }
+    html[data-platform="desktop"] .stores .store-btn { display: none; }
+    /* Store-knoppen als card-buttons (zoals in de app): bgLift-vlak,
+       6px radius, icoon links-uitgelijnd, daarnaast acid-kicker boven
+       en witte titel onder. Geen acid-bg meer — alleen het icoon en
+       de kicker zijn acid. */
     .store-btn {
-      flex: 1; min-width: 160px;
-      display: inline-flex; align-items: center; justify-content: center; gap: 8px;
-      padding: 16px 22px; border-radius: 999px;
-      background: var(--acid); color: var(--bg);
-      text-decoration: none; font-size: 16px;
-      letter-spacing: -0.1px; transition: opacity 120ms;
-      text-align: center;
+      flex: 1; min-width: 180px;
+      display: inline-flex; align-items: center; gap: 14px;
+      padding: 14px 18px;
+      border-radius: 12px;
+      background: var(--bg-lift);
+      color: var(--fg);
+      text-decoration: none;
+      transition: background 120ms;
     }
-    .store-btn:hover { opacity: 0.85; }
+    .store-btn:hover { background: var(--bg-chip); }
+    .store-btn .store-icon {
+      flex-shrink: 0;
+      color: var(--acid);
+    }
+    .store-btn > div { min-width: 0; }
     .store-btn small {
-      display: block; font-family: 'JetBrains Mono', ui-monospace, monospace;
+      display: block;
+      font-family: 'JetBrains Mono', ui-monospace, monospace;
       font-size: 10px; letter-spacing: 1.2px; text-transform: uppercase;
-      color: var(--bg); opacity: 0.85; margin-bottom: 3px;
+      color: var(--acid);
+      margin-bottom: 3px;
       font-weight: 600;
     }
-    .store-btn span { font-weight: 800; font-size: 17px; letter-spacing: -0.2px; }
+    .store-btn span {
+      font-weight: 800; font-size: 17px; letter-spacing: -0.2px;
+      color: var(--fg);
+    }
     /* Sectie-koppen */
     .section-head {
       display: flex; align-items: baseline; gap: 18px;
@@ -2844,6 +3567,7 @@ shareRoute.get('/', async (c) => {
       margin-left: auto;
     }
     ${LIST_STYLES}
+    ${HEADER_STYLES}
     /* Hub-nav onder de stores: snelle paden naar de top-landing-pages. */
     nav.hub-nav {
       display: flex; flex-wrap: wrap;
@@ -2864,9 +3588,10 @@ shareRoute.get('/', async (c) => {
     }
     nav.hub-nav a:hover { color: var(--acid); }
     nav.hub-nav .sep { color: var(--fg-faint); }
-    /* "Toon alle venues"-toggle — strakke lijn met acid-accent. */
+    /* "Toon alle venues"-toggle — strakke lijn met acid-accent.
+       Ademruimte boven zodat 'ie niet plakt op de 4-koloms cards-grid. */
     details.venues-more {
-      margin: -32px 0 56px;
+      margin: 32px 0 56px;
     }
     details.venues-more > summary {
       cursor: pointer;
@@ -3002,38 +3727,55 @@ shareRoute.get('/', async (c) => {
   </style>
 </head>
 <body class="has-sticky-cta">
+  ${renderAppBanner('andreas://', 'Uitgaan in Amsterdam')}
   ${renderMobileStickyCta('andreas://', 'Uitgaan in Amsterdam')}
   <main>
-    <header class="hero">
-      <div class="logo">
-        <span class="logo-text">ANDREAS</span>
-        <span class="cross" aria-hidden="true"></span>
-      </div>
-      <p class="kicker">Amsterdam · ${new Date().getFullYear()}</p>
-    </header>
+    <div class="home-grid">
+      <aside class="home-intro">
+        <header class="hero">
+          <div class="logo">
+            <span class="logo-text">ANDREAS</span>
+            <span class="cross" aria-hidden="true"></span>
+          </div>
+          <p class="kicker">amsterdam culture</p>
+        </header>
+        <h1 class="h1">Uitgaan in Amsterdam — alle events in één app</h1>
+        <p class="tagline">Heel Amsterdam, in één agenda.</p>
+        <p class="intro">
+          ANDREAS bundelt <strong>de complete uitgaansagenda van Amsterdam</strong>
+          in één app: concerten, clubavonden, exposities, theater, film en
+          literaire events. Wat er vanavond is, en wat eraan komt — op één plek.
+          Sla je favoriete venues op, krijg een herinnering voor wat je niet
+          wilt missen, en zie welke vrienden ook gaan.
+        </p>
+        <p class="intro intro--cta">
+          Download ANDREAS gratis en ontdek meer in Amsterdam.
+        </p>
 
-    <h1 class="h1">Uitgaan in Amsterdam — alle events in één app</h1>
-    <p class="tagline">Heel Amsterdam, in één agenda.</p>
-    <p class="intro">
-      ANDREAS bundelt <strong>de complete uitgaansagenda van Amsterdam</strong>
-      in één app: concerten, clubavonden, exposities, theater, film en
-      literaire events. Wat er vanavond is, en wat eraan komt — op één plek.
-      Sla je favoriete venues op, krijg een herinnering voor wat je niet
-      wilt missen, en zie welke vrienden ook gaan.
-    </p>
-    <p class="intro intro--cta">
-      Download ANDREAS gratis en ontdek meer in Amsterdam.
-    </p>
+        <div class="stores">
+          <a class="store-btn" data-cta="appstore" href="${escapeHtml(APP_STORE_URL)}">
+            <svg class="store-icon" width="28" height="28" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M17.05 20.28c-.98.95-2.05.8-3.08.35-1.09-.46-2.09-.48-3.24 0-1.44.62-2.2.44-3.06-.35C2.79 15.25 3.51 7.59 9.05 7.31c1.35.07 2.29.74 3.08.8 1.18-.24 2.31-.93 3.57-.84 1.51.12 2.65.72 3.4 1.8-3.12 1.87-2.38 5.98.48 7.13-.57 1.5-1.31 2.99-2.54 4.09ZM12.03 7.25c-.15-2.23 1.66-4.07 3.74-4.25.29 2.58-2.34 4.5-3.74 4.25Z"/></svg>
+            <div><small>Download op de</small><span>App Store</span></div>
+          </a>
+          <a class="store-btn" data-cta="playstore" href="${escapeHtml(PLAY_STORE_URL)}">
+            <svg class="store-icon" width="28" height="28" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M3.609 1.814 13.792 12 3.61 22.186a.996.996 0 0 1-.61-.92V2.734a1 1 0 0 1 .609-.92Zm10.89 10.893 2.302 2.302-10.937 6.333 8.635-8.635Zm3.199-3.198 2.807 1.626a1 1 0 0 1 0 1.73l-2.808 1.626L15.206 12l2.492-2.491ZM5.864 2.658 16.802 8.99l-2.303 2.303-8.635-8.635Z"/></svg>
+            <div><small>Verkrijgbaar via</small><span>Google Play</span></div>
+          </a>
+          <div class="home-qr" data-cta="qr">
+            <div class="home-qr-image" aria-hidden="true">${renderQrSvg(PUBLIC_BASE_URL + '/')}</div>
+            <div class="home-qr-body">
+              <span class="home-qr-platforms" aria-hidden="true">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M17.05 20.28c-.98.95-2.05.8-3.08.35-1.09-.46-2.09-.48-3.24 0-1.44.62-2.2.44-3.06-.35C2.79 15.25 3.51 7.59 9.05 7.31c1.35.07 2.29.74 3.08.8 1.18-.24 2.31-.93 3.57-.84 1.51.12 2.65.72 3.4 1.8-3.12 1.87-2.38 5.98.48 7.13-.57 1.5-1.31 2.99-2.54 4.09ZM12.03 7.25c-.15-2.23 1.66-4.07 3.74-4.25.29 2.58-2.34 4.5-3.74 4.25Z"/></svg>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M17.523 15.34a1.13 1.13 0 1 1 1.131-1.13 1.13 1.13 0 0 1-1.131 1.13Zm-11.06 0a1.13 1.13 0 1 1 1.131-1.13 1.13 1.13 0 0 1-1.131 1.13Zm11.46-6.16 2.26-3.91a.47.47 0 0 0-.81-.47l-2.29 3.96a14.06 14.06 0 0 0-11.18 0L3.62 4.8a.47.47 0 1 0-.81.47l2.26 3.91A13.06 13.06 0 0 0 0 17.66h24a13.06 13.06 0 0 0-5.077-8.48Z"/></svg>
+              </span>
+              <span class="home-qr-kicker">Beschikbaar voor iPhone en Android</span>
+              <span class="home-qr-hint">Scan om ANDREAS te downloaden</span>
+            </div>
+          </div>
+        </div>
+      </aside>
 
-    <div class="stores">
-      <a class="store-btn" href="${escapeHtml(APP_STORE_URL)}">
-        <div><small>Download op de</small><span>App Store</span></div>
-      </a>
-      <a class="store-btn" href="${escapeHtml(PLAY_STORE_URL)}">
-        <div><small>Verkrijgbaar via</small><span>Google Play</span></div>
-      </a>
-    </div>
-
+      <div class="home-feed">
     <nav class="hub-nav" aria-label="Browse">
       <a href="/vandaag">Vandaag</a>
       <a href="/dit-weekend">Dit weekend</a>
@@ -3049,7 +3791,7 @@ shareRoute.get('/', async (c) => {
       <a href="/podia">Podia</a>
       <a href="/musea">Musea</a>
       <a href="/galeries">Galeries</a>
-      <a href="/bioscopen">Bioscopen</a>
+      <a href="/filmhuizen">Filmhuizen</a>
     </nav>
 
     <section>
@@ -3058,9 +3800,6 @@ shareRoute.get('/', async (c) => {
         <span class="count">eerstvolgende ${upcomingShows.length}</span>
       </div>
       ${showsFeaturedHtml ? `<div class="featured-grid">${showsFeaturedHtml}</div>` : ''}
-      ${showsHtml ? `<ul class="lines">
-        ${showsHtml}
-      </ul>` : ''}
     </section>
 
     ${upcomingExhibitions.length > 0 ? `<section>
@@ -3069,9 +3808,6 @@ shareRoute.get('/', async (c) => {
         <span class="count">sluit eerst</span>
       </div>
       ${exhibitionsFeaturedHtml ? `<div class="featured-grid">${exhibitionsFeaturedHtml}</div>` : ''}
-      ${exhibitionsHtml ? `<ul class="lines">
-        ${exhibitionsHtml}
-      </ul>` : ''}
     </section>` : ''}
 
     <section>
@@ -3079,9 +3815,9 @@ shareRoute.get('/', async (c) => {
         <h2>Venues in Amsterdam</h2>
         <span class="count">${venues.length} venues</span>
       </div>
-      <ul class="lines">
+      <div class="venues-grid">
         ${venuesVisibleHtml}
-      </ul>
+      </div>
       ${venuesHidden.length > 0 ? `<details class="venues-more">
         <summary>Toon alle ${venues.length} venues</summary>
         <ul class="lines">
@@ -3100,6 +3836,8 @@ shareRoute.get('/', async (c) => {
         )
         .join('\n      ')}
     </section>
+      </div>
+    </div>
 
     <footer class="site">
       <p>
@@ -3108,6 +3846,7 @@ shareRoute.get('/', async (c) => {
       </p>
     </footer>
   </main>
+  ${renderSiteScripts()}
 </body>
 </html>`;
 
