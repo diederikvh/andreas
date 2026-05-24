@@ -92,6 +92,30 @@ jobs:
           python3 -m json.tool < response.json 2>/dev/null || cat response.json
           [ "$HTTP" -ge 400 ] && exit 1 || exit 0
 
+  # Artists-enrichment via MusicBrainz — link lineup-items aan
+  # canonical artist-records met Spotify/Apple Music/Bandcamp/YouTube/
+  # official links. Vult ook bio + genre-tags uit MB. Chunk-limit van
+  # 400 per run om binnen de 30-min job-timeout te blijven (1.5s
+  # throttle × 2 calls per artist = ~20 min voor 400). Incremental
+  # gedrag: nieuwe artists eerst, stale (>7d) als ruimte over is.
+  enrich-artists:
+    needs: scrape
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: POST /admin/api/enrich-artists
+        run: |
+          HTTP=$(curl --silent --show-error --max-time 1500 \
+            -X POST "https://api.andreas.amsterdam/admin/api/enrich-artists?limit=400" \
+            -H "Authorization: Bearer ${{ secrets.ANDREAS_ADMIN_API_KEY }}" \
+            -H "Content-Type: application/json" \
+            -o response.json \
+            -w "%{http_code}")
+          echo "── HTTP $HTTP ──"
+          python3 -m json.tool < response.json 2>/dev/null || cat response.json
+          [ "$HTTP" -ge 400 ] && exit 1 || exit 0
+
   # Genre-enrichment — twee staps. Stap 1 (keyword) is gratis en
   # pakt het meeste; stap 2 (AI fallback) handelt af wat na stap 1
   # nog leeg is. Beide idempotent. Runt na enrich-films zodat OMDb-

@@ -7,6 +7,7 @@ import {
   enrichGenresFromAI,
   enrichGenresFromKeywords,
 } from '../../scrapers/_genre-enrich.js';
+import { enrichLineupArtists } from '../../scrapers/_artists-enrich.js';
 import { enrichFilmsFromOmdb } from '../../scrapers/_omdb-enrich.js';
 import { enrichFilmsFromTmdb } from '../../scrapers/_tmdb-enrich.js';
 import { extractFromUrl } from '../../scrapers/extract-from-url.js';
@@ -880,6 +881,39 @@ adminApi.post('/enrich-films-tmdb', async (c) => {
   const startedAt = Date.now();
   try {
     const result = await enrichFilmsFromTmdb();
+    return c.json({
+      durationMs: Date.now() - startedAt,
+      ...result,
+    });
+  } catch (e) {
+    return c.json(
+      {
+        durationMs: Date.now() - startedAt,
+        error: (e as Error).message,
+      },
+      500
+    );
+  }
+});
+
+// ─── Artists-enrichment via MusicBrainz ─────────────────────────────
+//
+// Verzamelt unieke artist-namen uit toekomstige Muziek-occurrence
+// lineups, doet MB-lookup voor elke nieuwe + voor stale records (>7d
+// oud), en linkt lineup-items naar artistId. CC0-data van MB cachen
+// we expliciet in de `artists`-tabel.
+//
+// `?limit=N` query-param houdt 'n run binnen de cron-timeout (1.5s
+// throttle × N artists × 2 calls = 3N seconds; 400 artists ≈ 20 min).
+
+adminApi.post('/enrich-artists', async (c) => {
+  const startedAt = Date.now();
+  const limitParam = c.req.query('limit');
+  const limit = limitParam ? parseInt(limitParam, 10) : undefined;
+  try {
+    const result = await enrichLineupArtists(
+      limit && Number.isFinite(limit) ? limit : undefined
+    );
     return c.json({
       durationMs: Date.now() - startedAt,
       ...result,

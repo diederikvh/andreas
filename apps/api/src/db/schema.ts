@@ -432,10 +432,18 @@ export const occurrences = pgTable(
     room: text(),
     /** Optionele lineup voor deze occurrence: DJs, supporting acts,
         cast. Zit op occurrence omdat een wekelijks feest elke week een
-        andere lineup kan hebben. JSON-array i.p.v. relationele
-        artists-tabel — start simpel, refactor als artist-profielen
-        nodig zijn. */
-    lineup: jsonb().$type<Array<{ name: string; role?: 'dj' | 'support' | 'headliner' | 'act' }>>(),
+        andere lineup kan hebben.
+
+        `artistId` (optioneel) wijst naar `artists.id` — gevuld door
+        `_artists-enrich.ts` nadat we de naam gematched hebben (op
+        bestaand record OF via MusicBrainz). UI maakt de rij klikbaar
+        naar /artist/{slug} alleen als artistId set is. Geen FK want
+        JSONB; consistentie is app-side. */
+    lineup: jsonb().$type<Array<{
+      name: string;
+      role?: 'dj' | 'support' | 'headliner' | 'act';
+      artistId?: string;
+    }>>(),
     status: occurrenceStatus().notNull().default('scheduled'),
     createdAt: timestamp({ withTimezone: true })
       .notNull()
@@ -446,6 +454,55 @@ export const occurrences = pgTable(
     index('occurrences_starts_at_idx').on(t.startsAt),
     index('occurrences_event_starts_at_idx').on(t.eventId, t.startsAt),
     index('occurrences_venue_idx').on(t.venueId),
+  ]
+);
+
+/**
+ * Canonical artist-records, gedeeld over events. Lineup-items in
+ * `occurrences.lineup` linken via een optioneel `artistId`-veld in
+ * de JSON-blob (geen FK want JSON, app-niveau consistentie).
+ *
+ * MusicBrainz is de primaire bron voor streaming-links en bio, onder
+ * hun CC0-licentie. We cachen die data in deze tabel; dat is expliciet
+ * toegestaan en voorkomt N MB-lookups voor één artist die in
+ * meerdere events voorkomt.
+ *
+ * `enrichedAt` is een retry-marker: gezet bij elke enrich-poging
+ * (succes of niet). Bij "niet gevonden" gebruiken we 'm om niet
+ * dagelijks opnieuw te zoeken — zie `_artists-enrich.ts` voor het
+ * retry-window.
+ */
+export const artists = pgTable(
+  'artists',
+  {
+    id: text().primaryKey(),
+    name: text().notNull(),
+    /** MusicBrainz UUID. Unique zodat hetzelfde MB-record niet twee
+        artist-rows kan voeden. Nullable: een artist kan ook bestaan
+        zonder MB-match. */
+    mbid: text().unique(),
+    description: text(),
+    imageUrl: text(),
+    /** Streaming + content links. CC0-data (MB) is OK om te cachen. */
+    spotifyUrl: text(),
+    appleMusicUrl: text(),
+    bandcampUrl: text(),
+    youtubeUrl: text(),
+    officialUrl: text(),
+    genres: text()
+      .array()
+      .notNull()
+      .default(sql`ARRAY[]::text[]`),
+    enrichedAt: timestamp({ withTimezone: true }),
+    createdAt: timestamp({ withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+  },
+  () => [
+    // Case-insensitive unique op naam zodat "DJ SWISHA" en "Dj Swisha"
+    // naar één record dedupen — drizzle-kit kent geen LOWER()-index,
+    // dus die staat in de SQL-migratie (0039_artists.sql) als
+    // `artists_name_lower_idx`. Hier geen drizzle-tracking voor.
   ]
 );
 
