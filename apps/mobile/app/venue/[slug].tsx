@@ -789,6 +789,7 @@ function ProgramRow({
           : `${dow} ${num} ${month}${yearSuffix}`
       }
       thumb={event.imageUrl ?? venueImageUrl ?? ''}
+      thumbSize={96}
       title={event.title}
       venue=""
       tags={[

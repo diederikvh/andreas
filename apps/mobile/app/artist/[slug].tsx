@@ -9,7 +9,6 @@
  */
 
 import { Ionicons } from '@expo/vector-icons';
-import { Image } from 'expo-image';
 import { router, useLocalSearchParams } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
 import { useMemo } from 'react';
@@ -23,10 +22,19 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppHeader, HEADER_HEIGHT } from '@/components/AppHeader';
+import { EventListRow } from '@/components/EventListRow';
 import type { ApiArtistEvent } from '@/lib/api';
-import { dowMixed, eventPosterUrl, monthShort, rowTimeLabel } from '@/lib/eventDisplay';
+import {
+  CATEGORY_TICK,
+  dowMixed,
+  eventPosterUrl,
+  formatTime,
+  monthShort,
+  VENUE_TYPE_TICK,
+} from '@/lib/eventDisplay';
 import { useLocale, useT } from '@/lib/i18n';
 import { useArtist } from '@/lib/queries';
+import type { BadgeTone } from '@/lib/types';
 import { useMode, useRoles } from '@/store/mode';
 import { fontFamily, palette } from '@/theme/tokens';
 
@@ -67,86 +75,142 @@ export default function ArtistPage() {
     <View style={[styles.root, { backgroundColor: roles.bg }]}>
       <ScrollView
         contentContainerStyle={{
-          paddingTop: insets.top + HEADER_HEIGHT + 12,
+          paddingTop: insets.top + HEADER_HEIGHT + 16,
           paddingBottom: insets.bottom + 24,
-          paddingHorizontal: 22,
         }}
       >
         {isLoading && (
-          <Text style={[styles.dim, { color: roles.fgMuted }]}>
+          <Text style={[styles.dim, { color: roles.fgMuted, paddingHorizontal: 22 }]}>
             {t('Laden…', 'Loading…')}
           </Text>
         )}
         {error && (
-          <Text style={[styles.dim, { color: roles.fgMuted }]}>
+          <Text style={[styles.dim, { color: roles.fgMuted, paddingHorizontal: 22 }]}>
             {t('Kon artist niet laden.', 'Couldn’t load artist.')}
           </Text>
         )}
         {data && (
           <>
-            <Text style={[styles.name, { color: roles.fg }]}>
-              {data.artist.name}
-            </Text>
-
-            {data.artist.genres.length > 0 && (
-              <View style={styles.genreRow}>
-                {data.artist.genres.slice(0, 4).map((g) => (
-                  <View
-                    key={g}
-                    style={[styles.genreChip, { backgroundColor: `${roles.accent}26` }]}
-                  >
-                    <Text style={[styles.genreText, { color: roles.accent }]}>
-                      {g.toLowerCase()}
-                    </Text>
-                  </View>
-                ))}
-              </View>
-            )}
-
-            {data.artist.description && (
-              <Text style={[styles.description, { color: roles.fgRead }]}>
-                {data.artist.description}
+            <View style={styles.intro}>
+              <Text style={[styles.name, { color: roles.fg }]}>
+                {data.artist.name}
               </Text>
-            )}
 
-            {links.length > 0 && (
-              <View style={styles.linksGrid}>
-                {links.map((l) => (
-                  <LinkButton key={l.key} label={l.label} url={l.url} icon={l.icon} />
-                ))}
-              </View>
-            )}
+              {/* Description (MB "disambiguation"-veld zoals "soprano",
+                  "Dutch DJ") + genres samen in één chip-row. De
+                  description is typisch heel kort (1-3 woorden) — past
+                  goed als chip naast de genre-chips. Lange beschrijvingen
+                  (zeldzaam in MB) blijven onder als paragraph. */}
+              {(data.artist.description || data.artist.genres.length > 0) && (
+                <View style={styles.genreRow}>
+                  {data.artist.description &&
+                    data.artist.description.length <= 40 && (
+                      <View
+                        style={[styles.genreChip, { backgroundColor: `${roles.accent}26` }]}
+                      >
+                        <Text style={[styles.genreText, { color: roles.accent }]}>
+                          {data.artist.description.toLowerCase()}
+                        </Text>
+                      </View>
+                    )}
+                  {data.artist.genres.slice(0, 4).map((g) => (
+                    <View
+                      key={g}
+                      style={[styles.genreChip, { backgroundColor: `${roles.accent}26` }]}
+                    >
+                      <Text style={[styles.genreText, { color: roles.accent }]}>
+                        {g.toLowerCase()}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+              )}
 
-            {fallback.length > 0 && (
-              <View style={{ gap: 8, marginTop: 18 }}>
-                <Text style={[styles.fallbackHint, { color: roles.fgMuted }]}>
-                  {t(
-                    'Nog geen directe links — probeer een zoekopdracht:',
-                    'No direct links yet — try a search:'
-                  )}
+              {data.artist.description && data.artist.description.length > 40 && (
+                <Text style={[styles.description, { color: roles.fgRead }]}>
+                  {data.artist.description}
                 </Text>
-                {fallback.map((l) => (
-                  <LinkButton key={l.key} label={l.label} url={l.url} icon={l.icon} />
-                ))}
-              </View>
-            )}
+              )}
+
+              {links.length > 0 && (
+                <View style={styles.linksGrid}>
+                  {links.map((l) => (
+                    <LinkButton key={l.key} label={l.label} url={l.url} icon={l.icon} />
+                  ))}
+                </View>
+              )}
+
+              {fallback.length > 0 && (
+                <View style={{ gap: 8, marginTop: 18 }}>
+                  <Text style={[styles.fallbackHint, { color: roles.fgMuted }]}>
+                    {t(
+                      'Nog geen directe links — probeer een zoekopdracht:',
+                      'No direct links yet — try a search:'
+                    )}
+                  </Text>
+                  {fallback.map((l) => (
+                    <LinkButton key={l.key} label={l.label} url={l.url} icon={l.icon} />
+                  ))}
+                </View>
+              )}
+            </View>
 
             {data.events.length > 0 && (
-              <View style={styles.eventsSection}>
-                <Text style={[styles.sectionLabel, { color: roles.fg }]}>
-                  {t('Komende voorstellingen', 'Upcoming shows')}
-                </Text>
-                {data.events.map((ev) => (
-                  <EventRow key={ev.id} ev={ev} locale={locale} />
-                ))}
-              </View>
+              <>
+                {/* Section-header in zelfde stijl als Agenda's
+                    CategoryHeader: display-font 18pt in accent-kleur,
+                    horizontal padding 22. */}
+                <View style={styles.sectionHead}>
+                  <Text style={[styles.sectionLabel, { color: roles.accent }]}>
+                    {t('Komende voorstellingen', 'Upcoming shows')}
+                  </Text>
+                  <Text style={[styles.sectionCount, { color: roles.fgPlaceholder }]}>
+                    {data.events.length}
+                  </Text>
+                </View>
+                {data.events.map((ev) => {
+                  const venueTone: BadgeTone | undefined = ev.venue.type
+                    ? VENUE_TYPE_TICK[ev.venue.type]
+                    : undefined;
+                  const poster = eventPosterUrl({
+                    imageUrl: ev.imageUrl,
+                    posterUrl: ev.posterUrl,
+                    venue: { imageUrl: null },
+                  });
+                  // Datum bovenaan, tijd in de subline. Jaar alleen
+                  // erbij als 't event in een ander jaar valt — anders
+                  // ruis.
+                  const d = new Date(ev.nextOccurrence.startsAt);
+                  const dow = dowMixed(d.getDay(), locale);
+                  const num = String(d.getDate()).padStart(2, '0');
+                  const month = monthShort(d.getMonth(), locale).toLowerCase();
+                  const currentYear = new Date().getFullYear();
+                  const yearSuffix =
+                    d.getFullYear() !== currentYear ? ` ${d.getFullYear()}` : '';
+                  return (
+                    <EventListRow
+                      key={ev.id}
+                      time={formatTime(ev.nextOccurrence.startsAt)}
+                      duration={`${dow} ${num} ${month}${yearSuffix}`}
+                      thumb={poster ?? ''}
+                      thumbSize={96}
+                      title={ev.title}
+                      venue={ev.venue.name}
+                      venueTone={venueTone}
+                      tick={CATEGORY_TICK[ev.category]}
+                      dateAbove
+                      onPress={() => router.push(`/event/${ev.id}` as never)}
+                    />
+                  );
+                })}
+              </>
             )}
           </>
         )}
       </ScrollView>
 
       <AppHeader
-        title={data?.artist.name ?? t('Artist', 'Artist')}
+        title={t('Artist', 'Artist')}
         hideAvatar
         rightSlot={
           <Pressable
@@ -182,51 +246,28 @@ function LinkButton({
     >
       <Ionicons name={icon} size={20} color={roles.accent} />
       <Text style={[styles.linkLabel, { color: roles.fg }]}>{label}</Text>
-      <Ionicons name="open-outline" size={16} color={roles.fgMuted} />
+      <Ionicons name="chevron-forward" size={16} color={roles.fg} />
     </Pressable>
   );
 }
 
-function EventRow({ ev, locale }: { ev: ApiArtistEvent; locale: ReturnType<typeof useLocale> }) {
-  const roles = useRoles();
-  const d = new Date(ev.nextOccurrence.startsAt);
-  const date = `${dowMixed(d.getDay(), locale)} ${d.getDate()} ${monthShort(d.getMonth(), locale).toLowerCase()}`;
-  const time = rowTimeLabel(ev.nextOccurrence.startsAt, ev.nextOccurrence.endsAt, locale);
-  const poster = eventPosterUrl({
-    imageUrl: ev.imageUrl,
-    posterUrl: ev.posterUrl,
-    venue: { imageUrl: null },
-  });
-  return (
-    <Pressable
-      onPress={() => router.push(`/event/${ev.id}` as never)}
-      style={[styles.eventRow, { borderColor: roles.bgChip }]}
-    >
-      <View style={[styles.eventThumb, { backgroundColor: roles.bgChip }]}>
-        {poster ? (
-          <Image source={{ uri: poster }} style={styles.eventThumbImg} contentFit="cover" />
-        ) : null}
-      </View>
-      <View style={{ flex: 1, gap: 2 }}>
-        <Text numberOfLines={1} style={[styles.eventTitle, { color: roles.fg }]}>
-          {ev.title}
-        </Text>
-        <Text style={[styles.eventMeta, { color: roles.fgMuted }]} numberOfLines={1}>
-          {date} · {time} · {ev.venue.name}
-        </Text>
-      </View>
-    </Pressable>
-  );
-}
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
   dim: { fontFamily: fontFamily.mono, fontSize: 12, letterSpacing: 0.8 },
+  // Intro-blok (naam + genres + description + links): paddingHorizontal
+  // 22 zelfde als Agenda's body. Sectie eronder (EventListRow's) heeft
+  // z'n eigen interne 22 padding, dus we stoppen 'm hier zodat de
+  // section-header netjes uitlijnt met de rij-content eronder.
+  intro: { paddingHorizontal: 22, marginBottom: 18 },
   name: {
-    fontFamily: fontFamily.bold,
+    // Black weight (Archivo 900) — zelfde gewicht als Agenda's
+    // category-headers maar groter omdat dit het primaire scherm-
+    // onderwerp is.
+    fontFamily: fontFamily.display,
     fontSize: 28,
-    lineHeight: 32,
-    letterSpacing: -0.8,
+    lineHeight: 30,
+    letterSpacing: -0.84,
     marginBottom: 10,
   },
   genreRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 14 },
@@ -267,36 +308,26 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontStyle: 'italic',
   },
-  eventsSection: { marginTop: 24 },
-  sectionLabel: {
-    fontFamily: fontFamily.bold,
-    fontSize: 17,
-    letterSpacing: -0.34,
-    marginBottom: 8,
-  },
-  eventRow: {
+  // Zelfde stijl als Agenda's CategoryHeader: display-font 18pt,
+  // accent-kleur, paddingHorizontal 22, paddingTop 12, paddingBottom 6.
+  sectionHead: {
     flexDirection: 'row',
-    gap: 12,
     alignItems: 'center',
-    paddingVertical: 10,
-    borderBottomWidth: StyleSheet.hairlineWidth,
+    justifyContent: 'space-between',
+    paddingHorizontal: 22,
+    paddingTop: 12,
+    paddingBottom: 6,
+    gap: 10,
   },
-  eventThumb: {
-    width: 56,
-    height: 56,
-    borderRadius: 8,
-    overflow: 'hidden',
+  sectionLabel: {
+    fontFamily: fontFamily.display,
+    fontSize: 18,
+    letterSpacing: -0.36,
   },
-  eventThumbImg: { width: '100%', height: '100%' },
-  eventTitle: {
-    fontFamily: fontFamily.bold,
-    fontSize: 14,
-    letterSpacing: -0.17,
-  },
-  eventMeta: {
+  sectionCount: {
     fontFamily: fontFamily.mono,
     fontSize: 10,
-    letterSpacing: 0.6,
+    letterSpacing: 1,
     textTransform: 'uppercase',
   },
   closeBtn: {

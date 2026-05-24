@@ -26,7 +26,13 @@ import { and, eq, gte, inArray, isNull, lt, or, sql } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
 
 const UA = 'Andreas/1.0 ( diederik@wend.nl )';
-const MB_THROTTLE_MS = 1500;
+// 2500ms — MB's officiele limiet is 1/sec, maar bij 1500ms hebben we
+// na ~600 artists een 503-flag gekregen. 2500ms (24/min) geeft genoeg
+// marge voor netwerkjitter zonder dat een batch van 400 events te lang
+// duurt (~33 min — net binnen de 30-min cron-timeout zou krap zijn,
+// maar we hebben de timeout daar op 30 min staan; werkt door --limit
+// te respecteren).
+const MB_THROTTLE_MS = 2500;
 const RETRY_AFTER_DAYS = 7;
 
 interface MBSearchArtist {

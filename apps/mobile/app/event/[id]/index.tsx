@@ -1075,18 +1075,26 @@ function Lineup({
               >
                 {entry.name}
               </Text>
+              {entry.role && (
+                <View
+                  style={[
+                    styles.lineupRolePill,
+                    { backgroundColor: roles.bgChip },
+                  ]}
+                >
+                  <Text
+                    style={[styles.lineupRolePillText, { color: roles.fgMuted }]}
+                  >
+                    {ROLE_LABEL[entry.role]}
+                  </Text>
+                </View>
+              )}
               {entry.artistId && (
                 <Ionicons
                   name="chevron-forward"
-                  size={14}
-                  color={roles.fgMuted}
-                  style={{ marginLeft: 4 }}
+                  size={16}
+                  color={roles.fg}
                 />
-              )}
-              {entry.role && (
-                <Text style={[styles.lineupRole, { color: roles.fgMuted }]}>
-                  {ROLE_LABEL[entry.role]}
-                </Text>
               )}
             </>
           );
@@ -1973,15 +1981,30 @@ const styles = StyleSheet.create({
   },
   lineupRow: {
     flexDirection: 'row',
-    alignItems: 'baseline',
+    alignItems: 'center',
     gap: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 11,
+    paddingHorizontal: 14,
+    // Ruimer dan 11 — minder krampachtig, lineup-rijen lezen rustiger.
+    paddingVertical: 16,
   },
   lineupName: {
     flex: 1,
   },
   lineupRole: {
+    fontFamily: fontFamily.mono,
+    fontSize: 9.5,
+    letterSpacing: 1.1,
+    textTransform: 'uppercase',
+  },
+  // Pill om de role-tekst zodat 'ie als visueel label leest, niet als
+  // plain tekst. Consistent met andere kleine labels in de app
+  // (chips op Vandaag-rails, genre-tags op artist-page).
+  lineupRolePill: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 999,
+  },
+  lineupRolePillText: {
     fontFamily: fontFamily.mono,
     fontSize: 9.5,
     letterSpacing: 1.1,

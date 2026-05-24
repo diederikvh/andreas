@@ -112,8 +112,14 @@ export function EventListRow({
   const dateAboveText = dateAbove
     ? [time, duration].filter(Boolean).join(' · ')
     : '';
+  // Subline-content hangt af van de combinatie van dateAbove en
+  // venueAsPill. Belangrijk: wanneer venueAsPill aanstaat staat venue
+  // al als gekleurde pill in de tag-row — dan moeten we 'm niet
+  // dubbel in de subline tonen (was een bug op de artist-page).
   const subline = dateAbove
-    ? [venue].filter(Boolean).join(' · ')
+    ? venueAsPill
+      ? ''
+      : [venue].filter(Boolean).join(' · ')
     : venueAsPill
       ? [duration].filter(Boolean).join(' · ')
       : [time, duration, venue].filter(Boolean).join(' · ');
