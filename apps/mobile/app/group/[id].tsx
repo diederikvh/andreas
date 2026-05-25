@@ -533,6 +533,15 @@ function RenameSheet({
         }}
       >
         <Pressable
+          onPress={onSave}
+          disabled={saving}
+          style={[styles.sheetBtn, { backgroundColor: roles.accent }]}
+        >
+          <Text style={[styles.sheetBtnText, { color: roles.onAccent }]}>
+            {saving ? t('Bezig…', 'Saving…') : t('Opslaan', 'Save')}
+          </Text>
+        </Pressable>
+        <Pressable
           onPress={onClose}
           style={[
             styles.sheetBtn,
@@ -543,37 +552,53 @@ function RenameSheet({
             {t('Annuleer', 'Cancel')}
           </Text>
         </Pressable>
-        <Pressable
-          onPress={onSave}
-          disabled={saving}
-          style={[styles.sheetBtn, { backgroundColor: roles.accent }]}
-        >
-          <Text style={[styles.sheetBtnText, { color: roles.onAccent }]}>
-            {saving ? t('Bezig…', 'Saving…') : t('Opslaan', 'Save')}
-          </Text>
-        </Pressable>
       </View>
       {canDelete && onDelete && (
-        <View style={{ paddingHorizontal: 22, paddingTop: 18 }}>
-          <Pressable
-            onPress={onDelete}
-            disabled={deleting}
-            style={[
-              styles.sheetBtn,
-              {
-                backgroundColor: 'transparent',
-                borderWidth: 1,
-                borderColor: isNacht ? '#3a1f1f' : '#e6c6c2',
-              },
-            ]}
-          >
-            <Text style={[styles.sheetBtnText, { color: palette.red }]}>
-              {deleting
-                ? t('Bezig…', 'Deleting…')
-                : t('Verwijder groep', 'Delete group')}
-            </Text>
-          </Pressable>
-        </View>
+        <>
+          <View
+            style={{
+              marginHorizontal: 22,
+              marginTop: 18,
+              height: StyleSheet.hairlineWidth,
+              backgroundColor: isNacht ? '#2a2a2d' : palette.paper,
+            }}
+          />
+          <View style={{ paddingHorizontal: 22, paddingTop: 14 }}>
+            <Pressable
+              onPress={onDelete}
+              disabled={deleting}
+              style={[
+                {
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 8,
+                  paddingVertical: 12,
+                  borderRadius: 12,
+                  opacity: deleting ? 0.55 : 1,
+                },
+              ]}
+            >
+              <Ionicons
+                name="trash-outline"
+                size={16}
+                color={palette.red}
+              />
+              <Text
+                style={{
+                  fontFamily: fontFamily.medium,
+                  fontSize: 14.5,
+                  letterSpacing: -0.07,
+                  color: palette.red,
+                }}
+              >
+                {deleting
+                  ? t('Bezig…', 'Deleting…')
+                  : t('Verwijder groep', 'Delete group')}
+              </Text>
+            </Pressable>
+          </View>
+        </>
       )}
     </SwipeDismissSheet>
   );
