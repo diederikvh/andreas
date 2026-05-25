@@ -295,7 +295,10 @@ export default function Jij() {
     return (
       <View style={[styles.root, styles.loadingRoot, { backgroundColor: roles.bg }]}>
         <SpinningCross size={28} color={roles.fgPlaceholder} />
-        {!isOnboarding && <ModalCloseBtn />}
+        {/* Close-btn alleen tonen als we al weten dat er een sessie is —
+            sessionPending zonder sessie is effectief 'niet ingelogd' en
+            heeft geen zinvolle 'terug'-bestemming. */}
+        {!isOnboarding && session && <ModalCloseBtn />}
       </View>
     );
   }
@@ -434,7 +437,9 @@ export default function Jij() {
             </Text>
           </Pressable>
         </ScrollView>
-        {!isOnboarding && <ModalCloseBtn />}
+        {/* Geen close-btn in phone/code: zonder sessie is er geen plek
+            om naar 'terug' te gaan — sluit zou je naar /avond als anonymous
+            zetten. Re-login is de enige zinvolle exit. */}
       </KeyboardAvoidingView>
     );
   }

@@ -30,13 +30,10 @@ export function ShareInviteClaimer() {
         `Je bent nu vrienden met ${display}.`,
         [
           { text: 'Later', style: 'cancel' },
-          result.inviter.handle
-            ? {
-                text: 'Bekijk profiel',
-                onPress: () =>
-                  router.push(`/u/${result.inviter.handle}` as never),
-              }
-            : { text: 'OK', style: 'default' },
+          {
+            text: 'Bekijk',
+            onPress: () => router.push('/(tabs)/social' as never),
+          },
         ],
         { cancelable: true }
       );

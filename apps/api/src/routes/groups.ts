@@ -227,6 +227,63 @@ groupsRoute.patch('/:id', async (c) => {
 });
 
 /**
+ * Groep verwijderen — alleen creator. Cascade verwijdert automatisch
+ * group_members en invitations (zie schema-FKs). Andere actieve leden
+ * krijgen een push "X heeft de groep opgeheven" zodat ze niet later
+ * met een dode link blijven zitten.
+ */
+groupsRoute.delete('/:id', async (c) => {
+  const me = await requireUserId(c);
+  if (typeof me !== 'string') return me;
+  const id = c.req.param('id');
+
+  const [group] = await db
+    .select({ creatorId: schema.groups.creatorId, name: schema.groups.name })
+    .from(schema.groups)
+    .where(eq(schema.groups.id, id))
+    .limit(1);
+  if (!group) return c.json({ error: 'not found' }, 404);
+  if (group.creatorId !== me) return c.json({ error: 'forbidden' }, 403);
+
+  // Verzamel andere actieve leden vóór de delete — anders kunnen we
+  // ze daarna niet meer pushen.
+  const others = await db
+    .select({ userId: schema.groupMembers.userId })
+    .from(schema.groupMembers)
+    .where(
+      and(
+        eq(schema.groupMembers.groupId, id),
+        isNull(schema.groupMembers.leftAt)
+      )
+    );
+  const otherIds = others.map((o) => o.userId).filter((u) => u !== me);
+
+  await db.delete(schema.groups).where(eq(schema.groups.id, id));
+
+  if (otherIds.length > 0) {
+    try {
+      const [meUser] = await db
+        .select({ name: schema.users.name, handle: schema.users.handle })
+        .from(schema.users)
+        .where(eq(schema.users.id, me))
+        .limit(1);
+      const display =
+        meUser?.name?.trim() ||
+        (meUser?.handle ? `@${meUser.handle}` : 'Iemand');
+      await sendPushToUsers(otherIds, {
+        title: group.name,
+        body: `${display} heeft de groep opgeheven`,
+        data: { url: '/(tabs)/social' },
+      });
+    } catch (err) {
+      console.error('[groups] delete push failed', err);
+    }
+  }
+
+  return c.json({ ok: true });
+});
+
+/**
  * Voeg leden toe — alleen creator (per beslissing 1). Nieuwe leden
  * moeten accepted-friends van de creator zijn. Bestaande actieve leden
  * worden stil overgeslagen (idempotent). Eerder vertrokken leden worden

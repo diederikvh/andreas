@@ -1140,6 +1140,12 @@ export async function renameGroup(id: string, name: string): Promise<{ ok: true 
   });
 }
 
+export async function deleteGroup(id: string): Promise<{ ok: true }> {
+  return await authedRequest<{ ok: true }>(`/groups/${id}`, {
+    method: 'DELETE',
+  });
+}
+
 export async function addGroupMembers(
   id: string,
   userIds: string[]

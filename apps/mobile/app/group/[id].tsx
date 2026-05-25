@@ -30,6 +30,7 @@ import { safeBack } from '@/lib/navigation';
 import { useSession } from '@/lib/authClient';
 import {
   useAddGroupMembers,
+  useDeleteGroup,
   useFriends,
   useGroup,
   useRemoveGroupMember,
@@ -58,6 +59,7 @@ export default function GroupDetail() {
   const { data: group, isLoading, error } = useGroup(id);
 
   const renameGroup = useRenameGroup();
+  const deleteGroup = useDeleteGroup();
   const toggleMute = useToggleGroupMute();
   const removeMember = useRemoveGroupMember();
 
@@ -109,6 +111,34 @@ export default function GroupDetail() {
 
   const onToggleMute = () => {
     toggleMute.mutate({ id, mute: !group.muted });
+  };
+
+  const onDelete = () => {
+    Alert.alert(
+      t('Groep verwijderen?', 'Delete group?'),
+      t(
+        'De groep verdwijnt voor alle leden. Dit kan niet ongedaan worden gemaakt.',
+        'The group disappears for everyone. This cannot be undone.'
+      ),
+      [
+        { text: t('Annuleer', 'Cancel'), style: 'cancel' },
+        {
+          text: t('Verwijder', 'Delete'),
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await deleteGroup.mutateAsync(id);
+              setRenameOpen(false);
+              safeBack();
+            } catch {
+              Haptics.notificationAsync(
+                Haptics.NotificationFeedbackType.Error
+              );
+            }
+          },
+        },
+      ]
+    );
   };
 
   const onLeave = () => {
@@ -313,6 +343,9 @@ export default function GroupDetail() {
         onClose={() => setRenameOpen(false)}
         onSave={onRename}
         saving={renameGroup.isPending}
+        canDelete={isCreator}
+        onDelete={onDelete}
+        deleting={deleteGroup.isPending}
       />
 
       <AddMembersSheet
@@ -447,6 +480,9 @@ function RenameSheet({
   onClose,
   onSave,
   saving,
+  canDelete,
+  onDelete,
+  deleting,
 }: {
   visible: boolean;
   value: string;
@@ -454,6 +490,9 @@ function RenameSheet({
   onClose: () => void;
   onSave: () => void;
   saving: boolean;
+  canDelete?: boolean;
+  onDelete?: () => void;
+  deleting?: boolean;
 }) {
   const mode = useMode();
   const roles = useRoles();
@@ -514,6 +553,28 @@ function RenameSheet({
           </Text>
         </Pressable>
       </View>
+      {canDelete && onDelete && (
+        <View style={{ paddingHorizontal: 22, paddingTop: 18 }}>
+          <Pressable
+            onPress={onDelete}
+            disabled={deleting}
+            style={[
+              styles.sheetBtn,
+              {
+                backgroundColor: 'transparent',
+                borderWidth: 1,
+                borderColor: isNacht ? '#3a1f1f' : '#e6c6c2',
+              },
+            ]}
+          >
+            <Text style={[styles.sheetBtnText, { color: palette.red }]}>
+              {deleting
+                ? t('Bezig…', 'Deleting…')
+                : t('Verwijder groep', 'Delete group')}
+            </Text>
+          </Pressable>
+        </View>
+      )}
     </SwipeDismissSheet>
   );
 }

@@ -1,8 +1,9 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useQuery } from '@tanstack/react-query';
 import { useEffect, useRef } from 'react';
 
 import { useSession } from '@/lib/authClient';
-import { claimShareInvite } from '@/lib/api';
+import { claimShareInvite, getMe } from '@/lib/api';
 
 /**
  * AsyncStorage-helpers + claim-hook voor share-invite tokens.
@@ -54,8 +55,10 @@ export type PendingShareClaimResult = {
 
 /**
  * Root-layout hook: claimt elke openstaande share-invite-token zodra
- * de gebruiker is ingelogd. `onClaim` wordt aangeroepen met het
- * claim-resultaat zodat de caller een toast/snackbar kan tonen.
+ * de gebruiker volledig is ingelogd én onboarded (handle ingevuld).
+ * Daardoor verschijnt de "Je bent nu vrienden met X"-alert pas ná het
+ * naam+handle-scherm, niet eroverheen. `onClaim` wordt aangeroepen met
+ * het claim-resultaat zodat de caller een toast/snackbar kan tonen.
  *
  * Idempotent: claimt elke unieke token max één keer per app-launch
  * (via een ref-guard). Faalt stil bij 401/404/410 — die wissen ook
@@ -66,11 +69,17 @@ export function useClaimPendingShare(
   onClaim?: (r: PendingShareClaimResult) => void
 ): void {
   const { data: session } = useSession();
-  const isAuthed = Boolean(session?.user?.id);
+  const userId = session?.user?.id ?? null;
+  const { data: me } = useQuery({
+    queryKey: ['me', userId],
+    queryFn: () => getMe(),
+    enabled: Boolean(userId),
+  });
+  const readyToClaim = Boolean(userId && me?.handle);
   const claimedTokensRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
-    if (!isAuthed) return;
+    if (!readyToClaim) return;
     let cancelled = false;
     void (async () => {
       const token = await readPendingShareInviteToken();
@@ -92,5 +101,5 @@ export function useClaimPendingShare(
     return () => {
       cancelled = true;
     };
-  }, [isAuthed, onClaim]);
+  }, [readyToClaim, onClaim]);
 }

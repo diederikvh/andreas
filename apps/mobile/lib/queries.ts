@@ -36,6 +36,7 @@ import {
   removeFriend,
   removeGroupMember,
   renameGroup,
+  deleteGroup,
   respondInvitation,
   revokeInvitation,
   setFriendFavorite,
@@ -696,6 +697,16 @@ export function useRenameGroup() {
     onSettled: (_data, _err, vars) => {
       qc.invalidateQueries({ queryKey: queryKeys.groups() });
       qc.invalidateQueries({ queryKey: queryKeys.group(vars.id) });
+    },
+  });
+}
+
+export function useDeleteGroup() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => deleteGroup(id),
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.groups() });
     },
   });
 }
