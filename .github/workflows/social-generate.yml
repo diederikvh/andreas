@@ -1,19 +1,18 @@
 name: Generate social-post drafts
 
 # Dagelijks om 04:00 UTC = 06:00 Amsterdam zomertijd (05:00 winter)
-# genereren we twee carousel-drafts in één run: ochtend (09:00 publish)
-# en avond (17:00 publish). Diederik staat rond 06:30 NL op en
-# approveert vóór 08:00; de publish-cron pakt ze daarna op slot-tijd.
+# genereren we één carousel-draft voor het dag-thema (ma=theater,
+# di=live muziek, …). Diederik approveert vóór de publish-cron 'm
+# om 16:00 NL oppakt.
 #
-# Matrix met `fail-fast: false` zodat een mislukking van één slot de
-# andere niet meeneemt.
+# `theme`-input is optioneel — leeg = vandaag's auto-thema.
 on:
   schedule:
     - cron: '0 4 * * *'
   workflow_dispatch:
     inputs:
-      slot:
-        description: 'Specifiek slot (leeg = alle drie)'
+      theme:
+        description: 'Override theme-key (leeg = vandaag)'
         required: false
         default: ''
 
@@ -21,23 +20,19 @@ jobs:
   generate:
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    strategy:
-      fail-fast: false
-      matrix:
-        slot: [morning, evening]
     steps:
-      - name: POST /admin/api/social/generate?slot=${{ matrix.slot }}
-        # Skip andere slots als de manual-trigger één specifiek slot
-        # noemt; bij scheduled-run is `inputs.slot` leeg en draaien
-        # we alle drie.
-        if: ${{ inputs.slot == '' || inputs.slot == matrix.slot }}
+      - name: POST /admin/api/social/generate
         run: |
+          URL="https://api.andreas.amsterdam/admin/api/social/generate"
+          if [ -n "${{ inputs.theme }}" ]; then
+            URL="$URL?theme=${{ inputs.theme }}"
+          fi
           HTTP=$(curl --silent --show-error --max-time 540 \
-            -X POST "https://api.andreas.amsterdam/admin/api/social/generate?slot=${{ matrix.slot }}" \
+            -X POST "$URL" \
             -H "Authorization: Bearer ${{ secrets.ANDREAS_ADMIN_API_KEY }}" \
             -H "Content-Type: application/json" \
             -o response.json \
             -w "%{http_code}")
-          echo "── HTTP $HTTP ── slot=${{ matrix.slot }}"
+          echo "── HTTP $HTTP"
           python3 -m json.tool < response.json 2>/dev/null || cat response.json
           [ "$HTTP" -ge 400 ] && exit 1 || exit 0

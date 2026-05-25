@@ -1,11 +1,19 @@
 import { randomBytes } from 'node:crypto';
-import { and, asc, desc, eq, gte, inArray, isNotNull, lt, lte, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, inArray, isNotNull, lt, lte, notInArray, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 
 import { db, schema } from '../../db/index.js';
 import { generateCaption } from '../../social/caption.js';
 import { ensureFreshToken, publishCarousel } from '../../social/publisher.js';
 import { renderCarousel, type CarouselPick } from '../../social/render.js';
+import {
+  THEMES,
+  THEME_KEYS,
+  getThemeByKey,
+  getThemeForDate,
+  type Theme,
+  type ThemeKey,
+} from '../../social/themes.js';
 import { uploadToBunny } from '../../storage/bunny.js';
 import { requireAdminAny } from './auth.js';
 
@@ -26,9 +34,6 @@ export const adminSocial = new Hono();
 
 adminSocial.use('*', requireAdminAny);
 
-export type Slot = 'morning' | 'evening';
-export const SLOTS: readonly Slot[] = ['morning', 'evening'];
-
 const DEDUP_DAYS = 14;
 /** Venue-cooldown: venues uit posts van de laatste N dagen krijgen een
     score-penalty zodat het aanbod rouleert. Soft (penalty), niet hard
@@ -36,15 +41,20 @@ const DEDUP_DAYS = 14;
 const VENUE_COOLDOWN_DAYS = 7;
 const VENUE_COOLDOWN_PENALTY = -0.5;
 
-/** Publicatie-tijd per slot (in Europe/Amsterdam local hours, op de
-    dag van generatie). De cron die approved posts publiceert pakt
-    alles waar scheduled_for valt in een venster rond deze tijd.
-    Twee posts per dag: ochtend voor de overdag-content, avond voor de
-    nacht-content. */
-const SLOT_PUBLISH_HOUR: Record<Slot, number> = {
-  morning: 9,
-  evening: 16,
-};
+/** Eén post per dag, gepubliceerd om 16:00 Amsterdam. Vroeger 9:00 +
+    17:00 morning/evening — vervangen door dag-themas (zie themes.ts). */
+const PUBLISH_HOUR = 16;
+
+/** Auto-expansie van het event-window: als de initial windowDays van een
+    theme te weinig candidates oplevert, groeit 't venster in stappen
+    tot maxWindowDays. Houdt de week-structuur leesbaar (bv. theater
+    blijft theater) terwijl rustige weken nog steeds een post leveren. */
+const WINDOW_EXPAND_STEP_DAYS = 7;
+
+/** Minimum aantal candidates voordat we niet meer expanderen. Lager
+    dan limit=4 zou betekenen dat we niet alle 4 slides kunnen vullen,
+    maar dan accepteren we dat liever dan een wildgroei aan oude events. */
+const MIN_CANDIDATES = 4;
 
 function shortId(): string {
   return randomBytes(6).toString('hex');
@@ -62,15 +72,24 @@ const SCENE_WEIGHT: Record<string, number> = {
   fringe: 0.75,
 };
 
-/**
- * Welke event-categorieën horen bij welk slot:
- *  - morning: Theater + Kunst (rustige, overdag-geprogrammeerde
- *    voorstellingen en tentoonstellingen).
- *  - evening: Muziek (concerten, clubavonden, podia — alles wat onder
- *    de event_category 'Muziek' valt, ongeacht venue-type).
- */
-function categoriesForSlot(slot: Slot): readonly string[] {
-  return slot === 'morning' ? ['Theater', 'Kunst'] : ['Muziek'];
+/** Bouwt de WHERE-clauses die uit een Theme volgen: categories +
+    venueTypes-whitelist + exclude-list. Returns een array van Drizzle
+    SQL-expressies die met `and(...)` in de hoofdquery gecombineerd
+    worden. Leeg als de theme geen filter heeft (mixed). */
+function whereClausesForTheme(theme: Theme) {
+  const cls: ReturnType<typeof inArray>[] = [];
+  if (theme.categories && theme.categories.length > 0) {
+    cls.push(
+      inArray(schema.events.category, [...theme.categories])
+    );
+  }
+  if (theme.venueTypes && theme.venueTypes.length > 0) {
+    cls.push(inArray(schema.venues.type, [...theme.venueTypes]));
+  }
+  if (theme.excludeVenueTypes && theme.excludeVenueTypes.length > 0) {
+    cls.push(notInArray(schema.venues.type, [...theme.excludeVenueTypes]));
+  }
+  return cls;
 }
 
 /**
@@ -114,18 +133,16 @@ function amsterdamYMD(at: Date): { year: number; month: number; day: number } {
   return { year: get('year'), month: get('month'), day: get('day') };
 }
 
-/**
- * Time-window: aankomende 7 dagen vanaf nu. Eerder gebruikten we een
- * dag-specifiek window per slot (vandaag-overdag / vanavond), maar de
- * post wordt vaak gelezen op een andere dag dan de publicatiedag, dus
- * tips over de hele week zijn waardevoller. De categorie-filter
- * (`categoriesForSlot`) blijft de eigenlijke morning/evening-scheiding.
- *
- * Slot blijft de parameter voor toekomstige tweaks (bv. ochtend toch
- * korter window dan avond), nu nog gelijkbehandeling.
- */
-function computeWindow(_slot: Slot, now: Date): { start: Date; end: Date } {
-  const end = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+/** Window vanuit een theme: nu → now + windowDays*24h. Voor 'tonight'
+    is windowDays=1, voor weekly themes 7. Auto-expansie bij te weinig
+    candidates zit in selectPicksForTheme. */
+function computeWindowForTheme(
+  theme: Theme,
+  windowDaysOverride: number | null,
+  now: Date
+): { start: Date; end: Date } {
+  const days = windowDaysOverride ?? theme.windowDays;
+  const end = new Date(now.getTime() + days * 24 * 60 * 60 * 1000);
   return { start: now, end };
 }
 
@@ -249,20 +266,25 @@ interface SelectResult {
   picks: ScoredCandidate[];
   candidateCount: number;
   window: { start: Date; end: Date };
+  windowDays: number;
   dedupExcluded: number;
+  theme: Theme;
 }
 
 /**
- * Gedeelde selectie-pipeline: dedup, kandidaten ophalen, scoren,
- * greedy spread. Gebruikt door /picks (JSON), /preview (debug-HTML) en
- * /generate (DB-write).
+ * Selectie-pipeline per theme:
+ *  1. Dedup-set + venue-cooldown ophalen (zelfde als voorheen).
+ *  2. Kandidaten ophalen met theme-filter (categories + venueTypes).
+ *  3. Window-expansie: te weinig candidates? Verleng windowDays met
+ *     WINDOW_EXPAND_STEP_DAYS tot we MIN_CANDIDATES halen of de
+ *     theme's maxWindowDays bereikt is.
+ *  4. Scoren + pick-with-spread (mainstream-hook + venue-dedup).
  */
-async function selectPicksForSlot(
-  slot: Slot,
+async function selectPicksForTheme(
+  theme: Theme,
   options: { limit: number; skipIds: Set<string>; now: Date }
 ): Promise<SelectResult> {
   const { limit, skipIds, now } = options;
-  const window = computeWindow(slot, now);
   const dedupSince = new Date(now.getTime() - DEDUP_DAYS * 24 * 60 * 60 * 1000);
   const cooldownSince = new Date(
     now.getTime() - VENUE_COOLDOWN_DAYS * 24 * 60 * 60 * 1000
@@ -283,9 +305,6 @@ async function selectPicksForSlot(
   const dedupSet = new Set(recentlyPosted.flatMap((r) => r.eventIds));
   for (const id of skipIds) dedupSet.add(id);
 
-  // Venue-cooldown: welke venues hebben we in de laatste
-  // VENUE_COOLDOWN_DAYS gepost? Hun events krijgen een score-penalty
-  // zodat we niet 5 dagen achter elkaar dezelfde venue tonen.
   const cooldownEventIds = recentlyPosted
     .filter((r) => r.postedAt && r.postedAt >= cooldownSince)
     .flatMap((r) => r.eventIds);
@@ -298,82 +317,104 @@ async function selectPicksForSlot(
     for (const r of venueRows) venueCooldownSet.add(r.venueId);
   }
 
-  const rows = (await db
-    .select({
-      occurrenceId: schema.occurrences.id,
-      startsAt: schema.occurrences.startsAt,
-      endsAt: schema.occurrences.endsAt,
-      eventId: schema.events.id,
-      title: schema.events.title,
-      description: schema.events.description,
-      imageUrl: schema.events.imageUrl,
-      category: schema.events.category,
-      featured: schema.events.featured,
-      venueId: schema.venues.id,
-      venueName: schema.venues.name,
-      venueScene: schema.venues.scene,
-      venueType: schema.venues.type,
-      venueInstagram: schema.venues.instagram,
-      savesCount: sql<number>`(SELECT COUNT(*)::int FROM saves WHERE saves.occurrence_id = ${schema.occurrences.id})`.as('saves_count'),
-    })
-    .from(schema.occurrences)
-    .innerJoin(schema.events, eq(schema.events.id, schema.occurrences.eventId))
-    .innerJoin(schema.venues, eq(schema.venues.id, schema.events.venueId))
-    .where(
-      and(
-        eq(schema.events.published, true),
-        eq(schema.venues.published, true),
-        isNotNull(schema.events.imageUrl),
-        eq(schema.occurrences.status, 'scheduled'),
-        gte(schema.occurrences.startsAt, window.start),
-        lt(schema.occurrences.startsAt, window.end),
-        inArray(
-          schema.events.category,
-          categoriesForSlot(slot) as ('Muziek' | 'Theater' | 'Kunst')[]
+  const themeWhere = whereClausesForTheme(theme);
+
+  async function fetchCandidates(windowDays: number): Promise<Candidate[]> {
+    const window = computeWindowForTheme(theme, windowDays, now);
+    return (await db
+      .select({
+        occurrenceId: schema.occurrences.id,
+        startsAt: schema.occurrences.startsAt,
+        endsAt: schema.occurrences.endsAt,
+        eventId: schema.events.id,
+        title: schema.events.title,
+        description: schema.events.description,
+        imageUrl: schema.events.imageUrl,
+        category: schema.events.category,
+        featured: schema.events.featured,
+        venueId: schema.venues.id,
+        venueName: schema.venues.name,
+        venueScene: schema.venues.scene,
+        venueType: schema.venues.type,
+        venueInstagram: schema.venues.instagram,
+        savesCount: sql<number>`(SELECT COUNT(*)::int FROM saves WHERE saves.occurrence_id = ${schema.occurrences.id})`.as('saves_count'),
+      })
+      .from(schema.occurrences)
+      .innerJoin(schema.events, eq(schema.events.id, schema.occurrences.eventId))
+      .innerJoin(schema.venues, eq(schema.venues.id, schema.events.venueId))
+      .where(
+        and(
+          eq(schema.events.published, true),
+          eq(schema.venues.published, true),
+          isNotNull(schema.events.imageUrl),
+          eq(schema.occurrences.status, 'scheduled'),
+          gte(schema.occurrences.startsAt, window.start),
+          lt(schema.occurrences.startsAt, window.end),
+          ...themeWhere
         )
       )
-    )
-    .orderBy(schema.occurrences.startsAt)) as Candidate[];
-
-  const seen = new Set<string>();
-  const perEvent: Candidate[] = [];
-  for (const row of rows) {
-    if (seen.has(row.eventId)) continue;
-    if (dedupSet.has(row.eventId)) continue;
-    if (!row.imageUrl) continue;
-    perEvent.push(row);
-    seen.add(row.eventId);
+      .orderBy(schema.occurrences.startsAt)) as Candidate[];
   }
+
+  // Window-expansie loop
+  let windowDays = theme.windowDays;
+  let perEvent: Candidate[] = [];
+  while (true) {
+    const rows = await fetchCandidates(windowDays);
+    const seen = new Set<string>();
+    perEvent = [];
+    for (const row of rows) {
+      if (seen.has(row.eventId)) continue;
+      if (dedupSet.has(row.eventId)) continue;
+      if (!row.imageUrl) continue;
+      perEvent.push(row);
+      seen.add(row.eventId);
+    }
+    if (perEvent.length >= MIN_CANDIDATES) break;
+    if (windowDays >= theme.maxWindowDays) break;
+    windowDays = Math.min(windowDays + WINDOW_EXPAND_STEP_DAYS, theme.maxWindowDays);
+  }
+
+  const finalWindow = computeWindowForTheme(theme, windowDays, now);
   const scored = perEvent.map((c) => scoreCandidate(c, { venueCooldownSet }));
   const picks = pickWithSpread(scored, limit);
 
   return {
     picks,
     candidateCount: perEvent.length,
-    window,
+    window: finalWindow,
+    windowDays,
     dedupExcluded: dedupSet.size,
+    theme,
   };
 }
 
+/** Resolveer een theme uit een query-string (?theme=<key>) of val
+    terug op de auto-detect via vandaag-in-Amsterdam. Returns null
+    als een expliciete key niet matcht. */
+function resolveTheme(themeParam: string | undefined): Theme | null {
+  if (themeParam) return getThemeByKey(themeParam);
+  return getThemeForDate(new Date());
+}
+
 adminSocial.get('/picks', async (c) => {
-  const slotParam = (c.req.query('slot') ?? 'evening') as string;
-  if (!(SLOTS as readonly string[]).includes(slotParam)) {
-    return c.json({ error: 'invalid slot' }, 400);
+  const theme = resolveTheme(c.req.query('theme'));
+  if (!theme) {
+    return c.json(
+      { error: 'invalid theme', validKeys: THEME_KEYS },
+      400
+    );
   }
-  const slot = slotParam as Slot;
   const limit = Math.max(1, Math.min(10, Number(c.req.query('limit') ?? '4')));
   const debug = c.req.query('debug') === '1';
   const skipIds = parseSkipParam(c.req.query('skip'));
 
   const now = new Date();
-  const { picks, candidateCount, window, dedupExcluded } = await selectPicksForSlot(slot, {
-    limit,
-    skipIds,
-    now,
-  });
+  const { picks, candidateCount, window, windowDays, dedupExcluded } =
+    await selectPicksForTheme(theme, { limit, skipIds, now });
 
   return c.json({
-    slot,
+    theme: { key: theme.key, label: theme.label, windowLabel: theme.windowLabel, windowDays },
     window: { start: window.start.toISOString(), end: window.end.toISOString() },
     generatedAt: now.toISOString(),
     candidateCount,
@@ -508,22 +549,28 @@ adminSocial.post('/render', async (c) => {
 });
 
 /** Dev-preview: picks ophalen + renderen + inline tonen in HTML.
-    Ondersteunt `?skip=eventId1,eventId2` om door alternatieven te rollen. */
+    Ondersteunt `?theme=<key>` om met een specifiek dag-thema te
+    previewen (anders auto-vandaag) en `?skip=eventId,…` om door
+    alternatieven te rollen. */
 adminSocial.get('/preview', async (c) => {
-  const slotParam = (c.req.query('slot') ?? 'evening') as string;
-  if (!(SLOTS as readonly string[]).includes(slotParam)) {
-    return c.html('<p>invalid slot</p>', 400);
+  const theme = resolveTheme(c.req.query('theme'));
+  if (!theme) {
+    return c.html(
+      `<p>invalid theme. valid: ${THEME_KEYS.join(', ')}</p>`,
+      400
+    );
   }
-  const slot = slotParam as Slot;
   const skipIds = parseSkipParam(c.req.query('skip'));
   const now = new Date();
-  const { picks, window } = await selectPicksForSlot(slot, {
+  const { picks, window, windowDays } = await selectPicksForTheme(theme, {
     limit: 4,
     skipIds,
     now,
   });
   if (picks.length === 0) {
-    return c.html(`<p>geen picks voor slot=${slot} in window ${window.start.toISOString()}–${window.end.toISOString()}</p>`);
+    return c.html(
+      `<p>geen picks voor theme=${theme.key} in window ${window.start.toISOString()}–${window.end.toISOString()} (windowDays=${windowDays}, max=${theme.maxWindowDays})</p>`
+    );
   }
 
   const [slides, captionResult] = await Promise.all([
@@ -537,7 +584,11 @@ adminSocial.get('/preview', async (c) => {
         startsAt: p.startsAt,
         endsAt: p.endsAt,
       })),
-      { date: now, slot }
+      {
+        date: now,
+        themeLabel: theme.label.nl,
+        windowLabel: theme.windowLabel.nl,
+      }
     ),
     generateCaption({
       date: now,
@@ -552,12 +603,12 @@ adminSocial.get('/preview', async (c) => {
     }),
   ]);
 
+  const skipBase = `?theme=${theme.key}`;
   const imgTags = slides
     .map((buf, i) => {
-      // Geen cover meer: slide 0..N-1 = picks, laatste = outro.
       const pick = i < picks.length ? picks[i] : null;
       const caption = pick
-        ? `<a href="?slot=${slot}&skip=${encodeURIComponent([...skipIds, pick.eventId].join(','))}" style="color:#5a4e3f;text-decoration:none">${pick.eventId}<br/><span style="color:#a89c84">skip →</span></a>`
+        ? `<a href="${skipBase}&skip=${encodeURIComponent([...skipIds, pick.eventId].join(','))}" style="color:#5a4e3f;text-decoration:none">${pick.eventId}<br/><span style="color:#a89c84">skip →</span></a>`
         : 'outro';
       return `<figure style="margin:0"><img src="data:image/png;base64,${buf.toString('base64')}" style="width:360px;height:auto;display:block;border-radius:12px;box-shadow:0 8px 28px rgba(0,0,0,0.18)"/><figcaption style="margin-top:8px;font:13px/1.3 ui-monospace,Menlo,monospace;color:#5a4e3f">${caption}</figcaption></figure>`;
     })
@@ -565,8 +616,14 @@ adminSocial.get('/preview', async (c) => {
 
   const skipLinks =
     skipIds.size > 0
-      ? `<span style="font-size:13px;color:#5a4e3f">· ${skipIds.size} geskipt · <a href="?slot=${slot}" style="color:#c9453a">reset</a></span>`
+      ? `<span style="font-size:13px;color:#5a4e3f">· ${skipIds.size} geskipt · <a href="${skipBase}" style="color:#c9453a">reset</a></span>`
       : '';
+
+  const themeNav = THEMES.map((t) =>
+    t.key === theme.key
+      ? `<strong>${t.key}</strong>`
+      : `<a href="?theme=${t.key}" style="color:#5a4e3f;text-decoration:none">${t.key}</a>`
+  ).join(' · ');
 
   const escapeHtml = (s: string) =>
     s.replace(/[&<>"']/g, (c) =>
@@ -580,12 +637,13 @@ adminSocial.get('/preview', async (c) => {
 </section>`;
 
   return c.html(`<!doctype html>
-<html><head><meta charset="utf-8"><title>social preview — ${slot}</title>
+<html><head><meta charset="utf-8"><title>social preview — ${theme.key}</title>
 <style>
   body { margin:0; padding:32px; background:#ebe6d8; font-family:ui-sans-serif,system-ui; color:#1a1410 }
   header { display:flex; align-items:baseline; gap:16px; margin-bottom:24px; flex-wrap:wrap }
   header h1 { margin:0; font-size:22px }
   header span { font-size:13px; color:#5a4e3f }
+  .themes { font-size:12px; color:#5a4e3f; margin-bottom:18px }
   .grid { display:flex; flex-wrap:wrap; gap:24px; align-items:flex-start }
   figure a:hover { color:#c9453a !important }
   .caption { margin:0 0 28px 0; padding:20px 24px; background:#f5f1e8; border-radius:12px; max-width:720px }
@@ -595,10 +653,11 @@ adminSocial.get('/preview', async (c) => {
 </style>
 </head><body>
 <header>
-  <h1>Social preview — ${slot}</h1>
-  <span>${picks.length} picks · window ${window.start.toLocaleString('nl-NL', { timeZone: 'Europe/Amsterdam' })} → ${window.end.toLocaleString('nl-NL', { timeZone: 'Europe/Amsterdam' })}</span>
+  <h1>Social preview — ${theme.label.nl}</h1>
+  <span>${theme.windowLabel.nl} · ${picks.length} picks · windowDays=${windowDays}</span>
   ${skipLinks}
 </header>
+<div class="themes">themes: ${themeNav}</div>
 ${captionBlock}
 <div class="grid">${imgTags}</div>
 </body></html>`);
@@ -610,16 +669,17 @@ ${captionBlock}
 // publicatie. `/generate` is de zware operatie (selectie + render +
 // upload + caption), de andere zijn light state-transities.
 
-/** Bouwt de scheduled_for-Date voor een slot op een gegeven dag in
-    Europe/Amsterdam (= het tijdstip waarop de publish-cron 'm oppakt). */
-function computeScheduledFor(slot: Slot, now: Date): Date {
+/** Bouwt de scheduled_for-Date voor de huidige dag in Europe/Amsterdam
+    (= het tijdstip waarop de publish-cron 'm oppakt). Eén post per dag,
+    16:00 NL. */
+function computeScheduledFor(now: Date): Date {
   const { year, month, day } = amsterdamYMD(now);
-  return inAmsterdamTz(year, month, day, SLOT_PUBLISH_HOUR[slot], 0);
+  return inAmsterdamTz(year, month, day, PUBLISH_HOUR, 0);
 }
 
 interface PersistedPost {
   id: string;
-  slot: Slot;
+  slot: string;
   status: string;
   scheduledFor: Date;
   createdAt: Date;
@@ -636,25 +696,27 @@ interface PersistedPost {
     scoreBreakdown?: Record<string, number>;
     skippedEventIds?: string[];
     permalink?: string;
+    themeKey?: ThemeKey;
+    windowDays?: number;
   } | null;
 }
 
 export async function runGenerate(
-  slot: Slot,
+  theme: Theme,
   options: { skipIds?: Set<string>; existingId?: string } = {}
 ): Promise<{ post: PersistedPost; warnings: string[] }> {
   const warnings: string[] = [];
   const now = new Date();
-  const { picks } = await selectPicksForSlot(slot, {
+  const { picks, windowDays } = await selectPicksForTheme(theme, {
     limit: 4,
     skipIds: options.skipIds ?? new Set(),
     now,
   });
   if (picks.length === 0) {
-    throw new Error(`geen picks voor slot=${slot} in huidig window`);
+    throw new Error(`geen picks voor theme=${theme.key} in huidig window`);
   }
 
-  // 1. Render slides
+  // 1. Render slides (theme + window-label als kicker op elke slide)
   const slides = await renderCarousel(
     picks.map((p) => ({
       imageUrl: p.imageUrl,
@@ -665,7 +727,11 @@ export async function runGenerate(
       startsAt: p.startsAt,
       endsAt: p.endsAt,
     })),
-    { date: now, slot }
+    {
+      date: now,
+      themeLabel: theme.label.nl,
+      windowLabel: theme.windowLabel.nl,
+    }
   );
 
   // 2. Upload elke slide naar Bunny — pad bevat een generatie-marker (epoch in base36)
@@ -701,12 +767,14 @@ export async function runGenerate(
     warnings.push('caption gebruikt fallback-template (Claude niet bereikt)');
   }
 
-  const scheduledFor = computeScheduledFor(slot, now);
+  const scheduledFor = computeScheduledFor(now);
   const eventIds = picks.map((p) => p.eventId);
 
   const skippedEventIds = options.skipIds ? [...options.skipIds] : [];
 
-  // 4. Persist — INSERT of UPDATE
+  // 4. Persist — INSERT of UPDATE. `slot`-kolom (legacy) krijgt nu de
+  // theme-key zodat oude dedup-/sort-queries blijven werken zonder
+  // schema-migratie.
   if (options.existingId) {
     await db
       .update(schema.socialPosts)
@@ -717,10 +785,13 @@ export async function runGenerate(
         scheduledFor,
         status: 'draft',
         error: null,
+        slot: theme.key,
         meta: {
           occurrenceIds: picks.map((p) => p.occurrenceId),
-          templateVersion: '1',
+          templateVersion: '2',
           skippedEventIds,
+          themeKey: theme.key,
+          windowDays,
         },
         updatedAt: now,
       })
@@ -728,7 +799,7 @@ export async function runGenerate(
   } else {
     await db.insert(schema.socialPosts).values({
       id: postId,
-      slot,
+      slot: theme.key,
       eventIds,
       imageUrls,
       caption: captionResult.caption,
@@ -736,8 +807,10 @@ export async function runGenerate(
       status: 'draft',
       meta: {
         occurrenceIds: picks.map((p) => p.occurrenceId),
-        templateVersion: '1',
+        templateVersion: '2',
         skippedEventIds,
+        themeKey: theme.key,
+        windowDays,
       },
       createdAt: now,
       updatedAt: now,
@@ -755,23 +828,28 @@ export async function runGenerate(
   };
 }
 
-/** Genereer een nieuw concept-post voor een slot. */
+/** Genereer een nieuw concept-post voor een theme. Default: vandaag's
+    theme (auto-gekozen via Amsterdam-weekday). `?theme=<key>` overschrijft
+    dat (handig voor handmatig regenereren van een specifieke dag). */
 adminSocial.post('/generate', async (c) => {
-  const slotParam = (c.req.query('slot') ?? 'evening') as string;
-  if (!(SLOTS as readonly string[]).includes(slotParam)) {
-    return c.json({ error: 'invalid slot' }, 400);
+  const theme = resolveTheme(c.req.query('theme'));
+  if (!theme) {
+    return c.json({ error: 'invalid theme', validKeys: THEME_KEYS }, 400);
   }
-  const slot = slotParam as Slot;
   try {
-    const { post, warnings } = await runGenerate(slot);
+    const { post, warnings } = await runGenerate(theme);
     return c.json({ post, warnings });
   } catch (e) {
     const msg = (e as Error).message;
-    // "Geen kandidaten" is voor de scheduled cron een normaal no-op
-    // (doordeweekse maandagochtend = lege overdag-content). Return
-    // 200 zodat de GH-workflow niet als failure markeert.
-    if (msg.startsWith('geen picks voor slot=')) {
-      return c.json({ skipped: true, reason: 'no_candidates', slot });
+    // Geen candidates is voor de cron een normaal no-op (bv. zomers
+    // weekend zonder galleries). Return 200 zodat GH-workflow niet
+    // als failure markeert.
+    if (msg.startsWith('geen picks voor theme=')) {
+      return c.json({
+        skipped: true,
+        reason: 'no_candidates',
+        theme: theme.key,
+      });
     }
     return c.json({ error: msg }, 500);
   }
@@ -941,7 +1019,10 @@ adminSocial.post('/publish-due', async (c) => {
 });
 
 /** Regenerate — vervangt slides + caption + scheduled_for op bestaande
-    post (alleen toegestaan in draft-status). */
+    post (alleen toegestaan in draft-status). De theme wordt afgeleid
+    uit `meta.themeKey` of (fallback) uit de `slot`-kolom als die een
+    geldige theme-key bevat; oude 'morning'/'evening' fall back op de
+    auto-detect van vandaag. */
 adminSocial.post('/posts/:id/regenerate', async (c) => {
   const id = c.req.param('id');
   const skipIds = parseSkipParam(c.req.query('skip'));
@@ -953,8 +1034,11 @@ adminSocial.post('/posts/:id/regenerate', async (c) => {
   if (existing.status !== 'draft') {
     return c.json({ error: 'alleen drafts kunnen regenerated worden' }, 400);
   }
+  const themeKey =
+    (existing.meta?.themeKey as string | undefined) ?? existing.slot;
+  const theme = getThemeByKey(themeKey) ?? getThemeForDate(new Date());
   try {
-    const { post, warnings } = await runGenerate(existing.slot as Slot, {
+    const { post, warnings } = await runGenerate(theme, {
       skipIds,
       existingId: id,
     });

@@ -45,7 +45,14 @@ async function renderSlide(tree: unknown): Promise<Buffer> {
 
 export async function renderCarousel(
   picks: CarouselPick[],
-  _options: { date?: Date; slot?: 'morning' | 'evening' } = {}
+  options: {
+    date?: Date;
+    /** Hoofdlabel van het dag-thema, bv. "Theater" of "Live muziek".
+        Rendert als kleine acid-kicker top-left op elke event-slide. */
+    themeLabel?: string;
+    /** Subtekst onder de themeLabel, bv. "Komende 7 dagen". */
+    windowLabel?: string;
+  } = {}
 ): Promise<Buffer[]> {
   if (picks.length === 0) {
     throw new Error('renderCarousel: minstens 1 pick vereist');
@@ -73,6 +80,8 @@ export async function renderCarousel(
             : pick.endsAt,
       index: i + 1,
       total: picks.length,
+      themeLabel: options.themeLabel,
+      windowLabel: options.windowLabel,
     };
     slides.push(await renderSlide(eventSlide(input)));
   }

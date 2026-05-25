@@ -975,6 +975,8 @@ export const socialPosts = pgTable(
       occurrenceIds?: string[];
       skippedEventIds?: string[];
       permalink?: string;
+      themeKey?: string;
+      windowDays?: number;
     }>(),
     createdAt: timestamp({ withTimezone: true })
       .notNull()

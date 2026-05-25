@@ -18,7 +18,13 @@ import {
   toDateTimeLocal,
 } from './layout.js';
 import { generateCaption } from '../../social/caption.js';
-import { SLOTS, runGenerate, runPublish, type Slot } from './social.js';
+import { runGenerate, runPublish } from './social.js';
+import {
+  THEMES,
+  getThemeByKey,
+  getThemeForDate,
+  type Theme,
+} from '../../social/themes.js';
 
 function shortId(): string {
   return randomBytes(5).toString('hex');
@@ -3139,10 +3145,17 @@ adminUi.get('/insights', async (c) => {
  * /admin/api/social/preview?slot=evening (Bearer/cookie auth).
  * ═══════════════════════════════════════════════════════════════════ */
 
-const SLOT_LABEL: Record<Slot, string> = {
-  morning: 'Ochtend (09:00)',
-  evening: 'Avond (18:00)',
-};
+/** Label voor een post in de admin-UI. Pakt de theme uit slot-kolom
+    (nieuwe posts schrijven theme-key in slot) en valt terug op de
+    raw slot voor legacy morning/evening posts. */
+function slotToLabel(slot: string): string {
+  const theme = getThemeByKey(slot);
+  if (theme) return `${theme.label.nl} · ${theme.windowLabel.nl}`;
+  // Legacy fallback
+  if (slot === 'morning') return 'Ochtend (legacy)';
+  if (slot === 'evening') return 'Avond (legacy)';
+  return slot;
+}
 
 const SOCIAL_STATUS_LABEL: Record<string, string> = {
   draft: 'concept',
@@ -3225,18 +3238,27 @@ adminUi.get('/social', async (c) => {
       <article style="margin-bottom:2rem;">
         <h3 style="margin-top:0;">Nieuwe carousel genereren</h3>
         <p style="font-size:13px;color:var(--pico-muted-color);margin-bottom:0.75rem;">
-          Selecteert 3 picks voor het gekozen slot, rendert de slides, uploadt naar Bunny en
-          vraagt Claude een caption. Resultaat verschijnt als concept onderin.
+          Eén post per dag met een week-thema. De cron pakt 's ochtends
+          vanzelf vandaag's thema; hieronder kan je per-dag handmatig
+          (re)genereren.
         </p>
         <div style="display:flex;gap:0.5rem;flex-wrap:wrap;">
-          {SLOTS.map((slot) => (
-            <form method="post" action="/admin/social/generate" style="margin:0;">
-              <input type="hidden" name="slot" value={slot} />
-              <button type="submit" class="secondary">
-                Genereer {SLOT_LABEL[slot]}
-              </button>
-            </form>
-          ))}
+          {THEMES.map((theme) => {
+            const isToday =
+              theme.key === getThemeForDate(new Date()).key;
+            return (
+              <form method="post" action="/admin/social/generate" style="margin:0;">
+                <input type="hidden" name="theme" value={theme.key} />
+                <button
+                  type="submit"
+                  class={isToday ? '' : 'secondary'}
+                  title={`${theme.label.nl} · ${theme.windowLabel.nl}`}
+                >
+                  {isToday ? '★ ' : ''}{theme.label.nl}
+                </button>
+              </form>
+            );
+          })}
         </div>
       </article>
 
@@ -3257,7 +3279,7 @@ adminUi.get('/social', async (c) => {
           </thead>
           <tbody>
             {rows.map((post) => {
-              const slotLabel = SLOT_LABEL[post.slot as Slot] ?? post.slot;
+              const slotLabel = slotToLabel(post.slot);
               const statusLabel = SOCIAL_STATUS_LABEL[post.status] ?? post.status;
               const captionPreview = post.caption
                 ? post.caption.length > 140
@@ -3390,7 +3412,7 @@ adminUi.get('/social/:id', async (c) => {
       404,
     );
   }
-  const slotLabel = SLOT_LABEL[post.slot as Slot] ?? post.slot;
+  const slotLabel = slotToLabel(post.slot);
   const statusLabel = SOCIAL_STATUS_LABEL[post.status] ?? post.status;
   return c.html(
     <Layout title={`Social · ${slotLabel}`} active="social">
@@ -3590,15 +3612,19 @@ adminUi.get('/social/:id', async (c) => {
 
 adminUi.post('/social/generate', async (c) => {
   const form = await c.req.parseBody();
-  const slotRaw = String(form.slot ?? '');
-  if (!(SLOTS as readonly string[]).includes(slotRaw)) {
-    return c.redirect('/admin/social?error=' + encodeURIComponent('Ongeldig slot'));
+  const themeKey = String(form.theme ?? '');
+  const theme: Theme | null = themeKey
+    ? getThemeByKey(themeKey)
+    : getThemeForDate(new Date());
+  if (!theme) {
+    return c.redirect(
+      '/admin/social?error=' + encodeURIComponent('Ongeldig thema'),
+    );
   }
-  const slot = slotRaw as Slot;
   try {
-    const { post, warnings } = await runGenerate(slot);
+    const { post, warnings } = await runGenerate(theme);
     const flash =
-      `Concept aangemaakt voor ${SLOT_LABEL[slot]}.` +
+      `Concept aangemaakt voor ${theme.label.nl}.` +
       (warnings.length > 0 ? ' Let op: ' + warnings.join('; ') : '');
     return c.redirect(
       `/admin/social/${post.id}?flash=${encodeURIComponent(flash)}`,
@@ -3776,7 +3802,11 @@ adminUi.post('/social/:id/regenerate', async (c) => {
   }
 
   try {
-    await runGenerate(existing.slot as Slot, {
+    const themeKey =
+      (existing.meta?.themeKey as string | undefined) ?? existing.slot;
+    const theme =
+      getThemeByKey(themeKey) ?? getThemeForDate(new Date());
+    await runGenerate(theme, {
       existingId: id,
       skipIds: accumulated,
     });

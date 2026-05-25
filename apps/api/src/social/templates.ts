@@ -26,7 +26,6 @@ const NOIR2 = '#17171a';
 const INK = '#f2f2ef';
 const INK_MUTED = '#9a9a94';
 const ACID = '#d4ff3a';
-const FLARE = '#ff4d2e';
 
 type VNode = {
   type: string;
@@ -261,6 +260,11 @@ export interface EventSlideInput {
   endsAt: Date | null;
   index: number; // 1..N
   total: number;
+  /** Dag-thema label (bv. "Theater" of "Live muziek") — rendert als
+      acid-kicker top-left. Optioneel; bij ontbreken geen kicker. */
+  themeLabel?: string;
+  /** Subtekst onder themeLabel: tijdseenheid ("Komende 7 dagen"). */
+  windowLabel?: string;
 }
 
 export function eventSlide(input: EventSlideInput): VNode {
@@ -310,42 +314,55 @@ export function eventSlide(input: EventSlideInput): VNode {
           'linear-gradient(180deg, rgba(10,10,11,0.55) 0%, rgba(10,10,11,0.20) 30%, rgba(10,10,11,0.55) 60%, rgba(10,10,11,0.96) 88%)',
       },
     }),
-    // Top-left: twee aparte pills — venue-type (acid) + category (flare)
-    (() => {
-      const pills: VNode[] = [];
-      const pillStyle = (bg: string, fg: string) => ({
-        backgroundColor: bg,
-        color: fg,
-        fontSize: 36,
-        fontWeight: 900,
-        letterSpacing: -1,
-        padding: '14px 28px',
-        borderRadius: 999,
-      });
-      const venueType = input.venueType?.toLowerCase();
-      const cat = input.category?.toLowerCase();
-      if (venueType) {
-        pills.push(el('div', { style: pillStyle(ACID, NOIR) }, venueType));
-      }
-      if (cat && cat !== venueType) {
-        pills.push(el('div', { style: pillStyle(FLARE, INK) }, cat));
-      }
-      if (pills.length === 0) return null;
-      return el(
-        'div',
-        {
-          style: {
-            position: 'absolute',
-            top: 60,
-            left: 60,
-            display: 'flex',
-            flexDirection: 'row',
-            gap: 12,
+    // Top-left: dag-thema kicker (themeLabel + windowLabel). Vervangt
+    // de oude cat/venue-pills omdat de category nu impliciet is via
+    // het thema (ma=theater, di=muziek, …). Twee tekstregels: groot
+    // acid label + kleinere muted-subtekst voor tijdseenheid.
+    input.themeLabel
+      ? el(
+          'div',
+          {
+            style: {
+              position: 'absolute',
+              top: 60,
+              left: 60,
+              right: 60,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 4,
+            },
           },
-        },
-        ...pills
-      );
-    })(),
+          el(
+            'div',
+            {
+              style: {
+                fontSize: 44,
+                fontWeight: 900,
+                color: ACID,
+                letterSpacing: -1,
+                textTransform: 'uppercase',
+              },
+            },
+            input.themeLabel
+          ),
+          input.windowLabel
+            ? el(
+                'div',
+                {
+                  style: {
+                    fontSize: 26,
+                    fontWeight: 700,
+                    color: INK,
+                    letterSpacing: 0,
+                    textTransform: 'uppercase',
+                    opacity: 0.85,
+                  },
+                },
+                input.windowLabel
+              )
+            : null
+        )
+      : null,
     // Bottom panel
     el(
       'div',
