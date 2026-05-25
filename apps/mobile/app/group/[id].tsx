@@ -5,7 +5,9 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Keyboard,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -390,6 +392,24 @@ function SwipeDismissSheet({
   // maakt vóór de slide-in animatie kan beginnen.
   const translateY = useSharedValue(SHEET_OFFSCREEN);
 
+  // Keyboard-aware: KeyboardAvoidingView werkt niet voor onze
+  // absoluut-gepositioneerde bottom-sheet. Luister direct op Keyboard
+  // events en lift de backdrop via paddingBottom — z'n flex-end zorgt
+  // dan dat de sheet boven het keyboard uitkomt.
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  useEffect(() => {
+    const showEvt = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvt = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const showSub = Keyboard.addListener(showEvt, (e) =>
+      setKeyboardHeight(e.endCoordinates.height)
+    );
+    const hideSub = Keyboard.addListener(hideEvt, () => setKeyboardHeight(0));
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
+
   // Open-animatie: reset naar off-screen en animeer naar 0. Bij re-open
   // na een swipe-close zorgt de expliciete reset dat de sheet altijd
   // weer vanaf de bodem omhoog komt — niet onzichtbaar blijft hangen.
@@ -446,14 +466,24 @@ function SwipeDismissSheet({
       onRequestClose={animateClose}
       statusBarTranslucent
     >
-      <Pressable style={styles.modalBackdrop} onPress={animateClose}>
+      <Pressable
+        style={[styles.modalBackdrop, { paddingBottom: keyboardHeight }]}
+        onPress={animateClose}
+      >
         <GestureDetector gesture={pan}>
           <Animated.View
             style={[
               styles.bottomSheet,
               {
                 backgroundColor: isNacht ? palette.noir : palette.paper3,
-                paddingBottom,
+                // Met keyboard open: home-indicator is niet zichtbaar,
+                // dus de safe-area-bottom mag weg — sheet sluit strakker
+                // aan op het keyboard. Bottom-corners óók rond zodat
+                // de sheet als floating card boven het keyboard hangt.
+                paddingBottom: keyboardHeight > 0 ? 8 : paddingBottom,
+                borderBottomLeftRadius: keyboardHeight > 0 ? 24 : 0,
+                borderBottomRightRadius: keyboardHeight > 0 ? 24 : 0,
+                marginBottom: keyboardHeight > 0 ? 8 : 0,
               },
               animatedStyle,
             ]}
