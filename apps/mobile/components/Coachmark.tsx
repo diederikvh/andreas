@@ -81,7 +81,10 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 18,
     right: 18,
-    zIndex: 9,
+    // Boven AppHeader (zIndex 10) zodat de hint óver de day-strip
+    // en chip-row valt i.p.v. eronder verdwijnt.
+    zIndex: 20,
+    elevation: 20,
     alignItems: 'flex-end',
   },
   arrowWrap: {

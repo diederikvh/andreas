@@ -10,7 +10,7 @@ import { claimShareInvite } from '@/lib/api';
  * Flow:
  *   1. Universal-link tap → app opens op /i/[token]
  *   2. Route slaat de token op via {@link savePendingShareInviteToken}
- *      (en redirect naar /jij of /welkom).
+ *      (en redirect ingelogd → /social, anders → /jij?onboarding=1).
  *   3. Zodra de gebruiker ingelogd is, vuurt {@link useClaimPendingShare}
  *      in de root-layout → POST /share-invites/:token/claim → friendship.
  *   4. Token wordt na claim (success of fatale error) gewist.

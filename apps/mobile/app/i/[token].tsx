@@ -13,8 +13,8 @@ import { savePendingShareInviteToken } from '@/lib/pendingShareInvite';
  * ingelogd is — de claim-hook in de root-layout vuurt dan kort daarna
  * en handelt de friendship-creatie + toast af. De redirect-richting
  * hangt af van de auth-staat: ingelogd → /social (waar je je nieuwe
- * vriend ziet), niet-ingelogd → /welkom (login-flow). Na login vuurt
- * de claim-hook alsnog.
+ * vriend ziet), niet-ingelogd → /jij?onboarding=1 (phone-OTP → naam +
+ * handle). Na login vuurt de claim-hook alsnog.
  */
 export default function FriendInviteEntry() {
   const { token } = useLocalSearchParams<{ token: string }>();
@@ -33,5 +33,5 @@ export default function FriendInviteEntry() {
 
   const authed = Boolean(session?.user?.id);
   if (authed) return <Redirect href="/(tabs)/social" />;
-  return <Redirect href="/welkom" />;
+  return <Redirect href="/jij?onboarding=1" />;
 }

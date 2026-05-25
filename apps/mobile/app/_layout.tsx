@@ -111,10 +111,6 @@ function RootLayout() {
           <SafeAreaProvider>
             <Stack screenOptions={{ headerShown: false }}>
               <Stack.Screen
-                name="welkom"
-                options={{ presentation: 'modal' }}
-              />
-              <Stack.Screen
                 name="event/[id]/invite"
                 options={{ presentation: 'modal' }}
               />

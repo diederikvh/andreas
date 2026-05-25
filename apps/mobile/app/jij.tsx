@@ -54,10 +54,6 @@ export default function Jij() {
   const roles = useRoles();
   const insets = useSafeAreaInsets();
   const isNacht = mode === 'nacht';
-  // iOS-modal sheets zitten al onder de system status bar (insets.top
-  // ≈ 0 binnen de modal); op Android schuift de modal full-screen op,
-  // dus daar moeten we wél een safe-area-padding aanhouden.
-  const modalTopInset = Platform.OS === 'android' ? insets.top : 0;
   const t = useT();
   const scrollRef = useRef<ScrollView>(null);
   useScrollToTop(scrollRef);
@@ -299,7 +295,7 @@ export default function Jij() {
     return (
       <View style={[styles.root, styles.loadingRoot, { backgroundColor: roles.bg }]}>
         <SpinningCross size={28} color={roles.fgPlaceholder} />
-        <ModalCloseBtn />
+        {!isOnboarding && <ModalCloseBtn />}
       </View>
     );
   }
@@ -316,33 +312,34 @@ export default function Jij() {
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
           contentContainerStyle={{
-            paddingTop: modalTopInset + 56,
+            paddingTop: insets.top + 56,
             paddingBottom: insets.bottom + 96,
             paddingHorizontal: 22,
           }}
         >
           <Text style={[styles.kicker, { color: roles.accent }]}>
             {stage === 'phone'
-              ? t('Inloggen · stap 1/2', 'Sign in · step 1/2')
-              : t('Inloggen · stap 2/2', 'Sign in · step 2/2')}
+              ? t('Stap 1/2', 'Step 1/2')
+              : t('Stap 2/2', 'Step 2/2')}
           </Text>
           <Text style={[styles.title, { color: roles.fg }]}>
-            {stage === 'phone'
-              ? t('Wat is je\nnummer?', 'What’s your\nnumber?')
-              : t('Vul de code\nuit de SMS.', 'Enter the code\nfrom the SMS.')}
+            {t('Inloggen', 'Sign in')}
           </Text>
 
           {stage === 'phone' && (
             <Text style={[styles.lead, { color: roles.fgRead }]}>
               {t(
-                'Met een account heb je je eigen Andreas. Je bewaart je planning, voegt vrienden toe om samen op pad te gaan en volgt de venues die je niet wilt missen.\n\nGeen wachtwoord. Eén SMS-code op je nummer is genoeg.',
-                'With an account you get your own Andreas. Save your plans, add friends to head out together, and follow the venues you don’t want to miss.\n\nNo password. One SMS code on your number is enough.'
+                'Met een account heb je je eigen Andreas. Je bewaart je planning, voegt vrienden toe om samen op pad te gaan en volgt de venues die je niet wilt missen.',
+                'With an account you get your own Andreas. Save your plans, add friends to head out together, and follow the venues you don’t want to miss.'
               )}
             </Text>
           )}
 
           {stage === 'phone' ? (
-            <>
+            <View style={styles.fieldGroup}>
+              <Text style={[styles.kicker, { color: roles.accent }]}>
+                {t('TELEFOON', 'PHONE')}
+              </Text>
               <View
                 style={[
                   styles.field,
@@ -370,15 +367,12 @@ export default function Jij() {
                   onSubmitEditing={sendCode}
                 />
               </View>
-              <Text style={[styles.helper, { color: roles.fgMuted }]}>
-                {t(
-                  'Je krijgt een SMS met een 6-cijferige code. Vul je nummer in met landcode (06… wordt automatisch +31).',
-                  'You’ll receive an SMS with a 6-digit code. Enter your number with country code (06… converts to +31 automatically).'
-                )}
-              </Text>
-            </>
+            </View>
           ) : (
-            <>
+            <View style={styles.fieldGroup}>
+              <Text style={[styles.kicker, { color: roles.accent }]}>
+                {t('SMS-CODE', 'SMS CODE')}
+              </Text>
               <View
                 style={[
                   styles.field,
@@ -410,7 +404,7 @@ export default function Jij() {
                   {t('Verkeerd nummer? Terug.', 'Wrong number? Back.')}
                 </Text>
               </Pressable>
-            </>
+            </View>
           )}
 
           {error && <Text style={styles.error}>{error}</Text>}
@@ -440,7 +434,7 @@ export default function Jij() {
             </Text>
           </Pressable>
         </ScrollView>
-        <ModalCloseBtn />
+        {!isOnboarding && <ModalCloseBtn />}
       </KeyboardAvoidingView>
     );
   }
@@ -473,7 +467,7 @@ export default function Jij() {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
         contentContainerStyle={{
-          paddingTop: modalTopInset + 56,
+          paddingTop: insets.top + 56,
           paddingBottom: insets.bottom + 96,
           paddingHorizontal: 22,
         }}
@@ -616,9 +610,9 @@ export default function Jij() {
             <Cross size={14} thickness={2.6} color={roles.fg} />
           </Pressable>
         )
-      ) : (
+      ) : !isOnboarding ? (
         <ModalCloseBtn />
-      )}
+      ) : null}
     </KeyboardAvoidingView>
   );
 
