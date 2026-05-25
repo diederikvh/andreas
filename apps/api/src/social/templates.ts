@@ -9,15 +9,17 @@
  * (shape `{ type, props: { style, children } }`). Geen JSX want
  * `hono/jsx` is incompatibel met React's vnode-shape die Satori wil.
  *
- * Slide-formaat: 1080×1920 (9:16 — IG Reels/Stories + feed-portrait,
- * universele post-maat sinds IG-roadmap 2024+). Nacht-modus. Hero-
- * images zijn `objectFit: cover` dus adapteren naar de langere frame
- * (croppen waar nodig); bestaande beelden hoeven niet opnieuw te
- * worden aangeleverd.
+ * Slide-formaat: 1080×1350 (4:5 — maximum feed-portrait voor IG feed
+ * carousels). Eerder hadden we 9:16 (1080×1920) maar dat is Reels/
+ * Stories-formaat: IG drukt zulke posts in een 4:5-frame in de feed
+ * waardoor de slides ingesnoerd renderen. 4:5 is wat 'normale' tall
+ * feed-portraits (zoals somewhere.media) gebruiken en wat edge-to-edge
+ * vult in de feed. Nacht-modus. Hero-images zijn `objectFit: cover`
+ * dus adapteren naar de langere frame (croppen waar nodig).
  */
 
 export const SLIDE_WIDTH = 1080;
-export const SLIDE_HEIGHT = 1920;
+export const SLIDE_HEIGHT = 1350;
 
 const NOIR = '#0a0a0b';
 const NOIR2 = '#17171a';
@@ -352,10 +354,10 @@ export function eventSlide(input: EventSlideInput): VNode {
           position: 'absolute',
           left: 60,
           right: 60,
-          bottom: 80,
+          bottom: 56,
           display: 'flex',
           flexDirection: 'column',
-          gap: 24,
+          gap: 12,
         },
       },
       // Datum links, tijd rechts op één regel. Datum vertelt de lezer
@@ -377,7 +379,7 @@ export function eventSlide(input: EventSlideInput): VNode {
           'div',
           {
             style: {
-              fontSize: 56,
+              fontSize: 46,
               fontWeight: 900,
               color: ACID,
               letterSpacing: -1,
@@ -392,28 +394,27 @@ export function eventSlide(input: EventSlideInput): VNode {
         'div',
         {
           style: {
-            fontSize: 96,
+            fontSize: 78,
             fontWeight: 900,
             lineHeight: 1.02,
             color: INK,
             letterSpacing: -3,
             display: 'flex',
-            maxHeight: 96 * 3 * 1.02,
+            maxHeight: 78 * 3 * 1.02,
             overflow: 'hidden',
           },
         },
         input.title
       ),
-      // Venue — bigger and bolder than before
+      // Venue
       el(
         'div',
         {
           style: {
-            fontSize: 56,
+            fontSize: 42,
             fontWeight: 700,
             color: INK,
             letterSpacing: -1,
-            marginTop: 4,
           },
         },
         input.venueName
