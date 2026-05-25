@@ -30,6 +30,11 @@ export type Slot = 'morning' | 'evening';
 export const SLOTS: readonly Slot[] = ['morning', 'evening'];
 
 const DEDUP_DAYS = 14;
+/** Venue-cooldown: venues uit posts van de laatste N dagen krijgen een
+    score-penalty zodat het aanbod rouleert. Soft (penalty), niet hard
+    (exclude), zodat we bij weinig kandidaten geen lege carousel krijgen. */
+const VENUE_COOLDOWN_DAYS = 7;
+const VENUE_COOLDOWN_PENALTY = -0.5;
 
 /** Publicatie-tijd per slot (in Europe/Amsterdam local hours, op de
     dag van generatie). De cron die approved posts publiceert pakt
@@ -44,11 +49,17 @@ const SLOT_PUBLISH_HOUR: Record<Slot, number> = {
 function shortId(): string {
   return randomBytes(6).toString('hex');
 }
+/**
+ * Scene-weight: lichte voorkeur voor alt-scenes in slots 1+, mainstream
+ * komt al via de pin op slide 0. Bewust gecomprimeerd t.o.v. de oude
+ * range (0.6→1.0) zodat saves- en featured-boost meer doorslag krijgen
+ * en één scene (m.n. underground = OT301/OCCII) niet structureel kaapt.
+ */
 const SCENE_WEIGHT: Record<string, number> = {
-  mainstream: 0.6,
+  mainstream: 0.7,
   alternatief: 0.8,
-  underground: 1.0,
-  fringe: 0.7,
+  underground: 0.85,
+  fringe: 0.75,
 };
 
 /**
@@ -141,12 +152,18 @@ interface ScoredCandidate extends Candidate {
   breakdown: Record<string, number>;
 }
 
-function scoreCandidate(c: Candidate): ScoredCandidate {
+function scoreCandidate(
+  c: Candidate,
+  opts: { venueCooldownSet: Set<string> } = { venueCooldownSet: new Set() }
+): ScoredCandidate {
   const featuredBoost = c.featured ? 0.4 : 0;
   const sceneWeight = c.venueScene ? (SCENE_WEIGHT[c.venueScene] ?? 0.5) : 0.5;
   const sceneScore = 0.3 * sceneWeight;
   const savesScore = 0.2 * Math.min(c.savesCount / 10, 1);
-  const score = featuredBoost + sceneScore + savesScore;
+  const cooldownPenalty = opts.venueCooldownSet.has(c.venueId)
+    ? VENUE_COOLDOWN_PENALTY
+    : 0;
+  const score = featuredBoost + sceneScore + savesScore + cooldownPenalty;
   return {
     ...c,
     score,
@@ -154,31 +171,61 @@ function scoreCandidate(c: Candidate): ScoredCandidate {
       featured: featuredBoost,
       scene: sceneScore,
       saves: savesScore,
+      cooldown: cooldownPenalty,
     },
   };
 }
 
 /**
- * Greedy spread: pak top-scorende items, maar maximaal 1 per
- * categorie en 1 per venue, totdat we N hebben. Als we N niet halen
- * binnen die constraint, vullen we aan met overgebleven top-scorers.
+ * Slide 0 = mainstream-hook: het bekendere event dat herkenning triggert
+ * bij scrollers (Paradiso/Melkweg/Concertgebouw/Stedelijk). Slides 1..N
+ * gaan ruimer — alternatief/underground/fringe als verdieping na de hook.
+ *
+ * Volgorde:
+ *  1. Pin: hoogst-scorende mainstream event (al gerouleerd door cooldown).
+ *  2. Spread: top-score, 1 per venue, 1 per category.
+ *  3. Fallback 1: venue-uniek maar cat-dupes toegestaan.
+ *  4. Fallback 2: alles toegestaan (last resort, bij erg dun aanbod).
+ *
+ * Geen mainstream beschikbaar? Dan begint stap 2 meteen en is de eerste
+ * pick een alt-scene event — niet ideaal maar beter dan een lege post.
  */
 function pickWithSpread(scored: ScoredCandidate[], limit: number): ScoredCandidate[] {
   const sorted = [...scored].sort((a, b) => b.score - a.score);
   const picked: ScoredCandidate[] = [];
   const seenCats = new Set<string>();
   const seenVenues = new Set<string>();
+
+  const hook = sorted.find((c) => c.venueScene === 'mainstream');
+  if (hook) {
+    picked.push(hook);
+    seenCats.add(hook.category);
+    seenVenues.add(hook.venueId);
+  }
+
   for (const c of sorted) {
     if (picked.length >= limit) break;
+    if (picked.some((p) => p.occurrenceId === c.occurrenceId)) continue;
     if (seenCats.has(c.category) || seenVenues.has(c.venueId)) continue;
     picked.push(c);
     seenCats.add(c.category);
     seenVenues.add(c.venueId);
   }
+
   if (picked.length < limit) {
     for (const c of sorted) {
       if (picked.length >= limit) break;
-      if (picked.find((p) => p.occurrenceId === c.occurrenceId)) continue;
+      if (picked.some((p) => p.occurrenceId === c.occurrenceId)) continue;
+      if (seenVenues.has(c.venueId)) continue;
+      picked.push(c);
+      seenVenues.add(c.venueId);
+    }
+  }
+
+  if (picked.length < limit) {
+    for (const c of sorted) {
+      if (picked.length >= limit) break;
+      if (picked.some((p) => p.occurrenceId === c.occurrenceId)) continue;
       picked.push(c);
     }
   }
@@ -217,9 +264,15 @@ async function selectPicksForSlot(
   const { limit, skipIds, now } = options;
   const window = computeWindow(slot, now);
   const dedupSince = new Date(now.getTime() - DEDUP_DAYS * 24 * 60 * 60 * 1000);
+  const cooldownSince = new Date(
+    now.getTime() - VENUE_COOLDOWN_DAYS * 24 * 60 * 60 * 1000
+  );
 
   const recentlyPosted = await db
-    .select({ eventIds: schema.socialPosts.eventIds })
+    .select({
+      eventIds: schema.socialPosts.eventIds,
+      postedAt: schema.socialPosts.postedAt,
+    })
     .from(schema.socialPosts)
     .where(
       and(
@@ -229,6 +282,21 @@ async function selectPicksForSlot(
     );
   const dedupSet = new Set(recentlyPosted.flatMap((r) => r.eventIds));
   for (const id of skipIds) dedupSet.add(id);
+
+  // Venue-cooldown: welke venues hebben we in de laatste
+  // VENUE_COOLDOWN_DAYS gepost? Hun events krijgen een score-penalty
+  // zodat we niet 5 dagen achter elkaar dezelfde venue tonen.
+  const cooldownEventIds = recentlyPosted
+    .filter((r) => r.postedAt && r.postedAt >= cooldownSince)
+    .flatMap((r) => r.eventIds);
+  const venueCooldownSet = new Set<string>();
+  if (cooldownEventIds.length > 0) {
+    const venueRows = await db
+      .select({ venueId: schema.events.venueId })
+      .from(schema.events)
+      .where(inArray(schema.events.id, cooldownEventIds));
+    for (const r of venueRows) venueCooldownSet.add(r.venueId);
+  }
 
   const rows = (await db
     .select({
@@ -276,7 +344,7 @@ async function selectPicksForSlot(
     perEvent.push(row);
     seen.add(row.eventId);
   }
-  const scored = perEvent.map(scoreCandidate);
+  const scored = perEvent.map((c) => scoreCandidate(c, { venueCooldownSet }));
   const picks = pickWithSpread(scored, limit);
 
   return {
