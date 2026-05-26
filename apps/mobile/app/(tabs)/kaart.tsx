@@ -88,7 +88,7 @@ const SHEET_CLOSED = 0;
 // HEADER = venue-naam + meta + divider, ROW = 1 event-row met thumb,
 // MAX = harde cap zodat de kaart nooit volledig wordt afgedekt.
 const SHEET_LIST_HEADER = 88;
-const SHEET_LIST_ROW = 84;
+const SHEET_LIST_ROW = 116;
 const SHEET_LIST_BOTTOM = 16;
 const SHEET_MAX_PCT = 0.65;
 // Hoogte van de toolbar-rij onder de logo-rij in AppHeader: kicker
@@ -1889,9 +1889,11 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: 'rgba(127,127,127,0.15)',
   },
+  // 96×96 — zelfde maat als Agenda's thumbSize override op
+  // EventListRow zodat de pop-up-lijst visueel matcht.
   venueSheetRowThumb: {
-    width: 64,
-    height: 64,
+    width: 96,
+    height: 96,
     borderRadius: 10,
     overflow: 'hidden',
   },
@@ -1907,8 +1909,8 @@ const styles = StyleSheet.create({
   },
   venueSheetRowTitle: {
     fontFamily: fontFamily.bold,
-    fontSize: 14,
-    letterSpacing: -0.21,
+    fontSize: 15,
+    letterSpacing: -0.22,
     lineHeight: 18,
   },
   venueSheetRowTags: { flexDirection: 'row', gap: 6, marginTop: 2 },
