@@ -5,6 +5,7 @@ import { router, useFocusEffect } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  FlatList,
   Modal,
   Pressable,
   RefreshControl,
@@ -437,7 +438,15 @@ export default function Kaart() {
             visible={refreshing}
             topOffset={insets.top + HEADER_HEIGHT + CONTROLS_HEIGHT + 8}
           />
-          <ScrollView
+          <FlatList
+            data={sorted}
+            keyExtractor={(m) => m.id}
+            renderItem={({ item }) => <SheetRow mapEvent={item} />}
+            ListHeaderComponent={
+              <Text style={[styles.listKicker, { color: roles.fgMuted }]}>
+                In de buurt
+              </Text>
+            }
             showsVerticalScrollIndicator={false}
             contentContainerStyle={{
               paddingTop: insets.top + HEADER_HEIGHT + CONTROLS_HEIGHT + 8,
@@ -458,14 +467,11 @@ export default function Kaart() {
                 progressViewOffset={insets.top + HEADER_HEIGHT + CONTROLS_HEIGHT + 60}
               />
             }
-          >
-            <Text style={[styles.listKicker, { color: roles.fgMuted }]}>
-              In de buurt
-            </Text>
-            {sorted.map((m) => (
-              <SheetRow key={m.id} mapEvent={m} />
-            ))}
-          </ScrollView>
+            windowSize={7}
+            initialNumToRender={8}
+            maxToRenderPerBatch={8}
+            removeClippedSubviews
+          />
         </>
       ) : (
         <>

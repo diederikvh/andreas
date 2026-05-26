@@ -8,6 +8,7 @@ import {
   Pressable,
   RefreshControl,
   ScrollView,
+  SectionList,
   StyleSheet,
   Text,
   View,
@@ -156,22 +157,39 @@ export default function Social() {
   return (
     <View style={[styles.root, { backgroundColor: roles.bg }]}>
       <RefreshBanner visible={refreshing} topOffset={topInset + 8} />
-      <ScrollView
-        ref={scrollRef}
-        style={styles.page}
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingTop: topInset, paddingBottom: bottomInset }}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            tintColor={roles.accent}
-            colors={[roles.accent]}
-            progressViewOffset={topInset}
-          />
-        }
-      >
-        {sub === 'vrienden' && (
+      {sub === 'planning' ? (
+        // Planning krijgt een eigen virtualized SectionList — upcoming +
+        // past kunnen voor heavy users honderden items zijn, plain
+        // ScrollView mountte dat tegelijk.
+        <PlanningPanel
+          authed={authed}
+          saves={saves}
+          feed={feed}
+          isLoading={savesLoading || feedLoading}
+          error={savesError ?? feedError}
+          myAvatarUrl={me?.avatarUrl ?? null}
+          myName={me?.name ?? ''}
+          topInset={topInset}
+          bottomInset={bottomInset}
+          refreshing={refreshing}
+          onRefresh={onRefresh}
+        />
+      ) : (
+        <ScrollView
+          ref={scrollRef}
+          style={styles.page}
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={{ paddingTop: topInset, paddingBottom: bottomInset }}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor={roles.accent}
+              colors={[roles.accent]}
+              progressViewOffset={topInset}
+            />
+          }
+        >
           <FriendsPanel
             authed={authed}
             requests={requests}
@@ -183,19 +201,8 @@ export default function Social() {
             onDeclineReq={(id) => declineReq.mutate(id)}
             busyReq={acceptReq.isPending || declineReq.isPending}
           />
-        )}
-        {sub === 'planning' && (
-          <PlanningPanel
-            authed={authed}
-            saves={saves}
-            feed={feed}
-            isLoading={savesLoading || feedLoading}
-            error={savesError ?? feedError}
-            myAvatarUrl={me?.avatarUrl ?? null}
-            myName={me?.name ?? ''}
-          />
-        )}
-      </ScrollView>
+        </ScrollView>
+      )}
       <AppHeader title={t('Sociaal', 'Social')} showContentMode>
         <SubTabs sub={sub} onChange={setSub} inboxCount={inboxCount} />
       </AppHeader>
@@ -461,6 +468,10 @@ function PlanningPanel({
   error,
   myAvatarUrl,
   myName,
+  topInset,
+  bottomInset,
+  refreshing,
+  onRefresh,
 }: {
   authed: boolean;
   saves: SavedApiEvent[] | undefined;
@@ -469,6 +480,10 @@ function PlanningPanel({
   error: unknown;
   myAvatarUrl: string | null;
   myName: string;
+  topInset: number;
+  bottomInset: number;
+  refreshing: boolean;
+  onRefresh: () => void;
 }) {
   const roles = useRoles();
   const t = useT();
@@ -599,20 +614,43 @@ function PlanningPanel({
     );
   }
 
+  // Virtualized: alleen wat in viewport zit wordt gemount — historie kan
+  // honderden items zijn voor heavy users.
+  type Section = {
+    isPast: boolean;
+    data: Merged[];
+  };
+  const sections: Section[] = [];
+  if (upcoming.length > 0) sections.push({ isPast: false, data: upcoming });
+  if (past.length > 0) sections.push({ isPast: true, data: past });
+
   return (
-    <Animated.View entering={FadeIn.duration(180)}>
-      {upcoming.map((m) => (
-        <MergedRow key={m.occurrenceId} entry={m} />
-      ))}
-      {past.length > 0 && (
-        <>
-          <PastAnchor count={past.length} />
-          {past.map((m) => (
-            <MergedRow key={`past-${m.occurrenceId}`} entry={m} dim />
-          ))}
-        </>
+    <SectionList
+      sections={sections}
+      keyExtractor={(item, idx) => `${idx}-${item.occurrenceId}`}
+      renderItem={({ item, section }) => (
+        <MergedRow entry={item} dim={section.isPast} />
       )}
-    </Animated.View>
+      renderSectionHeader={({ section }) =>
+        section.isPast ? <PastAnchor count={section.data.length} /> : null
+      }
+      stickySectionHeadersEnabled={false}
+      contentContainerStyle={{ paddingTop: topInset, paddingBottom: bottomInset }}
+      showsVerticalScrollIndicator={false}
+      refreshControl={
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={onRefresh}
+          tintColor={roles.accent}
+          colors={[roles.accent]}
+          progressViewOffset={topInset}
+        />
+      }
+      windowSize={7}
+      initialNumToRender={8}
+      maxToRenderPerBatch={8}
+      removeClippedSubviews
+    />
   );
 }
 
