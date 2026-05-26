@@ -12,6 +12,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
@@ -81,8 +82,15 @@ const TONE = {
   },
 } as const;
 
-const SHEET_OPEN = 200;
+const SHEET_OPEN_SINGLE = 200;
 const SHEET_CLOSED = 0;
+// Multi-event sheet: dynamische hoogte op basis van aantal events.
+// HEADER = venue-naam + meta + divider, ROW = 1 event-row met thumb,
+// MAX = harde cap zodat de kaart nooit volledig wordt afgedekt.
+const SHEET_LIST_HEADER = 88;
+const SHEET_LIST_ROW = 84;
+const SHEET_LIST_BOTTOM = 16;
+const SHEET_MAX_PCT = 0.65;
 // Hoogte van de toolbar-rij onder de logo-rij in AppHeader: kicker
 // staat sinds de IA-shift in rij 1 (rightSlot), dus geen aparte
 // context-line meer. Toolbar = 44 + marginBottom 8 + paddingBottom 4.
@@ -123,6 +131,18 @@ type MapEvent = {
   startsAt: string;
   endsAt: string | null;
   minutes: number;
+};
+
+/** Verzameling events op één venue — basis voor de map-pin. Paradiso
+    met 14 events vandaag = één VenueGroup met 14 events. Een venue
+    met 1 event = VenueGroup met 1 event. Bottom-sheet rendert een
+    lijst voor de eerste, een single-card voor de tweede. */
+type VenueGroup = {
+  venueId: string;
+  venue: MapEvent['venue'];
+  events: MapEvent[];
+  /** Snelste reistijd onder alle events — voor de marker-display. */
+  earliestMinutes: number;
 };
 
 export default function Kaart() {
@@ -341,7 +361,11 @@ export default function Kaart() {
   );
   const sheetHeight = useSharedValue(0);
   const [sheetOpen, setSheetOpen] = useState(false);
-  const [activeId, setActiveId] = useState<string | null>(null);
+  // ActiveVenueId i.p.v. activeMapEventId — Paradiso met 14 events kreeg
+  // 14 pins op exact dezelfde coords, onmogelijk te tappen. Nu één pin
+  // per venue; sheet toont één event of een lijst, afhankelijk van het
+  // aantal events bij die venue.
+  const [activeVenueId, setActiveVenueId] = useState<string | null>(null);
   const cameraRef = useRef<CameraRef>(null);
   // True na de eerste auto-recentre van deze "kaart-sessie". Reset
   // wanneer de gebruiker de kaart sluit (close-knop). Doel:
@@ -352,9 +376,41 @@ export default function Kaart() {
   // alleen een expliciete close reset 'm.
   const hasAutoRecenteredRef = useRef(false);
 
-  const activeMapEvent = mapEvents.find((m) => m.id === activeId) ?? null;
+  // Groepeer mapEvents per venue — één pin per venue, ongeacht hoeveel
+  // events. Voorkomt 14 pins op dezelfde Paradiso-coord die elkaar
+  // bedekken. Een venue met 1 event toont een gewone EventMarker;
+  // venues met >1 events krijgen een VenueMarker met telling.
+  const venueGroups: VenueGroup[] = useMemo(() => {
+    const map = new Map<string, VenueGroup>();
+    for (const m of mapEvents) {
+      const existing = map.get(m.venue.id);
+      if (existing) {
+        existing.events.push(m);
+        if (m.minutes < existing.earliestMinutes)
+          existing.earliestMinutes = m.minutes;
+      } else {
+        map.set(m.venue.id, {
+          venueId: m.venue.id,
+          venue: m.venue,
+          events: [m],
+          earliestMinutes: m.minutes,
+        });
+      }
+    }
+    // Sorteer events binnen elke venue op startsAt zodat de lijst-sheet
+    // chronologisch leest.
+    for (const g of map.values()) {
+      g.events.sort(
+        (a, b) =>
+          new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime()
+      );
+    }
+    return [...map.values()];
+  }, [mapEvents]);
 
-  // Map clustering: bouw één index op `mapEvents`, recomputeer welke
+  const activeVenue = venueGroups.find((g) => g.venueId === activeVenueId) ?? null;
+
+  // Map clustering: bouw één index op `venueGroups`, recomputeer welke
   // markers tonen wanneer zoom of viewport-bbox wijzigt. Default-bbox
   // dekt heel groot-Amsterdam zodat de initial render (vóór de eerste
   // onRegionDidChange) al een correct beeld geeft.
@@ -362,21 +418,21 @@ export default function Kaart() {
     zoom: number;
     bbox: [number, number, number, number];
   }>({
-    zoom: 13,
+    zoom: 11,
     bbox: [4.7, 52.28, 5.05, 52.45],
   });
   const clusterIndex = useMemo(() => {
-    if (mapEvents.length === 0) return null;
+    if (venueGroups.length === 0) return null;
     return buildClusterIndex(
-      mapEvents.map((m) => ({
-        id: m.id,
-        lng: m.venue.lng,
-        lat: m.venue.lat,
-        payload: m,
+      venueGroups.map((g) => ({
+        id: g.venueId,
+        lng: g.venue.lng,
+        lat: g.venue.lat,
+        payload: g,
       }))
     );
-  }, [mapEvents]);
-  const clusterMarkers = useMemo<ClusterMarkerData<MapEvent>[]>(() => {
+  }, [venueGroups]);
+  const clusterMarkers = useMemo<ClusterMarkerData<VenueGroup>[]>(() => {
     if (!clusterIndex) return [];
     return getClusterMarkers(clusterIndex, viewport.bbox, viewport.zoom);
   }, [clusterIndex, viewport]);
@@ -402,7 +458,7 @@ export default function Kaart() {
   const recentre = useCallback(() => {
     cameraRef.current?.flyTo({
       center: [centre.lng, centre.lat],
-      zoom: 13,
+      zoom: 11,
       duration: 450,
     });
   }, [centre.lat, centre.lng]);
@@ -418,7 +474,7 @@ export default function Kaart() {
       // page-sheet-Modal en blokkeert tab-navigatie zelf — geen
       // cleanup nodig.
       return () => {
-        setActiveId(null);
+        setActiveVenueId(null);
         sheetHeight.value = withTiming(SHEET_CLOSED, {
           duration: 220,
           easing: brandEase,
@@ -428,23 +484,57 @@ export default function Kaart() {
     }, [recentre, sheetHeight])
   );
 
-  const snapTo = (open: boolean) => {
-    sheetHeight.value = withTiming(open ? SHEET_OPEN : SHEET_CLOSED, {
-      duration: 280,
-      easing: brandEase,
-    });
-    setSheetOpen(open);
-  };
+  // Dynamische open-hoogte: single event = vaste card-hoogte, multi-
+  // event = header + N rij-hoogtes, gecapt op MAX_PCT van het scherm.
+  const { height: windowHeight } = useWindowDimensions();
+  const sheetOpenHeight = useMemo(() => {
+    if (!activeVenue) return SHEET_OPEN_SINGLE;
+    if (activeVenue.events.length === 1) return SHEET_OPEN_SINGLE;
+    const maxH = windowHeight * SHEET_MAX_PCT;
+    return Math.min(
+      maxH,
+      SHEET_LIST_HEADER +
+        activeVenue.events.length * SHEET_LIST_ROW +
+        SHEET_LIST_BOTTOM
+    );
+  }, [activeVenue, windowHeight]);
 
-  const selectEvent = (id: string) => {
-    setActiveId(id);
-    if (!sheetOpen) snapTo(true);
-  };
+  const snapTo = useCallback(
+    (open: boolean) => {
+      sheetHeight.value = withTiming(open ? sheetOpenHeight : SHEET_CLOSED, {
+        duration: 280,
+        easing: brandEase,
+      });
+      setSheetOpen(open);
+    },
+    [sheetHeight, sheetOpenHeight]
+  );
+
+  const selectVenue = useCallback(
+    (venueId: string) => {
+      setActiveVenueId(venueId);
+      if (!sheetOpen) snapTo(true);
+    },
+    [sheetOpen, snapTo]
+  );
+
+  // Wanneer de actieve venue wisselt terwijl de sheet open is,
+  // re-animaten we naar de nieuwe target-hoogte (single-event venue
+  // krimpt, multi-event venue groeit).
+  useEffect(() => {
+    if (sheetOpen) {
+      sheetHeight.value = withTiming(sheetOpenHeight, {
+        duration: 240,
+        easing: brandEase,
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sheetOpenHeight, sheetOpen]);
 
   // Reset selection on mode swap (visual context wijzigt, sheet
   // sluiten voor schoonheid).
   useEffect(() => {
-    setActiveId(null);
+    setActiveVenueId(null);
     sheetHeight.value = withTiming(SHEET_CLOSED, {
       duration: 220,
       easing: brandEase,
@@ -460,13 +550,13 @@ export default function Kaart() {
     .onUpdate((e) => {
       const next = dragStart.value - e.translationY;
       sheetHeight.value = Math.min(
-        SHEET_OPEN,
+        sheetOpenHeight,
         Math.max(SHEET_CLOSED, next)
       );
     })
     .onEnd(() => {
-      const open = sheetHeight.value > (SHEET_OPEN + SHEET_CLOSED) / 2;
-      sheetHeight.value = withTiming(open ? SHEET_OPEN : SHEET_CLOSED, {
+      const open = sheetHeight.value > (sheetOpenHeight + SHEET_CLOSED) / 2;
+      sheetHeight.value = withTiming(open ? sheetOpenHeight : SHEET_CLOSED, {
         duration: 220,
         easing: brandEase,
       });
@@ -560,7 +650,7 @@ export default function Kaart() {
               ref={cameraRef}
               initialViewState={{
                 center: [centre.lng, centre.lat],
-                zoom: 13,
+                zoom: 11,
               }}
             />
 
@@ -578,29 +668,44 @@ export default function Kaart() {
               </View>
             </MapMarker>
 
-            {/* Cluster + event-markers. Bij uitgezoomd zicht klonteren
-                overlappende pins samen tot een cluster-marker met een
-                count; ingezoomd vallen ze uiteen in individuele
-                EventMarkers. Friend-overlay komt terug zodra
-                friendships in de DB staan. */}
-            {clusterMarkers.map((c) =>
-              c.type === 'cluster' ? (
-                <ClusterMarker
-                  key={`c-${c.id}`}
-                  count={c.count}
-                  lng={c.lng}
-                  lat={c.lat}
-                  onPress={() => zoomToCluster(c.lng, c.lat, c.bbox)}
+            {/* Cluster + venue-markers. Bij uitgezoomd zicht klonteren
+                naburige venues samen tot een cluster-marker. Per venue
+                een pin: 1 event → EventMarker met category-dot,
+                meerdere events → VenueMarker met telling. Tap multi-
+                event venue → bottom-sheet toont een lijst. */}
+            {clusterMarkers.map((c) => {
+              if (c.type === 'cluster') {
+                return (
+                  <ClusterMarker
+                    key={`c-${c.id}`}
+                    count={c.count}
+                    lng={c.lng}
+                    lat={c.lat}
+                    onPress={() => zoomToCluster(c.lng, c.lat, c.bbox)}
+                  />
+                );
+              }
+              const group = c.payload;
+              const isActive = activeVenueId === group.venueId;
+              if (group.events.length === 1) {
+                return (
+                  <EventMarker
+                    key={group.venueId}
+                    m={group.events[0]}
+                    isActive={isActive}
+                    onPress={() => selectVenue(group.venueId)}
+                  />
+                );
+              }
+              return (
+                <VenueMarker
+                  key={group.venueId}
+                  group={group}
+                  isActive={isActive}
+                  onPress={() => selectVenue(group.venueId)}
                 />
-              ) : (
-                <EventMarker
-                  key={c.id}
-                  m={c.payload}
-                  isActive={activeId === c.id}
-                  onPress={selectEvent}
-                />
-              )
-            )}
+              );
+            })}
           </MapView>
 
           <Animated.View
@@ -626,8 +731,14 @@ export default function Kaart() {
                 />
               </Pressable>
             </GestureDetector>
-            {activeMapEvent && (
-              <DrawerCard mapEvent={activeMapEvent} transport={transport} />
+            {activeVenue && activeVenue.events.length === 1 && (
+              <DrawerCard
+                mapEvent={activeVenue.events[0]}
+                transport={transport}
+              />
+            )}
+            {activeVenue && activeVenue.events.length > 1 && (
+              <VenueListSheet group={activeVenue} transport={transport} />
             )}
           </Animated.View>
         </>
@@ -1053,6 +1164,68 @@ const ClusterMarker = memo(function ClusterMarker({
   );
 });
 
+/**
+ * Venue-marker: één pin voor een venue met meerdere events vandaag.
+ * Toont venue-naam-initiaal (lettertype-based geen image) + telling
+ * van events. Tap → bottom-sheet met events-lijst.
+ */
+const VenueMarker = memo(function VenueMarker({
+  group,
+  isActive,
+  onPress,
+}: {
+  group: VenueGroup;
+  isActive: boolean;
+  onPress: () => void;
+}) {
+  const mode = useMode();
+  const roles = useRoles();
+  const count = group.events.length;
+  return (
+    <MapMarker
+      id={`venue-${group.venueId}`}
+      lngLat={[group.venue.lng, group.venue.lat]}
+      anchor="center"
+      onPress={onPress}
+    >
+      <View
+        style={[
+          styles.venueMarker,
+          {
+            backgroundColor: isActive
+              ? roles.accent
+              : mode === 'nacht'
+                ? palette.noir2
+                : palette.paper3,
+          },
+        ]}
+      >
+        <View
+          style={[
+            styles.venueMarkerBadge,
+            { backgroundColor: roles.accent },
+          ]}
+        >
+          <Text
+            style={[styles.venueMarkerBadgeText, { color: roles.onAccent }]}
+          >
+            {count}
+          </Text>
+        </View>
+        <Text
+          style={[
+            styles.venueMarkerName,
+            { color: isActive ? roles.onAccent : roles.fg },
+          ]}
+          numberOfLines={1}
+        >
+          {group.venue.name}
+        </Text>
+      </View>
+    </MapMarker>
+  );
+});
+
 function SheetRow({ mapEvent }: { mapEvent: MapEvent }) {
   const mode = useMode();
   const roles = useRoles();
@@ -1215,6 +1388,132 @@ function DrawerCard({
           )}
         </View>
       </View>
+    </Pressable>
+  );
+}
+
+/**
+ * Bottom-sheet voor een venue met meerdere events vandaag. Toont de
+ * venue-naam + reistijd in de kop, daaronder een verticaal scrollbare
+ * lijst van events. Tap op een event → event-detail page.
+ */
+function VenueListSheet({
+  group,
+  transport,
+}: {
+  group: VenueGroup;
+  transport: TransportMode;
+}) {
+  const mode = useMode();
+  const roles = useRoles();
+  const t = useT();
+  const transportIcon = transport === 'walk' ? 'walk-outline' : 'bicycle-outline';
+  const venueTone = (() => {
+    const vt = group.venue.type;
+    if (vt && (VENUE_TYPE_TICK as Record<string, BadgeTone>)[vt]) {
+      return TONE[mode][(VENUE_TYPE_TICK as Record<string, BadgeTone>)[vt]];
+    }
+    return null;
+  })();
+  return (
+    <View style={styles.venueSheetWrap}>
+      <View style={styles.venueSheetHead}>
+        <View style={styles.venueSheetHeadLeft}>
+          <Text
+            style={[styles.venueSheetName, { color: roles.fg }]}
+            numberOfLines={1}
+          >
+            {group.venue.name}
+          </Text>
+          <View style={styles.venueSheetMetaRow}>
+            <Ionicons
+              name={transportIcon}
+              size={14}
+              color={roles.fgMuted}
+            />
+            <Text style={[styles.venueSheetMeta, { color: roles.fgMuted }]}>
+              {group.earliestMinutes} min ·{' '}
+              {t(
+                `${group.events.length} events`,
+                `${group.events.length} events`
+              )}
+            </Text>
+          </View>
+        </View>
+        {venueTone && (
+          <View
+            style={[
+              styles.venueSheetTag,
+              { backgroundColor: `${venueTone}26` },
+            ]}
+          >
+            <Text style={[styles.venueSheetTagText, { color: venueTone }]}>
+              {group.venue.type}
+            </Text>
+          </View>
+        )}
+      </View>
+      <ScrollView
+        style={styles.venueSheetList}
+        contentContainerStyle={styles.venueSheetListContent}
+        showsVerticalScrollIndicator={false}
+      >
+        {group.events.map((m) => (
+          <VenueSheetEventRow key={m.id} mapEvent={m} />
+        ))}
+      </ScrollView>
+    </View>
+  );
+}
+
+function VenueSheetEventRow({ mapEvent }: { mapEvent: MapEvent }) {
+  const mode = useMode();
+  const roles = useRoles();
+  const locale = useLocale();
+  const catTone = TONE[mode][CATEGORY_TICK[mapEvent.event.category]];
+  const thumb = eventImageUrl(mapEvent.event);
+  return (
+    <Pressable
+      onPress={() =>
+        router.push(`/event/${mapEvent.event.id}?source=kaart` as never)
+      }
+      style={styles.venueSheetRow}
+    >
+      <View
+        style={[
+          styles.venueSheetRowThumb,
+          { backgroundColor: roles.bgLift },
+        ]}
+      >
+        {thumb ? (
+          <Image
+            source={{ uri: thumb }}
+            style={styles.venueSheetRowThumbImg}
+            contentFit="cover"
+          />
+        ) : null}
+      </View>
+      <View style={styles.venueSheetRowBody}>
+        <Text style={[styles.venueSheetRowTime, { color: roles.accent }]}>
+          {rowTimeLabel(mapEvent.startsAt, mapEvent.endsAt)}
+        </Text>
+        <Text
+          numberOfLines={2}
+          style={[styles.venueSheetRowTitle, { color: roles.fg }]}
+        >
+          {mapEvent.event.title}
+        </Text>
+        <View style={styles.venueSheetRowTags}>
+          <View
+            style={[styles.venueSheetRowTag, { backgroundColor: `${catTone}26` }]}
+          >
+            <Text style={[styles.venueSheetRowTagText, { color: catTone }]}>
+              {translateCategory(mapEvent.event.category, locale)}
+            </Text>
+          </View>
+        </View>
+      </View>
+      <Ionicons name="chevron-forward" size={18} color={roles.fgMuted} />
     </Pressable>
   );
 }
@@ -1504,6 +1803,125 @@ const styles = StyleSheet.create({
     fontFamily: fontFamily.bold,
     fontSize: 14,
     letterSpacing: -0.2,
+  },
+  venueMarker: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingLeft: 4,
+    paddingRight: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.35,
+    shadowRadius: 6,
+    elevation: 4,
+    maxWidth: 180,
+  },
+  venueMarkerBadge: {
+    minWidth: 22,
+    height: 22,
+    paddingHorizontal: 6,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  venueMarkerBadgeText: {
+    fontFamily: fontFamily.bold,
+    fontSize: 11,
+    letterSpacing: -0.1,
+  },
+  venueMarkerName: {
+    fontFamily: fontFamily.medium,
+    fontSize: 12,
+    letterSpacing: -0.12,
+    flexShrink: 1,
+  },
+  venueSheetWrap: { paddingHorizontal: 22, paddingTop: 4, flex: 1 },
+  venueSheetHead: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 10,
+    paddingBottom: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(127,127,127,0.2)',
+  },
+  venueSheetHeadLeft: { flex: 1, gap: 4 },
+  venueSheetName: {
+    fontFamily: fontFamily.display,
+    fontSize: 22,
+    letterSpacing: -0.44,
+  },
+  venueSheetMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  venueSheetMeta: {
+    fontFamily: fontFamily.mono,
+    fontSize: 11,
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+  },
+  venueSheetTag: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+  },
+  venueSheetTagText: {
+    fontFamily: fontFamily.mono,
+    fontSize: 10,
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+  },
+  venueSheetList: { flex: 1 },
+  venueSheetListContent: {
+    paddingTop: 8,
+    paddingBottom: 24,
+  },
+  venueSheetRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(127,127,127,0.15)',
+  },
+  venueSheetRowThumb: {
+    width: 64,
+    height: 64,
+    borderRadius: 10,
+    overflow: 'hidden',
+  },
+  venueSheetRowThumbImg: {
+    width: '100%',
+    height: '100%',
+  },
+  venueSheetRowBody: { flex: 1, gap: 2 },
+  venueSheetRowTime: {
+    fontFamily: fontFamily.bold,
+    fontSize: 12,
+    letterSpacing: -0.12,
+  },
+  venueSheetRowTitle: {
+    fontFamily: fontFamily.bold,
+    fontSize: 14,
+    letterSpacing: -0.21,
+    lineHeight: 18,
+  },
+  venueSheetRowTags: { flexDirection: 'row', gap: 6, marginTop: 2 },
+  venueSheetRowTag: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 999,
+  },
+  venueSheetRowTagText: {
+    fontFamily: fontFamily.mono,
+    fontSize: 9,
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
   },
   dot: {
     width: 18,
