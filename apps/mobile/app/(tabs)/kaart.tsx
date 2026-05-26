@@ -33,6 +33,11 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppHeader, HEADER_HEIGHT } from '@/components/AppHeader';
 import { Cross } from '@/components/Cross';
 import { RefreshBanner } from '@/components/RefreshBanner';
+import {
+  buildClusterIndex,
+  getClusterMarkers,
+  type ClusterMarker as ClusterMarkerData,
+} from '@/lib/mapCluster';
 import { brandEase } from '@/lib/easing';
 import type { ApiEvent, ApiFriendBadge } from '@/lib/api';
 import {
@@ -349,6 +354,51 @@ export default function Kaart() {
 
   const activeMapEvent = mapEvents.find((m) => m.id === activeId) ?? null;
 
+  // Map clustering: bouw één index op `mapEvents`, recomputeer welke
+  // markers tonen wanneer zoom of viewport-bbox wijzigt. Default-bbox
+  // dekt heel groot-Amsterdam zodat de initial render (vóór de eerste
+  // onRegionDidChange) al een correct beeld geeft.
+  const [viewport, setViewport] = useState<{
+    zoom: number;
+    bbox: [number, number, number, number];
+  }>({
+    zoom: 13,
+    bbox: [4.7, 52.28, 5.05, 52.45],
+  });
+  const clusterIndex = useMemo(() => {
+    if (mapEvents.length === 0) return null;
+    return buildClusterIndex(
+      mapEvents.map((m) => ({
+        id: m.id,
+        lng: m.venue.lng,
+        lat: m.venue.lat,
+        payload: m,
+      }))
+    );
+  }, [mapEvents]);
+  const clusterMarkers = useMemo<ClusterMarkerData<MapEvent>[]>(() => {
+    if (!clusterIndex) return [];
+    return getClusterMarkers(clusterIndex, viewport.bbox, viewport.zoom);
+  }, [clusterIndex, viewport]);
+
+  const zoomToCluster = useCallback(
+    (lng: number, lat: number, bbox: [number, number, number, number]) => {
+      // Pragmatische zoom-stap op basis van bbox-spread, met een
+      // ondergrens (huidige zoom + 2) en bovengrens (16).
+      const span = Math.max(bbox[2] - bbox[0], bbox[3] - bbox[1]);
+      let targetZoom = viewport.zoom + 2;
+      if (span > 0.02) targetZoom = viewport.zoom + 1.5;
+      if (span > 0.05) targetZoom = viewport.zoom + 1;
+      if (targetZoom > 16) targetZoom = 16;
+      cameraRef.current?.flyTo({
+        center: [lng, lat],
+        zoom: targetZoom,
+        duration: 450,
+      });
+    },
+    [viewport.zoom]
+  );
+
   const recentre = useCallback(() => {
     cameraRef.current?.flyTo({
       center: [centre.lng, centre.lat],
@@ -486,6 +536,25 @@ export default function Kaart() {
                 ? 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json'
                 : 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json'
             }
+            // Zoom + bbox-tracking voor clustering. onRegionDidChange
+            // vuurt na een pan/zoom-rust — niet bij elk frame — dus
+            // recomputeer-cost blijft klein.
+            onRegionDidChange={(event) => {
+              const { zoom: z, bounds } = event.nativeEvent;
+              if (
+                typeof z === 'number' &&
+                bounds &&
+                bounds.length === 4 &&
+                (Math.abs(z - viewport.zoom) >= 0.5 ||
+                  Math.abs(bounds[0] - viewport.bbox[0]) > 0.005 ||
+                  Math.abs(bounds[2] - viewport.bbox[2]) > 0.005)
+              ) {
+                setViewport({
+                  zoom: z,
+                  bbox: [bounds[0], bounds[1], bounds[2], bounds[3]],
+                });
+              }
+            }}
           >
             <MapCamera
               ref={cameraRef}
@@ -509,16 +578,29 @@ export default function Kaart() {
               </View>
             </MapMarker>
 
-            {/* Events as markers — friend-overlay komt terug zodra
+            {/* Cluster + event-markers. Bij uitgezoomd zicht klonteren
+                overlappende pins samen tot een cluster-marker met een
+                count; ingezoomd vallen ze uiteen in individuele
+                EventMarkers. Friend-overlay komt terug zodra
                 friendships in de DB staan. */}
-            {mapEvents.map((m) => (
-              <EventMarker
-                key={m.id}
-                m={m}
-                isActive={activeId === m.id}
-                onPress={selectEvent}
-              />
-            ))}
+            {clusterMarkers.map((c) =>
+              c.type === 'cluster' ? (
+                <ClusterMarker
+                  key={`c-${c.id}`}
+                  count={c.count}
+                  lng={c.lng}
+                  lat={c.lat}
+                  onPress={() => zoomToCluster(c.lng, c.lat, c.bbox)}
+                />
+              ) : (
+                <EventMarker
+                  key={c.id}
+                  m={c.payload}
+                  isActive={activeId === c.id}
+                  onPress={selectEvent}
+                />
+              )
+            )}
           </MapView>
 
           <Animated.View
@@ -921,6 +1003,50 @@ const EventMarker = memo(function EventMarker({
           ]}
         >
           {m.minutes}m
+        </Text>
+      </View>
+    </MapMarker>
+  );
+});
+
+/**
+ * Cluster-marker: ronde pill met aantal samengevoegde events. Tap →
+ * caller zoomt in zodat 't cluster uiteenvalt in individuele markers.
+ */
+const ClusterMarker = memo(function ClusterMarker({
+  count,
+  lng,
+  lat,
+  onPress,
+}: {
+  count: number;
+  lng: number;
+  lat: number;
+  onPress: () => void;
+}) {
+  const roles = useRoles();
+  // Iets grotere pill bij grote clusters voor visuele hiërarchie.
+  const size = count >= 50 ? 56 : count >= 20 ? 48 : 40;
+  return (
+    <MapMarker
+      id={`cluster-${lng}-${lat}`}
+      lngLat={[lng, lat]}
+      anchor="center"
+      onPress={onPress}
+    >
+      <View
+        style={[
+          styles.cluster,
+          {
+            width: size,
+            height: size,
+            borderRadius: size / 2,
+            backgroundColor: roles.accent,
+          },
+        ]}
+      >
+        <Text style={[styles.clusterText, { color: roles.onAccent }]}>
+          {count}
         </Text>
       </View>
     </MapMarker>
@@ -1364,6 +1490,20 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.35,
     shadowRadius: 6,
     elevation: 4,
+  },
+  cluster: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.4,
+    shadowRadius: 6,
+    elevation: 5,
+  },
+  clusterText: {
+    fontFamily: fontFamily.bold,
+    fontSize: 14,
+    letterSpacing: -0.2,
   },
   dot: {
     width: 18,
