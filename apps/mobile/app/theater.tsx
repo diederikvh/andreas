@@ -12,6 +12,7 @@ import { router } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
 import { useCallback, useMemo, useRef, useState } from 'react';
 import {
+  FlatList,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -81,13 +82,13 @@ export default function Theater() {
   const t = useT();
   const locale = useLocale();
   const [selected, setSelected] = useState<Discipline | 'all'>('all');
-  // ScrollView ref + helper voor chip-switch: nieuwe filter = nieuwe
+  // FlatList ref + helper voor chip-switch: nieuwe filter = nieuwe
   // lijst, dus altijd terug naar top. Zonder dit blijf je op de oude
   // scroll-positie staan en mis je items bovenaan de nieuwe selectie.
-  const scrollRef = useRef<ScrollView>(null);
+  const listRef = useRef<FlatList<ApiEvent>>(null);
   const selectChip = useCallback((d: Discipline | 'all') => {
     setSelected(d);
-    scrollRef.current?.scrollTo({ y: 0, animated: true });
+    listRef.current?.scrollToOffset({ offset: 0, animated: true });
   }, []);
 
   // Venster: komende 14 dagen. Theater wordt vaak weken vooruit
@@ -188,14 +189,38 @@ export default function Theater() {
         visible={refreshing}
         topOffset={insets.top + HEADER_HEIGHT + CHIPROW_HEIGHT + 8}
       />
-      <ScrollView
-        ref={scrollRef}
+      <FlatList
+        ref={listRef}
+        data={filtered}
+        keyExtractor={(s) => s.id}
+        renderItem={({ item }) => <ShowCard show={item} locale={locale} />}
         contentContainerStyle={{
           // +16 extra gap tussen chip-row en eerste card — zonder dit
           // plakt de eerste banner tegen de chips aan.
           paddingTop: insets.top + HEADER_HEIGHT + CHIPROW_HEIGHT + 16,
           paddingBottom: insets.bottom + 24,
         }}
+        ListEmptyComponent={
+          isLoading ? (
+            <View style={styles.centerWrap}>
+              <Text style={[styles.dim, { color: roles.fgMuted }]}>
+                {t('Laden…', 'Loading…')}
+              </Text>
+            </View>
+          ) : error ? (
+            <View style={styles.centerWrap}>
+              <Text style={[styles.dim, { color: roles.fgMuted }]}>
+                {t('Kon theater niet laden.', "Couldn't load theatre.")}
+              </Text>
+            </View>
+          ) : (
+            <View style={styles.centerWrap}>
+              <Text style={[styles.dim, { color: roles.fgMuted }]}>
+                {t('Geen voorstellingen.', 'No shows.')}
+              </Text>
+            </View>
+          )
+        }
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -211,32 +236,14 @@ export default function Theater() {
             progressViewOffset={insets.top + HEADER_HEIGHT + CHIPROW_HEIGHT + 60}
           />
         }
-      >
-        {isLoading && (
-          <View style={styles.centerWrap}>
-            <Text style={[styles.dim, { color: roles.fgMuted }]}>
-              {t('Laden…', 'Loading…')}
-            </Text>
-          </View>
-        )}
-        {error && (
-          <View style={styles.centerWrap}>
-            <Text style={[styles.dim, { color: roles.fgMuted }]}>
-              {t('Kon theater niet laden.', 'Couldn’t load theatre.')}
-            </Text>
-          </View>
-        )}
-        {filtered.length === 0 && !isLoading && !error && (
-          <View style={styles.centerWrap}>
-            <Text style={[styles.dim, { color: roles.fgMuted }]}>
-              {t('Geen voorstellingen.', 'No shows.')}
-            </Text>
-          </View>
-        )}
-        {filtered.map((s) => (
-          <ShowCard key={s.id} show={s} locale={locale} />
-        ))}
-      </ScrollView>
+        // Virtualisatie: alleen wat in viewport (+ overscan) zit wordt
+        // gemount. Cruciaal voor oude Android-toestellen — een ScrollView
+        // met 100+ banner-cards tegelijk mounten gaat ze knock-out.
+        windowSize={7}
+        initialNumToRender={6}
+        maxToRenderPerBatch={6}
+        removeClippedSubviews
+      />
 
       <AppHeader
         title={t('Theater', 'Theatre')}

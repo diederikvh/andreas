@@ -11,9 +11,9 @@ import { router } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
 import { useCallback, useMemo, useState } from 'react';
 import {
+  FlatList,
   Pressable,
   RefreshControl,
-  ScrollView,
   StyleSheet,
   Text,
   useWindowDimensions,
@@ -108,11 +108,40 @@ export default function Films() {
         visible={refreshing}
         topOffset={insets.top + HEADER_HEIGHT + 8}
       />
-      <ScrollView
+      <FlatList
+        data={films}
+        keyExtractor={(film) => film.id}
+        numColumns={2}
+        renderItem={({ item }) => (
+          <FilmCard film={item} width={cardWidth} locale={locale} t={t} />
+        )}
+        columnWrapperStyle={films.length > 0 ? styles.gridRow : undefined}
         contentContainerStyle={{
           paddingTop: insets.top + HEADER_HEIGHT + 8,
           paddingBottom: insets.bottom + 24,
+          paddingHorizontal: HORIZONTAL_PADDING,
         }}
+        ListEmptyComponent={
+          isLoading ? (
+            <View style={styles.centerWrap}>
+              <Text style={[styles.dim, { color: roles.fgMuted }]}>
+                {t('Laden…', 'Loading…')}
+              </Text>
+            </View>
+          ) : error ? (
+            <View style={styles.centerWrap}>
+              <Text style={[styles.dim, { color: roles.fgMuted }]}>
+                {t('Kon films niet laden.', "Couldn't load films.")}
+              </Text>
+            </View>
+          ) : (
+            <View style={styles.centerWrap}>
+              <Text style={[styles.dim, { color: roles.fgMuted }]}>
+                {t('Geen films deze week.', 'No films this week.')}
+              </Text>
+            </View>
+          )
+        }
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -128,45 +157,14 @@ export default function Films() {
             progressViewOffset={insets.top + HEADER_HEIGHT + 30}
           />
         }
-      >
-        {isLoading && (
-          <View style={styles.centerWrap}>
-            <Text style={[styles.dim, { color: roles.fgMuted }]}>
-              {t('Laden…', 'Loading…')}
-            </Text>
-          </View>
-        )}
-        {error && (
-          <View style={styles.centerWrap}>
-            <Text style={[styles.dim, { color: roles.fgMuted }]}>
-              {t('Kon films niet laden.', 'Couldn’t load films.')}
-            </Text>
-          </View>
-        )}
-        {films.length === 0 && !isLoading && !error && (
-          <View style={styles.centerWrap}>
-            <Text style={[styles.dim, { color: roles.fgMuted }]}>
-              {t(
-                'Geen films deze week.',
-                'No films this week.'
-              )}
-            </Text>
-          </View>
-        )}
-        {films.length > 0 && (
-          <View style={styles.grid}>
-            {films.map((film) => (
-              <FilmCard
-                key={film.id}
-                film={film}
-                width={cardWidth}
-                locale={locale}
-                t={t}
-              />
-            ))}
-          </View>
-        )}
-      </ScrollView>
+        // Virtualisatie voor de poster-grid. Films-pagina kan 100+
+        // titels hebben — een ScrollView die alles tegelijk mount is
+        // dodelijk voor oude Android-toestellen.
+        windowSize={7}
+        initialNumToRender={10}
+        maxToRenderPerBatch={8}
+        removeClippedSubviews
+      />
 
       <AppHeader
         title={t('Films', 'Films')}
@@ -294,11 +292,11 @@ function FilmCard({
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
-  grid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    paddingHorizontal: HORIZONTAL_PADDING,
+  // FlatList columnWrapperStyle: per rij — gap horizontaal tussen de
+  // twee posters + marginBottom voor de verticale ruimte tussen rijen.
+  gridRow: {
     gap: GRID_GAP,
+    marginBottom: GRID_GAP,
   },
   centerWrap: {
     paddingHorizontal: HORIZONTAL_PADDING,

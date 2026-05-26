@@ -17,6 +17,7 @@ import {
   Pressable,
   RefreshControl,
   ScrollView,
+  SectionList,
   StyleSheet,
   Text,
   View,
@@ -101,10 +102,15 @@ export default function Live() {
   // Scroll-naar-top bij chip-switch — nieuwe filter, nieuwe lijst,
   // anders blijf je midden in de oude scroll-positie staan en mis je
   // items bovenaan de selectie.
-  const scrollRef = useRef<ScrollView>(null);
+  const listRef = useRef<SectionList<LiveShow>>(null);
   const selectChip = useCallback((b: GenreBucket | 'all') => {
     setSelected(b);
-    scrollRef.current?.scrollTo({ y: 0, animated: true });
+    listRef.current?.scrollToLocation({
+      sectionIndex: 0,
+      itemIndex: 0,
+      viewOffset: 0,
+      animated: true,
+    });
   }, []);
 
   // Vandaag t/m eerstvolgende zondag (zelfde patroon als /clubs).
@@ -197,7 +203,7 @@ export default function Live() {
 
   // Groeperen per kalenderdag (geen 06:00-shift zoals clubs — Live-
   // events lopen niet typisch over middernacht).
-  const grouped = useMemo(() => {
+  const sections = useMemo(() => {
     const buckets = new Map<string, LiveShow[]>();
     for (const s of filtered) {
       const d = new Date(s.occurrence.startsAt);
@@ -206,8 +212,16 @@ export default function Live() {
       if (list) list.push(s);
       else buckets.set(key, [s]);
     }
-    return [...buckets.entries()].sort((a, b) => a[0].localeCompare(b[0]));
-  }, [filtered]);
+    const ordered = [...buckets.entries()].sort((a, b) =>
+      a[0].localeCompare(b[0])
+    );
+    return ordered.map(([key, items], idx) => ({
+      key,
+      isFirst: idx === 0,
+      title: dateHeader(items[0].occurrence.startsAt, locale, idx === 0),
+      data: items,
+    }));
+  }, [filtered, locale]);
 
   return (
     <View style={[styles.root, { backgroundColor: roles.bg }]}>
@@ -220,8 +234,39 @@ export default function Live() {
           8
         }
       />
-      <ScrollView
-        ref={scrollRef}
+      <SectionList
+        ref={listRef}
+        sections={sections}
+        keyExtractor={(item) => item.id}
+        renderItem={({ item, section }) => (
+          <LiveShowCard
+            show={item}
+            locale={locale}
+            t={t}
+            isToday={section.isFirst}
+          />
+        )}
+        renderSectionHeader={({ section }) => (
+          <View>
+            {!section.isFirst && (
+              <View
+                style={[styles.dayDivider, { backgroundColor: roles.accent }]}
+              />
+            )}
+            <Text
+              style={[
+                styles.dateHeader,
+                {
+                  color: section.isFirst ? roles.accent : roles.fg,
+                  paddingTop: section.isFirst ? 4 : 20,
+                },
+              ]}
+            >
+              {section.title}
+            </Text>
+          </View>
+        )}
+        stickySectionHeadersEnabled={false}
         contentContainerStyle={{
           paddingTop:
             insets.top +
@@ -229,6 +274,27 @@ export default function Live() {
             (visibleChips.length > 0 ? CHIPROW_HEIGHT : 0),
           paddingBottom: insets.bottom + 24,
         }}
+        ListEmptyComponent={
+          isLoading ? (
+            <View style={styles.centerWrap}>
+              <Text style={[styles.dim, { color: roles.fgMuted }]}>
+                {t('Laden…', 'Loading…')}
+              </Text>
+            </View>
+          ) : error ? (
+            <View style={styles.centerWrap}>
+              <Text style={[styles.dim, { color: roles.fgMuted }]}>
+                {t('Kon live niet laden.', "Couldn't load live.")}
+              </Text>
+            </View>
+          ) : (
+            <View style={styles.centerWrap}>
+              <Text style={[styles.dim, { color: roles.fgMuted }]}>
+                {t('Geen concerten deze week.', 'No live shows this week.')}
+              </Text>
+            </View>
+          )
+        }
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -249,56 +315,18 @@ export default function Live() {
             }
           />
         }
-      >
-        {isLoading && (
-          <View style={styles.centerWrap}>
-            <Text style={[styles.dim, { color: roles.fgMuted }]}>
-              {t('Laden…', 'Loading…')}
-            </Text>
-          </View>
-        )}
-        {error && (
-          <View style={styles.centerWrap}>
-            <Text style={[styles.dim, { color: roles.fgMuted }]}>
-              {t('Kon live niet laden.', 'Couldn’t load live.')}
-            </Text>
-          </View>
-        )}
-        {shows.length === 0 && !isLoading && !error && (
-          <View style={styles.centerWrap}>
-            <Text style={[styles.dim, { color: roles.fgMuted }]}>
-              {t('Geen concerten deze week.', 'No live shows this week.')}
-            </Text>
-          </View>
-        )}
-        {grouped.map(([key, items], idx) => (
-          <View key={key}>
-            {idx > 0 && (
-              <View style={[styles.dayDivider, { backgroundColor: roles.accent }]} />
-            )}
-            <Text
-              style={[
-                styles.dateHeader,
-                {
-                  color: idx === 0 ? roles.accent : roles.fg,
-                  paddingTop: idx === 0 ? 4 : 20,
-                },
-              ]}
-            >
-              {dateHeader(items[0].occurrence.startsAt, locale, idx === 0)}
-            </Text>
-            {items.map((s) => (
-              <LiveShowCard
-                key={s.id}
-                show={s}
-                locale={locale}
-                t={t}
-                isToday={idx === 0}
-              />
-            ))}
-          </View>
-        ))}
-      </ScrollView>
+        windowSize={7}
+        initialNumToRender={6}
+        maxToRenderPerBatch={6}
+        removeClippedSubviews
+        // scrollToLocation kan op een net-geremounte SectionList te
+        // vroeg vuren — fallback: globale scrollTo(0).
+        onScrollToIndexFailed={() => {
+          listRef.current
+            ?.getScrollResponder()
+            ?.scrollTo({ y: 0, animated: true });
+        }}
+      />
 
       <AppHeader
         title={t('Live', 'Live')}

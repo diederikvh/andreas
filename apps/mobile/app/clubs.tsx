@@ -15,7 +15,7 @@ import { useCallback, useMemo, useState } from 'react';
 import {
   Pressable,
   RefreshControl,
-  ScrollView,
+  SectionList,
   StyleSheet,
   Text,
   View,
@@ -132,21 +132,26 @@ export default function Clubs() {
   // Group by logical-day (06:00 boundary — clubs die 02:00 op zaterdag
   // draaien horen bij vrijdag-nacht). dateKey = "YYYYMMDD" van de
   // logische dag.
-  const grouped = useMemo(() => {
+  const sections = useMemo(() => {
     const buckets = new Map<string, ClubNight[]>();
     for (const n of nights) {
       const d = new Date(n.occurrence.startsAt);
-      // Pre-06:00 → reken bij vorige dag.
-      if (d.getHours() < 6) {
-        d.setDate(d.getDate() - 1);
-      }
+      if (d.getHours() < 6) d.setDate(d.getDate() - 1);
       const key = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
       const list = buckets.get(key);
       if (list) list.push(n);
       else buckets.set(key, [n]);
     }
-    return [...buckets.entries()].sort((a, b) => a[0].localeCompare(b[0]));
-  }, [nights]);
+    const ordered = [...buckets.entries()].sort((a, b) =>
+      a[0].localeCompare(b[0])
+    );
+    return ordered.map(([key, items], idx) => ({
+      key,
+      isFirst: idx === 0,
+      title: dateHeader(items[0].occurrence.startsAt, locale, idx === 0),
+      data: items,
+    }));
+  }, [nights, locale]);
 
   return (
     <View style={[styles.root, { backgroundColor: roles.bg }]}>
@@ -154,11 +159,63 @@ export default function Clubs() {
         visible={refreshing}
         topOffset={insets.top + HEADER_HEIGHT + 8}
       />
-      <ScrollView
+      <SectionList
+        sections={sections}
+        keyExtractor={(item) => item.id}
+        renderItem={({ item, section }) => (
+          <ClubNightCard
+            night={item}
+            locale={locale}
+            t={t}
+            isToday={section.isFirst}
+          />
+        )}
+        renderSectionHeader={({ section }) => (
+          <View>
+            {!section.isFirst && (
+              <View
+                style={[styles.dayDivider, { backgroundColor: roles.accent }]}
+              />
+            )}
+            <Text
+              style={[
+                styles.dateHeader,
+                {
+                  color: section.isFirst ? roles.accent : roles.fg,
+                  paddingTop: section.isFirst ? 4 : 20,
+                },
+              ]}
+            >
+              {section.title}
+            </Text>
+          </View>
+        )}
+        stickySectionHeadersEnabled={false}
         contentContainerStyle={{
           paddingTop: insets.top + HEADER_HEIGHT,
           paddingBottom: insets.bottom + 24,
         }}
+        ListEmptyComponent={
+          isLoading ? (
+            <View style={styles.centerWrap}>
+              <Text style={[styles.dim, { color: roles.fgMuted }]}>
+                {t('Laden…', 'Loading…')}
+              </Text>
+            </View>
+          ) : error ? (
+            <View style={styles.centerWrap}>
+              <Text style={[styles.dim, { color: roles.fgMuted }]}>
+                {t('Kon clubs niet laden.', "Couldn't load clubs.")}
+              </Text>
+            </View>
+          ) : (
+            <View style={styles.centerWrap}>
+              <Text style={[styles.dim, { color: roles.fgMuted }]}>
+                {t('Geen clubnachten deze week.', 'No club nights this week.')}
+              </Text>
+            </View>
+          )
+        }
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -174,57 +231,11 @@ export default function Clubs() {
             progressViewOffset={insets.top + HEADER_HEIGHT + 60}
           />
         }
-      >
-        {isLoading && (
-          <View style={styles.centerWrap}>
-            <Text style={[styles.dim, { color: roles.fgMuted }]}>
-              {t('Laden…', 'Loading…')}
-            </Text>
-          </View>
-        )}
-        {error && (
-          <View style={styles.centerWrap}>
-            <Text style={[styles.dim, { color: roles.fgMuted }]}>
-              {t('Kon clubs niet laden.', 'Couldn’t load clubs.')}
-            </Text>
-          </View>
-        )}
-        {nights.length === 0 && !isLoading && !error && (
-          <View style={styles.centerWrap}>
-            <Text style={[styles.dim, { color: roles.fgMuted }]}>
-              {t('Geen clubnachten deze week.', 'No club nights this week.')}
-            </Text>
-          </View>
-        )}
-        {grouped.map(([key, items], idx) => (
-          <View key={key}>
-            {idx > 0 && (
-              <View style={[styles.dayDivider, { backgroundColor: roles.accent }]} />
-            )}
-            <Text
-              style={[
-                styles.dateHeader,
-                {
-                  color:
-                    idx === 0 ? roles.accent : roles.fg,
-                  paddingTop: idx === 0 ? 4 : 20,
-                },
-              ]}
-            >
-              {dateHeader(items[0].occurrence.startsAt, locale, idx === 0)}
-            </Text>
-            {items.map((n) => (
-              <ClubNightCard
-                key={n.id}
-                night={n}
-                locale={locale}
-                t={t}
-                isToday={idx === 0}
-              />
-            ))}
-          </View>
-        ))}
-      </ScrollView>
+        windowSize={7}
+        initialNumToRender={6}
+        maxToRenderPerBatch={6}
+        removeClippedSubviews
+      />
 
       <AppHeader
         title={t('Clubs', 'Clubs')}
