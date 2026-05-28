@@ -344,7 +344,7 @@ function Chip({
 function ShowCard({ show, locale }: { show: ApiEvent; locale: Locale }) {
   const roles = useRoles();
   const banner = eventImageUrl(show);
-  const { aspect: bannerAspect, onLoad: onBannerLoad } = useImageAspect();
+  const { aspect: bannerAspect, onLoad: onBannerLoad } = useImageAspect(banner);
   const isFallbackImage = !show.imageUrl && Boolean(show.venue.imageUrl);
   const discipline = disciplineFor(show);
 
@@ -462,34 +462,45 @@ function ShowCard({ show, locale }: { show: ApiEvent; locale: Locale }) {
           size={36}
         />
       </View>
-      <Pressable
-        onPress={() =>
-          router.push(`/event/${show.id}?source=theater` as never)
-        }
-      >
-        <View
-          style={[
-            styles.banner,
-            { backgroundColor: roles.bgLift, aspectRatio: bannerAspect },
-          ]}
-        >
-          {banner ? (
-            <PinchableImage uri={banner} onLoad={onBannerLoad} />
-          ) : null}
-          <View style={[styles.disciplineChip, { backgroundColor: roles.accent }]}>
-            <Text style={[styles.disciplineText, { color: roles.onAccent }]}>
-              {DISCIPLINE_LABELS[discipline][locale === 'en' ? 'en' : 'nl'].toLowerCase()}
-            </Text>
-          </View>
-          {isFallbackImage && <BannerTitleOverlay title={show.title} />}
-        </View>
-      </Pressable>
+      {(() => {
+        const goDetail = () =>
+          router.push(`/event/${show.id}?source=theater` as never);
+        const bannerStyle = [
+          styles.banner,
+          { backgroundColor: roles.bgLift, aspectRatio: bannerAspect },
+        ];
+        const overlays = (
+          <>
+            <View style={[styles.disciplineChip, { backgroundColor: roles.accent }]}>
+              <Text style={[styles.disciplineText, { color: roles.onAccent }]}>
+                {DISCIPLINE_LABELS[discipline][locale === 'en' ? 'en' : 'nl'].toLowerCase()}
+              </Text>
+            </View>
+            {isFallbackImage && <BannerTitleOverlay title={show.title} />}
+          </>
+        );
+        return banner ? (
+          <PinchableImage
+            uri={banner}
+            onLoad={onBannerLoad}
+            onPress={goDetail}
+            style={bannerStyle}
+          >
+            {overlays}
+          </PinchableImage>
+        ) : (
+          <Pressable onPress={goDetail}>
+            <View style={bannerStyle}>{overlays}</View>
+          </Pressable>
+        );
+      })()}
       {actionOccurrence && (
         <EventActions
           eventId={show.id}
           eventTitle={show.title}
           occurrenceId={actionOccurrence.id}
           ticketUrl={actionOccurrence.ticketUrl ?? show.ticketUrl ?? null}
+          invitedCount={show.myInvitesCount ?? 0}
         />
       )}
       <Pressable

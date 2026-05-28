@@ -427,7 +427,7 @@ function ClubNightCard({
   const roles = useRoles();
   const { event, occurrence } = night;
   const banner = eventImageUrl(event);
-  const { aspect: bannerAspect, onLoad: onBannerLoad } = useImageAspect();
+  const { aspect: bannerAspect, onLoad: onBannerLoad } = useImageAspect(banner);
   // Fallback-detectie: geen eigen event-image maar wel venue-image →
   // tonen we de event-titel groot over de venue-foto, zoals op de
   // Featured-card op Vandaag.
@@ -503,62 +503,73 @@ function ClubNightCard({
           size={36}
         />
       </View>
-      <Pressable
-        onPress={() =>
+      {(() => {
+        const goDetail = () =>
           router.push(
             `/event/${event.id}?o=${occurrence.id}&source=clubs` as never
-          )
-        }
-      >
-        <View
-          style={[
-            styles.banner,
-            { backgroundColor: roles.bgLift, aspectRatio: bannerAspect },
-          ]}
-        >
-          {banner ? (
-            <PinchableImage uri={banner} onLoad={onBannerLoad} />
-          ) : null}
-          {genres.length > 0 && (
-            <View style={styles.genresOnBanner}>
-              {genres.slice(0, 3).map((g, i) => (
-                <View
-                  key={g}
-                  style={[
-                    styles.genreChip,
-                    {
-                      backgroundColor: i === 0 ? roles.accent : roles.fg,
-                    },
-                  ]}
-                >
-                  <Text
+          );
+        const bannerStyle = [
+          styles.banner,
+          { backgroundColor: roles.bgLift, aspectRatio: bannerAspect },
+        ];
+        const overlays = (
+          <>
+            {genres.length > 0 && (
+              <View style={styles.genresOnBanner}>
+                {genres.slice(0, 3).map((g, i) => (
+                  <View
+                    key={g}
                     style={[
-                      styles.genreText,
-                      { color: i === 0 ? roles.onAccent : roles.bg },
+                      styles.genreChip,
+                      {
+                        backgroundColor: i === 0 ? roles.accent : roles.fg,
+                      },
                     ]}
                   >
-                    {g}
-                  </Text>
-                </View>
-              ))}
-            </View>
-          )}
-          {isFallbackImage && <BannerTitleOverlay title={event.title} />}
-          <FriendsOnImage
-            friends={
-              occurrence.friendsSaved ?? event.friendsSaved ?? []
-            }
-            totalCount={
-              occurrence.friendsSavedCount ?? event.friendsSavedCount
-            }
-          />
-        </View>
-      </Pressable>
+                    <Text
+                      style={[
+                        styles.genreText,
+                        { color: i === 0 ? roles.onAccent : roles.bg },
+                      ]}
+                    >
+                      {g}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            )}
+            {isFallbackImage && <BannerTitleOverlay title={event.title} />}
+            <FriendsOnImage
+              friends={
+                occurrence.friendsSaved ?? event.friendsSaved ?? []
+              }
+              totalCount={
+                occurrence.friendsSavedCount ?? event.friendsSavedCount
+              }
+            />
+          </>
+        );
+        return banner ? (
+          <PinchableImage
+            uri={banner}
+            onLoad={onBannerLoad}
+            onPress={goDetail}
+            style={bannerStyle}
+          >
+            {overlays}
+          </PinchableImage>
+        ) : (
+          <Pressable onPress={goDetail}>
+            <View style={bannerStyle}>{overlays}</View>
+          </Pressable>
+        );
+      })()}
       <EventActions
         eventId={event.id}
         eventTitle={event.title}
         occurrenceId={occurrence.id}
         ticketUrl={occurrence.ticketUrl ?? event.ticketUrl ?? null}
+        invitedCount={event.myInvitesCount ?? 0}
       />
       <Pressable
         onPress={() =>

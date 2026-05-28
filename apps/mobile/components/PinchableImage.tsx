@@ -6,11 +6,25 @@
  * Het origineel blijft staan op z'n plek — alleen de copy in
  * ZoomLayer beweegt zodat overlays binnen de banner-View (gradient,
  * friends-pill, genre-chips) er gewoon bovenop blijven liggen wanneer
- * je NIET pincht.
+ * je NIET pincht. Daarom accepteert PinchableImage `children`: de
+ * overlays (chips, BannerTitleOverlay, FriendsOnImage) zitten als
+ * kinderen IN deze component, niet als siblings van een nested image.
+ *
+ * `onPress` wordt aangeroepen bij een gewone single-finger tik
+ * waar dan ook op de banner — inclusief op de chip-overlays die
+ * geen eigen responder hebben. Pinch en Tap zijn gecomponeerd via
+ * `Gesture.Exclusive(pinch, tap)`, zodat pinch-release NOOIT als
+ * tap doorlekt. Zonder dat zou de parent Pressable bij het loslaten
+ * van een pinch alsnog navigeren naar de detail-page.
  */
 import { Image, type ImageLoadEventData } from 'expo-image';
-import { useCallback, useRef } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { useCallback, useRef, type ReactNode } from 'react';
+import {
+  StyleSheet,
+  View,
+  type StyleProp,
+  type ViewStyle,
+} from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { runOnJS, withTiming } from 'react-native-reanimated';
 
@@ -19,9 +33,15 @@ import { useZoomLayer } from '@/components/ZoomLayer';
 export function PinchableImage({
   uri,
   onLoad,
+  onPress,
+  style,
+  children,
 }: {
   uri: string;
   onLoad?: (e: ImageLoadEventData) => void;
+  onPress?: () => void;
+  style?: StyleProp<ViewStyle>;
+  children?: ReactNode;
 }) {
   const ref = useRef<View>(null);
   const { scale, start, end } = useZoomLayer();
@@ -40,6 +60,10 @@ export function PinchableImage({
     end();
   }, [end]);
 
+  const fireTap = useCallback(() => {
+    onPress?.();
+  }, [onPress]);
+
   const pinch = Gesture.Pinch()
     .onStart(() => {
       runOnJS(measureAndStart)();
@@ -53,15 +77,26 @@ export function PinchableImage({
       });
     });
 
+  // Tap activeert pas bij touch-end binnen 250ms; bij pinch (2 vingers)
+  // wint pinch via Exclusive en wordt tap automatisch ge-cancelled.
+  const tap = Gesture.Tap()
+    .maxDuration(250)
+    .onEnd((_e, success) => {
+      if (success) runOnJS(fireTap)();
+    });
+
+  const composed = Gesture.Exclusive(pinch, tap);
+
   return (
-    <GestureDetector gesture={pinch}>
-      <View ref={ref} style={StyleSheet.absoluteFill} collapsable={false}>
+    <GestureDetector gesture={composed}>
+      <View ref={ref} style={style} collapsable={false}>
         <Image
           source={{ uri }}
           style={StyleSheet.absoluteFill}
           contentFit="cover"
           onLoad={onLoad}
         />
+        {children}
       </View>
     </GestureDetector>
   );

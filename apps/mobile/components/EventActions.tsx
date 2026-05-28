@@ -9,23 +9,28 @@ import * as Haptics from 'expo-haptics';
 import { router } from 'expo-router';
 import * as Linking from 'expo-linking';
 import * as WebBrowser from 'expo-web-browser';
-import { Platform, Pressable, Share, StyleSheet, View } from 'react-native';
+import { Platform, Pressable, Share, StyleSheet, Text, View } from 'react-native';
 
 import { useSession } from '@/lib/authClient';
 import { useMySaves, useToggleSave } from '@/lib/queries';
 import { useMode, useRoles } from '@/store/mode';
-import { palette } from '@/theme/tokens';
+import { fontFamily, palette } from '@/theme/tokens';
 
 export function EventActions({
   eventId,
   eventTitle,
   occurrenceId,
   ticketUrl,
+  invitedCount = 0,
 }: {
   eventId: string;
   eventTitle: string;
   occurrenceId: string;
   ticketUrl: string | null;
+  /** Aantal vrienden dat ik al uitgenodigd heb voor deze occurrence.
+      Toont een klein badge op de invite-icoon zodat je in de lijst
+      direct ziet of je al iemand uitgenodigd hebt. */
+  invitedCount?: number;
 }) {
   const mode = useMode();
   const roles = useRoles();
@@ -71,6 +76,17 @@ export function EventActions({
     });
   };
 
+  const onInvite = () => {
+    if (!authed) {
+      router.push('/jij' as never);
+      return;
+    }
+    Haptics.selectionAsync();
+    router.push(
+      `/event/${eventId}/invite?o=${occurrenceId}` as never
+    );
+  };
+
   return (
     <View style={styles.row}>
       <Pressable onPress={onSave} hitSlop={10} style={styles.btn}>
@@ -79,6 +95,28 @@ export function EventActions({
           size={26}
           color={isSaved ? (isNacht ? palette.acid : palette.red) : roles.fg}
         />
+      </Pressable>
+      <Pressable onPress={onInvite} hitSlop={10} style={styles.btn}>
+        <View>
+          <Ionicons name="person-add-outline" size={24} color={roles.fg} />
+          {invitedCount > 0 ? (
+            <View
+              style={[
+                styles.badge,
+                { backgroundColor: isNacht ? palette.acid : palette.red },
+              ]}
+            >
+              <Text
+                style={[
+                  styles.badgeText,
+                  { color: isNacht ? palette.noir : palette.paper },
+                ]}
+              >
+                {invitedCount > 9 ? '9+' : invitedCount}
+              </Text>
+            </View>
+          ) : null}
+        </View>
       </Pressable>
       <Pressable onPress={onShare} hitSlop={10} style={styles.btn}>
         <Ionicons name="paper-plane-outline" size={24} color={roles.fg} />
@@ -107,5 +145,22 @@ const styles = StyleSheet.create({
   btn: {
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  badge: {
+    position: 'absolute',
+    top: -6,
+    right: -10,
+    minWidth: 16,
+    height: 16,
+    paddingHorizontal: 4,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  badgeText: {
+    fontFamily: fontFamily.displayBold,
+    fontSize: 10,
+    lineHeight: 12,
+    letterSpacing: -0.2,
   },
 });

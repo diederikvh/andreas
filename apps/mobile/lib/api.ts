@@ -145,6 +145,10 @@ export type ApiEvent = {
   friendsSaved?: ApiFriendBadge[];
   /** Totale telling van vrienden die dit event hebben opgeslagen. */
   friendsSavedCount?: number;
+  /** Aantal non-revoked invites die ik zelf verstuurd heb voor de
+      eerstvolgende occurrence. Mobile gebruikt 't voor de badge naast
+      de invite-icoon op clubs/live/theater cards. */
+  myInvitesCount?: number;
   /** Door mij verstuurde invites voor dit event (alleen op detail). */
   myInvites?: ApiEventInviteRecord[];
   /** Uitnodigingen aan mij verstuurd die ik geaccepteerd heb — voor de

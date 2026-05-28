@@ -221,6 +221,28 @@ eventsRoute.get('/', async (c) => {
   const friendsByOcc = me
     ? await buildFriendsByOccurrence(me, occurrenceIdsForFriends)
     : new Map();
+  // Per nextOccurrence: aantal non-revoked invites die ik zelf verstuurd
+  // heb. Mobile toont 'n klein badge op de invite-icoon zodat je in de
+  // lijst direct ziet of je al iemand uitgenodigd hebt. Goedkope count-
+  // query, dezelfde id-set als friends-lookup.
+  const myInvitesByOcc = new Map<string, number>();
+  if (me && occurrenceIdsForFriends.length > 0) {
+    const invRows = await db
+      .select({
+        occurrenceId: schema.invitations.occurrenceId,
+        count: count(),
+      })
+      .from(schema.invitations)
+      .where(
+        and(
+          eq(schema.invitations.fromUserId, me),
+          isNull(schema.invitations.revokedAt),
+          inArray(schema.invitations.occurrenceId, occurrenceIdsForFriends)
+        )
+      )
+      .groupBy(schema.invitations.occurrenceId);
+    for (const r of invRows) myInvitesByOcc.set(r.occurrenceId, Number(r.count));
+  }
   // Series-array idem: in lean wordt 'ie niet op rail-cards getoond.
   const seriesMap = lean
     ? new Map()
@@ -231,12 +253,13 @@ eventsRoute.get('/', async (c) => {
 
   const events = ordered.map(({ event, occ }) => {
     // Per occurrence: friendsSaved van vrienden die díe specifieke
-    // voorstelling/avond gesaved hebben. In lean-mode laten we deze
-    // info weg — de event-level friendsSaved (van nextOccurrence) is
-    // genoeg voor rail-cards.
+    // voorstelling/avond gesaved hebben. In lean-mode hebben we alleen
+    // de nextOccurrence-friends in de map; we hangen die ook aan de
+    // bijbehorende occurrence-rij zodat clubs/live (die per occurrence
+    // een card renderen) de friends-pill op die kaart kunnen tonen.
     const isExhibition = event.kind === 'exhibition';
     const occurrencesInRange = occ.all.map((o) => {
-      const f = lean ? undefined : friendsByOcc.get(o.id);
+      const f = friendsByOcc.get(o.id);
       return {
         ...o,
         startsAt: isExhibition
@@ -277,6 +300,11 @@ eventsRoute.get('/', async (c) => {
       friendsSavedCount: headFriends?.count ?? 0,
       venueFollowed: followedVenueIds.has(event.venue.id),
       series: seriesMap.get(event.id) ?? [],
+      // Aantal non-revoked invites die de gebruiker zelf verstuurd
+      // heeft voor de eerstvolgende occurrence van dit event. Mobile
+      // toont 'n badge naast de invite-icoon zodat je in de lijst
+      // direct ziet of je al iemand uitgenodigd hebt.
+      myInvitesCount: occ.next ? (myInvitesByOcc.get(occ.next.id) ?? 0) : 0,
     };
   });
 
