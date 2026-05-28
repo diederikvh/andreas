@@ -152,6 +152,9 @@ eventsRoute.get('/', async (c) => {
             // event zelf geen image heeft (theater/live banner valt
             // dan terug op venue-image). Voegt 1 string per event toe.
             imageUrl: schema.venues.imageUrl,
+            // wijk gebruikt door clubs/live/theater venue-header
+            // ("Club · Noord"). 1 short string per event.
+            wijk: schema.venues.wijk,
           },
         })
         .from(schema.events)
@@ -178,6 +181,7 @@ eventsRoute.get('/', async (c) => {
             lat: schema.venues.lat,
             lng: schema.venues.lng,
             type: schema.venues.type,
+            wijk: schema.venues.wijk,
             scene: schema.venues.scene,
             subtype: schema.venues.subtype,
             imageUrl: schema.venues.imageUrl,

@@ -23,16 +23,23 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppHeader, HEADER_HEIGHT } from '@/components/AppHeader';
+import { BannerTitleOverlay } from '@/components/BannerTitleOverlay';
+import { EventActions } from '@/components/EventActions';
+import { FollowVenueButton } from '@/components/FollowVenueButton';
+import { PinchableImage } from '@/components/PinchableImage';
 import { RefreshBanner } from '@/components/RefreshBanner';
 import type { ApiEvent } from '@/lib/api';
 import {
   dowMixed,
   eventImageUrl,
+  formatWijk,
   isMultiDay,
   monthShort,
+  translateVenueType,
 } from '@/lib/eventDisplay';
 import { useLocale, useT, type Locale } from '@/lib/i18n';
 import { useEvents } from '@/lib/queries';
+import { useImageAspect } from '@/lib/useImageAspect';
 import { useMode, useRoles } from '@/store/mode';
 import { fontFamily, palette } from '@/theme/tokens';
 
@@ -337,29 +344,34 @@ function Chip({
 function ShowCard({ show, locale }: { show: ApiEvent; locale: Locale }) {
   const roles = useRoles();
   const banner = eventImageUrl(show);
+  const { aspect: bannerAspect, onLoad: onBannerLoad } = useImageAspect();
+  const isFallbackImage = !show.imageUrl && Boolean(show.venue.imageUrl);
   const discipline = disciplineFor(show);
 
-  // Verzamel unieke speeldata uit occurrencesInRange (max 8 tonen,
-  // anders + N). Format "Wo 22 mei · 20:00".
-  const dates = useMemo(() => {
+  // Verzamel unieke speeldata uit occurrencesInRange. We bewaren de
+  // volledige occurrence (niet alleen de Date) zodat we voor één-
+  // occurrence en today-shows een EventActions-rij kunnen renderen met
+  // de juiste occurrenceId + ticketUrl.
+  const upcomingOccs = useMemo(() => {
     const occs = show.occurrencesInRange ?? [];
-    // Vanaf vandaag-00:00 — backend kan een occurrence die gisteren
-    // startte en vandaag eindigde nog teruggeven, maar voor de
-    // discovery-lijst willen we alleen 'wat kan ik nog plannen'.
     const startOfToday = new Date();
     startOfToday.setHours(0, 0, 0, 0);
     const minMs = startOfToday.getTime();
-    const byDay = new Map<string, Date>();
+    const byKey = new Map<string, (typeof occs)[number]>();
     for (const o of occs) {
       if (isMultiDay(o.startsAt, o.endsAt)) continue;
       const d = new Date(o.startsAt);
       if (d.getTime() < minMs) continue;
       const key = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}-${d.getHours()}-${d.getMinutes()}`;
-      if (!byDay.has(key)) byDay.set(key, d);
+      if (!byKey.has(key)) byKey.set(key, o);
     }
-    return [...byDay.values()].sort((a, b) => a.getTime() - b.getTime());
+    return [...byKey.values()].sort(
+      (a, b) =>
+        new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime()
+    );
   }, [show]);
 
+  const dates = upcomingOccs.map((o) => new Date(o.startsAt));
   const visibleDates = dates.slice(0, 5);
   const extra = dates.length - visibleDates.length;
 
@@ -372,6 +384,20 @@ function ShowCard({ show, locale }: { show: ApiEvent; locale: Locale }) {
     return d.getTime();
   }, []);
   const tomorrowStart = todayStart + 24 * 60 * 60 * 1000;
+
+  // EventActions-rij tonen als 't event maar één upcoming occurrence
+  // heeft, OF wanneer de eerstvolgende vandaag is (geel uitgelicht in
+  // de date-string). In beide gevallen weten we exact welke occurrence
+  // de actie betreft (save/share/ticket).
+  const actionOccurrence = (() => {
+    if (upcomingOccs.length === 1) return upcomingOccs[0];
+    const firstTodayOcc = upcomingOccs.find((o) => {
+      const ts = new Date(o.startsAt).getTime();
+      return ts >= todayStart && ts < tomorrowStart;
+    });
+    return firstTodayOcc ?? null;
+  })();
+
   const formatDate = (d: Date) => {
     const dow = dowMixed(d.getDay(), locale);
     const day = d.getDate();
@@ -381,36 +407,97 @@ function ShowCard({ show, locale }: { show: ApiEvent; locale: Locale }) {
     return `${dow} ${day} ${month} ${hh}:${mm}`;
   };
 
+  const venue = show.venue;
+  const followState = show.venueFollowed ? 'volgen' : 'normaal';
   return (
-    <Pressable
-      onPress={() =>
-        router.push(`/event/${show.id}?source=theater` as never)
-      }
-      style={styles.card}
-    >
-      <View
-        style={[styles.banner, { backgroundColor: roles.bgLift }]}
-      >
-        {banner ? (
-          <Image
-            source={{ uri: banner }}
-            style={styles.bannerImg}
-            contentFit="cover"
-          />
-        ) : null}
-        <View style={[styles.disciplineChip, { backgroundColor: roles.accent }]}>
-          <Text style={[styles.disciplineText, { color: roles.onAccent }]}>
-            {DISCIPLINE_LABELS[discipline][locale === 'en' ? 'en' : 'nl'].toLowerCase()}
-          </Text>
-        </View>
-      </View>
-      <View style={styles.body}>
-        <Text
-          style={[styles.venue, { color: roles.fgMuted }]}
-          numberOfLines={1}
+    <View style={styles.card}>
+      <View style={styles.venueHeader}>
+        <Pressable
+          onPress={() => router.push(`/venue/${venue.slug}` as never)}
+          style={styles.venueHeaderLeft}
         >
-          {show.venue.name}
-        </Text>
+          <View
+            style={[styles.venueAvatar, { backgroundColor: roles.bgLift }]}
+          >
+            {venue.imageUrl ? (
+              <Image
+                source={{ uri: venue.imageUrl }}
+                style={styles.venueAvatarImg}
+                contentFit="cover"
+              />
+            ) : (
+              <Text
+                style={[styles.venueAvatarFallback, { color: roles.fgMuted }]}
+              >
+                {venue.name.slice(0, 1).toUpperCase()}
+              </Text>
+            )}
+          </View>
+          <View style={styles.venueHeaderText}>
+            <Text
+              numberOfLines={1}
+              style={[styles.venueHeaderName, { color: roles.fg }]}
+            >
+              {venue.name}
+            </Text>
+            {(venue.type || venue.wijk) && (
+              <Text
+                numberOfLines={1}
+                style={[styles.venueHeaderType, { color: roles.fgMuted }]}
+              >
+                {[
+                  venue.type ? translateVenueType(venue.type, locale) : null,
+                  venue.wijk ? formatWijk(venue.wijk) : null,
+                ]
+                  .filter(Boolean)
+                  .join(' · ')}
+              </Text>
+            )}
+          </View>
+        </Pressable>
+        <FollowVenueButton
+          venueId={venue.id}
+          name={venue.name}
+          state={followState}
+          size={36}
+        />
+      </View>
+      <Pressable
+        onPress={() =>
+          router.push(`/event/${show.id}?source=theater` as never)
+        }
+      >
+        <View
+          style={[
+            styles.banner,
+            { backgroundColor: roles.bgLift, aspectRatio: bannerAspect },
+          ]}
+        >
+          {banner ? (
+            <PinchableImage uri={banner} onLoad={onBannerLoad} />
+          ) : null}
+          <View style={[styles.disciplineChip, { backgroundColor: roles.accent }]}>
+            <Text style={[styles.disciplineText, { color: roles.onAccent }]}>
+              {DISCIPLINE_LABELS[discipline][locale === 'en' ? 'en' : 'nl'].toLowerCase()}
+            </Text>
+          </View>
+          {isFallbackImage && <BannerTitleOverlay title={show.title} />}
+        </View>
+      </Pressable>
+      {actionOccurrence && (
+        <EventActions
+          eventId={show.id}
+          eventTitle={show.title}
+          occurrenceId={actionOccurrence.id}
+          ticketUrl={actionOccurrence.ticketUrl ?? show.ticketUrl ?? null}
+        />
+      )}
+      <Pressable
+        onPress={() =>
+          router.push(`/event/${show.id}?source=theater` as never)
+        }
+        style={styles.body}
+      >
         <Text style={[styles.title, { color: roles.fg }]} numberOfLines={2}>
           {show.title}
         </Text>
@@ -438,8 +525,8 @@ function ShowCard({ show, locale }: { show: ApiEvent; locale: Locale }) {
             {extra > 0 ? ` · +${extra}` : ''}
           </Text>
         )}
-      </View>
-    </Pressable>
+      </Pressable>
+    </View>
   );
 }
 
@@ -474,14 +561,53 @@ const styles = StyleSheet.create({
     letterSpacing: 0.8,
   },
   card: {
+    marginBottom: 36,
+  },
+  venueHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
     paddingHorizontal: HORIZONTAL_PADDING,
-    marginBottom: 22,
+    paddingBottom: 10,
+  },
+  venueHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    flex: 1,
+    minWidth: 0,
+  },
+  venueAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 999,
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  venueAvatarImg: { width: '100%', height: '100%' },
+  venueAvatarFallback: {
+    fontFamily: fontFamily.bold,
+    fontSize: 16,
+    letterSpacing: -0.2,
+  },
+  venueHeaderText: { flex: 1, minWidth: 0 },
+  venueHeaderName: {
+    fontFamily: fontFamily.bold,
+    fontSize: 15,
+    letterSpacing: -0.22,
+    lineHeight: 18,
+  },
+  venueHeaderType: {
+    fontFamily: fontFamily.mono,
+    fontSize: 10,
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+    marginTop: 2,
   },
   banner: {
     width: '100%',
     aspectRatio: 1,
-    borderRadius: 10,
-    overflow: 'hidden',
     marginBottom: 10,
   },
   bannerImg: { width: '100%', height: '100%' },
@@ -502,15 +628,9 @@ const styles = StyleSheet.create({
     letterSpacing: 1.4,
     textTransform: 'uppercase',
   },
-  body: { gap: 0 },
-  // Venue als kicker — mono uppercase, matcht de rail-cards op Vandaag
-  // en /films voor visuele consistentie.
-  venue: {
-    fontFamily: fontFamily.mono,
-    fontSize: 10,
-    letterSpacing: 0.6,
-    textTransform: 'uppercase',
-    marginBottom: 2,
+  body: {
+    paddingHorizontal: HORIZONTAL_PADDING,
+    gap: 0,
   },
   title: {
     fontFamily: fontFamily.bold,

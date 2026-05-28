@@ -838,10 +838,10 @@ function FollowVenueButton({
 
   const iconName: keyof typeof Ionicons.glyphMap =
     state === 'volgen'
-      ? 'heart'
+      ? 'bookmark'
       : state === 'blokken'
         ? 'ban-outline'
-        : 'heart-outline';
+        : 'bookmark-outline';
   const iconColor =
     state === 'volgen'
       ? mode === 'nacht'
@@ -919,7 +919,7 @@ function FollowVenueSheet({
         'Events van deze venue komen prominent in je feed.',
         'Events from this venue appear prominently in your feed.'
       ),
-      icon: 'heart',
+      icon: 'bookmark',
     },
     {
       state: 'normaal',
@@ -928,7 +928,7 @@ function FollowVenueSheet({
         'Standaard. Events worden gewoon getoond, geen voorkeur.',
         'Default. Events show as usual, no preference.'
       ),
-      icon: 'heart-outline',
+      icon: 'bookmark-outline',
     },
     {
       state: 'blokken',

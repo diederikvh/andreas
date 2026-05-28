@@ -126,6 +126,10 @@ export type ApiEvent = {
         Optioneel — niet alle endpoints leveren 'm; UI gebruikt 'm voor de
         venue-tone-pill in lijst-rijen. */
     type?: VenueType | null;
+    /** Wijk (noord/zuid/zaandam/etc.). Optioneel — meegezonden door de
+        events-list endpoints zodat de venue-header op /clubs /live
+        /theater 'm naast venue-type kan tonen. */
+    wijk?: VenueWijk | null;
     /** Scene (mainstream/alternatief/underground/fringe). Gebruikt door
         Vandaag-rails om galleries te splitsen op professioneel vs DIY. */
     scene?: VenueScene | null;
