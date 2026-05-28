@@ -96,27 +96,13 @@ export function EventActions({
           color={isSaved ? (isNacht ? palette.acid : palette.red) : roles.fg}
         />
       </Pressable>
-      <Pressable onPress={onInvite} hitSlop={10} style={styles.btn}>
-        <View>
-          <Ionicons name="person-add-outline" size={24} color={roles.fg} />
-          {invitedCount > 0 ? (
-            <View
-              style={[
-                styles.badge,
-                { backgroundColor: isNacht ? palette.acid : palette.red },
-              ]}
-            >
-              <Text
-                style={[
-                  styles.badgeText,
-                  { color: isNacht ? palette.noir : palette.paper },
-                ]}
-              >
-                {invitedCount > 9 ? '9+' : invitedCount}
-              </Text>
-            </View>
-          ) : null}
-        </View>
+      <Pressable onPress={onInvite} hitSlop={10} style={styles.btnInline}>
+        <Ionicons name="person-add-outline" size={24} color={roles.fg} />
+        {invitedCount > 0 ? (
+          <Text style={[styles.countText, { color: roles.fg }]}>
+            {invitedCount}
+          </Text>
+        ) : null}
       </Pressable>
       <Pressable onPress={onShare} hitSlop={10} style={styles.btn}>
         <Ionicons name="paper-plane-outline" size={24} color={roles.fg} />
@@ -146,21 +132,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  badge: {
-    position: 'absolute',
-    top: -6,
-    right: -10,
-    minWidth: 16,
-    height: 16,
-    paddingHorizontal: 4,
-    borderRadius: 8,
+  // Voor een actie met inline-count: icoon + cijfer naast elkaar,
+  // Instagram-stijl. Geen badge-bolletje.
+  btnInline: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    gap: 4,
   },
-  badgeText: {
-    fontFamily: fontFamily.displayBold,
-    fontSize: 10,
-    lineHeight: 12,
+  countText: {
+    fontFamily: fontFamily.medium,
+    fontSize: 14,
     letterSpacing: -0.2,
   },
 });
