@@ -848,6 +848,7 @@ export default function Avond() {
           <LiveBanner />
           <TheaterBanner />
           <KaartBanner />
+          <FriendsBanner />
           <OpGevoelBanner />
         </ScrollView>
 
@@ -1167,7 +1168,7 @@ export default function Avond() {
           <Rail
             kicker={t('Jij en je vrienden', 'You and friends')}
             moreLabel={t('Alles →', 'See all →')}
-            onMore={() => router.push('/social' as never)}
+            onMore={() => router.push('/going' as never)}
           >
             {planningRail.map((m) => (
               <PlanningRailCard key={m.occurrenceId} entry={m} />
@@ -1713,6 +1714,31 @@ function FeaturedCard({
         </View>
       </View>
     </View>
+  );
+}
+
+function FriendsBanner() {
+  const roles = useRoles();
+  const t = useT();
+  return (
+    <Pressable
+      onPress={() => router.push('/going' as never)}
+      style={[
+        styles.shortcutBtn,
+        { backgroundColor: roles.bgLift },
+      ]}
+    >
+      <Ionicons name="people-outline" size={36} color={roles.accent} />
+      <Text style={[styles.shortcutKicker, { color: roles.fgMuted }]}>
+        {t('Friends', 'Friends')}
+      </Text>
+      <Text style={[styles.shortcutTitle, { color: roles.fg }]}>
+        {t(
+          'Waar je vrienden naartoe gaan.',
+          'Where your friends are going.'
+        )}
+      </Text>
+    </Pressable>
   );
 }
 

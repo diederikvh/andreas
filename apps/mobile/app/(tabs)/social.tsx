@@ -1,53 +1,35 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useScrollToTop } from '@react-navigation/native';
-import { BlurView } from 'expo-blur';
 import { router } from 'expo-router';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import {
   Alert,
   Pressable,
   RefreshControl,
   ScrollView,
-  SectionList,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
-import Animated, {
-  Easing,
-  FadeIn,
-  useAnimatedStyle,
-  useSharedValue,
-  withTiming,
-} from 'react-native-reanimated';
+import Animated, { FadeIn } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQueryClient } from '@tanstack/react-query';
 
 import { AppHeader, HEADER_HEIGHT } from '@/components/AppHeader';
 import { Cross } from '@/components/Cross';
-import { EventListRow } from '@/components/EventListRow';
 import { ProfileAvatar } from '@/components/ProfileAvatar';
 import { RefreshBanner } from '@/components/RefreshBanner';
-import { SpinningCross } from '@/components/SpinningCross';
 import type {
-  ApiEvent,
-  ApiFeedEvent,
   ApiFriend,
   ApiFriendRequest,
   ApiGroupSummary,
   ApiInvitation,
-  SavedApiEvent,
 } from '@/lib/api';
-import type { BadgeTone } from '@/lib/types';
 import { useSession } from '@/lib/authClient';
 import {
-  eventImageUrl,
-  CATEGORY_TICK,
-  VENUE_TYPE_TICK,
   dowMixed,
   monthShort,
   rowTimeLabel,
-  translateCategory,
 } from '@/lib/eventDisplay';
 import { useLocale, useT } from '@/lib/i18n';
 import {
@@ -57,28 +39,22 @@ import {
   useFriends,
   useGroups,
   useInvitations,
-  useMe,
-  useMySaves,
   useOutgoingFriendRequests,
   useRemoveFriend,
-  useSocialFeed,
 } from '@/lib/queries';
-import { useMode, useRoles } from '@/store/mode';
+import { useRoles } from '@/store/mode';
 import { fontFamily } from '@/theme/tokens';
-
-const SUB_TAB_HEIGHT = 60;
-
-type Sub = 'vrienden' | 'planning';
 
 /**
  * Social-tab — bundelt alles wat met andere mensen te maken heeft:
- *
- *  - **Vrienden**: openstaande aanvragen + uitnodigingen bovenaan,
- *    daaronder de vrienden-lijst en aangevraagde verzoeken.
- *  - **Planning**: jouw opgeslagen events, gegroepeerd per dag.
+ * openstaande friend-aanvragen + uitnodigingen bovenaan, daaronder de
+ * vrienden-lijst en aangevraagde verzoeken.
  *
  * De badge op de tab in de TabBar telt openstaande aanvragen + invites
  * — zodat je vanaf elk scherm ziet dat er iets op je wacht.
+ *
+ * De "Planning"-lijst die vroeger als sub-tab hier woonde is verhuisd
+ * naar /going (homepage-shortcut "Friends").
  */
 export default function Social() {
   const roles = useRoles();
@@ -88,11 +64,8 @@ export default function Social() {
   useScrollToTop(scrollRef);
   const qc = useQueryClient();
 
-  const [sub, setSub] = useState<Sub>('vrienden');
-
   const { data: session } = useSession();
   const authed = Boolean(session?.user?.id);
-  const { data: me } = useMe();
 
   const { data: requests } = useFriendRequests({ enabled: authed });
   const { data: invitations } = useInvitations({ enabled: authed });
@@ -113,10 +86,6 @@ export default function Social() {
   const { data: friends } = useFriends({ enabled: authed });
   const { data: groups } = useGroups({ enabled: authed });
   const { data: outgoing } = useOutgoingFriendRequests({ enabled: authed });
-  const { data: saves, isLoading: savesLoading, error: savesError } =
-    useMySaves({ enabled: authed });
-  const { data: feed, isLoading: feedLoading, error: feedError } =
-    useSocialFeed({ enabled: authed });
 
   const acceptReq = useAcceptFriendRequest();
   const declineReq = useDeclineFriendRequest();
@@ -132,8 +101,6 @@ export default function Social() {
         qc.invalidateQueries({ queryKey: ['friends'] }),
         qc.invalidateQueries({ queryKey: ['groups'] }),
         qc.invalidateQueries({ queryKey: ['outgoing-friend-requests'] }),
-        qc.invalidateQueries({ queryKey: ['saves'] }),
-        qc.invalidateQueries({ queryKey: ['social-feed'] }),
       ]);
     } finally {
       const elapsed = Date.now() - start;
@@ -142,186 +109,41 @@ export default function Social() {
     }
   }, [qc]);
 
-  const topInset = insets.top + HEADER_HEIGHT + SUB_TAB_HEIGHT;
+  const topInset = insets.top + HEADER_HEIGHT;
   const bottomInset = insets.bottom + 96;
-
-  // Badge telt openstaande acties: friend-requests die ik moet beslissen
-  // + invitations waar mijn response nog pending is. Eigen verstuurde
-  // invites + invites waarop ik al heb gereageerd tellen niet — die
-  // vragen geen actie van mij.
-  const pendingForMe =
-    invitations?.filter((inv) => !inv.isOutgoing && inv.myStatus === 'pending')
-      .length ?? 0;
-  const inboxCount = (requests?.length ?? 0) + pendingForMe;
 
   return (
     <View style={[styles.root, { backgroundColor: roles.bg }]}>
       <RefreshBanner visible={refreshing} topOffset={topInset + 8} />
-      {sub === 'planning' ? (
-        // Planning krijgt een eigen virtualized SectionList — upcoming +
-        // past kunnen voor heavy users honderden items zijn, plain
-        // ScrollView mountte dat tegelijk.
-        <PlanningPanel
-          authed={authed}
-          saves={saves}
-          feed={feed}
-          isLoading={savesLoading || feedLoading}
-          error={savesError ?? feedError}
-          myAvatarUrl={me?.avatarUrl ?? null}
-          myName={me?.name ?? ''}
-          topInset={topInset}
-          bottomInset={bottomInset}
-          refreshing={refreshing}
-          onRefresh={onRefresh}
-        />
-      ) : (
-        <ScrollView
-          ref={scrollRef}
-          style={styles.page}
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={{ paddingTop: topInset, paddingBottom: bottomInset }}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={onRefresh}
-              tintColor={roles.accent}
-              colors={[roles.accent]}
-              progressViewOffset={topInset}
-            />
-          }
-        >
-          <FriendsPanel
-            authed={authed}
-            requests={requests}
-            invites={invites}
-            friends={friends}
-            groups={groups}
-            outgoing={outgoing}
-            onAcceptReq={(id) => acceptReq.mutate(id)}
-            onDeclineReq={(id) => declineReq.mutate(id)}
-            busyReq={acceptReq.isPending || declineReq.isPending}
+      <ScrollView
+        ref={scrollRef}
+        style={styles.page}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingTop: topInset, paddingBottom: bottomInset }}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={roles.accent}
+            colors={[roles.accent]}
+            progressViewOffset={topInset}
           />
-        </ScrollView>
-      )}
-      <AppHeader title={t('Sociaal', 'Social')} showContentMode>
-        <SubTabs sub={sub} onChange={setSub} inboxCount={inboxCount} />
-      </AppHeader>
-    </View>
-  );
-}
-
-function SubTabs({
-  sub,
-  onChange,
-  inboxCount,
-}: {
-  sub: Sub;
-  onChange: (s: Sub) => void;
-  inboxCount: number;
-}) {
-  const mode = useMode();
-  const roles = useRoles();
-  const t = useT();
-  // Track-breedte meten zodat we de blob in pixels kunnen positioneren
-  // — % laat 't 4-6px verschuiven door padding/gap-rounding.
-  const [trackW, setTrackW] = useState(0);
-  const activeIndex = sub === 'vrienden' ? 0 : 1;
-  const progress = useSharedValue(activeIndex);
-  useEffect(() => {
-    progress.value = withTiming(activeIndex, {
-      duration: 240,
-      easing: Easing.bezier(0.65, 0, 0.35, 1),
-    });
-  }, [activeIndex, progress]);
-  const blobStyle = useAnimatedStyle(() => {
-    const inner = Math.max(0, trackW - 6); // padding 3 aan beide kanten
-    const w = inner / 2;
-    return {
-      width: w,
-      transform: [{ translateX: progress.value * w }],
-    };
-  });
-
-  return (
-    <View style={styles.subTabsAlign}>
-      <View
-        style={[
-          styles.switchTrack,
-          // Subtiele tint die matcht met de Filter-chips elders — was
-          // hier eerder iets sterker, voelde donkerder dan de rest.
-          { borderColor: roles.bgChip },
-        ]}
-        onLayout={(e) => setTrackW(e.nativeEvent.layout.width)}
+        }
       >
-        <BlurView
-          intensity={40}
-          tint={mode === 'nacht' ? 'dark' : 'light'}
-          style={StyleSheet.absoluteFill}
+        <FriendsPanel
+          authed={authed}
+          requests={requests}
+          invites={invites}
+          friends={friends}
+          groups={groups}
+          outgoing={outgoing}
+          onAcceptReq={(id) => acceptReq.mutate(id)}
+          onDeclineReq={(id) => declineReq.mutate(id)}
+          busyReq={acceptReq.isPending || declineReq.isPending}
         />
-        <View
-          style={[
-            StyleSheet.absoluteFill,
-            {
-              backgroundColor:
-                mode === 'nacht'
-                  ? 'rgba(23,23,26,0.65)'
-                  : 'rgba(235,230,216,0.7)',
-            },
-          ]}
-        />
-        <Animated.View
-          pointerEvents="none"
-          style={[
-            styles.switchBlob,
-            blobStyle,
-            { backgroundColor: roles.accent },
-          ]}
-        />
-        <SwitchBtn
-          label={t('Vrienden', 'Friends')}
-          active={sub === 'vrienden'}
-          badge={inboxCount}
-          onPress={() => onChange('vrienden')}
-        />
-        <SwitchBtn
-          label={t('Planning', 'Planning')}
-          active={sub === 'planning'}
-          onPress={() => onChange('planning')}
-        />
-      </View>
+      </ScrollView>
+      <AppHeader title={t('Friends', 'Friends')} showContentMode />
     </View>
-  );
-}
-
-function SwitchBtn({
-  label,
-  active,
-  badge = 0,
-  onPress,
-}: {
-  label: string;
-  active: boolean;
-  badge?: number;
-  onPress: () => void;
-}) {
-  const roles = useRoles();
-  const tint = active ? roles.onAccent : roles.fgMuted;
-  // Op actieve tab geen badge — je bent er al, dus de count is dubbelop.
-  const showBadge = badge > 0 && !active;
-  return (
-    <Pressable onPress={onPress} style={styles.switchBtn}>
-      <Text style={[styles.switchBtnText, { color: tint }]}>{label}</Text>
-      {showBadge && (
-        <View style={[styles.switchBadge, { backgroundColor: roles.accent }]}>
-          <Text
-            style={[styles.switchBadgeText, { color: roles.onAccent }]}
-            numberOfLines={1}
-          >
-            {badge > 9 ? '9+' : badge}
-          </Text>
-        </View>
-      )}
-    </Pressable>
   );
 }
 
@@ -400,14 +222,6 @@ function FriendsPanel({
 
   return (
     <Animated.View entering={FadeIn.duration(180)}>
-      {invites && invites.length > 0 && (
-        <>
-          <SectionHead label={t('Uitnodigingen', 'Invitations')} />
-          {invites.map((inv) => (
-            <InviteRow key={inv.id} invite={inv} />
-          ))}
-        </>
-      )}
       {requests && requests.length > 0 && (
         <>
           <SectionHead label={t('Aanvragen', 'Requests')} />
@@ -419,6 +233,14 @@ function FriendsPanel({
               onDecline={() => onDeclineReq(r.id)}
               busy={busyReq}
             />
+          ))}
+        </>
+      )}
+      {invites && invites.length > 0 && (
+        <>
+          <SectionHead label={t('Uitnodigingen', 'Invitations')} />
+          {invites.map((inv) => (
+            <InviteRow key={inv.id} invite={inv} />
           ))}
         </>
       )}
@@ -455,271 +277,6 @@ function FriendsPanel({
         </>
       )}
     </Animated.View>
-  );
-}
-
-// ─── Planning-panel ─────────────────────────────────────────────────
-
-function PlanningPanel({
-  authed,
-  saves,
-  feed,
-  isLoading,
-  error,
-  myAvatarUrl,
-  myName,
-  topInset,
-  bottomInset,
-  refreshing,
-  onRefresh,
-}: {
-  authed: boolean;
-  saves: SavedApiEvent[] | undefined;
-  feed: ApiFeedEvent[] | undefined;
-  isLoading: boolean;
-  error: unknown;
-  myAvatarUrl: string | null;
-  myName: string;
-  topInset: number;
-  bottomInset: number;
-  refreshing: boolean;
-  onRefresh: () => void;
-}) {
-  const roles = useRoles();
-  const t = useT();
-
-  // Merge: één rij per unieke occurrence. Eigen saves voegen "jij" toe
-  // aan de friend-stack; friend-feed voegt de friend-avatars toe. Beide
-  // hebben dezelfde event-data. Dedupe op occurrenceId.
-  type Merged = {
-    eventId: string;
-    occurrenceId: string;
-    event: SavedApiEvent | ApiFeedEvent;
-    startsAt: string;
-    endsAt: string | null;
-    mine: boolean;
-    friends: { name: string; avatar: string | null }[];
-  };
-
-  const merged = useMemo(() => {
-    const map = new Map<string, Merged>();
-    const myFirst = (myName.split(' ')[0] || 'Jij').trim() || 'Jij';
-
-    for (const s of saves ?? []) {
-      const key = s.occurrenceId;
-      map.set(key, {
-        eventId: s.id,
-        occurrenceId: s.occurrenceId,
-        event: s,
-        startsAt: s.startsAt,
-        endsAt: s.endsAt,
-        mine: true,
-        friends: [{ name: myFirst, avatar: myAvatarUrl }],
-      });
-    }
-    for (const f of feed ?? []) {
-      const key = f.occurrence.id;
-      const existing = map.get(key);
-      const friendBadges = f.friendsSaved.map((fr) => ({
-        name: fr.name,
-        avatar: fr.avatarUrl,
-      }));
-      if (existing) {
-        existing.friends.push(...friendBadges);
-      } else {
-        map.set(key, {
-          eventId: f.eventId,
-          occurrenceId: f.occurrence.id,
-          event: f,
-          startsAt:
-            typeof f.occurrence.startsAt === 'string'
-              ? f.occurrence.startsAt
-              : new Date(f.occurrence.startsAt as unknown as string).toISOString(),
-          endsAt:
-            f.occurrence.endsAt == null
-              ? null
-              : typeof f.occurrence.endsAt === 'string'
-                ? f.occurrence.endsAt
-                : new Date(f.occurrence.endsAt as unknown as string).toISOString(),
-          mine: false,
-          friends: friendBadges,
-        });
-      }
-    }
-    return Array.from(map.values());
-  }, [saves, feed, myAvatarUrl, myName]);
-
-  const now = Date.now();
-  const upcoming = useMemo(
-    () =>
-      merged
-        .filter((m) => new Date(m.endsAt ?? m.startsAt).getTime() >= now)
-        .sort(
-          (a, b) =>
-            new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime()
-        ),
-    // now-dependentie weglaten — re-render alleen wanneer merged wijzigt;
-    // 't event-window verschuift langzaam genoeg dat per-second updates
-    // niet nodig zijn.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [merged]
-  );
-  const past = useMemo(
-    () =>
-      merged
-        .filter((m) => new Date(m.endsAt ?? m.startsAt).getTime() < now)
-        .sort(
-          (a, b) =>
-            new Date(b.startsAt).getTime() - new Date(a.startsAt).getTime()
-        ),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [merged]
-  );
-
-  const isEmpty =
-    (!authed && !isLoading) ||
-    (authed && !isLoading && !error && merged.length === 0);
-
-  if (isEmpty) {
-    return (
-      <View style={styles.emptyCenter}>
-        <Ionicons name="heart-outline" size={48} color={roles.fgMuted} />
-        <Text style={[styles.emptyTitle, { color: roles.fg }]}>
-          {t('Nog niks op de planning.', 'Nothing planned yet.')}
-        </Text>
-        <Text style={[styles.emptySub, { color: roles.fgMuted }]}>
-          {t(
-            'Hier komen events waar jij of je vrienden naartoe gaan. Tik bij een event op het hartje om hem op te slaan.',
-            'Events you or your friends are going to show up here. Tap the heart on an event to save it.'
-          )}
-        </Text>
-      </View>
-    );
-  }
-
-  if (isLoading) {
-    return (
-      <View style={styles.loadingWrap}>
-        <SpinningCross size={28} color={roles.fgPlaceholder} />
-      </View>
-    );
-  }
-  if (error) {
-    return (
-      <View style={styles.listState}>
-        <Text style={[styles.listStateText, { color: '#c9453a' }]}>
-          {t('Kon je planning niet laden.', 'Couldn’t load your planning.')}
-        </Text>
-      </View>
-    );
-  }
-
-  // Virtualized: alleen wat in viewport zit wordt gemount — historie kan
-  // honderden items zijn voor heavy users.
-  type Section = {
-    isPast: boolean;
-    data: Merged[];
-  };
-  const sections: Section[] = [];
-  if (upcoming.length > 0) sections.push({ isPast: false, data: upcoming });
-  if (past.length > 0) sections.push({ isPast: true, data: past });
-
-  return (
-    <SectionList
-      sections={sections}
-      keyExtractor={(item, idx) => `${idx}-${item.occurrenceId}`}
-      renderItem={({ item, section }) => (
-        <MergedRow entry={item} dim={section.isPast} />
-      )}
-      renderSectionHeader={({ section }) =>
-        section.isPast ? <PastAnchor count={section.data.length} /> : null
-      }
-      stickySectionHeadersEnabled={false}
-      contentContainerStyle={{ paddingTop: topInset, paddingBottom: bottomInset }}
-      showsVerticalScrollIndicator={false}
-      refreshControl={
-        <RefreshControl
-          refreshing={refreshing}
-          onRefresh={onRefresh}
-          tintColor={roles.accent}
-          colors={[roles.accent]}
-          progressViewOffset={topInset}
-        />
-      }
-      windowSize={7}
-      initialNumToRender={8}
-      maxToRenderPerBatch={8}
-      removeClippedSubviews
-    />
-  );
-}
-
-/**
- * Combined-row voor de gemerge'd Planning-feed. Eigen saves + friend-
- * saves landen in dezelfde rij; de avatar-stack toont "jij + vrienden"
- * met label-aggregatie via EventListRow's `friends`-prop.
- */
-function MergedRow({
-  entry,
-  dim = false,
-}: {
-  entry: {
-    eventId: string;
-    occurrenceId: string;
-    event: SavedApiEvent | ApiFeedEvent;
-    startsAt: string;
-    endsAt: string | null;
-    mine: boolean;
-    friends: { name: string; avatar: string | null }[];
-  };
-  dim?: boolean;
-}) {
-  const locale = useLocale();
-  const e = entry.event as ApiFeedEvent &
-    Partial<SavedApiEvent> & {
-      venue?: SavedApiEvent['venue'];
-    };
-  // Saves geven `venue` als object, feed geeft `venue` ook als object.
-  // Beide hebben name + type + imageUrl.
-  const venue: { name: string; type?: string | null; imageUrl?: string | null } =
-    (entry.event as SavedApiEvent).venue ?? (entry.event as ApiFeedEvent).venue;
-  const venueTone =
-    venue.type && (VENUE_TYPE_TICK as Record<string, BadgeTone>)[venue.type]
-      ? (VENUE_TYPE_TICK as Record<string, BadgeTone>)[venue.type]
-      : undefined;
-  const tone = CATEGORY_TICK[e.category];
-  const d = new Date(entry.startsAt);
-  const dow = dowMixed(d.getDay(), locale);
-  const month = monthShort(d.getMonth(), locale).toLowerCase();
-  const time = rowTimeLabel(entry.startsAt, entry.endsAt, locale);
-  const dateLabel = `${dow} ${d.getDate()} ${month} · ${time}`;
-  return (
-    <View style={dim ? { opacity: 0.5 } : undefined}>
-      <EventListRow
-        thumb={
-          eventImageUrl({
-            imageUrl: e.imageUrl ?? null,
-            venue: { imageUrl: venue.imageUrl ?? null },
-          }) ?? ''
-        }
-        thumbSize={96}
-        title={e.title}
-        venue={venue.name}
-        venueTone={venueTone}
-        time={dateLabel}
-        dateAbove
-        tags={[
-          { label: translateCategory(e.category, locale), tone },
-        ]}
-        seriesLabel={undefined}
-        genreLabel={(e.genres ?? [])[0]}
-        friends={entry.friends.length > 0 ? entry.friends : undefined}
-        tick={tone}
-        onPress={() =>
-          router.push(`/event/${entry.eventId}?source=gered&o=${entry.occurrenceId}`)
-        }
-      />
-    </View>
   );
 }
 
@@ -800,8 +357,24 @@ function RequestRow({
   busy: boolean;
 }) {
   const roles = useRoles();
+  const t = useT();
   return (
-    <View style={[styles.row, { borderColor: roles.bgChip }]}>
+    <View
+      style={[
+        styles.row,
+        styles.rowPending,
+        {
+          borderColor: roles.bgChip,
+          // Zachte accent-tint over de hele rij zodat de pending-state
+          // niet weg te scrollen is.
+          backgroundColor: `${roles.accent}14`,
+        },
+      ]}
+    >
+      <View
+        pointerEvents="none"
+        style={[styles.rowAccentBar, { backgroundColor: roles.accent }]}
+      />
       <AvatarWithDot
         avatarUrl={request.avatarUrl}
         name={request.name}
@@ -811,32 +384,35 @@ function RequestRow({
         <Text numberOfLines={1} style={[styles.rowName, { color: roles.fg }]}>
           {request.name}
         </Text>
-        {request.handle && (
-          <Text
-            numberOfLines={1}
-            style={[styles.rowMeta, { color: roles.fgMuted }]}
-          >
-            @{request.handle}
-          </Text>
-        )}
+        <Text
+          numberOfLines={1}
+          style={[styles.rowMeta, { color: roles.accent }]}
+        >
+          {t('Wil bevriend worden', 'Wants to connect')}
+          {request.handle ? ` · @${request.handle}` : ''}
+        </Text>
       </View>
       <View style={styles.twin}>
         <Pressable
           onPress={onDecline}
           disabled={busy}
-          style={[styles.twinBtn, { borderColor: roles.fgPlaceholder }]}
+          style={[styles.declineGhost, { borderColor: roles.fgPlaceholder }]}
         >
-          <Cross size={16} thickness={3.2} color={roles.fgMuted} />
+          <Cross size={14} thickness={3} color={roles.fgMuted} />
         </Pressable>
         <Pressable
           onPress={onAccept}
           disabled={busy}
           style={[
-            styles.twinBtn,
-            { backgroundColor: roles.accent, borderColor: roles.accent },
+            styles.acceptCta,
+            { backgroundColor: roles.accent },
+            busy && { opacity: 0.5 },
           ]}
         >
-          <Ionicons name="checkmark" size={18} color={roles.onAccent} />
+          <Ionicons name="checkmark" size={16} color={roles.onAccent} />
+          <Text style={[styles.acceptCtaLabel, { color: roles.onAccent }]}>
+            {t('Accepteer', 'Accept')}
+          </Text>
         </Pressable>
       </View>
     </View>
@@ -899,6 +475,7 @@ function InviteRow({ invite }: { invite: ApiInvitation }) {
     isGroup || invite.isOutgoing
       ? `/invitation/${invite.id}`
       : `/event/${invite.event.id}?o=${invite.occurrence.id}`;
+  const needsAction = !invite.isOutgoing && invite.myStatus === 'pending';
   return (
     <Pressable
       onPress={() =>
@@ -907,12 +484,26 @@ function InviteRow({ invite }: { invite: ApiInvitation }) {
           target as any
         )
       }
-      style={[styles.row, { borderColor: roles.bgChip, alignItems: 'flex-start' }]}
+      style={[
+        styles.row,
+        needsAction && styles.rowPending,
+        {
+          borderColor: roles.bgChip,
+          alignItems: 'flex-start',
+          backgroundColor: needsAction ? `${roles.accent}14` : 'transparent',
+        },
+      ]}
     >
+      {needsAction && (
+        <View
+          pointerEvents="none"
+          style={[styles.rowAccentBar, { backgroundColor: roles.accent }]}
+        />
+      )}
       <AvatarWithDot
         avatarUrl={invite.from.avatarUrl}
         name={invite.from.name}
-        showDot={!invite.isOutgoing && invite.myStatus === 'pending'}
+        showDot={needsAction}
       />
       <View style={styles.rowBody}>
         <Text
@@ -997,6 +588,14 @@ function InviteRow({ invite }: { invite: ApiInvitation }) {
           </View>
         )}
       </View>
+      {needsAction && (
+        <View style={[styles.respondCta, { backgroundColor: roles.accent }]}>
+          <Text style={[styles.respondCtaLabel, { color: roles.onAccent }]}>
+            {t('Reageer', 'Respond')}
+          </Text>
+          <Ionicons name="chevron-forward" size={14} color={roles.onAccent} />
+        </View>
+      )}
     </Pressable>
   );
 }
@@ -1181,84 +780,9 @@ function PendingRow({ user }: { user: ApiFriendRequest }) {
   );
 }
 
-function PastAnchor({ count }: { count: number }) {
-  const roles = useRoles();
-  const t = useT();
-  return (
-    <View style={[styles.anchor, styles.pastAnchor]}>
-      <Text style={[styles.pastLabel, { color: roles.fgMuted }]}>
-        {t('Geweest', 'Past')}
-      </Text>
-      <Text style={[styles.anchorCount, { color: roles.fgPlaceholder }]}>
-        {count} {count === 1 ? t('plan', 'plan') : t('plannen', 'plans')}
-      </Text>
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
   root: { flex: 1 },
   page: { flex: 1 },
-
-  // Sub-tabs — pill-switch met blur, zelfde stijl als de Map/List-
-  // switch op de Kaart-tab. Gecentreerd in de header-children-slot.
-  subTabsAlign: {
-    height: SUB_TAB_HEIGHT,
-    paddingTop: 4,
-    paddingBottom: 4,
-    paddingHorizontal: 22,
-    alignItems: 'center',
-  },
-  switchTrack: {
-    flexDirection: 'row',
-    padding: 3,
-    borderRadius: 999,
-    borderWidth: 1,
-    overflow: 'hidden',
-    // Vol-breed binnen subTabsAlign's horizontale padding zodat de
-    // Nederlandse labels (Vrienden / Planning) niet inklemmen op
-    // smallere telefoons.
-    alignSelf: 'stretch',
-  },
-  switchBlob: {
-    position: 'absolute',
-    top: 3,
-    left: 3,
-    bottom: 3,
-    borderRadius: 999,
-  },
-  switchBtn: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingVertical: 11,
-    paddingHorizontal: 16,
-    borderRadius: 999,
-  },
-  switchBtnText: {
-    fontFamily: fontFamily.medium,
-    fontSize: 14,
-    // Vaste lineHeight (= badge-hoogte) zorgt dat de pill-hoogte
-    // niet verspringt wanneer de badge er wel/niet bij staat.
-    lineHeight: 20,
-    letterSpacing: -0.06,
-  },
-  switchBadge: {
-    minWidth: 20,
-    height: 20,
-    paddingHorizontal: 5,
-    borderRadius: 999,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  switchBadgeText: {
-    fontFamily: fontFamily.bold,
-    fontSize: 11,
-    letterSpacing: -0.1,
-    lineHeight: 13,
-  },
 
   // Empty / loading / error
   emptyCenter: {
@@ -1434,7 +958,7 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
   },
 
-  twin: { flexDirection: 'row', gap: 8 },
+  twin: { flexDirection: 'row', gap: 8, alignItems: 'center' },
   twinBtn: {
     width: 44,
     height: 44,
@@ -1442,6 +966,62 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  // Pending state-styling die op zowel Friend-request als incoming
+  // invite rows wordt toegepast. Subtiele tint + verticale accent-bar
+  // links zodat de rij visueel uit de lijst springt als "nog te doen".
+  rowPending: {
+    position: 'relative',
+    paddingLeft: 22 + 6,
+  },
+  rowAccentBar: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: 3,
+  },
+  // Decline: klein, ghost, geen label — secondary.
+  declineGhost: {
+    width: 36,
+    height: 36,
+    borderRadius: 999,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  // Accept: gevulde accent-CTA met icoon + label — primary.
+  acceptCta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    height: 36,
+    paddingHorizontal: 14,
+    borderRadius: 999,
+  },
+  acceptCtaLabel: {
+    fontFamily: fontFamily.displayBold,
+    fontSize: 13,
+    letterSpacing: -0.2,
+  },
+  // Voor InviteRow: rechts-aligned mini-CTA zodat duidelijk is dat de
+  // hele rij naar een actie-scherm leidt. Niet de hele actie hier
+  // (accept/decline kan complex zijn — multi-occ, group) maar wel een
+  // ondubbelzinnig "reageer hier" signaal.
+  respondCta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    height: 30,
+    paddingLeft: 12,
+    paddingRight: 8,
+    borderRadius: 999,
+    alignSelf: 'center',
+  },
+  respondCtaLabel: {
+    fontFamily: fontFamily.displayBold,
+    fontSize: 12,
+    letterSpacing: -0.2,
   },
   pendingPill: {
     paddingHorizontal: 10,

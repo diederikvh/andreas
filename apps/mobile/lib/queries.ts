@@ -464,6 +464,12 @@ export function useFriendRequests(opts: { enabled?: boolean } = {}) {
     // fetch-spam is verwaarloosbaar.
     staleTime: 0,
     refetchOnMount: 'always',
+    // Poll elke 60s zodat we 'n nieuw verzoek detecteren ook als de
+    // push gemist wordt (no-permission, OEM battery saver, simulator
+    // zonder APNS-relay). Pauzeert vanzelf als de app naar background
+    // gaat — geen overbelasting.
+    refetchInterval: 60_000,
+    refetchIntervalInBackground: false,
   });
 }
 
@@ -565,9 +571,12 @@ export function useInvitations(opts: { enabled?: boolean } = {}) {
     queryKey: queryKeys.invitations(),
     queryFn: () => getInvitations(),
     enabled: opts.enabled ?? true,
-    // Zelfde reden als useFriendRequests — inbox altijd vers.
+    // Zelfde reden als useFriendRequests — inbox altijd vers + polling
+    // in foreground om gemiste pushes/RSVP's op te vangen.
     staleTime: 0,
     refetchOnMount: 'always',
+    refetchInterval: 60_000,
+    refetchIntervalInBackground: false,
   });
 }
 

@@ -30,6 +30,8 @@ import { SentryUserBinder } from '@/components/SentryUserBinder';
 import { ShareInviteClaimer } from '@/components/ShareInviteClaimer';
 import { UpdateBanner } from '@/components/UpdateBanner';
 import { ZoomLayerProvider } from '@/components/ZoomLayer';
+import { InboxToastProvider } from '@/components/InboxToast';
+import { InboxNotifier } from '@/components/InboxNotifier';
 import { queryClient, queryPersister } from '@/lib/queryClient';
 import { useContentModeStore } from '@/store/contentMode';
 import { useHasHydrated, useMode, useModeStore } from '@/store/mode';
@@ -111,18 +113,21 @@ function RootLayout() {
         {ready && (
           <SafeAreaProvider>
             <ZoomLayerProvider>
-              <Stack screenOptions={{ headerShown: false }}>
-                <Stack.Screen
-                  name="event/[id]/invite"
-                  options={{ presentation: 'modal' }}
-                />
-              </Stack>
-              <ModeCurtain />
-              <PushManager />
-              <SentryUserBinder />
-              <ShareInviteClaimer />
-              <UpdateBanner />
-              <StatusBar style={mode === 'nacht' ? 'light' : 'dark'} />
+              <InboxToastProvider>
+                <Stack screenOptions={{ headerShown: false }}>
+                  <Stack.Screen
+                    name="event/[id]/invite"
+                    options={{ presentation: 'modal' }}
+                  />
+                </Stack>
+                <ModeCurtain />
+                <PushManager />
+                <InboxNotifier />
+                <SentryUserBinder />
+                <ShareInviteClaimer />
+                <UpdateBanner />
+                <StatusBar style={mode === 'nacht' ? 'light' : 'dark'} />
+              </InboxToastProvider>
             </ZoomLayerProvider>
           </SafeAreaProvider>
         )}
