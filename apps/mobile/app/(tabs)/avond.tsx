@@ -839,21 +839,13 @@ export default function Avond() {
         )}
 
         {/* Shortcut-CTAs in een horizontale scroller: 2 vol in beeld,
-            3e (Films) peekt aan de rechterkant zodat je 'm ontdekt. */}
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.shortcutScroller}
-        >
-          <FilmsBanner />
-          <ClubsBanner />
-          <LiveBanner />
-          <TheaterBanner />
-          <KaartBanner />
-          <FriendsBanner />
-          <NewBanner />
-          <OpGevoelBanner />
-        </ScrollView>
+            3e (Films) peekt aan de rechterkant zodat je 'm ontdekt.
+            NewBanner zit normaal achteraan, maar zodra er nieuwe items
+            sinds vorige sessie zijn schuift 'ie naar voren — getriggerd
+            worden om te klikken werkt alleen als de kaart in beeld
+            valt. */}
+        <ShortcutsRow />
+        {/* zie ShortcutsRow definitie onder voor de bestaande set */}
 
         {/* "Voor jou" — score-gesorteerde aanbevelingen op basis van je
             save-historie + gevolgde venues. Boven de datum-divider zodat
@@ -1720,6 +1712,29 @@ function FeaturedCard({
   );
 }
 
+function ShortcutsRow() {
+  const since = useLastSessionTimestamp();
+  const { data: newSince } = useNewArrivalsSince(since);
+  const hasNew = (newSince?.length ?? 0) > 0;
+  return (
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      contentContainerStyle={styles.shortcutScroller}
+    >
+      {hasNew && <NewBanner />}
+      <FilmsBanner />
+      <ClubsBanner />
+      <LiveBanner />
+      <TheaterBanner />
+      <KaartBanner />
+      <FriendsBanner />
+      {!hasNew && <NewBanner />}
+      <OpGevoelBanner />
+    </ScrollView>
+  );
+}
+
 function NewBanner() {
   const roles = useRoles();
   const t = useT();
@@ -1759,10 +1774,7 @@ function NewBanner() {
         {t('Net binnen', 'Just in')}
       </Text>
       <Text style={[styles.shortcutTitle, { color: roles.fg }]}>
-        {t(
-          'De nieuwste aanwinsten in de agenda.',
-          'The latest additions to the agenda.'
-        )}
+        {t('De nieuwste aanwinsten.', 'The latest additions.')}
       </Text>
     </Pressable>
   );
@@ -1784,10 +1796,7 @@ function FriendsBanner() {
         {t('Friends', 'Friends')}
       </Text>
       <Text style={[styles.shortcutTitle, { color: roles.fg }]}>
-        {t(
-          'Waar je vrienden naartoe gaan.',
-          'Where your friends are going.'
-        )}
+        {t('Wat vrienden plannen.', 'Friends are planning.')}
       </Text>
     </Pressable>
   );
@@ -1839,10 +1848,7 @@ function TheaterBanner() {
         {t('Theater', 'Theatre')}
       </Text>
       <Text style={[styles.shortcutTitle, { color: roles.fg }]}>
-        {t(
-          'Nu en volgende week op de planken.',
-          'On stage now and next week.'
-        )}
+        {t('Op de planken.', 'On stage.')}
       </Text>
     </Pressable>
   );
@@ -1864,10 +1870,7 @@ function ClubsBanner() {
         {t('Clubs', 'Clubs')}
       </Text>
       <Text style={[styles.shortcutTitle, { color: roles.fg }]}>
-        {t(
-          'Wie staan er achter de draaitafels.',
-          "Who's on the decks."
-        )}
+        {t('Wie er draait.', 'On the decks.')}
       </Text>
     </Pressable>
   );
@@ -1889,7 +1892,7 @@ function FilmsBanner() {
         {t('Films', 'Films')}
       </Text>
       <Text style={[styles.shortcutTitle, { color: roles.fg }]}>
-        {t('Wat draait er deze week?', "What's showing this week?")}
+        {t('Wat er draait.', "What's showing.")}
       </Text>
     </Pressable>
   );
@@ -1911,7 +1914,7 @@ function LiveBanner() {
         {t('Live', 'Live')}
       </Text>
       <Text style={[styles.shortcutTitle, { color: roles.fg }]}>
-        {t('Waar live muziek te vinden is.', 'Where to catch live music.')}
+        {t('Live muziek.', 'Live music.')}
       </Text>
     </Pressable>
   );
@@ -2670,13 +2673,14 @@ const styles = StyleSheet.create({
     marginBottom: 18,
   },
   shortcutBtn: {
-    // Fixed-width zodat ~2 kaarten vol in beeld passen op een 390px
-    // iPhone en de 3e ~70px peekt — zelfde "ontdek door te swipen"-
-    // gevoel als de event-rails eronder.
-    width: 155,
+    // Fixed-width zodat ~3 kaarten vol in beeld passen op een 390px
+    // iPhone, met de 4e als peek-hint dat er nog meer is. Eerder
+    // hadden we 155 (2 vol) maar dan moest je veel swipen om alles
+    // te zien.
+    width: 112,
     alignItems: 'flex-start',
-    gap: 10,
-    padding: 14,
+    gap: 8,
+    padding: 12,
     borderRadius: 14,
   },
   shortcutBody: { gap: 2 },

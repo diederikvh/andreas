@@ -8,7 +8,7 @@
  */
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import {
   FlatList,
   Pressable,
@@ -73,7 +73,21 @@ export default function NewScreen() {
     error: errorRecent,
   } = useRecentEvents(10, { enabled: authed && sinceEmpty });
 
-  const events = newSinceLast && newSinceLast.length > 0 ? newSinceLast : recent;
+  const rawEvents =
+    newSinceLast && newSinceLast.length > 0 ? newSinceLast : recent;
+  // Server geeft de lijst in createdAt-desc volgorde (meest recent
+  // gescraped eerst). Visueel is dat verwarrend: gebruiker ziet de
+  // event-datum naast elke kaart en die springt dan random rond. Hier
+  // hersorteer we op event-startsAt zodat de tijdvolgorde leesbaar
+  // is: morgen → volgende week → over een jaar.
+  const events = useMemo(() => {
+    if (!rawEvents) return undefined;
+    return [...rawEvents].sort((a, b) => {
+      const aT = a.startsAt ? new Date(a.startsAt).getTime() : Infinity;
+      const bT = b.startsAt ? new Date(b.startsAt).getTime() : Infinity;
+      return aT - bT;
+    });
+  }, [rawEvents]);
   const showingFallback =
     sinceEmpty && (recent?.length ?? 0) > 0;
   const isLoading = (since && loadingSince) || (sinceEmpty && loadingRecent);
@@ -149,13 +163,18 @@ export default function NewScreen() {
           keyExtractor={(e) => e.id}
           renderItem={({ item }) => <NewArrivalRow event={item} />}
           ListHeaderComponent={
-            showingFallback ? (
+            events && events.length > 0 ? (
               <View style={styles.fallbackHint}>
-                <Text style={[styles.fallbackText, { color: roles.fgMuted }]}>
-                  {t(
-                    'Niks nieuws sinds je vorige bezoek — hier zie je de meest recente aanwinsten.',
-                    "Nothing new since your last visit — here are the latest additions."
-                  )}
+                <Text style={[styles.fallbackText, { color: roles.fg }]}>
+                  {showingFallback
+                    ? t(
+                        `Niks nieuws sinds je vorige bezoek — hier zie je de laatste ${events.length} aanwinsten.`,
+                        `Nothing new since your last visit — here are the latest ${events.length} additions.`
+                      )
+                    : t(
+                        `${events.length} ${events.length === 1 ? 'aanwinst' : 'aanwinsten'} sinds je vorige bezoek.`,
+                        `${events.length} ${events.length === 1 ? 'new addition' : 'new additions'} since your last visit.`
+                      )}
                 </Text>
               </View>
             ) : null
@@ -265,12 +284,13 @@ const styles = StyleSheet.create({
   },
   fallbackHint: {
     paddingHorizontal: 22,
-    paddingTop: 4,
-    paddingBottom: 10,
+    paddingTop: 6,
+    paddingBottom: 14,
   },
   fallbackText: {
     fontFamily: fontFamily.body,
-    fontSize: 13,
-    lineHeight: 18,
+    fontSize: 15,
+    lineHeight: 21,
+    letterSpacing: -0.1,
   },
 });
