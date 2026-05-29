@@ -34,6 +34,45 @@ type VNode = {
   props: { [key: string]: unknown; children?: unknown };
 };
 
+// Cross-glyph als twee gedraaide blokjes — fonts hebben geen glyph voor
+// U+2715, dus een lettersymbool valt om als ▢. Matcht de Cross.tsx
+// brand-mark uit de mobile-app.
+function cross(size: number, thickness: number, color: string): VNode {
+  return el(
+    'div',
+    {
+      style: {
+        position: 'relative',
+        width: size,
+        height: size,
+        display: 'flex',
+      },
+    },
+    el('div', {
+      style: {
+        position: 'absolute',
+        top: size / 2 - thickness / 2,
+        left: 0,
+        width: size,
+        height: thickness,
+        backgroundColor: color,
+        transform: 'rotate(45deg)',
+      },
+    }),
+    el('div', {
+      style: {
+        position: 'absolute',
+        top: size / 2 - thickness / 2,
+        left: 0,
+        width: size,
+        height: thickness,
+        backgroundColor: color,
+        transform: 'rotate(-45deg)',
+      },
+    })
+  );
+}
+
 function el(
   type: string,
   props: { [key: string]: unknown } | null,
@@ -182,20 +221,46 @@ export async function renderInviteOg(opts: {
           gap: 14,
         },
       },
-      // ANDREAS ✕-kicker (mono, accent).
+      // ANDREAS ✕-kicker — kruis als twee blokjes (font heeft geen
+      // glyph voor U+2715). Mono uppercase eromheen.
       el(
         'div',
         {
           style: {
-            fontFamily: 'JetBrainsMono',
-            fontSize: 22,
-            letterSpacing: 4,
-            color: ACID,
-            textTransform: 'uppercase',
             display: 'flex',
+            alignItems: 'center',
+            gap: 10,
           },
         },
-        'Andreas ✕ vrienden'
+        el(
+          'div',
+          {
+            style: {
+              fontFamily: 'JetBrainsMono',
+              fontSize: 22,
+              letterSpacing: 4,
+              color: ACID,
+              textTransform: 'uppercase',
+              display: 'flex',
+            },
+          },
+          'Andreas'
+        ),
+        cross(16, 4, ACID),
+        el(
+          'div',
+          {
+            style: {
+              fontFamily: 'JetBrainsMono',
+              fontSize: 22,
+              letterSpacing: 4,
+              color: ACID,
+              textTransform: 'uppercase',
+              display: 'flex',
+            },
+          },
+          'Vrienden'
+        )
       ),
       el(
         'div',
@@ -218,8 +283,8 @@ export async function renderInviteOg(opts: {
         {
           style: {
             fontFamily: 'Archivo',
-            fontWeight: 500,
-            fontSize: 26,
+            fontWeight: 800,
+            fontSize: 28,
             lineHeight: 1.3,
             color: INK_MUTED,
             display: 'flex',
