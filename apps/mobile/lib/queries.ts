@@ -16,6 +16,8 @@ import {
   getEventGenres,
   getEvents,
   getForYouEvents,
+  getNewEventsSince,
+  getRecentEvents,
   getFriendDetail,
   getFriendRequests,
   getFriends,
@@ -80,6 +82,10 @@ export const queryKeys = {
     ['agenda-day', input.date, input.filters] as const,
   mirror: () => ['mirror', 'me'] as const,
   forYou: () => ['events', 'for-you'] as const,
+  newArrivalsSince: (sinceIso: string | null) =>
+    ['events', 'new', 'since', sinceIso ?? 'pending'] as const,
+  recentEvents: (limit: number) =>
+    ['events', 'new', 'recent', limit] as const,
   dismisses: () => ['dismisses'] as const,
   artist: (slug: string) => ['artist', slug] as const,
   venue: (slug: string) => ['venue', slug] as const,
@@ -126,6 +132,43 @@ export function useEvents(filter: EventsFilter = {}) {
     // filtert `useNowMinute()` continu op effectieve eindtijd, dus
     // de bovenste rij wordt nooit een dood event.
     staleTime: 10 * 60_000,
+    refetchOnWindowFocus: true,
+  });
+}
+
+/**
+ * Events met createdAt > since (sessie-grens). Voor de badge en de
+ * primaire lijst op /new. `since` mag null zijn (eerste sessie ooit)
+ * — query staat dan op pauze.
+ */
+export function useNewArrivalsSince(
+  since: Date | null,
+  opts: { enabled?: boolean } = {}
+) {
+  const sinceIso = since ? since.toISOString() : null;
+  return useQuery({
+    queryKey: queryKeys.newArrivalsSince(sinceIso),
+    queryFn: () => getNewEventsSince(since!),
+    enabled: (opts.enabled ?? true) && Boolean(since),
+    staleTime: 5 * 60_000,
+    refetchOnWindowFocus: true,
+  });
+}
+
+/**
+ * Fallback-query voor /new: laatste N recente events sowieso.
+ * Mounten met enabled=true alleen wanneer de since-query leeg is —
+ * anders verspil je een round-trip.
+ */
+export function useRecentEvents(
+  limit = 10,
+  opts: { enabled?: boolean } = {}
+) {
+  return useQuery({
+    queryKey: queryKeys.recentEvents(limit),
+    queryFn: () => getRecentEvents(limit),
+    enabled: opts.enabled ?? true,
+    staleTime: 5 * 60_000,
     refetchOnWindowFocus: true,
   });
 }

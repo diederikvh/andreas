@@ -21,6 +21,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import * as Updates from 'expo-updates';
 import { useEffect, useState } from 'react';
+import { AppState } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
@@ -35,6 +36,7 @@ import { InboxNotifier } from '@/components/InboxNotifier';
 import { queryClient, queryPersister } from '@/lib/queryClient';
 import { useContentModeStore } from '@/store/contentMode';
 import { useHasHydrated, useMode, useModeStore } from '@/store/mode';
+import { useSessionTimestamps } from '@/store/sessionTimestamps';
 
 // Sentry — fire-and-forget init bij module-load. DSN is een
 // public secret (key in DSN identificeert het project, niet de auth).
@@ -87,6 +89,19 @@ function RootLayout() {
     if (visual !== expected) {
       useModeStore.getState().setMode(expected);
     }
+  }, [ready]);
+
+  // Session-grens markeren: eerste keer bij ready (cold launch) en
+  // daarna telkens wanneer de app terugkomt uit background. De store
+  // beslist zelf of 't lang genoeg geleden is om de previous-timestamp
+  // door te schuiven (30min-grens) — anders is 't no-op.
+  useEffect(() => {
+    if (!ready) return;
+    useSessionTimestamps.getState().markLaunch();
+    const sub = AppState.addEventListener('change', (next) => {
+      if (next === 'active') useSessionTimestamps.getState().markLaunch();
+    });
+    return () => sub.remove();
   }, [ready]);
 
   // Provider moet altijd gemount zijn zodat z'n hydration kan starten

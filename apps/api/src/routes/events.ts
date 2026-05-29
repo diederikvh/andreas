@@ -973,6 +973,145 @@ eventsRoute.get('/genres', async (c) => {
   return c.json({ genres });
 });
 
+/**
+ * "Net binnen" — events op createdAt desc. Twee query-modes:
+ *
+ *  - `?since=ISO`: alleen events met createdAt > since (gebruikt door
+ *    de homepage-shortcut badge en als primaire lijst op /new). Cap
+ *    op 30 dagen terug om gigantische payloads voor langdurig-
+ *    inactieve gebruikers te voorkomen.
+ *  - geen `since`: laatste N events (default 10, cap 100). Fallback-
+ *    query die /new client-side firet wanneer de since-query leeg is,
+ *    zodat de pagina nooit kaal blijft.
+ *
+ * Filter: published + venue published + ≥1 toekomstige occurrence
+ * (events die al voorbij zijn op moment van scrape zijn ruis).
+ *
+ * Lean shape — dezelfde velden als `/events?lean=1` zodat de mobile
+ * client met EventListRow + bestaande types kan renderen.
+ */
+eventsRoute.get('/new', async (c) => {
+  const sinceParam = c.req.query('since');
+  let since: Date | null = null;
+  if (sinceParam) {
+    const parsed = new Date(sinceParam);
+    if (Number.isNaN(parsed.getTime()))
+      return c.json({ error: 'bad-since' }, 400);
+    // Cap aan de oude kant: gebruiker die 3 maanden weg is geweest
+    // krijgt geen lijst van honderden weken oude items.
+    const minSince = new Date(Date.now() - 30 * 24 * 3600 * 1000);
+    since = parsed < minSince ? minSince : parsed;
+  }
+
+  // Default limit verschilt per mode: with-since 200 (volledig
+  // gewenst), without-since 10 (alleen "wat is er sowieso recent
+  // toegevoegd" voor de fallback-rij).
+  const defaultLimit = since ? 200 : 10;
+  const limit = Math.min(
+    Number(c.req.query('limit') ?? defaultLimit),
+    since ? 500 : 100
+  );
+
+  const me = await maybeUserId(c);
+  const blockedVenueIds = me
+    ? new Set(await getBlockedVenueIds(me))
+    : new Set<string>();
+
+  const eventRows = await db
+    .select({
+      id: schema.events.id,
+      title: schema.events.title,
+      kind: schema.events.kind,
+      category: schema.events.category,
+      featured: schema.events.featured,
+      genres: schema.events.genres,
+      imageUrl: schema.events.imageUrl,
+      posterUrl: schema.events.posterUrl,
+      stillUrl: schema.events.stillUrl,
+      trailerUrl: schema.events.trailerUrl,
+      createdAt: schema.events.createdAt,
+      venue: {
+        id: schema.venues.id,
+        slug: schema.venues.slug,
+        name: schema.venues.name,
+        lat: schema.venues.lat,
+        lng: schema.venues.lng,
+        type: schema.venues.type,
+        imageUrl: schema.venues.imageUrl,
+        wijk: schema.venues.wijk,
+      },
+    })
+    .from(schema.events)
+    .innerJoin(schema.venues, eq(schema.events.venueId, schema.venues.id))
+    .where(
+      and(
+        eq(schema.events.published, true),
+        eq(schema.venues.published, true),
+        since ? gt(schema.events.createdAt, since) : sql`true`,
+        blockedVenueIds.size > 0
+          ? not(inArray(schema.venues.id, Array.from(blockedVenueIds)))
+          : sql`true`
+      )
+    )
+    .orderBy(desc(schema.events.createdAt))
+    .limit(limit);
+
+  if (eventRows.length === 0) return c.json({ events: [] });
+
+  // Stap 2: future occurrences voor deze events.
+  const occRange = await findEventsWithOccurrencesInRange({
+    eventIds: eventRows.map((e) => e.id),
+  });
+
+  const followedVenueIds = me
+    ? new Set(await getFollowedVenueIds(me))
+    : new Set<string>();
+
+  // Stap 3: lean response — strip events zonder upcoming occurrence
+  // (events.createdAt > since maar alle occurrences zijn voorbij — bv.
+  // een laat-gescraped event van vorige week).
+  const events = eventRows
+    .filter((e) => occRange.byEvent.has(e.id))
+    .map((event) => {
+      const occ = occRange.byEvent.get(event.id)!;
+      const isExhibition = event.kind === 'exhibition';
+      const nextStarts = occ.next?.startsAt ?? null;
+      const nextEnds = occ.next?.endsAt ?? null;
+      return {
+        ...event,
+        startsAt: isExhibition
+          ? normalizeExhibitionTime(nextStarts as unknown as string | null, 'start')
+          : nextStarts,
+        endsAt: isExhibition
+          ? normalizeExhibitionTime(nextEnds as unknown as string | null, 'end')
+          : nextEnds,
+        priceCents: occ.next?.priceCents ?? null,
+        priceNote: occ.next?.priceNote ?? null,
+        ticketUrl: occ.next?.ticketUrl ?? null,
+        occurrenceCount: occ.count,
+        nextOccurrenceVenue: occ.next?.venue ?? null,
+        occurrencesInRange: occ.all.map((o) => ({
+          ...o,
+          startsAt: isExhibition
+            ? normalizeExhibitionTime(o.startsAt as unknown as string, 'start')!
+            : o.startsAt,
+          endsAt: isExhibition
+            ? normalizeExhibitionTime(o.endsAt as unknown as string | null, 'end')
+            : o.endsAt,
+          friendsSaved: [],
+          friendsSavedCount: 0,
+        })),
+        friendsSaved: [],
+        friendsSavedCount: 0,
+        venueFollowed: followedVenueIds.has(event.venue.id),
+        series: [],
+        myInvitesCount: 0,
+      };
+    });
+
+  return c.json({ events });
+});
+
 eventsRoute.get('/:id', async (c) => {
   const id = c.req.param('id');
 

@@ -166,6 +166,10 @@ export type ApiEvent = {
   /** Specifieke genres binnen `category` (techno/hip-hop/jazz/etc).
       Vrije array. Filter scheidt clientside per categorie. */
   genres?: string[];
+  /** ISO van toen 't event in onze DB landde (door scraper of admin).
+      Alleen meegestuurd door endpoints die op nieuws-volgorde tonen
+      (bv. `/events/new`). Voor reguliere list-endpoints null. */
+  createdAt?: string;
 };
 
 /** Detail-respons: event met de volledige lijst occurrences. */
@@ -279,6 +283,30 @@ export async function getEvents(filter: EventsFilter = {}): Promise<ApiEvent[]> 
 export async function getForYouEvents(): Promise<ApiEvent[]> {
   const { events } = await authedRequest<{ events: ApiEvent[] }>(
     '/events/for-you'
+  );
+  return events;
+}
+
+/**
+ * "Net binnen sinds X": events met createdAt > since. Gebruikt voor de
+ * shortcut-badge + primaire lijst op /new.
+ */
+export async function getNewEventsSince(since: Date): Promise<ApiEvent[]> {
+  const params = new URLSearchParams({ since: since.toISOString() });
+  const { events } = await authedRequest<{ events: ApiEvent[] }>(
+    `/events/new?${params.toString()}`
+  );
+  return events;
+}
+
+/**
+ * Laatste N events sowieso — fallback-query voor /new wanneer er sinds
+ * de vorige sessie 0 nieuwe items zijn. Default 10.
+ */
+export async function getRecentEvents(limit = 10): Promise<ApiEvent[]> {
+  const params = new URLSearchParams({ limit: String(limit) });
+  const { events } = await authedRequest<{ events: ApiEvent[] }>(
+    `/events/new?${params.toString()}`
   );
   return events;
 }

@@ -64,6 +64,7 @@ import {
   useForYouEvents,
   useMe,
   useMySaves,
+  useNewArrivalsSince,
   useSocialFeed,
   useVenues,
   useSeriesList,
@@ -72,6 +73,7 @@ import { useSession } from '@/lib/authClient';
 import { useContentMode } from '@/store/contentMode';
 import { useMode, useRoles } from '@/store/mode';
 import { useAddSavedVandaagSearch } from '@/store/savedVandaagSearches';
+import { useLastSessionTimestamp } from '@/store/sessionTimestamps';
 import { useVandaagFilters } from '@/store/vandaagFilters';
 import { fontFamily, palette } from '@/theme/tokens';
 
@@ -849,6 +851,7 @@ export default function Avond() {
           <TheaterBanner />
           <KaartBanner />
           <FriendsBanner />
+          <NewBanner />
           <OpGevoelBanner />
         </ScrollView>
 
@@ -1714,6 +1717,54 @@ function FeaturedCard({
         </View>
       </View>
     </View>
+  );
+}
+
+function NewBanner() {
+  const roles = useRoles();
+  const t = useT();
+  const since = useLastSessionTimestamp();
+  const { data: events } = useNewArrivalsSince(since);
+  // Badge telt alleen events die sinds vorige sessie zijn toegevoegd.
+  // Bij since=null (eerste sessie) staat de query op pauze → 0, geen
+  // badge.
+  const count = events?.length ?? 0;
+  return (
+    <Pressable
+      onPress={() => router.push('/new' as never)}
+      style={[
+        styles.shortcutBtn,
+        { backgroundColor: roles.bgLift },
+      ]}
+    >
+      <View>
+        <Ionicons name="sparkles-outline" size={36} color={roles.accent} />
+        {count > 0 ? (
+          <View
+            style={[
+              styles.shortcutBadge,
+              { backgroundColor: roles.accent },
+            ]}
+          >
+            <Text
+              style={[styles.shortcutBadgeText, { color: roles.onAccent }]}
+              numberOfLines={1}
+            >
+              {count > 99 ? '99+' : count}
+            </Text>
+          </View>
+        ) : null}
+      </View>
+      <Text style={[styles.shortcutKicker, { color: roles.fgMuted }]}>
+        {t('Net binnen', 'Just in')}
+      </Text>
+      <Text style={[styles.shortcutTitle, { color: roles.fg }]}>
+        {t(
+          'De nieuwste aanwinsten in de agenda.',
+          'The latest additions to the agenda.'
+        )}
+      </Text>
+    </Pressable>
   );
 }
 
@@ -2641,5 +2692,24 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     letterSpacing: -0.14,
   },
-
+  // Count-badge rechtsboven het shortcut-icoon — alleen voor de
+  // "Nieuw"-kaart wanneer er items zijn binnen gekomen sinds vorige
+  // sessie. Pill-rond, accent-bg, cap op "99+".
+  shortcutBadge: {
+    position: 'absolute',
+    top: -6,
+    right: -10,
+    minWidth: 20,
+    height: 20,
+    paddingHorizontal: 6,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  shortcutBadgeText: {
+    fontFamily: fontFamily.displayBold,
+    fontSize: 11,
+    letterSpacing: -0.1,
+    lineHeight: 13,
+  },
 });
