@@ -10,9 +10,9 @@ import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
 import {
-  FlatList,
   Pressable,
   RefreshControl,
+  SectionList,
   StyleSheet,
   Text,
   View,
@@ -80,6 +80,10 @@ export default function NewScreen() {
   // event-datum naast elke kaart en die springt dan random rond. Hier
   // hersorteer we op event-startsAt zodat de tijdvolgorde leesbaar
   // is: morgen → volgende week → over een jaar.
+  //
+  // Daarnaast splitsen we op `venueFollowed`: items van venues die
+  // jij volgt komen bovenaan onder hun eigen kop, daarna de rest.
+  // Mooie persoonlijke filter zonder dat je écht items mist.
   const events = useMemo(() => {
     if (!rawEvents) return undefined;
     return [...rawEvents].sort((a, b) => {
@@ -88,6 +92,19 @@ export default function NewScreen() {
       return aT - bT;
     });
   }, [rawEvents]);
+
+  const sections = useMemo(() => {
+    if (!events) return [];
+    const followed = events.filter((e) => e.venueFollowed);
+    const others = events.filter((e) => !e.venueFollowed);
+    const out: { kind: 'followed' | 'others'; data: ApiEvent[] }[] = [];
+    if (followed.length > 0) out.push({ kind: 'followed', data: followed });
+    if (others.length > 0) out.push({ kind: 'others', data: others });
+    return out;
+  }, [events]);
+  // Header pas tonen als je ECHT iets volgt — anders is "Andere venues"
+  // alleen verwarrend. Bij 0 follows = 1 sectie zonder kop.
+  const showSectionHeaders = sections.length > 1;
   const showingFallback =
     sinceEmpty && (recent?.length ?? 0) > 0;
   const isLoading = (since && loadingSince) || (sinceEmpty && loadingRecent);
@@ -158,10 +175,27 @@ export default function NewScreen() {
           </Text>
         </View>
       ) : (
-        <FlatList
-          data={events ?? []}
+        <SectionList
+          sections={sections}
           keyExtractor={(e) => e.id}
           renderItem={({ item }) => <NewArrivalRow event={item} />}
+          renderSectionHeader={({ section }) =>
+            showSectionHeaders ? (
+              <View
+                style={[
+                  styles.sectionHead,
+                  { backgroundColor: roles.bg },
+                ]}
+              >
+                <Text style={[styles.sectionHeadText, { color: roles.fg }]}>
+                  {section.kind === 'followed'
+                    ? t('Bij jouw venues', 'At your venues')
+                    : t('Bij andere venues', 'At other venues')}
+                </Text>
+              </View>
+            ) : null
+          }
+          stickySectionHeadersEnabled={false}
           ListHeaderComponent={
             events && events.length > 0 ? (
               <View style={styles.fallbackHint}>
@@ -285,12 +319,24 @@ const styles = StyleSheet.create({
   fallbackHint: {
     paddingHorizontal: 22,
     paddingTop: 6,
-    paddingBottom: 14,
+    paddingBottom: 4,
   },
   fallbackText: {
     fontFamily: fontFamily.body,
     fontSize: 15,
     lineHeight: 21,
     letterSpacing: -0.1,
+  },
+  // Section-headers — zelfde display-stijl als de category-headers
+  // op Agenda: dikke font-titel, geen mono-kicker.
+  sectionHead: {
+    paddingHorizontal: 22,
+    paddingTop: 10,
+    paddingBottom: 6,
+  },
+  sectionHeadText: {
+    fontFamily: fontFamily.displayBold,
+    fontSize: 18,
+    letterSpacing: -0.36,
   },
 });
