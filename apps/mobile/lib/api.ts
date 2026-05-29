@@ -299,6 +299,38 @@ export async function getNewEventsSince(since: Date): Promise<ApiEvent[]> {
   return events;
 }
 
+/** Slanke venue-shape voor de search-resultaten lijst. */
+export type ApiSearchVenue = {
+  id: string;
+  slug: string;
+  name: string;
+  address: string;
+  type: VenueType | null;
+  wijk: VenueWijk | null;
+  imageUrl: string | null;
+  lat: number;
+  lng: number;
+};
+
+export type SearchResponse = {
+  venues: ApiSearchVenue[];
+  events: ApiEvent[];
+  eventsHasMore: boolean;
+};
+
+/**
+ * IMDB-stijl globale zoek. `q` is required; eventsOffset paginate't
+ * alleen de events-sectie (venues komen op de eerste pagina mee).
+ */
+export async function search(
+  q: string,
+  eventsOffset = 0
+): Promise<SearchResponse> {
+  const params = new URLSearchParams({ q });
+  if (eventsOffset > 0) params.set('eventsOffset', String(eventsOffset));
+  return authedRequest<SearchResponse>(`/search?${params.toString()}`);
+}
+
 /**
  * Laatste N events sowieso — fallback-query voor /new wanneer er sinds
  * de vorige sessie 0 nieuwe items zijn. Default 10.

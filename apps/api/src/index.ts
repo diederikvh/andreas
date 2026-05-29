@@ -24,6 +24,7 @@ import { shareInvitesRoute } from './routes/share-invites.js';
 import { pushRoute } from './routes/push.js';
 import { savesRoute } from './routes/saves.js';
 import { seoFeedsRoute } from './routes/seo-feeds.js';
+import { searchRoute } from './routes/search.js';
 import { seriesRoute } from './routes/series.js';
 import { getAppRoute } from './routes/get-app.js';
 import { shareRoute } from './routes/share.js';
@@ -273,6 +274,7 @@ app.post('/me/avatar', async (c) => {
 app.route('/events', eventsRoute);
 app.route('/artists', artistsRoute);
 app.route('/venues', venuesRoute);
+app.route('/search', searchRoute);
 app.route('/series', seriesRoute);
 app.route('/saves', savesRoute);
 app.route('/mirror', mirrorRoute);

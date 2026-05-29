@@ -30,6 +30,8 @@ import { FilmRailCard } from '@/components/FilmRailCard';
 import { RailEventCard } from '@/components/RailEventCard';
 import { VenueSquareRailCard } from '@/components/VenueSquareRailCard';
 import { RefreshBanner } from '@/components/RefreshBanner';
+import { SearchOverlay } from '@/components/SearchOverlay';
+import { SearchPill } from '@/components/SearchPill';
 import { RunningStrip } from '@/components/RunningStrip';
 import { SpinningCross } from '@/components/SpinningCross';
 import type { ApiEvent, ApiFeedEvent, SavedApiEvent, VenueType } from '@/lib/api';
@@ -148,6 +150,7 @@ export default function Avond() {
   const cmode = useContentMode();
   const scrollRef = useRef<ScrollView>(null);
   useScrollToTop(scrollRef);
+  const [searchOpen, setSearchOpen] = useState(false);
 
   // Twee tijd-tikkers met verschillende doelen:
   //
@@ -838,6 +841,13 @@ export default function Avond() {
           </View>
         )}
 
+        {/* IMDB-stijl globale zoek: tikt → in-place SearchOverlay met
+            fade+slide animatie. Eén entrypoint dat venues + events
+            cross-zoekt; filters blijven op /agenda en /venues. */}
+        <View style={{ marginTop: 14, marginBottom: 14 }}>
+          <SearchPill onPress={() => setSearchOpen(true)} />
+        </View>
+
         {/* Shortcut-CTAs in een horizontale scroller: 2 vol in beeld,
             3e (Films) peekt aan de rechterkant zodat je 'm ontdekt.
             NewBanner zit normaal achteraan, maar zodra er nieuwe items
@@ -1190,6 +1200,10 @@ export default function Avond() {
       </ScrollView>
       <AppHeader title={t('Vandaag', 'Today')} showContentMode />
       <ContentSwitchHint />
+      <SearchOverlay
+        visible={searchOpen}
+        onClose={() => setSearchOpen(false)}
+      />
     </View>
   );
 }
