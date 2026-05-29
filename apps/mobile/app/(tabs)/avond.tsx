@@ -152,6 +152,18 @@ export default function Avond() {
   useScrollToTop(scrollRef);
   const [searchOpen, setSearchOpen] = useState(false);
 
+  // Elke tap op de tab-bar (ook re-tap op /avond zelf) sluit de
+  // search-overlay. Anders zou je vanuit een andere tab terugkomen op
+  // /avond met de overlay nog open — onverwacht, want de tab-bar-tap
+  // signaleert "ik wil naar dit hoofdscherm".
+  const navigation = useNavigation();
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('tabPress' as never, () => {
+      setSearchOpen(false);
+    });
+    return unsubscribe;
+  }, [navigation]);
+
   // Twee tijd-tikkers met verschillende doelen:
   //
   // - `focusedNow` ververst alleen bij tab-focus en app-resume. Drijft

@@ -1437,7 +1437,16 @@ function TrailerCard({
   const t = useT();
   return (
     <Pressable
-      onPress={() => WebBrowser.openBrowserAsync(trailerUrl)}
+      onPress={() => {
+        // Linking.openURL pakt op iOS de YouTube-app als die
+        // geinstalleerd is (YouTube-app-claim op youtu.be /
+        // youtube.com Universal Links). Anders valt 't terug op
+        // de browser. WebBrowser.openBrowserAsync zou altijd in
+        // de in-app browser openen — minder fijn voor video.
+        Linking.openURL(trailerUrl).catch(() => {
+          WebBrowser.openBrowserAsync(trailerUrl).catch(() => {});
+        });
+      }}
       style={[styles.trailerCard, { backgroundColor: roles.bgLift }]}
     >
       <View style={styles.trailerThumbWrap}>

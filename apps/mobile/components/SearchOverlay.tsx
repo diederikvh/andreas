@@ -32,9 +32,11 @@ import Animated, {
   runOnJS,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useInfiniteQuery } from '@tanstack/react-query';
+import { useInfiniteQuery, keepPreviousData } from '@tanstack/react-query';
 
-import { Cross } from '@/components/Cross';
+import MaskedView from '@react-native-masked-view/masked-view';
+import { BlurView } from 'expo-blur';
+import { LinearGradient } from 'expo-linear-gradient';
 import { EventListRow } from '@/components/EventListRow';
 import { ProfileAvatar } from '@/components/ProfileAvatar';
 import { SpinningCross } from '@/components/SpinningCross';
@@ -77,6 +79,23 @@ export function SearchOverlay({
   const [debouncedQuery, setDebouncedQuery] = useState('');
   // Houd 'm in de DOM tijdens de exit-animatie; pas daarna unmount.
   const [mounted, setMounted] = useState(visible);
+  // Trackt keyboard-hoogte zodat empty-state tussen searchbar en
+  // toetsenbord gecentreerd kan worden (anders verdwijnt 'ie achter
+  // het keyboard).
+  const [kbHeight, setKbHeight] = useState(0);
+
+  useEffect(() => {
+    const showEvt = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvt = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const showSub = Keyboard.addListener(showEvt, (e) => {
+      setKbHeight(e.endCoordinates.height);
+    });
+    const hideSub = Keyboard.addListener(hideEvt, () => setKbHeight(0));
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
 
   const backdrop = useSharedValue(0);
   const sheet = useSharedValue(0);
@@ -145,6 +164,10 @@ export function SearchOverlay({
     },
     enabled,
     staleTime: 60_000,
+    // Houd het vorige resultaat zichtbaar terwijl de nieuwe query
+    // fetcht — anders flitst de spinner bij elke keystroke en raak
+    // je je context kwijt.
+    placeholderData: keepPreviousData,
   });
 
   // Venues komen alleen op page 0 — pluk ze daar uit. Events
@@ -172,11 +195,11 @@ export function SearchOverlay({
   }, [onClose]);
 
   const onResultPress = useCallback(() => {
-    // Sluit de overlay zodra je doorklikt — anders sta je terug op
-    // /avond met een nog-open overlay over de details.
+    // Toetsenbord weg zodat 't detail-scherm volle hoogte heeft, maar
+    // de overlay zelf blijft gemount — komt de gebruiker terug, dan
+    // staat z'n zoek-lijst + scroll-positie nog netjes klaar.
     Keyboard.dismiss();
-    onClose();
-  }, [onClose]);
+  }, []);
 
   const backdropStyle = useAnimatedStyle(() => ({
     opacity: backdrop.value,
@@ -225,68 +248,28 @@ export function SearchOverlay({
       <Animated.View
         style={[
           styles.sheet,
-          { backgroundColor: roles.bg, paddingTop: insets.top },
+          { backgroundColor: roles.bg },
           sheetStyle,
         ]}
       >
-        <View style={styles.header}>
-          <View style={styles.logoLockup} pointerEvents="none">
-            <Text style={[styles.wordmark, { color: roles.fg }]}>Andreas</Text>
-            <View style={styles.logoCross}>
-              <Cross size={16} thickness={4} color={roles.accent} />
-            </View>
-            <Text style={[styles.title, { color: roles.fg }]}>
-              {t('Search', 'Search')}
-            </Text>
-          </View>
-          <Pressable
-            onPress={handleClose}
-            hitSlop={8}
+        {/* Body — staat onder de top-zone. paddingTop pakt de hoogte
+            van de top-zone inclusief safe-area zodat content er
+            mooi onderdoor scrollt. */}
+        {!enabled ? (
+          <View
             style={[
-              styles.closeBtn,
-              { backgroundColor: isNacht ? palette.noir2 : palette.paper2 },
+              styles.hintWrap,
+              {
+                paddingTop: insets.top + TOP_ZONE_BELOW_SAFE,
+                paddingBottom: kbHeight,
+              },
             ]}
           >
-            <Ionicons name="close" size={20} color={roles.fg} />
-          </Pressable>
-        </View>
-
-        <View
-          style={[
-            styles.inputWrap,
-            { backgroundColor: roles.bgLift, borderColor: roles.bgChip },
-          ]}
-        >
-          <Ionicons name="search" size={18} color={roles.fgMuted} />
-          <TextInput
-            ref={inputRef}
-            value={query}
-            onChangeText={setQuery}
-            placeholder={t(
-              'Zoek venues, events, artiesten…',
-              'Search venues, events, artists…'
-            )}
-            placeholderTextColor={roles.fgMuted}
-            style={[styles.input, { color: roles.fg }]}
-            returnKeyType="search"
-            autoCorrect={false}
-            autoCapitalize="none"
-          />
-          {query.length > 0 ? (
-            <Pressable
-              onPress={() => {
-                setQuery('');
-                inputRef.current?.focus();
-              }}
-              hitSlop={8}
-            >
-              <Ionicons name="close-circle" size={18} color={roles.fgMuted} />
-            </Pressable>
-          ) : null}
-        </View>
-
-        {!enabled ? (
-          <View style={styles.hintWrap}>
+            <Ionicons
+              name="search-outline"
+              size={44}
+              color={roles.fgPlaceholder}
+            />
             <Text style={[styles.hint, { color: roles.fgMuted }]}>
               {t(
                 'Begin te typen om venues en events te zoeken.',
@@ -295,16 +278,31 @@ export function SearchOverlay({
             </Text>
           </View>
         ) : sections.length === 0 ? (
-          <View style={styles.hintWrap}>
+          <View
+            style={[
+              styles.hintWrap,
+              {
+                paddingTop: insets.top + TOP_ZONE_BELOW_SAFE,
+                paddingBottom: kbHeight,
+              },
+            ]}
+          >
             {isFetching ? (
               <SpinningCross size={24} color={roles.fgPlaceholder} />
             ) : (
-              <Text style={[styles.hint, { color: roles.fgMuted }]}>
-                {t(
-                  `Geen resultaten voor “${debouncedQuery}”.`,
-                  `No results for “${debouncedQuery}”.`
-                )}
-              </Text>
+              <>
+                <Ionicons
+                  name="cloud-offline-outline"
+                  size={44}
+                  color={roles.fgPlaceholder}
+                />
+                <Text style={[styles.hint, { color: roles.fgMuted }]}>
+                  {t(
+                    `Geen resultaten voor “${debouncedQuery}”.`,
+                    `No results for “${debouncedQuery}”.`
+                  )}
+                </Text>
+              </>
             )}
           </View>
         ) : (
@@ -342,6 +340,7 @@ export function SearchOverlay({
               ) : null
             }
             contentContainerStyle={{
+              paddingTop: insets.top + TOP_ZONE_BELOW_SAFE,
               paddingBottom: insets.bottom + 24,
             }}
             windowSize={7}
@@ -349,10 +348,103 @@ export function SearchOverlay({
             maxToRenderPerBatch={10}
           />
         )}
+
+        {/* Top-zone — AppHeader-stijl blur+gradient fade-out aan de
+            onderkant zodat content er natuurlijk onderdoor scrollt
+            i.p.v. tegen een harde rand te knallen. */}
+        <View
+          style={[styles.topZone, { paddingTop: insets.top + 8 }]}
+          pointerEvents="box-none"
+        >
+          {Platform.OS === 'android' ? (
+            <LinearGradient
+              colors={
+                isNacht
+                  ? ['rgba(10,10,11,0.92)', 'rgba(10,10,11,0.88)', 'transparent']
+                  : ['rgba(245,241,232,0.94)', 'rgba(245,241,232,0.9)', 'transparent']
+              }
+              locations={[0, 0.7, 1]}
+              style={StyleSheet.absoluteFill}
+              pointerEvents="none"
+            />
+          ) : (
+            <MaskedView
+              style={StyleSheet.absoluteFill}
+              pointerEvents="none"
+              maskElement={
+                <LinearGradient
+                  colors={['#000', '#000', 'transparent']}
+                  locations={[0, 0.7, 1]}
+                  style={StyleSheet.absoluteFill}
+                />
+              }
+            >
+              <BlurView
+                intensity={40}
+                tint={isNacht ? 'dark' : 'light'}
+                style={StyleSheet.absoluteFill}
+              />
+            </MaskedView>
+          )}
+          <View style={styles.topRow}>
+            <View
+              style={[
+                styles.inputWrap,
+                { backgroundColor: roles.bgLift, borderColor: roles.bgChip },
+              ]}
+            >
+              <Ionicons name="search" size={18} color={roles.fgMuted} />
+              <TextInput
+                ref={inputRef}
+                value={query}
+                onChangeText={setQuery}
+                placeholder={t(
+                  'Zoek venues, events, artiesten…',
+                  'Search venues, events, artists…'
+                )}
+                placeholderTextColor={roles.fgMuted}
+                style={[styles.input, { color: roles.fg }]}
+                returnKeyType="search"
+                autoCorrect={false}
+                autoCapitalize="none"
+              />
+              {query.length > 0 ? (
+                <Pressable
+                  onPress={() => {
+                    setQuery('');
+                    inputRef.current?.focus();
+                  }}
+                  hitSlop={8}
+                >
+                  <Ionicons
+                    name="close-circle"
+                    size={18}
+                    color={roles.fgMuted}
+                  />
+                </Pressable>
+              ) : null}
+            </View>
+            <Pressable
+              onPress={handleClose}
+              hitSlop={4}
+              style={[
+                styles.closeBtnSquare,
+                { backgroundColor: isNacht ? palette.noir2 : palette.paper2 },
+              ]}
+            >
+              <Ionicons name="close" size={22} color={roles.fg} />
+            </Pressable>
+          </View>
+        </View>
       </Animated.View>
     </View>
   );
 }
+
+// Hoogte onder de safe-area inset: 8 (top padding) + 48 (search bar) +
+// 20 (fade-zone). Body krijgt deze padding zodat content begint onder
+// de blur-strip; gradient fade-out zorgt voor 'n soft overgang.
+const TOP_ZONE_BELOW_SAFE = 8 + 48 + 20;
 
 function VenueRow({
   venue,
@@ -468,52 +560,40 @@ const styles = StyleSheet.create({
       android: { elevation: 20 },
     }),
   },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 18,
-    height: 36,
-    marginBottom: 16,
+  // Top-zone — absolute over de body, hoogte = insets.top + ~76. Bevat
+  // blur+gradient (AppHeader-stijl) zodat content er onderdoor fade't.
+  topZone: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    paddingBottom: 8,
+    zIndex: 10,
   },
-  logoLockup: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    flexShrink: 1,
-  },
-  logoCross: { transform: [{ translateY: -1 }] },
-  wordmark: {
-    fontFamily: fontFamily.display,
-    fontSize: 18,
-    letterSpacing: -0.18,
-    textTransform: 'uppercase',
-    lineHeight: 18,
-  },
-  title: {
-    fontFamily: fontFamily.display,
-    fontSize: 18,
-    letterSpacing: -0.18,
-    textTransform: 'uppercase',
-    lineHeight: 18,
-    flexShrink: 1,
-  },
-  closeBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 999,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  inputWrap: {
+  // Top-row: alleen de input + vierkante sluitknop ernaast. Beide 48px
+  // hoog zodat ze visueel als één balk lezen.
+  topRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    marginHorizontal: 22,
+    paddingHorizontal: 22,
+  },
+  inputWrap: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
     paddingHorizontal: 14,
     height: 48,
     borderRadius: 999,
     borderWidth: 1,
+  },
+  closeBtnSquare: {
+    width: 48,
+    height: 48,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   input: {
     flex: 1,
@@ -522,11 +602,15 @@ const styles = StyleSheet.create({
     letterSpacing: -0.1,
     paddingVertical: 0,
   },
+  // Empty/no-results — vertical-center op het scherm, smal genoeg
+  // zodat lange zinnen over twee regels lopen. Icoon erboven voor
+  // wat visueel ankertje.
   hintWrap: {
     flex: 1,
-    paddingTop: 56,
-    paddingHorizontal: 40,
+    paddingHorizontal: 56,
     alignItems: 'center',
+    justifyContent: 'center',
+    gap: 14,
   },
   hint: {
     fontFamily: fontFamily.body,
