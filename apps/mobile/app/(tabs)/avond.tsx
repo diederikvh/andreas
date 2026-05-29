@@ -1800,7 +1800,7 @@ function NewBanner() {
         {t('Net binnen', 'Just in')}
       </Text>
       <Text style={[styles.shortcutTitle, { color: roles.fg }]}>
-        {t('De nieuwste aanwinsten.', 'The latest additions.')}
+        {t('Nieuwste aanwinsten', 'Latest additions')}
       </Text>
     </Pressable>
   );
@@ -1822,7 +1822,7 @@ function FriendsBanner() {
         {t('Friends', 'Friends')}
       </Text>
       <Text style={[styles.shortcutTitle, { color: roles.fg }]}>
-        {t('Wat vrienden plannen.', 'Friends are planning.')}
+        {t('Vrienden plannen', 'Friends planning')}
       </Text>
     </Pressable>
   );
@@ -1848,7 +1848,7 @@ function OpGevoelBanner() {
         {t('Vibes', 'Vibes')}
       </Text>
       <Text style={[styles.shortcutTitle, { color: roles.fg }]}>
-        {t('Wat is je mood.', "What's your mood.")}
+        {t('Wat is je mood', "What's your mood")}
       </Text>
     </Pressable>
   );
@@ -1874,7 +1874,7 @@ function TheaterBanner() {
         {t('Theater', 'Theatre')}
       </Text>
       <Text style={[styles.shortcutTitle, { color: roles.fg }]}>
-        {t('Op de planken.', 'On stage.')}
+        {t('Op de planken', 'On stage')}
       </Text>
     </Pressable>
   );
@@ -1896,7 +1896,7 @@ function ClubsBanner() {
         {t('Clubs', 'Clubs')}
       </Text>
       <Text style={[styles.shortcutTitle, { color: roles.fg }]}>
-        {t('Wie er draait.', 'On the decks.')}
+        {t('Wie er draait', 'On the decks')}
       </Text>
     </Pressable>
   );
@@ -1918,7 +1918,7 @@ function FilmsBanner() {
         {t('Films', 'Films')}
       </Text>
       <Text style={[styles.shortcutTitle, { color: roles.fg }]}>
-        {t('Wat er draait.', "What's showing.")}
+        {t('Wat er draait', "What's showing")}
       </Text>
     </Pressable>
   );
@@ -1940,7 +1940,7 @@ function LiveBanner() {
         {t('Live', 'Live')}
       </Text>
       <Text style={[styles.shortcutTitle, { color: roles.fg }]}>
-        {t('Live muziek.', 'Live music.')}
+        {t('Live muziek', 'Live music')}
       </Text>
     </Pressable>
   );
@@ -1962,7 +1962,7 @@ function KaartBanner() {
         {t('Kaart', 'Map')}
       </Text>
       <Text style={[styles.shortcutTitle, { color: roles.fg }]}>
-        {t('Hier en nu in beeld.', 'Right here, right now.')}
+        {t('Hier en nu in beeld', 'Right here, right now')}
       </Text>
     </Pressable>
   );
