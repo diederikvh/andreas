@@ -111,6 +111,7 @@ shareRoute.get('/e/:id', async (c) => {
   const id = c.req.param('id');
   const ref = c.req.query('ref') ?? '';
   const isShareContext = ref.length > 0;
+  const lang: 'nl' | 'en' = c.req.query('lang') === 'en' ? 'en' : 'nl';
 
   // Eén query voor het hoofd-record. Onder de aanname dat de meeste
   // requests een geldige event-ID hebben — niet-bestaande IDs vallen
@@ -151,7 +152,7 @@ shareRoute.get('/e/:id', async (c) => {
   // Share-context → minimal redirect-pagina (legacy). Voorkomt dat een
   // iMessage-tap eerst een SEO-pagina laat zien.
   if (isShareContext) {
-    return c.body(renderShareRedirectEvent(id, ref, row, c.req.header('user-agent') ?? ''), 200, {
+    return c.body(renderShareRedirectEvent(id, ref, row, c.req.header('user-agent') ?? '', lang), 200, {
       'Content-Type': 'text/html; charset=utf-8',
       'Cache-Control': 'public, max-age=300',
     });
@@ -2671,13 +2672,18 @@ function renderShareRedirectEvent(
         venue: { name: string } | null;
       }
     | undefined,
-  ua: string
+  ua: string,
+  lang: 'nl' | 'en' = 'nl'
 ): string {
   const eventTitle = row?.title ?? 'ANDREAS';
   const eventImage = row?.imageUrl ?? '';
   const refQs = ref ? `?ref=${encodeURIComponent(ref)}` : '';
   const appLink = `andreas://event/${encodeURIComponent(id)}${refQs}`;
   const universalLink = `${PUBLIC_BASE_URL}/e/${encodeURIComponent(id)}${refQs}`;
+  // OG-image URL krijgt ?lang=… mee zodat messaging-apps de juiste
+  // taalversie van de composite-image fetchen. Zonder dit fallback'te
+  // 't naar NL omdat WhatsApp/iMessage geen Accept-Language sturen.
+  const ogImageUrl = `${PUBLIC_BASE_URL}/e/${encodeURIComponent(id)}/og.png${lang === 'en' ? '?lang=en' : ''}`;
   const { url: storeUrl, label: storeLabel } = pickStore(ua);
 
   return `<!doctype html>
@@ -2690,13 +2696,13 @@ function renderShareRedirectEvent(
   <meta property="og:description" content="${escapeHtml(
     [row?.venue?.name].filter(Boolean).join(' · ') || ''
   )}" />
-  <meta property="og:image" content="${escapeHtml(PUBLIC_BASE_URL)}/e/${escapeHtml(id)}/og.png" />
+  <meta property="og:image" content="${escapeHtml(ogImageUrl)}" />
   <meta property="og:image:width" content="1200" />
   <meta property="og:image:height" content="630" />
   <meta property="og:url" content="${escapeHtml(universalLink)}" />
   <meta property="og:type" content="website" />
   <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:image" content="${escapeHtml(PUBLIC_BASE_URL)}/e/${escapeHtml(id)}/og.png" />
+  <meta name="twitter:image" content="${escapeHtml(ogImageUrl)}" />
   <meta name="apple-itunes-app" content="app-id=${APPLE_APP_ID}, app-argument=${escapeHtml(appLink)}" />
   <meta name="robots" content="noindex" />
   <style>
@@ -3004,6 +3010,11 @@ shareRoute.get('/i/:token', async (c) => {
   const isAndroid = /Android/i.test(ua);
   const storeUrl = isAndroid ? PLAY_STORE_URL : APP_STORE_URL;
   const storeLabel = isAndroid ? 'Google Play' : 'App Store';
+  // ?lang= bubbelt door naar de og:image-URL zodat messaging-apps de
+  // EN-versie van de composite-image fetchen wanneer de share-link
+  // met ?lang=en gegenereerd is.
+  const lang: 'nl' | 'en' = c.req.query('lang') === 'en' ? 'en' : 'nl';
+  const ogLangQs = lang === 'en' ? '?lang=en' : '';
 
   // Toon de uitnodiger op de fallback-pagina (avatar + naam). We
   // lookuppen via de share_invites + users join. Verlopen of niet-
@@ -3048,11 +3059,11 @@ shareRoute.get('/i/:token', async (c) => {
   <title>${escapeHtml(title)}</title>
   <meta property="og:title" content="${escapeHtml(title)}" />
   <meta property="og:description" content="${escapeHtml(subTitle)}" />
-  <meta property="og:image" content="${escapeHtml(PUBLIC_BASE_URL)}/i/${escapeHtml(safeToken)}/og.png" />
+  <meta property="og:image" content="${escapeHtml(PUBLIC_BASE_URL)}/i/${escapeHtml(safeToken)}/og.png${ogLangQs}" />
   <meta property="og:image:width" content="1200" />
   <meta property="og:image:height" content="630" />
   <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:image" content="${escapeHtml(PUBLIC_BASE_URL)}/i/${escapeHtml(safeToken)}/og.png" />
+  <meta name="twitter:image" content="${escapeHtml(PUBLIC_BASE_URL)}/i/${escapeHtml(safeToken)}/og.png${ogLangQs}" />
   <meta property="og:url" content="${escapeHtml(universalLink)}" />
   <meta property="og:type" content="website" />
   <meta name="apple-itunes-app" content="app-id=${APPLE_APP_ID}, app-argument=${escapeHtml(appLink)}" />
