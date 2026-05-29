@@ -34,43 +34,38 @@ type VNode = {
   props: { [key: string]: unknown; children?: unknown };
 };
 
-// Cross-glyph als twee gedraaide blokjes — fonts hebben geen glyph voor
-// U+2715, dus een lettersymbool valt om als ▢. Matcht de Cross.tsx
-// brand-mark uit de mobile-app.
+// Cross-glyph via inline SVG — twee gedraaide div-rects via Satori's
+// transform werkten op kleine schalen niet betrouwbaar (alleen één
+// arm zichtbaar). SVG met twee <line> elementen rendert exact zoals
+// de Cross.tsx brand-mark uit de mobile-app.
 function cross(size: number, thickness: number, color: string): VNode {
-  return el(
-    'div',
-    {
-      style: {
-        position: 'relative',
-        width: size,
-        height: size,
-        display: 'flex',
-      },
-    },
-    el('div', {
-      style: {
-        position: 'absolute',
-        top: size / 2 - thickness / 2,
-        left: 0,
-        width: size,
-        height: thickness,
-        backgroundColor: color,
-        transform: 'rotate(45deg)',
-      },
-    }),
-    el('div', {
-      style: {
-        position: 'absolute',
-        top: size / 2 - thickness / 2,
-        left: 0,
-        width: size,
-        height: thickness,
-        backgroundColor: color,
-        transform: 'rotate(-45deg)',
-      },
-    })
-  );
+  const pad = thickness; // beetje ademruimte zodat de uiteinden niet tegen de viewport-rand vallen
+  return el('svg', {
+    width: size,
+    height: size,
+    viewBox: `0 0 ${size} ${size}`,
+    xmlns: 'http://www.w3.org/2000/svg',
+    children: [
+      el('line', {
+        x1: pad,
+        y1: pad,
+        x2: size - pad,
+        y2: size - pad,
+        stroke: color,
+        strokeWidth: thickness,
+        strokeLinecap: 'round',
+      }),
+      el('line', {
+        x1: size - pad,
+        y1: pad,
+        x2: pad,
+        y2: size - pad,
+        stroke: color,
+        strokeWidth: thickness,
+        strokeLinecap: 'round',
+      }),
+    ],
+  });
 }
 
 function el(
