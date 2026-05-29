@@ -2,6 +2,7 @@ import { and, asc, desc, eq, not, or, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 
 import { db, schema } from '../db/index.js';
+import { renderInviteOg } from '../social/inviteOg.js';
 import {
   APP_STORE_URL,
   HEADER_STYLES,
@@ -2905,6 +2906,46 @@ shareRoute.get('/u/:handle', async (c) => {
  *               zodra de user ingelogd is.
  * ====================================================================== */
 
+/**
+ * OG-image voor share-invite — avatar + app-icon composite. 1200×630.
+ * Caching long: per-token zelfde input → zelfde output, en messaging-
+ * apps gretig op caching.
+ */
+shareRoute.get('/i/:token/og.png', async (c) => {
+  const token = c.req.param('token');
+  const safeToken = token.replace(/[^A-Za-z0-9_-]/g, '').slice(0, 64);
+  const [row] = await db
+    .select({
+      name: schema.users.name,
+      handle: schema.users.handle,
+      avatarUrl: schema.users.avatarUrl,
+    })
+    .from(schema.shareInvites)
+    .innerJoin(
+      schema.users,
+      eq(schema.users.id, schema.shareInvites.fromUserId)
+    )
+    .where(eq(schema.shareInvites.token, safeToken))
+    .limit(1);
+  const displayName =
+    row && row.name && !row.name.startsWith('+') ? row.name : '';
+  const inviterName =
+    displayName || (row?.handle ? `@${row.handle}` : 'Iemand');
+  const png = await renderInviteOg({
+    avatarUrl: row?.avatarUrl ?? null,
+    inviterName,
+  });
+  // Buffer→ArrayBuffer copy: Hono wil 'n strict Uint8Array<ArrayBuffer>;
+  // Node's Buffer kan SharedArrayBuffer-backed zijn. Een nieuwe
+  // ArrayBuffer-allocatie via .slice() lost het op.
+  const ab = png.buffer.slice(png.byteOffset, png.byteOffset + png.byteLength);
+  const bytes = new Uint8Array(ab as ArrayBuffer);
+  return c.body(bytes, 200, {
+    'Content-Type': 'image/png',
+    'Cache-Control': 'public, max-age=86400, immutable',
+  });
+});
+
 shareRoute.get('/i/:token', async (c) => {
   const token = c.req.param('token');
   const safeToken = token.replace(/[^A-Za-z0-9_-]/g, '').slice(0, 64);
@@ -2959,7 +3000,11 @@ shareRoute.get('/i/:token', async (c) => {
   <title>${escapeHtml(title)}</title>
   <meta property="og:title" content="${escapeHtml(title)}" />
   <meta property="og:description" content="${escapeHtml(subTitle)}" />
-  ${row?.avatarUrl ? `<meta property="og:image" content="${escapeHtml(row.avatarUrl)}" />` : ''}
+  <meta property="og:image" content="${escapeHtml(PUBLIC_BASE_URL)}/i/${escapeHtml(safeToken)}/og.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:image" content="${escapeHtml(PUBLIC_BASE_URL)}/i/${escapeHtml(safeToken)}/og.png" />
   <meta property="og:url" content="${escapeHtml(universalLink)}" />
   <meta property="og:type" content="website" />
   <meta name="apple-itunes-app" content="app-id=${APPLE_APP_ID}, app-argument=${escapeHtml(appLink)}" />
