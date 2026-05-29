@@ -1940,7 +1940,7 @@ function LiveBanner() {
         {t('Live', 'Live')}
       </Text>
       <Text style={[styles.shortcutTitle, { color: roles.fg }]}>
-        {t('Live muziek', 'Live music')}
+        {t('Live concerten', 'Live concerts')}
       </Text>
     </Pressable>
   );
