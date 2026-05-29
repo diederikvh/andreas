@@ -12,6 +12,7 @@ import * as WebBrowser from 'expo-web-browser';
 import { Platform, Pressable, Share, StyleSheet, Text, View } from 'react-native';
 
 import { useSession } from '@/lib/authClient';
+import { useLocale } from '@/lib/i18n';
 import { useMySaves, useToggleSave } from '@/lib/queries';
 import { useMode, useRoles } from '@/store/mode';
 import { fontFamily, palette } from '@/theme/tokens';
@@ -39,6 +40,7 @@ export function EventActions({
   const authed = Boolean(session?.user?.id);
   const { data: saves } = useMySaves({ enabled: authed });
   const toggleSave = useToggleSave();
+  const locale = useLocale();
   const isSaved = Boolean(
     saves?.some((s) => s.occurrenceId === occurrenceId)
   );
@@ -54,7 +56,8 @@ export function EventActions({
   };
 
   const onShare = async () => {
-    const url = `https://andreas.amsterdam/e/${encodeURIComponent(eventId)}`;
+    const langQs = locale === 'en' ? '?lang=en' : '';
+    const url = `https://andreas.amsterdam/e/${encodeURIComponent(eventId)}${langQs}`;
     const messageBody = `${eventTitle} via Andreas — ${url}`;
     try {
       await Share.share(

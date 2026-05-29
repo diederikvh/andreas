@@ -1,10 +1,11 @@
 /**
- * OG-image renderer voor de share-invite-pagina (/i/:token). Composite
- * van avatar (rounded square) + Andreas-app-icoon rechtsonder met
- * subtiele schaduw. 1200×630 (OG-spec), nacht-modus.
+ * OG-image renderers voor share-redirect-pagina's. Composite-style:
+ * hoofdimage (avatar of event-still) in een rounded-corner square +
+ * Andreas-app-icoon rechtsonder als badge met box-shadow. 1200×630
+ * (OG-spec), nacht-modus.
  *
- * Output: PNG Buffer. Bedoeld voor caching via Cache-Control op de
- * route — composeren is duur, en de waarden zijn stabiel per token.
+ * Output: PNG Buffer. Cache-Control wordt door de route gezet — composeren
+ * is duur (satori + resvg), maar per (token,locale) is de output stabiel.
  */
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -34,40 +35,6 @@ type VNode = {
   props: { [key: string]: unknown; children?: unknown };
 };
 
-// Cross-glyph via inline SVG — twee gedraaide div-rects via Satori's
-// transform werkten op kleine schalen niet betrouwbaar (alleen één
-// arm zichtbaar). SVG met twee <line> elementen rendert exact zoals
-// de Cross.tsx brand-mark uit de mobile-app.
-function cross(size: number, thickness: number, color: string): VNode {
-  const pad = thickness; // beetje ademruimte zodat de uiteinden niet tegen de viewport-rand vallen
-  return el('svg', {
-    width: size,
-    height: size,
-    viewBox: `0 0 ${size} ${size}`,
-    xmlns: 'http://www.w3.org/2000/svg',
-    children: [
-      el('line', {
-        x1: pad,
-        y1: pad,
-        x2: size - pad,
-        y2: size - pad,
-        stroke: color,
-        strokeWidth: thickness,
-        strokeLinecap: 'round',
-      }),
-      el('line', {
-        x1: size - pad,
-        y1: pad,
-        x2: pad,
-        y2: size - pad,
-        stroke: color,
-        strokeWidth: thickness,
-        strokeLinecap: 'round',
-      }),
-    ],
-  });
-}
-
 function el(
   type: string,
   props: { [key: string]: unknown } | null,
@@ -90,26 +57,19 @@ function el(
   };
 }
 
-export async function renderInviteOg(opts: {
-  avatarUrl: string | null;
-  inviterName: string;
-  locale?: 'nl' | 'en';
+/**
+ * Gedeelde renderer voor beide invite- en event-share OG-images. Layout:
+ * links 420×420 rounded square met `imageUrl`, rechts de tekst-stack
+ * (title + subtitle — geen kicker, "Andreas" zit al in de title-copy).
+ * Rechtsonder de avatar zit het Andreas-app-icoon als badge.
+ */
+async function renderShareOg(opts: {
+  imageUrl: string | null;
+  fallbackLetter?: string;
+  title: string;
+  subTitle: string;
 }): Promise<Buffer> {
-  const { avatarUrl, inviterName, locale = 'nl' } = opts;
-  const copy =
-    locale === 'en'
-      ? {
-          kickerLeft: 'Andreas',
-          kickerRight: 'Friends',
-          title: `${inviterName} is inviting you to ANDREAS`,
-          subTitle: 'Download the app, sign in and you’re connected.',
-        }
-      : {
-          kickerLeft: 'Andreas',
-          kickerRight: 'Vrienden',
-          title: `${inviterName} nodigt je uit op ANDREAS`,
-          subTitle: 'Download de app, log in en jullie zijn vrienden.',
-        };
+  const { imageUrl, fallbackLetter, title, subTitle } = opts;
 
   const tree = el(
     'div',
@@ -124,7 +84,7 @@ export async function renderInviteOg(opts: {
         gap: 56,
       },
     },
-    // Avatar-block links — rounded square + app-icoon rechtsonder.
+    // Image-block links — rounded square + app-icoon-badge rechtsonder.
     el(
       'div',
       {
@@ -135,7 +95,6 @@ export async function renderInviteOg(opts: {
           display: 'flex',
         },
       },
-      // Buiten-vlak met paper-tint border-glow voor 'n premium-touch.
       el(
         'div',
         {
@@ -151,9 +110,9 @@ export async function renderInviteOg(opts: {
             overflow: 'hidden',
           },
         },
-        avatarUrl
+        imageUrl
           ? el('img', {
-              src: avatarUrl,
+              src: imageUrl,
               width: 420,
               height: 420,
               style: { width: 420, height: 420, objectFit: 'cover' },
@@ -174,13 +133,9 @@ export async function renderInviteOg(opts: {
                   fontWeight: 900,
                 },
               },
-              (inviterName.trim()[0] || '?').toUpperCase()
+              (fallbackLetter ?? '?').toUpperCase()
             )
       ),
-      // App-icoon rechtsonder, met 'n donkere zone-ring eronder als
-      // shadow-substituut (Satori's box-shadow is beperkt; een dichte
-      // ring achter het icoon levert dezelfde "drop"-vibe). Iets
-      // overstekend buiten de avatar-grens voor 't badge-effect.
       el(
         'div',
         {
@@ -195,8 +150,6 @@ export async function renderInviteOg(opts: {
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            // Donkere 'glow' achter het icoon — een tweede laag pseudo-
-            // shadow via een box-shadow op de containing div.
             boxShadow: '0 12px 36px rgba(0,0,0,0.55)',
           },
         },
@@ -220,7 +173,7 @@ export async function renderInviteOg(opts: {
         )
       )
     ),
-    // Tekst-blok rechts.
+    // Tekst-blok rechts — alleen title + subtitle, geen kicker.
     el(
       'div',
       {
@@ -228,53 +181,9 @@ export async function renderInviteOg(opts: {
           flex: 1,
           display: 'flex',
           flexDirection: 'column',
-          gap: 14,
+          gap: 18,
         },
       },
-      // ANDREAS ✕-kicker — kruis als twee blokjes (font heeft geen
-      // glyph voor U+2715). Black + uppercase eromheen voor de
-      // brand-mark-vibe.
-      el(
-        'div',
-        {
-          style: {
-            display: 'flex',
-            alignItems: 'center',
-            gap: 14,
-          },
-        },
-        el(
-          'div',
-          {
-            style: {
-              fontFamily: 'Archivo',
-              fontWeight: 900,
-              fontSize: 24,
-              letterSpacing: 1.5,
-              color: ACID,
-              textTransform: 'uppercase',
-              display: 'flex',
-            },
-          },
-          copy.kickerLeft
-        ),
-        cross(22, 5, ACID),
-        el(
-          'div',
-          {
-            style: {
-              fontFamily: 'Archivo',
-              fontWeight: 900,
-              fontSize: 24,
-              letterSpacing: 1.5,
-              color: ACID,
-              textTransform: 'uppercase',
-              display: 'flex',
-            },
-          },
-          copy.kickerRight
-        )
-      ),
       el(
         'div',
         {
@@ -289,7 +198,7 @@ export async function renderInviteOg(opts: {
             flexWrap: 'wrap',
           },
         },
-        copy.title
+        title
       ),
       el(
         'div',
@@ -304,7 +213,7 @@ export async function renderInviteOg(opts: {
             flexWrap: 'wrap',
           },
         },
-        copy.subTitle
+        subTitle
       )
     )
   );
@@ -319,4 +228,59 @@ export async function renderInviteOg(opts: {
   })
     .render()
     .asPng();
+}
+
+// ─── Invite (share-token) ────────────────────────────────────────────
+
+export async function renderInviteOg(opts: {
+  avatarUrl: string | null;
+  inviterName: string;
+  locale?: 'nl' | 'en';
+}): Promise<Buffer> {
+  const { avatarUrl, inviterName, locale = 'nl' } = opts;
+  const copy =
+    locale === 'en'
+      ? {
+          title: `${inviterName} is inviting you to ANDREAS`,
+          subTitle: 'Download the app, sign in and you’re connected.',
+        }
+      : {
+          title: `${inviterName} nodigt je uit op ANDREAS`,
+          subTitle: 'Download de app, log in en jullie zijn vrienden.',
+        };
+  return renderShareOg({
+    imageUrl: avatarUrl,
+    fallbackLetter: inviterName.trim()[0] ?? '?',
+    title: copy.title,
+    subTitle: copy.subTitle,
+  });
+}
+
+// ─── Event-share ─────────────────────────────────────────────────────
+
+export async function renderEventOg(opts: {
+  eventImageUrl: string | null;
+  eventTitle: string;
+  venueName: string | null;
+  locale?: 'nl' | 'en';
+}): Promise<Buffer> {
+  const { eventImageUrl, eventTitle, venueName, locale = 'nl' } = opts;
+  const copy =
+    locale === 'en'
+      ? {
+          subTitle: venueName
+            ? `${venueName} — open in the ANDREAS app for tickets and lineup.`
+            : 'Open in the ANDREAS app for tickets and lineup.',
+        }
+      : {
+          subTitle: venueName
+            ? `${venueName} — open in de ANDREAS-app voor tickets en lineup.`
+            : 'Open in de ANDREAS-app voor tickets en lineup.',
+        };
+  return renderShareOg({
+    imageUrl: eventImageUrl,
+    fallbackLetter: eventTitle.trim()[0] ?? 'A',
+    title: eventTitle,
+    subTitle: copy.subTitle,
+  });
 }

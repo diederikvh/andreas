@@ -1483,11 +1483,13 @@ function TrailerCard({
 function ShareButton({ event }: { event: ApiEvent }) {
   const { data: session } = useSession();
   const t = useT();
+  const locale = useLocale();
   const onPress = async () => {
-    const refQs = session?.user?.id
-      ? `?ref=${encodeURIComponent(session.user.id)}`
-      : '';
-    const url = `https://andreas.amsterdam/e/${encodeURIComponent(event.id)}${refQs}`;
+    const params = new URLSearchParams();
+    if (session?.user?.id) params.set('ref', session.user.id);
+    if (locale === 'en') params.set('lang', 'en');
+    const qs = params.toString();
+    const url = `https://andreas.amsterdam/e/${encodeURIComponent(event.id)}${qs ? `?${qs}` : ''}`;
     const messageBody = t(
       `Ik ga naar ${event.title} via Andreas. Wil je mee?\n${url}`,
       `I’m going to ${event.title} via Andreas. Want to come?\n${url}`

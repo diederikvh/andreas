@@ -25,7 +25,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import type { ApiSearchUser } from '@/lib/api';
 import { createShareInvite } from '@/lib/api';
-import { useT } from '@/lib/i18n';
+import { useLocale, useT } from '@/lib/i18n';
 import {
   useAcceptFriendRequest,
   useMe,
@@ -41,6 +41,7 @@ export default function AddFriend() {
   const insets = useSafeAreaInsets();
   const isNacht = mode === 'nacht';
   const tx = useT();
+  const locale = useLocale();
 
   // ?handle= komt binnen via universal-link of vanuit de QR-scanner.
   // Vul het zoekveld voor zodat de juiste user direct verschijnt.
@@ -94,6 +95,11 @@ export default function AddFriend() {
   const onInviteFriend = async () => {
     try {
       const invite = await createShareInvite();
+      // Geef de app-locale mee in de URL zodat de share-pagina + OG-image
+      // in dezelfde taal renderen als waarin jij de uitnodiging stuurt.
+      // Server-side default = NL als param ontbreekt.
+      const inviteUrl =
+        locale === 'en' ? `${invite.url}?lang=en` : invite.url;
       const display =
         me?.name && !me.name.startsWith('+')
           ? me.name
@@ -101,12 +107,12 @@ export default function AddFriend() {
             ? `@${me.handle}`
             : 'een vriend';
       const message = tx(
-        `Hey, ${display} hier — ik gebruik Andreas, Dé uitgaansapp voor Amsterdam. Download 'm en we zijn meteen vrienden:\n${invite.url}`,
-        `Hey, ${display} here — I use Andreas, the guide to going out in Amsterdam. Download it and we’ll be friends right away:\n${invite.url}`
+        `Hey, ${display} hier — ik gebruik Andreas, Dé uitgaansapp voor Amsterdam. Download 'm en we zijn meteen vrienden:\n${inviteUrl}`,
+        `Hey, ${display} here — I use Andreas, the guide to going out in Amsterdam. Download it and we’ll be friends right away:\n${inviteUrl}`
       );
       await Share.share(
         Platform.OS === 'ios'
-          ? { url: invite.url, message }
+          ? { url: inviteUrl, message }
           : { message }
       );
       Haptics.selectionAsync();

@@ -2,7 +2,7 @@ import { and, asc, desc, eq, not, or, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 
 import { db, schema } from '../db/index.js';
-import { renderInviteOg } from '../social/inviteOg.js';
+import { renderEventOg, renderInviteOg } from '../social/inviteOg.js';
 import {
   APP_STORE_URL,
   HEADER_STYLES,
@@ -2690,10 +2690,13 @@ function renderShareRedirectEvent(
   <meta property="og:description" content="${escapeHtml(
     [row?.venue?.name].filter(Boolean).join(' · ') || ''
   )}" />
-  ${eventImage ? `<meta property="og:image" content="${escapeHtml(eventImage)}" />` : ''}
+  <meta property="og:image" content="${escapeHtml(PUBLIC_BASE_URL)}/e/${escapeHtml(id)}/og.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
   <meta property="og:url" content="${escapeHtml(universalLink)}" />
   <meta property="og:type" content="website" />
   <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:image" content="${escapeHtml(PUBLIC_BASE_URL)}/e/${escapeHtml(id)}/og.png" />
   <meta name="apple-itunes-app" content="app-id=${APPLE_APP_ID}, app-argument=${escapeHtml(appLink)}" />
   <meta name="robots" content="noindex" />
   <style>
@@ -2947,6 +2950,42 @@ shareRoute.get('/i/:token/og.png', async (c) => {
   // Buffer→ArrayBuffer copy: Hono wil 'n strict Uint8Array<ArrayBuffer>;
   // Node's Buffer kan SharedArrayBuffer-backed zijn. Een nieuwe
   // ArrayBuffer-allocatie via .slice() lost het op.
+  const ab = png.buffer.slice(png.byteOffset, png.byteOffset + png.byteLength);
+  const bytes = new Uint8Array(ab as ArrayBuffer);
+  return c.body(bytes, 200, {
+    'Content-Type': 'image/png',
+    'Cache-Control': 'public, max-age=86400, immutable',
+  });
+});
+
+/**
+ * OG-image voor event-share — event-poster in rounded square + Andreas
+ * app-badge bottom-right. 1200×630. Locale via ?lang=… of Accept-
+ * Language; default NL.
+ */
+shareRoute.get('/e/:id/og.png', async (c) => {
+  const id = c.req.param('id').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 80);
+  const [row] = await db
+    .select({
+      title: schema.events.title,
+      imageUrl: schema.events.imageUrl,
+      venueName: schema.venues.name,
+    })
+    .from(schema.events)
+    .innerJoin(schema.venues, eq(schema.venues.id, schema.events.venueId))
+    .where(eq(schema.events.id, id))
+    .limit(1);
+  if (!row) return c.body('not found', 404);
+  const langParam = c.req.query('lang');
+  const acceptLang = c.req.header('accept-language') ?? '';
+  const locale: 'nl' | 'en' =
+    langParam === 'en' || /^\s*en\b/i.test(acceptLang) ? 'en' : 'nl';
+  const png = await renderEventOg({
+    eventImageUrl: row.imageUrl,
+    eventTitle: row.title,
+    venueName: row.venueName,
+    locale,
+  });
   const ab = png.buffer.slice(png.byteOffset, png.byteOffset + png.byteLength);
   const bytes = new Uint8Array(ab as ArrayBuffer);
   return c.body(bytes, 200, {
