@@ -1713,23 +1713,23 @@ function FeaturedCard({
 }
 
 function ShortcutsRow() {
-  const since = useLastSessionTimestamp();
-  const { data: newSince } = useNewArrivalsSince(since);
-  const hasNew = (newSince?.length ?? 0) > 0;
+  // NewBanner staat altijd vooraan zodat 'ie z'n positie houdt — links
+  // → rechts springen op basis van hasNew zou de gebruiker verwarren
+  // ("waar was die ook alweer"). Items zijn er meestal wel iets, dus
+  // de eerste positie is sowieso de logische plek.
   return (
     <ScrollView
       horizontal
       showsHorizontalScrollIndicator={false}
       contentContainerStyle={styles.shortcutScroller}
     >
-      {hasNew && <NewBanner />}
+      <NewBanner />
       <FilmsBanner />
       <ClubsBanner />
       <LiveBanner />
       <TheaterBanner />
       <KaartBanner />
       <FriendsBanner />
-      {!hasNew && <NewBanner />}
       <OpGevoelBanner />
     </ScrollView>
   );
@@ -1752,12 +1752,12 @@ function NewBanner() {
         { backgroundColor: roles.bgLift },
       ]}
     >
-      <View>
-        <Ionicons name="sparkles-outline" size={36} color={roles.accent} />
+      <View style={styles.shortcutIconRow}>
+        <Ionicons name="flash-outline" size={36} color={roles.accent} />
         {count > 0 ? (
           <View
             style={[
-              styles.shortcutBadge,
+              styles.shortcutInlineBadge,
               { backgroundColor: roles.accent },
             ]}
           >
@@ -2696,24 +2696,26 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     letterSpacing: -0.14,
   },
-  // Count-badge rechtsboven het shortcut-icoon — alleen voor de
-  // "Nieuw"-kaart wanneer er items zijn binnen gekomen sinds vorige
-  // sessie. Pill-rond, accent-bg, cap op "99+".
-  shortcutBadge: {
-    position: 'absolute',
-    top: -6,
-    right: -10,
-    minWidth: 20,
-    height: 20,
-    paddingHorizontal: 6,
+  // Count-badge naast het shortcut-icoon — alleen voor de "Nieuw"-
+  // kaart wanneer er items zijn binnen gekomen sinds vorige sessie.
+  // Pill-rond, accent-bg, cap op "99+".
+  shortcutIconRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  shortcutInlineBadge: {
+    minWidth: 24,
+    height: 22,
+    paddingHorizontal: 7,
     borderRadius: 999,
     alignItems: 'center',
     justifyContent: 'center',
   },
   shortcutBadgeText: {
     fontFamily: fontFamily.displayBold,
-    fontSize: 11,
+    fontSize: 12,
     letterSpacing: -0.1,
-    lineHeight: 13,
+    lineHeight: 14,
   },
 });

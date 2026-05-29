@@ -6,6 +6,7 @@
  * previous naar de timestamp van je vórige open en zie je alles dat
  * de scrapers in die tussentijd hebben binnen gehaald.
  */
+import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
@@ -38,7 +39,10 @@ import {
 import { useLocale, useT } from '@/lib/i18n';
 import { useNewArrivalsSince, useRecentEvents } from '@/lib/queries';
 import type { BadgeTone } from '@/lib/types';
-import { useLastSessionTimestamp } from '@/store/sessionTimestamps';
+import {
+  useLastSessionTimestamp,
+  useSessionTimestamps,
+} from '@/store/sessionTimestamps';
 import { useMode, useRoles } from '@/store/mode';
 import { fontFamily, palette } from '@/theme/tokens';
 
@@ -53,6 +57,20 @@ export default function NewScreen() {
   const { data: session } = useSession();
   const authed = Boolean(session?.user?.id);
   const since = useLastSessionTimestamp();
+
+  // Bij BLUR (= je verlaat /new): bevestig dat de gebruiker de
+  // pagina heeft gezien. Op focus updaten zou de since-grens
+  // verschuiven vóórdat de query rendert → page toont dan meteen
+  // "niks nieuws" terwijl je net 25 items aan kwam kijken. Pas op
+  // wegnavigeren resetten zorgt dat je tijdens dit bezoek de items
+  // ziet, en dat de teller op je volgende bezoek terug naar 0 staat.
+  useFocusEffect(
+    useCallback(() => {
+      return () => {
+        useSessionTimestamps.getState().markNewSeen();
+      };
+    }, [])
+  );
 
   // Primair: events die sinds vorige sessie nieuw zijn. Pauzeert
   // wanneer since=null (eerste-ooit-launch).
@@ -110,6 +128,12 @@ export default function NewScreen() {
   const isLoading = (since && loadingSince) || (sinceEmpty && loadingRecent);
   const error = errorSince ?? errorRecent;
 
+  // "24 mei" / "May 24" (+ jaartal bij andere jaren). Concrete datum in
+  // de intro maakt expliciet vanaf wanneer we 'nieuw' definiëren — bv.
+  // wanneer er 0 items zijn helpt het te zien dat de teller wel klopt.
+  const locale = useLocale();
+  const sinceLabel = since ? formatSinceLabel(since, locale) : null;
+
   const [refreshing, setRefreshing] = useState(false);
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -153,15 +177,20 @@ export default function NewScreen() {
             { paddingTop: topInset, paddingBottom: bottomInset },
           ]}
         >
-          <Ionicons name="sparkles-outline" size={48} color={roles.fgMuted} />
+          <Ionicons name="flash-outline" size={48} color={roles.fgMuted} />
           <Text style={[styles.emptyTitle, { color: roles.fg }]}>
             {t('Nog niks toegevoegd', 'Nothing added yet')}
           </Text>
           <Text style={[styles.emptySub, { color: roles.fgMuted }]}>
-            {t(
-              'Zodra er events worden binnengehaald verschijnen ze hier.',
-              'Items will appear here as soon as events come in.'
-            )}
+            {sinceLabel
+              ? t(
+                  `Sinds ${sinceLabel} is er niks binnengekomen. Zodra de scrapers iets oppakken verschijnt 't hier.`,
+                  `Nothing has come in since ${sinceLabel}. As soon as scrapers pick something up it'll appear here.`
+                )
+              : t(
+                  'Zodra er events worden binnengehaald verschijnen ze hier.',
+                  'Items will appear here as soon as events come in.'
+                )}
           </Text>
         </View>
       ) : isLoading ? (
@@ -197,21 +226,21 @@ export default function NewScreen() {
           }
           stickySectionHeadersEnabled={false}
           ListHeaderComponent={
-            events && events.length > 0 ? (
-              <View style={styles.fallbackHint}>
-                <Text style={[styles.fallbackText, { color: roles.fg }]}>
-                  {showingFallback
+            <View style={styles.fallbackHint}>
+              <Text style={[styles.fallbackText, { color: roles.fg }]}>
+                {sinceLabel
+                  ? showingFallback || !events || events.length === 0
                     ? t(
-                        `Niks nieuws sinds je vorige bezoek — hier zie je de laatste ${events.length} aanwinsten.`,
-                        `Nothing new since your last visit — here are the latest ${events.length} additions.`
+                        `Niks nieuws sinds ${sinceLabel} — hier zie je de laatste ${events?.length ?? 0} aanwinsten.`,
+                        `Nothing new since ${sinceLabel} — here are the latest ${events?.length ?? 0} additions.`
                       )
                     : t(
-                        `${events.length} ${events.length === 1 ? 'aanwinst' : 'aanwinsten'} sinds je vorige bezoek.`,
-                        `${events.length} ${events.length === 1 ? 'new addition' : 'new additions'} since your last visit.`
-                      )}
-                </Text>
-              </View>
-            ) : null
+                        `${events.length} ${events.length === 1 ? 'aanwinst' : 'aanwinsten'} sinds je vorige bezoek (${sinceLabel}).`,
+                        `${events.length} ${events.length === 1 ? 'new addition' : 'new additions'} since your last visit (${sinceLabel}).`
+                      )
+                  : null}
+              </Text>
+            </View>
           }
           contentContainerStyle={{
             paddingTop: topInset,
@@ -241,6 +270,14 @@ export default function NewScreen() {
       />
     </View>
   );
+}
+
+function formatSinceLabel(date: Date, locale: ReturnType<typeof useLocale>): string {
+  const day = date.getDate();
+  const month = monthShort(date.getMonth(), locale).toLowerCase();
+  const year = date.getFullYear();
+  const nowYear = new Date().getFullYear();
+  return year === nowYear ? `${day} ${month}` : `${day} ${month} ${year}`;
 }
 
 function NewArrivalRow({ event }: { event: ApiEvent }) {
