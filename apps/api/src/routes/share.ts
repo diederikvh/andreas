@@ -2931,9 +2931,18 @@ shareRoute.get('/i/:token/og.png', async (c) => {
     row && row.name && !row.name.startsWith('+') ? row.name : '';
   const inviterName =
     displayName || (row?.handle ? `@${row.handle}` : 'Iemand');
+  // Taal-detectie: ?lang=en overschrijft alles; anders Accept-Language
+  // van de browser (eerste taal-tag). Default NL. Messaging-apps die
+  // de OG-preview ophalen sturen vaak géén Accept-Language — die
+  // krijgen NL.
+  const langParam = c.req.query('lang');
+  const acceptLang = c.req.header('accept-language') ?? '';
+  const locale: 'nl' | 'en' =
+    langParam === 'en' || /^\s*en\b/i.test(acceptLang) ? 'en' : 'nl';
   const png = await renderInviteOg({
     avatarUrl: row?.avatarUrl ?? null,
     inviterName,
+    locale,
   });
   // Buffer→ArrayBuffer copy: Hono wil 'n strict Uint8Array<ArrayBuffer>;
   // Node's Buffer kan SharedArrayBuffer-backed zijn. Een nieuwe

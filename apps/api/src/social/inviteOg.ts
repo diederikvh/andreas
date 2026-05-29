@@ -98,8 +98,23 @@ function el(
 export async function renderInviteOg(opts: {
   avatarUrl: string | null;
   inviterName: string;
+  locale?: 'nl' | 'en';
 }): Promise<Buffer> {
-  const { avatarUrl, inviterName } = opts;
+  const { avatarUrl, inviterName, locale = 'nl' } = opts;
+  const copy =
+    locale === 'en'
+      ? {
+          kickerLeft: 'Andreas',
+          kickerRight: 'Friends',
+          title: `${inviterName} is inviting you to ANDREAS`,
+          subTitle: 'Download the app, sign in and you’re connected.',
+        }
+      : {
+          kickerLeft: 'Andreas',
+          kickerRight: 'Vrienden',
+          title: `${inviterName} nodigt je uit op ANDREAS`,
+          subTitle: 'Download de app, log in en jullie zijn vrienden.',
+        };
 
   const tree = el(
     'div',
@@ -222,44 +237,47 @@ export async function renderInviteOg(opts: {
         },
       },
       // ANDREAS ✕-kicker — kruis als twee blokjes (font heeft geen
-      // glyph voor U+2715). Mono uppercase eromheen.
+      // glyph voor U+2715). Black + uppercase eromheen voor de
+      // brand-mark-vibe.
       el(
         'div',
         {
           style: {
             display: 'flex',
             alignItems: 'center',
-            gap: 10,
+            gap: 14,
           },
         },
         el(
           'div',
           {
             style: {
-              fontFamily: 'JetBrainsMono',
-              fontSize: 22,
-              letterSpacing: 4,
+              fontFamily: 'Archivo',
+              fontWeight: 900,
+              fontSize: 24,
+              letterSpacing: 1.5,
               color: ACID,
               textTransform: 'uppercase',
               display: 'flex',
             },
           },
-          'Andreas'
+          copy.kickerLeft
         ),
-        cross(16, 4, ACID),
+        cross(22, 5, ACID),
         el(
           'div',
           {
             style: {
-              fontFamily: 'JetBrainsMono',
-              fontSize: 22,
-              letterSpacing: 4,
+              fontFamily: 'Archivo',
+              fontWeight: 900,
+              fontSize: 24,
+              letterSpacing: 1.5,
               color: ACID,
               textTransform: 'uppercase',
               display: 'flex',
             },
           },
-          'Vrienden'
+          copy.kickerRight
         )
       ),
       el(
@@ -276,14 +294,14 @@ export async function renderInviteOg(opts: {
             flexWrap: 'wrap',
           },
         },
-        `${inviterName} nodigt je uit op ANDREAS`
+        copy.title
       ),
       el(
         'div',
         {
           style: {
             fontFamily: 'Archivo',
-            fontWeight: 800,
+            fontWeight: 700,
             fontSize: 28,
             lineHeight: 1.3,
             color: INK_MUTED,
@@ -291,7 +309,7 @@ export async function renderInviteOg(opts: {
             flexWrap: 'wrap',
           },
         },
-        'Download de app, log in en jullie zijn vrienden.'
+        copy.subTitle
       )
     )
   );
