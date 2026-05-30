@@ -22,7 +22,8 @@ import { useLocale } from '@/lib/i18n';
 import { useRoles } from '@/store/mode';
 import { fontFamily } from '@/theme/tokens';
 
-const CARD_WIDTH = 130;
+export const FILM_CARD_WIDTH = 130;
+const CARD_WIDTH = FILM_CARD_WIDTH;
 
 export function FilmRailCard({
   event,

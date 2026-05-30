@@ -26,9 +26,12 @@ import { AppHeader, HEADER_HEIGHT } from '@/components/AppHeader';
 import { ContentSwitchHint } from '@/components/ContentSwitchHint';
 import { Cross } from '@/components/Cross';
 import { Rail, useRailCardStyles } from '@/components/Rail';
-import { FilmRailCard } from '@/components/FilmRailCard';
+import { FilmRailCard, FILM_CARD_WIDTH } from '@/components/FilmRailCard';
 import { RailEventCard } from '@/components/RailEventCard';
-import { VenueSquareRailCard } from '@/components/VenueSquareRailCard';
+import {
+  VenueSquareRailCard,
+  SQUARE_CARD_WIDTH,
+} from '@/components/VenueSquareRailCard';
 import { RefreshBanner } from '@/components/RefreshBanner';
 import { SearchOverlay } from '@/components/SearchOverlay';
 import { SearchPill } from '@/components/SearchPill';
@@ -997,6 +1000,7 @@ export default function Avond() {
               kicker={t('Film vanavond', 'Film tonight')}
               moreLabel={t('Meer →', 'More →')}
               onMore={() => router.push('/films' as never)}
+              cardWidth={FILM_CARD_WIDTH}
             >
               {railFilm.map((r) => (
                 <FilmRailCard
@@ -1060,6 +1064,7 @@ export default function Avond() {
               kicker={t('Matinees', 'Matinees')}
               moreLabel={t('Meer →', 'More →')}
               onMore={() => router.push('/films' as never)}
+              cardWidth={FILM_CARD_WIDTH}
             >
               {railFilmOverdag.map((r) => (
                 <FilmRailCard
@@ -1198,6 +1203,7 @@ export default function Avond() {
             kicker={t('Jouw favoriete venues', 'Your favourite venues')}
             moreLabel={t('Alle venues →', 'All venues →')}
             onMore={() => router.push('/venues' as never)}
+            cardWidth={SQUARE_CARD_WIDTH}
           >
             {followedVenues.map((v) => (
               <VenueSquareRailCard
@@ -1743,11 +1749,29 @@ function ShortcutsRow() {
   // → rechts springen op basis van hasNew zou de gebruiker verwarren
   // ("waar was die ook alweer"). Items zijn er meestal wel iets, dus
   // de eerste positie is sowieso de logische plek.
+  const scrollRef = useRef<ScrollView>(null);
+  const navigation = useNavigation();
+  // Re-tap op de Vandaag-tab → shortcuts terug naar begin, mee met de
+  // page-scroll-to-top zodat alles opgeruimd staat.
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('tabPress' as never, () => {
+      if (navigation.isFocused()) {
+        scrollRef.current?.scrollTo({ x: 0, animated: true });
+      }
+    });
+    return unsubscribe;
+  }, [navigation]);
   return (
     <ScrollView
+      ref={scrollRef}
       horizontal
       showsHorizontalScrollIndicator={false}
       contentContainerStyle={styles.shortcutScroller}
+      // Snap-to-card — 112 (kaart) + 10 (gap). Leading-pad 22 constant,
+      // dus elke knop landt links netjes uitgelijnd.
+      snapToInterval={122}
+      snapToAlignment="start"
+      decelerationRate="fast"
     >
       <NewBanner />
       <FilmsBanner />
