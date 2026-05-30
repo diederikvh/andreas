@@ -191,8 +191,40 @@ export async function scrapeLima(options?: {
 
   for (const tile of tilesBySlug.values()) {
     try {
+      // Detail-page altijd ophalen — daar staat de schedule
+      // ("18:00 – Doors open / 19:00 – Opening remarks / 19:30 – Exhibition preview").
+      // Listing zelf geeft alleen de datum, default 19:00 was fout voor
+      // expo-openings (vaak 18:00) of late talks (20:00).
+      const detailHtml = await fetchHtml(tile.url);
+      let description: string | null = null;
+      let sourceImage: string | null = null;
+      let startTime: { hour: number; minute: number } | null = null;
+      if (detailHtml) {
+        const descMatch = detailHtml.match(
+          /<meta[^>]+(?:property|name)="og:description"[^>]+content="([^"]+)"/
+        );
+        if (descMatch) description = decode(descMatch[1]).slice(0, 800);
+        const imgMatch = detailHtml.match(
+          /<meta[^>]+(?:property|name)="og:image"[^>]+content="([^"]+)"/
+        );
+        if (imgMatch) sourceImage = decode(imgMatch[1]);
+        // Lima publiceert schedules als "18:00 – Doors open" of
+        // gewoon "Doors open: 18:00". Eerste expliciete doors-time
+        // wint; anders eerste HH:MM in een schedule-context.
+        const tm =
+          detailHtml.match(/(\d{1,2}):(\d{2})\s*[-–][^\n]{0,40}?[Dd]oors?\s+open/) ??
+          detailHtml.match(/[Dd]oors?\s+open[^\d]{0,20}(\d{1,2}):(\d{2})/) ??
+          detailHtml.match(/[Aa]anvang[^\d<]{0,20}(\d{1,2}):(\d{2})/) ??
+          detailHtml.match(/(\d{1,2}):(\d{2})\s*[-–][^\n]{0,40}?(?:[Oo]pening|[Pp]rogram|[Ee]xhibition)/);
+        if (tm) {
+          startTime = { hour: parseInt(tm[1], 10), minute: parseInt(tm[2], 10) };
+        }
+      }
+
       const startsAt = shiftToLocalTime(
-        tile.year, tile.month, tile.day, DEFAULT_HOUR, DEFAULT_MINUTE
+        tile.year, tile.month, tile.day,
+        startTime?.hour ?? DEFAULT_HOUR,
+        startTime?.minute ?? DEFAULT_MINUTE,
       );
       if (startsAt.getTime() < pastCutoff) {
         result.skipped++;
@@ -223,21 +255,6 @@ export async function scrapeLima(options?: {
           });
         result.occurrencesUpserted++;
         continue;
-      }
-
-      // Detail-page voor description + image
-      const detailHtml = await fetchHtml(tile.url);
-      let description: string | null = null;
-      let sourceImage: string | null = null;
-      if (detailHtml) {
-        const descMatch = detailHtml.match(
-          /<meta[^>]+(?:property|name)="og:description"[^>]+content="([^"]+)"/
-        );
-        if (descMatch) description = decode(descMatch[1]).slice(0, 800);
-        const imgMatch = detailHtml.match(
-          /<meta[^>]+(?:property|name)="og:image"[^>]+content="([^"]+)"/
-        );
-        if (imgMatch) sourceImage = decode(imgMatch[1]);
       }
 
       const enriched = await enrichEvent({

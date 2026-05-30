@@ -278,13 +278,41 @@ export async function getEvents(filter: EventsFilter = {}): Promise<ApiEvent[]> 
 }
 
 /** "Voor jou" — gepersonaliseerde aanbevelingen op basis van eigen
-    save-historie + gevolgde venues. Backend: GET /events/for-you. Lege
-    array voor uitgelogd of zonder saves. */
-export async function getForYouEvents(): Promise<ApiEvent[]> {
+    save-historie + gevolgde venues + vrienden-saves. Backend: GET
+    /events/for-you. Rail-mode (default): score-desc gesorteerd, 21d
+    horizon (of 7d met `weekOnly`), cap 30. Lege array voor uitgelogd
+    of zonder profiel-input (geen saves én geen follows). */
+export async function getForYouEvents(
+  opts: { weekOnly?: boolean } = {},
+): Promise<ApiEvent[]> {
+  const qs = opts.weekOnly ? '?week=1' : '';
   const { events } = await authedRequest<{ events: ApiEvent[] }>(
-    '/events/for-you'
+    `/events/for-you${qs}`,
   );
   return events;
+}
+
+/** "Voor jou" feed-mode — chronologisch gesorteerd, cursor-pagination
+    voor infinite scroll op `/voor-jou`. Backend: GET
+    /events/for-you?mode=feed&cursor=...&limit=20&category=Film. */
+export async function getForYouFeed(
+  opts: {
+    cursor?: string | null;
+    limit?: number;
+    /** Eén of meer categorieën — joined met komma's voor het endpoint
+        (`?category=Muziek,Film`). Lege array = geen filter. */
+    categories?: ApiEvent['category'][];
+  } = {},
+): Promise<{ events: ApiEvent[]; nextCursor: string | null }> {
+  const params = new URLSearchParams({ mode: 'feed' });
+  if (opts.cursor) params.set('cursor', opts.cursor);
+  if (opts.limit) params.set('limit', String(opts.limit));
+  if (opts.categories && opts.categories.length > 0) {
+    params.set('category', opts.categories.join(','));
+  }
+  return authedRequest<{ events: ApiEvent[]; nextCursor: string | null }>(
+    `/events/for-you?${params.toString()}`,
+  );
 }
 
 /**
@@ -657,6 +685,59 @@ export async function setVenueFollow(input: {
   return await authedRequest<{ state: VenueFollowState }>('/venue-follows', {
     method: 'POST',
     body: JSON.stringify(input),
+  });
+}
+
+/** Aanbevolen-onboarding scene → server-mapping. */
+export type AanbevolenScene =
+  | 'dansen'
+  | 'concerten'
+  | 'klassiek_jazz'
+  | 'theater'
+  | 'film'
+  | 'kunst'
+  | 'lezingen';
+export type AanbevolenFlavor = 'mainstream' | 'alternatief' | 'niche';
+
+/** Minimale venue-shape voor de bootstrap-preview — alleen wat de
+    picker-tiles nodig hebben. */
+export type BootstrapVenue = {
+  id: string;
+  slug: string;
+  name: string;
+  type: VenueType | null;
+  scene: 'mainstream' | 'alternatief' | 'underground' | 'fringe' | null;
+  subtype: string[] | null;
+  imageUrl: string | null;
+  wijk: string | null;
+  categories: VenueCategory[];
+};
+
+/** Preview voor de Aanbevolen-onboarding. Geen DB-writes; alleen
+    suggesties op basis van scenes + flavor. Selected = perfecte match,
+    maybe = naburige flavor of ongetagd. */
+export async function getBootstrapSuggestions(input: {
+  scenes: AanbevolenScene[];
+  flavor: AanbevolenFlavor;
+}): Promise<{ selected: BootstrapVenue[]; maybe: BootstrapVenue[] }> {
+  const params = new URLSearchParams({
+    scenes: input.scenes.join(','),
+    flavor: input.flavor,
+  });
+  return await authedRequest<{
+    selected: BootstrapVenue[];
+    maybe: BootstrapVenue[];
+  }>(`/venue-follows/bootstrap-suggestions?${params.toString()}`);
+}
+
+/** Bulk follow — alle ids worden upserted naar state='volgen'. Niet-
+    bestaande venues worden stilzwijgend overgeslagen. */
+export async function bulkFollowVenues(
+  venueIds: string[],
+): Promise<{ followed: number }> {
+  return await authedRequest<{ followed: number }>('/venue-follows/bulk', {
+    method: 'POST',
+    body: JSON.stringify({ venueIds }),
   });
 }
 

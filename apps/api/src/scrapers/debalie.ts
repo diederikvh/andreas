@@ -112,6 +112,26 @@ function parseDateFromLink(link: string): Date | null {
   return shiftToLocalTime(year, month, day, DEFAULT_HOUR, DEFAULT_MINUTE);
 }
 
+/** Detail-pagina heeft `<span class="banner-bar__time">za 30 mei /
+ *  19:00 / Grote Zaal</span>`. Default 20:00 in URL-parse is fout
+ *  voor 19:00/19:30 events (film, lezing). */
+async function fetchDebalieStartTime(
+  link: string,
+): Promise<{ hour: number; minute: number } | null> {
+  try {
+    const r = await fetch(link, { headers: { 'user-agent': UA } });
+    if (!r.ok) return null;
+    const html = await r.text();
+    const m = html.match(
+      /class="banner-bar__time"[^>]*>[\s\S]{0,80}?(\d{1,2})[:.](\d{2})/,
+    );
+    if (!m) return null;
+    return { hour: parseInt(m[1], 10), minute: parseInt(m[2], 10) };
+  } catch {
+    return null;
+  }
+}
+
 async function mirrorImage(
   sourceUrl: string,
   slug: string
@@ -199,7 +219,7 @@ export async function scrapeDeBalie(options?: {
         continue;
       }
 
-      const startsAt = parseDateFromLink(p.link);
+      let startsAt = parseDateFromLink(p.link);
       if (!startsAt) {
         result.skipped++;
         result.errors.push(`${slug}: kon datum niet uit URL parsen`);
@@ -208,6 +228,19 @@ export async function scrapeDeBalie(options?: {
       if (startsAt.getTime() < pastCutoff) {
         result.skipped++;
         continue;
+      }
+      // Override default 20:00 met echte tijd uit detail-page banner.
+      const realTime = await fetchDebalieStartTime(p.link);
+      if (realTime) {
+        const parts = new Intl.DateTimeFormat('en-GB', {
+          timeZone: 'Europe/Amsterdam',
+          year: 'numeric', month: '2-digit', day: '2-digit',
+        }).formatToParts(startsAt);
+        const get = (t: string) => parseInt(parts.find((p) => p.type === t)!.value, 10);
+        startsAt = shiftToLocalTime(
+          get('year'), get('month') - 1, get('day'),
+          realTime.hour, realTime.minute,
+        );
       }
 
       const eventId = `evt-balie-${slug}`;

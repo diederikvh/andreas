@@ -21,6 +21,7 @@
 import { eq } from 'drizzle-orm';
 
 import { db, schema } from '../db/index.js';
+import { parseAmsterdamLocal } from './_amsterdam-tz.js';
 import { fetchTextWithTimeout } from './_fetch.js';
 import {
   findOrCreateFilmEvent,
@@ -280,12 +281,15 @@ function resolveDateTime(
 ): Date {
   const now = new Date(nowMs);
   let year = now.getFullYear();
-  let d = new Date(year, monthIdx, day, hour, minute);
-  // Tolerance: 12h achter — Studio/K kan een vertoning vandaag-22:00
-  // tonen wanneer 't nu 02:00 is. Niet als "vorig jaar" classen.
+  // Bouw Amsterdam-local Date, niet host-local. In Fly draait alles
+  // op UTC; `new Date(y, m, d, h, mi)` zou dan 21:15 UTC stempelen
+  // ipv 21:15 Amsterdam → display +2u te laat.
+  const iso = (y: number) =>
+    `${y}-${String(monthIdx + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}T${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}:00`;
+  let d = parseAmsterdamLocal(iso(year));
   if (d.getTime() < nowMs - 12 * 60 * 60 * 1000) {
     year += 1;
-    d = new Date(year, monthIdx, day, hour, minute);
+    d = parseAmsterdamLocal(iso(year));
   }
   return d;
 }

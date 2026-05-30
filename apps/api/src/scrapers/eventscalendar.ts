@@ -187,6 +187,16 @@ export async function scrapeEventsCalendar(options?: {
           result.skipped++;
           continue;
         }
+        // Panama (en andere venues op tribe-events) publiceren regelmatig
+        // "Private Event" placeholders voor verhuurde avonden. Geen
+        // info, geen tickets, niet voor app-bezoekers. Verwijder ook
+        // eventueel eerder ingevoegde rij — anders blijft 'ie hangen.
+        if (/^private\s+event/i.test(title)) {
+          const staleId = `evt-${venue.id}-${slug}`;
+          await db.delete(schema.events).where(eq(schema.events.id, staleId));
+          result.skipped++;
+          continue;
+        }
 
         const eventId = `evt-${venue.id}-${slug}`;
         const occurrenceId = `occ-${venue.id}-${slug}`;

@@ -1,4 +1,5 @@
 import {
+  useInfiniteQuery,
   useMutation,
   useQuery,
   useQueryClient,
@@ -15,7 +16,10 @@ import {
   getEvent,
   getEventGenres,
   getEvents,
+  bulkFollowVenues,
+  getBootstrapSuggestions,
   getForYouEvents,
+  getForYouFeed,
   getNewEventsSince,
   getRecentEvents,
   getFriendDetail,
@@ -81,7 +85,17 @@ export const queryKeys = {
   agendaDay: (input: { date: string; filters: AgendaFilters }) =>
     ['agenda-day', input.date, input.filters] as const,
   mirror: () => ['mirror', 'me'] as const,
-  forYou: () => ['events', 'for-you'] as const,
+  forYou: (opts: { weekOnly?: boolean } = {}) =>
+    ['events', 'for-you', opts.weekOnly ? 'week' : 'rail'] as const,
+  forYouFeed: (categories?: string[]) =>
+    [
+      'events',
+      'for-you',
+      'feed',
+      categories && categories.length > 0
+        ? [...categories].sort().join(',')
+        : 'all',
+    ] as const,
   newArrivalsSince: (sinceIso: string | null) =>
     ['events', 'new', 'since', sinceIso ?? 'pending'] as const,
   recentEvents: (limit: number) =>
@@ -173,14 +187,79 @@ export function useRecentEvents(
   });
 }
 
-export function useForYouEvents(opts: { enabled?: boolean } = {}) {
+export function useForYouEvents(
+  opts: { enabled?: boolean; weekOnly?: boolean } = {},
+) {
   return useQuery({
-    queryKey: queryKeys.forYou(),
-    queryFn: () => getForYouEvents(),
+    queryKey: queryKeys.forYou({ weekOnly: opts.weekOnly }),
+    queryFn: () => getForYouEvents({ weekOnly: opts.weekOnly }),
     enabled: opts.enabled ?? true,
     // Score-based aanbevelingen veranderen niet razendsnel; matchen
     // intern op saves+follows. Refresh op tab-focus zodat een nieuwe
     // save in de huidige sessie de rail bijwerkt.
+    staleTime: 5 * 60_000,
+    refetchOnWindowFocus: true,
+  });
+}
+
+/** Preview voor de Aanbevolen-onboarding picker. Alleen actief als
+    beide scenes én flavor zijn gekozen. */
+export function useBootstrapSuggestions(input: {
+  scenes: import('@/lib/api').AanbevolenScene[];
+  flavor: import('@/lib/api').AanbevolenFlavor | null;
+  enabled?: boolean;
+}) {
+  return useQuery({
+    queryKey: [
+      'bootstrap-suggestions',
+      [...input.scenes].sort().join(','),
+      input.flavor ?? 'none',
+    ] as const,
+    queryFn: () =>
+      getBootstrapSuggestions({
+        scenes: input.scenes,
+        flavor: input.flavor!,
+      }),
+    enabled:
+      (input.enabled ?? true) && input.scenes.length > 0 && Boolean(input.flavor),
+    staleTime: 60_000,
+  });
+}
+
+/** Bulk follow. Mutation invalidateert venues + for-you queries zodat
+    de feed onmiddellijk vult na onboarding-commit. */
+export function useBulkFollowVenues() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (venueIds: string[]) => bulkFollowVenues(venueIds),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['events', 'for-you'] });
+      qc.invalidateQueries({ queryKey: ['venues'] });
+    },
+  });
+}
+
+/** Chronologische "Voor jou"-feed met infinite scroll. Gebruikt op
+    `/voor-jou`. Pagina-size 20, cursor van server. Multi-select
+    category-filter — leeg = alle categorieën. Wijziging in chip-
+    selectie reset de pagination omdat de queryKey wijzigt. */
+export function useForYouFeed(
+  opts: {
+    enabled?: boolean;
+    categories?: import('@/lib/api').ApiEvent['category'][];
+  } = {},
+) {
+  return useInfiniteQuery({
+    queryKey: queryKeys.forYouFeed(opts.categories),
+    queryFn: ({ pageParam }) =>
+      getForYouFeed({
+        cursor: pageParam as string | null,
+        limit: 20,
+        categories: opts.categories,
+      }),
+    initialPageParam: null as string | null,
+    getNextPageParam: (last) => last.nextCursor ?? undefined,
+    enabled: opts.enabled ?? true,
     staleTime: 5 * 60_000,
     refetchOnWindowFocus: true,
   });

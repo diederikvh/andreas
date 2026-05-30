@@ -57,8 +57,9 @@ function stripTags(s: string): string {
   return s.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
-/** "16 May, 2026" + 23:00 → Date in Amsterdam. Geen tijd in de feed,
- *  default 23:00 (typische club-night). */
+/** "16 May, 2026" + 23:00 → Date in Amsterdam. Default-tijd is 23:00
+ *  (club-night) — wordt later evt. overschreven door de echte
+ *  first_date uit de weticket shop-page. */
 function buildDate(dateStr: string): Date | null {
   const m = dateStr.match(/(\d{1,2})\s+(\w+),?\s+(\d{4})/);
   if (!m) return null;
@@ -66,27 +67,65 @@ function buildDate(dateStr: string): Date | null {
   const month = ENGLISH_MONTHS[m[2]];
   const year = parseInt(m[3], 10);
   if (!month) return null;
-  const iso = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}T23:00:00+02:00`;
+  const dst = month >= 3 && month <= 10;
+  const off = dst ? '+02:00' : '+01:00';
+  const iso = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}T23:00:00${off}`;
   const d = new Date(iso);
   return isNaN(d.getTime()) ? null : d;
+}
+
+/** Pak de echte event-tijd uit de weticket shop-HTML. Het page is een
+ *  Next.js SPA — `first_date` zit in de raw JSON-fragments. Listing-
+ *  default 23:00 is fout voor day-events (bv. klub krai listening
+ *  session 12:30, bar40 jubileum 23:30). */
+async function fetchWeticketFirstDate(shopUrl: string): Promise<Date | null> {
+  try {
+    const r = await fetch(shopUrl, { headers: { 'user-agent': UA } });
+    if (!r.ok) return null;
+    const html = await r.text();
+    // `__NEXT_DATA__` heeft `first_datetime` (niet `first_date` zoals
+    // de listing-feed) — formaat "YYYY-MM-DD HH:MM" Amsterdam-local.
+    const m = html.match(/"first_datetime"\s*:\s*"(\d{4}-\d{2}-\d{2})\s+(\d{2}):(\d{2})"/);
+    if (!m) return null;
+    const [, date, hh, mm] = m;
+    const month = parseInt(date.slice(5, 7), 10);
+    const dst = month >= 3 && month <= 10;
+    const off = dst ? '+02:00' : '+01:00';
+    const d = new Date(`${date}T${hh}:${mm}:00${off}`);
+    return isNaN(d.getTime()) ? null : d;
+  } catch {
+    return null;
+  }
 }
 
 /** Parse de homepage en extract per tile slug+title+date+ticket-link. */
 function parseHomepage(html: string): RawEvent[] {
   const out: RawEvent[] = [];
-  // Vang tiles die met de event-link starten en aan een tickets-link eindigen.
-  // Tussenliggende DOM kan complex zijn; we parsen lazy van event-link tot
-  // de eerstvolgende `weticket.io/{slug}/shop` of `ra.co/events/N`.
-  const tileRe = /<a\s+href="https:\/\/garagenoord\.com\/club\/([a-z0-9-]+)"\s+class="event-link"[^>]*>([\s\S]*?)<\/a>([\s\S]*?)href="(https:\/\/garagenoord\.weticket\.io\/[^"]+|https:\/\/ra\.co\/events\/[^"]+)"/g;
-  let m: RegExpExecArray | null;
-  while ((m = tileRe.exec(html)) !== null) {
-    const slug = m[1];
-    const titleRaw = decodeHtmlEntities(stripTags(m[2]));
-    const between = stripTags(m[3]);
-    const ticketUrl = m[4];
-    // Datum staat tussen titel en tickets-link
-    const dm = between.match(/(\d{1,2}\s+\w+,?\s+\d{4})/);
-    if (!dm || !titleRaw) continue;
+  // Splits per-tile op `<div class="event  ">`. Eerder gebruikte we een
+  // lazy regex over de hele HTML die per ongeluk de tickets-link van
+  // het VOLGENDE tile pakte als het huidige tile er geen had (bv.
+  // "peel" zonder ticket → kreeg tim-reaper's URL, die op zijn beurt
+  // bar40's URL kreeg, enzovoort — off-by-one cascade door de hele
+  // lijst). Per-tile parsing fixt dat: een tile zonder eigen
+  // weticket/ra-link levert geen RawEvent op.
+  const tiles = html.split(/(?=<div class="event  ")/);
+  for (const tile of tiles) {
+    const slugM = tile.match(
+      /<a\s+href="https:\/\/garagenoord\.com\/club\/([a-z0-9-]+)"\s+class="event-link"[^>]*>([\s\S]*?)<\/a>/,
+    );
+    if (!slugM) continue;
+    const slug = slugM[1];
+    const titleRaw = decodeHtmlEntities(stripTags(slugM[2]));
+    if (!titleRaw) continue;
+    // Ticket-URL alleen accepteren als 'ie BINNEN ditzelfde tile zit
+    // (geen lazy match over tile-grenzen). Eerst weticket, dan ra.co.
+    const ticketM = tile.match(
+      /href="(https:\/\/garagenoord\.weticket\.io\/[^"]+|https:\/\/ra\.co\/events\/[^"]+)"/,
+    );
+    if (!ticketM) continue;
+    const ticketUrl = ticketM[1];
+    const dm = stripTags(tile).match(/(\d{1,2}\s+\w+,?\s+\d{4})/);
+    if (!dm) continue;
     out.push({ slug, title: titleRaw, date: dm[1], ticketUrl });
   }
   return out;
@@ -163,8 +202,14 @@ export async function scrapeGarageNoord(options?: { venueIds?: string[] }): Prom
 
   for (const tile of unique) {
     try {
-      const startsAt = buildDate(tile.date);
+      let startsAt = buildDate(tile.date);
       if (!startsAt || startsAt.getTime() < cutoff) { result.skipped++; continue; }
+      // Probeer de echte first_date uit weticket te halen (klopt voor
+      // day-events die anders op default 23:00 belanden).
+      if (tile.ticketUrl.includes('weticket.io/')) {
+        const better = await fetchWeticketFirstDate(tile.ticketUrl);
+        if (better) startsAt = better;
+      }
       const endsAt = new Date(startsAt.getTime() + 7 * 60 * 60 * 1000);
 
       const eventId = `evt-gn-${tile.slug}`;

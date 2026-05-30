@@ -21,6 +21,7 @@
 import { eq } from 'drizzle-orm';
 
 import { db, schema } from '../db/index.js';
+import { parseAmsterdamLocal } from './_amsterdam-tz.js';
 import { fetchTextWithTimeout } from './_fetch.js';
 import {
   findOrCreateFilmEvent,
@@ -210,10 +211,13 @@ function parseEventBlock(block: string, anchor: string, year: number): ParsedEve
     const monthIdx = NL_MONTH_INDEX[monthName];
     if (monthIdx !== undefined) {
       const [sh, sm] = (dateMatch[4] ?? '20:30').split(':').map(Number);
-      startsAt = new Date(year, monthIdx, day, sh, sm);
+      // Amsterdam-local Date — host-TZ in Fly UTC zou +2u verschuiven.
+      const mkIso = (h: number, m: number) =>
+        `${year}-${String(monthIdx + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}T${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:00`;
+      startsAt = parseAmsterdamLocal(mkIso(sh, sm));
       if (dateMatch[5]) {
         const [eh, em] = dateMatch[5].split(':').map(Number);
-        endsAt = new Date(year, monthIdx, day, eh, em);
+        endsAt = parseAmsterdamLocal(mkIso(eh, em));
         // Voor "18:00 - 01:00" cases: endsAt < startsAt → +1 dag.
         if (endsAt.getTime() < startsAt.getTime()) {
           endsAt = new Date(endsAt.getTime() + 24 * 3600 * 1000);

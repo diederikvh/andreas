@@ -196,8 +196,22 @@ export async function scrapeNieuweBoekhandel(options?: {
   for (const tile of tiles) {
     try {
       const year = tile.month < nowMonth ? nowYear + 1 : nowYear;
+      // Detail-page heeft "Hoe laat? → HH:MM - HH:MM". Listing geeft
+      // alleen datum; default 20:00 was fout voor middag-events (15:00).
+      const detailHtml = await fetchHtml(tile.url);
+      let hour = DEFAULT_HOUR;
+      let minute = DEFAULT_MINUTE;
+      if (detailHtml) {
+        const tm = detailHtml.match(
+          /Hoe\s+laat\?[\s\S]{0,200}?(\d{1,2})[:.](\d{2})/,
+        );
+        if (tm) {
+          hour = parseInt(tm[1], 10);
+          minute = parseInt(tm[2], 10);
+        }
+      }
       const startsAt = shiftToLocalTime(
-        year, tile.month, tile.day, DEFAULT_HOUR, DEFAULT_MINUTE
+        year, tile.month, tile.day, hour, minute,
       );
       if (startsAt.getTime() < pastCutoff) {
         result.skipped++;

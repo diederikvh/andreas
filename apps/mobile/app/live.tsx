@@ -251,20 +251,7 @@ export default function Live() {
             isToday={section.isFirst}
           />
         )}
-        renderSectionHeader={({ section }) => {
-          // Eerste sectie: geen header. Volgende dagen krijgen een
-          // gekleurde accent-balk met het dag-label gecentreerd erin.
-          if (section.isFirst) return null;
-          return (
-            <View
-              style={[styles.dayBar, { backgroundColor: roles.accent }]}
-            >
-              <Text style={[styles.dayBarText, { color: roles.onAccent }]}>
-                {section.title}
-              </Text>
-            </View>
-          );
-        }}
+        renderSectionHeader={() => null}
         stickySectionHeadersEnabled={false}
         contentContainerStyle={{
           paddingTop:

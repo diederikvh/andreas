@@ -222,8 +222,11 @@ export default function Avond() {
     lean: true,
   });
   // "Voor jou" — gepersonaliseerde aanbevelingen op basis van je save-
-  // historie. Lege array voor uitgelogde users of users zonder saves.
-  const { data: forYouEvents } = useForYouEvents();
+  // historie + gevolgde venues + vrienden-saves. Rail toont alleen
+  // komende 7 dagen; de "more"-knop leidt naar `/voor-jou` met de
+  // volle chronologische feed (infinite scroll). Lege array voor
+  // uitgelogde users of users zonder profiel-input.
+  const { data: forYouEvents } = useForYouEvents({ weekOnly: true });
   // Series + exhibitions delen één "Loopt nu"-strook bovenaan. Alleen
   // relevant in cmode='uit' (avond/nacht-modus); in 'expo' tonen we
   // 'm niet, dus skippen we de query helemaal.
@@ -873,17 +876,17 @@ export default function Avond() {
         {/* zie ShortcutsRow definitie onder voor de bestaande set */}
 
         {/* "Voor jou" — score-gesorteerde aanbevelingen op basis van je
-            save-historie + gevolgde venues. Boven de datum-divider zodat
-            persoonlijke matches eerst in beeld vallen, omdat ze niet
-            beperkt zijn tot vandaag (horizon: 21 dagen). Verbergt zichzelf
-            bij lege data (Rail-component handelt dat af). */}
+            save-historie + gevolgde venues + vrienden-saves. Boven de
+            datum-divider zodat persoonlijke matches eerst in beeld
+            vallen. Rail is gelimiteerd tot komende 7 dagen; de
+            "more"-knop opent /voor-jou met de volle chronologische
+            feed (infinite scroll). Verbergt zichzelf bij lege data. */}
         {!isLoading && !error && railForYou.length > 0 && (
           <View style={{ marginTop: -12 }}>
           <Rail
-            kicker={t(
-              'Voor jou · komende 3 weken',
-              'For you · next 3 weeks'
-            )}
+            kicker={t('Voor jou · deze week', 'For you · this week')}
+            moreLabel={t('Meer →', 'More →')}
+            onMore={() => router.push('/voor-jou' as never)}
           >
             {railForYou.map((r) => (
               <RailEventCard
@@ -1773,6 +1776,7 @@ function ShortcutsRow() {
       snapToAlignment="start"
       decelerationRate="fast"
     >
+      <VoorJouBanner />
       <NewBanner />
       <FilmsBanner />
       <ClubsBanner />
@@ -1782,6 +1786,25 @@ function ShortcutsRow() {
       <FriendsBanner />
       <OpGevoelBanner />
     </ScrollView>
+  );
+}
+
+function VoorJouBanner() {
+  const roles = useRoles();
+  const t = useT();
+  return (
+    <Pressable
+      onPress={() => router.push('/voor-jou' as never)}
+      style={[styles.shortcutBtn, { backgroundColor: roles.bgLift }]}
+    >
+      <Ionicons name="sparkles-outline" size={36} color={roles.accent} />
+      <Text style={[styles.shortcutKicker, { color: roles.fgMuted }]}>
+        {t('Voor jou', 'For you')}
+      </Text>
+      <Text style={[styles.shortcutTitle, { color: roles.fg }]}>
+        {t('Aanbevolen', 'Recommended')}
+      </Text>
+    </Pressable>
   );
 }
 

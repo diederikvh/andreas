@@ -179,6 +179,26 @@ function extractCards(html: string): CardRaw[] {
   return cards;
 }
 
+/** NXT detail-pagina toont "Time:" met "6:00 pm - 8:30 pm" of "11:00".
+ *  Listing-default 20:00 is fout voor launch-events (18:00) en
+ *  ochtend-talks (11:00). Eerste pm/am tijd na "Time:" wint. */
+async function fetchDetailStartTime(
+  url: string,
+): Promise<{ hour: number; minute: number } | null> {
+  const html = await fetchHtml(url);
+  if (!html) return null;
+  const m = html.match(
+    /Time[<\s][^<]*<[^>]*>[\s\S]{0,200}?(\d{1,2}):(\d{2})\s*(am|pm)/i,
+  );
+  if (!m) return null;
+  let hour = parseInt(m[1], 10);
+  const minute = parseInt(m[2], 10);
+  const period = m[3].toLowerCase();
+  if (period === 'pm' && hour < 12) hour += 12;
+  if (period === 'am' && hour === 12) hour = 0;
+  return { hour, minute };
+}
+
 async function mirrorImage(
   sourceUrl: string,
   slug: string
@@ -251,6 +271,23 @@ export async function scrapeNxtMuseum(options?: {
 
   for (const card of cards) {
     try {
+      // Voor single-day events: probeer de echte tijd uit de detail-
+      // pagina te halen ("Time: 6:00 pm - 8:30 pm"). Listing geeft
+      // alleen de datum; default 20:00 was fout voor launches/talks.
+      if (!card.isMultiDay) {
+        const t = await fetchDetailStartTime(card.url);
+        if (t) {
+          const parts = new Intl.DateTimeFormat('en-GB', {
+            timeZone: 'Europe/Amsterdam',
+            year: 'numeric', month: '2-digit', day: '2-digit',
+          }).formatToParts(card.startsAt);
+          const get = (p: string) => parseInt(parts.find((x) => x.type === p)!.value, 10);
+          card.startsAt = shiftToLocalTime(
+            get('year'), get('month') - 1, get('day'),
+            t.hour, t.minute,
+          );
+        }
+      }
       const eventId = `evt-nxtmuseum-${card.slug}`;
       const occurrenceId = `occ-nxtmuseum-${card.slug}`;
 

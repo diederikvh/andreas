@@ -107,7 +107,7 @@ jobs:
       - name: POST /admin/api/enrich-artists
         run: |
           HTTP=$(curl --silent --show-error --max-time 1500 \
-            -X POST "https://api.andreas.amsterdam/admin/api/enrich-artists?limit=300" \
+            -X POST "https://api.andreas.amsterdam/admin/api/enrich-artists?limit=400" \
             -H "Authorization: Bearer ${{ secrets.ANDREAS_ADMIN_API_KEY }}" \
             -H "Content-Type: application/json" \
             -o response.json \

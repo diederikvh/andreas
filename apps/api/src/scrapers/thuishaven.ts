@@ -153,6 +153,7 @@ async function fetchDetailMeta(url: string): Promise<{
   description: string | null;
   imageUrl: string | null;
   lineup: Lineup;
+  startTime: { hour: number; minute: number } | null;
 } | null> {
   try {
     const r = await fetch(url, { headers: { 'user-agent': UA } });
@@ -170,7 +171,18 @@ async function fetchDetailMeta(url: string): Promise<{
     const rawDesc = descM?.[1] ?? null;
     const description = rawDesc && rawDesc !== 'Thuishaven' && rawDesc.length > 30 ? decodeEntities(rawDesc) : null;
     const lineup = parseLineup(html);
-    return { title, description, imageUrl, lineup };
+    // Tijd: Thuishaven schrijft de openingstijden als "13.00 – 23.00"
+    // in een <p>. In HTML staat de dash als `&#8211;` entity, dus
+    // first-decode-dan-match. Default-23:00 in de URL-parser is fout
+    // voor dag-events; pak hier de eerste HH.MM uit zo'n range.
+    const decodedBody = html
+      .replace(/&#8211;/g, '–')
+      .replace(/&ndash;/g, '–');
+    const timeM = decodedBody.match(/<p[^>]*>\s*(\d{1,2})[.:](\d{2})\s*[-–]\s*\d{1,2}[.:]\d{2}\s*<\/p>/);
+    const startTime = timeM
+      ? { hour: parseInt(timeM[1], 10), minute: parseInt(timeM[2], 10) }
+      : null;
+    return { title, description, imageUrl, lineup, startTime };
   } catch {
     return null;
   }
@@ -234,8 +246,8 @@ export async function scrapeThuishaven(options?: {
 
   for (const url of urls) {
     try {
-      const { date, slugTail } = parseDateFromUrl(url);
-      if (!date || date.getTime() < cutoff) { result.skipped++; continue; }
+      const { date: slugDate, slugTail } = parseDateFromUrl(url);
+      if (!slugDate || slugDate.getTime() < cutoff) { result.skipped++; continue; }
       const eventId = `evt-thh-${slugify(slugTail)}`;
       const [existing] = await db
         .select({ id: schema.events.id })
@@ -249,8 +261,28 @@ export async function scrapeThuishaven(options?: {
       let title: string | null = null;
       let lineup: Lineup = [];
 
+      // Pak altijd de detail-pagina op om de echte start-tijd te
+      // krijgen — slug-default is 23:00 maar voor day-into-night
+      // events (Prunk 10HRS start om 13:00) staat de tijd in de body.
+      const meta = await fetchDetailMeta(url);
+      let date = slugDate;
+      if (meta?.startTime) {
+        // Lees y/m/d in Amsterdam-zone uit slugDate (= zelfde
+        // kalenderdag) en bouw nieuwe Date met echte tijd.
+        const parts = new Intl.DateTimeFormat('en-GB', {
+          timeZone: 'Europe/Amsterdam',
+          year: 'numeric', month: '2-digit', day: '2-digit',
+        }).formatToParts(slugDate);
+        const get = (t: string) => parts.find((p) => p.type === t)!.value;
+        const mo = parseInt(get('month'), 10);
+        const dst = mo >= 3 && mo <= 10;
+        const off = dst ? '+02:00' : '+01:00';
+        const hh = String(meta.startTime.hour).padStart(2, '0');
+        const mm = String(meta.startTime.minute).padStart(2, '0');
+        date = new Date(`${get('year')}-${get('month')}-${get('day')}T${hh}:${mm}:00${off}`);
+      }
+
       if (!existing) {
-        const meta = await fetchDetailMeta(url);
         if (!meta) { result.skipped++; continue; }
         title = meta.title;
         description = meta.description;

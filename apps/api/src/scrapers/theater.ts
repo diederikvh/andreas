@@ -2,6 +2,7 @@ import { eq } from 'drizzle-orm';
 
 import { db, schema } from '../db/index.js';
 import { uploadToBunny } from '../storage/bunny.js';
+import { parseAmsterdamLocal, parseIsoFlexible } from './_amsterdam-tz.js';
 import { enrichEvent, refineKindByDuration } from './enrich.js';
 
 /**
@@ -376,15 +377,21 @@ export async function scrapeTheater(options?: {
         if (cfg.useDataDateAttrs) {
           const dates = extractDataDates(html);
           for (const d of dates) {
-            const startsAt = new Date(`${d}T20:00:00+02:00`);
+            // 20:00 Amsterdam-local — DST-aware via shared helper.
+            const startsAt = parseAmsterdamLocal(`${d}T20:00:00`);
             if (!isNaN(startsAt.getTime())) slots.push({ startsAt, endsAt: null });
           }
         } else {
           for (const ev of evs) {
             if (!ev.startDate) continue;
-            const startsAt = new Date(ev.startDate);
+            // JSON-LD conventie verschilt per venue:
+            //  - Meervaart publiceert correct UTC ("...17:00:00Z")
+            //  - NDSM publiceert naive Amsterdam-local ("...19:30:00")
+            // parseIsoFlexible kiest per string: respect Z/offset waar
+            // aanwezig, anders Ams-local interpreteren.
+            const startsAt = parseIsoFlexible(ev.startDate);
             if (isNaN(startsAt.getTime())) continue;
-            const endsAt = ev.endDate ? new Date(ev.endDate) : null;
+            const endsAt = ev.endDate ? parseIsoFlexible(ev.endDate) : null;
             slots.push({ startsAt, endsAt });
           }
         }

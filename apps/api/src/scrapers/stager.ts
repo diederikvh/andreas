@@ -4,6 +4,7 @@ import { eq } from 'drizzle-orm';
 
 import { db, schema } from '../db/index.js';
 import { uploadToBunny } from '../storage/bunny.js';
+import { parseAmsterdamLocal } from './_amsterdam-tz.js';
 import { enrichEvent, refineKindByDuration } from './enrich.js';
 import {
   fetchMediamaticContent,
@@ -12,43 +13,6 @@ import {
 
 function shortHash(input: string): string {
   return createHash('sha256').update(input).digest('hex').slice(0, 12);
-}
-
-/**
- * Stager's API returnt naive ISO-strings (geen Z, geen offset) waarin de
- * tijd Amsterdam-local bedoeld is. `new Date("2026-05-29T20:15:00")` in
- * Node interpreteert die als UTC, waardoor events 2u (DST) of 1u (winter)
- * verkeerd opgeslagen worden. Deze helper telt de Amsterdam-tz-offset er
- * netjes af zodat de Date-instance de juiste UTC-moment vasthoudt.
- */
-function parseAmsterdamLocal(iso: string | null | undefined): Date {
-  if (!iso) return new Date(NaN);
-  const m = iso.match(
-    /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2}))?/
-  );
-  if (!m) return new Date(iso);
-  const [, y, mo, d, h, min, s] = m;
-  // Eerst: kandidaat-tijdstip alsof het UTC was. We weten dat dit
-  // klopt qua "wall-time", alleen de tz-offset moet er nog af.
-  const guess = new Date(
-    Date.UTC(+y, +mo - 1, +d, +h, +min, +(s ?? '0'))
-  );
-  // Vraag Intl wat de Amsterdam-offset op dat moment is — in minuten
-  // dat Amsterdam vóór ligt op UTC (+60 winter, +120 DST).
-  const fmt = new Intl.DateTimeFormat('en-GB', {
-    timeZone: 'Europe/Amsterdam',
-    timeZoneName: 'longOffset',
-  });
-  const parts = fmt.formatToParts(guess);
-  const tzName =
-    parts.find((p) => p.type === 'timeZoneName')?.value ?? 'GMT';
-  const offMatch = tzName.match(/GMT([+-])(\d+):?(\d+)?/);
-  let offsetMin = 0;
-  if (offMatch) {
-    const sign = offMatch[1] === '+' ? 1 : -1;
-    offsetMin = sign * (+offMatch[2] * 60 + (+(offMatch[3] ?? '0')));
-  }
-  return new Date(guess.getTime() - offsetMin * 60_000);
 }
 
 /**

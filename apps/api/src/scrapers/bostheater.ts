@@ -55,6 +55,24 @@ type Card = {
   ticketUrl: string | null;
 };
 
+/** Detail-page heeft `<time datetime="YYYY-MM-DD HH:MM">` voor elke
+ *  voorstelling. Listing geeft alleen de datum; default 20:00 is fout
+ *  voor venues die om 20:15 of 19:30 starten. */
+async function fetchBostheaterStartTime(
+  detailUrl: string,
+): Promise<{ hour: number; minute: number } | null> {
+  try {
+    const r = await fetch(detailUrl, { headers: { 'user-agent': UA } });
+    if (!r.ok) return null;
+    const html = await r.text();
+    const m = html.match(/datetime="\d{4}-\d{2}-\d{2}\s+(\d{1,2}):(\d{2})"/);
+    if (!m) return null;
+    return { hour: parseInt(m[1], 10), minute: parseInt(m[2], 10) };
+  } catch {
+    return null;
+  }
+}
+
 function parseCards(html: string): Card[] {
   const out: Card[] = [];
   const articleRe = /<article class="event-card[^"]*">([\s\S]*?)<\/article>/g;
@@ -232,11 +250,34 @@ export async function scrapeBostheater(_options?: {
 
   const cutoff = Date.now() - 6 * 60 * 60 * 1000;
 
+  // Cache start-time per slug; detail-page kost één fetch maar geeft
+  // de echte tijd (vaak 20:15 ipv 20:00 default).
+  const timeCache = new Map<string, { hour: number; minute: number } | null>();
+
   for (const card of all) {
     try {
       if (card.startsAt.getTime() < cutoff) {
         result.skipped++;
         continue;
+      }
+      // Override de listing's default 20:00 met de echte tijd uit
+      // de detail-page: `<time datetime="YYYY-MM-DD HH:MM">`.
+      if (!timeCache.has(card.slug)) {
+        timeCache.set(card.slug, await fetchBostheaterStartTime(card.detailUrl));
+      }
+      const realTime = timeCache.get(card.slug) ?? null;
+      if (realTime) {
+        const parts = new Intl.DateTimeFormat('en-GB', {
+          timeZone: 'Europe/Amsterdam',
+          year: 'numeric', month: '2-digit', day: '2-digit',
+        }).formatToParts(card.startsAt);
+        const get = (t: string) => parts.find((p) => p.type === t)!.value;
+        const m = parseInt(get('month'), 10);
+        const dst = m >= 3 && m <= 10;
+        const off = dst ? '+02:00' : '+01:00';
+        const hh = String(realTime.hour).padStart(2, '0');
+        const mm = String(realTime.minute).padStart(2, '0');
+        card.startsAt = new Date(`${get('year')}-${get('month')}-${get('day')}T${hh}:${mm}:00${off}`);
       }
       const isoDate = card.startsAt.toISOString().slice(0, 10);
       const eventId = `evt-bos-${card.slug}`;

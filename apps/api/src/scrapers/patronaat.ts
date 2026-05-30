@@ -174,11 +174,13 @@ type DetailInfo = {
 };
 
 function extractDetail(html: string, fallbackDate: Date | null): DetailInfo {
-  // Aanvangstijd: zoek in een "Aanvang"-context om random HH:MM
-  // (telefoonnummers, footer-tijden) te vermijden.
+  // Aanvangstijd: voorkeur voor "Start:" (nieuwe Patronaat-template,
+  // event__info-bar--start-time), dan "Aanvang", anders "Deuren".
+  // Zonder context-anchor pakt de regex random HH:MM uit footer/etc.
   const timeMatch =
+    html.match(/Start[:\s]+\s*(\d{1,2})[:.](\d{2})/i) ??
     html.match(/Aanvang(?:\s+show)?[\s\S]{0,200}?(\d{1,2})[:.](\d{2})/i) ??
-    html.match(/Deuren\s+open[\s\S]{0,200}?(\d{1,2})[:.](\d{2})/i);
+    html.match(/Deuren(?:\s+open|:)?\s*[\s\S]{0,200}?(\d{1,2})[:.](\d{2})/i);
   const hour = timeMatch ? parseInt(timeMatch[1], 10) : 20;
   const minute = timeMatch ? parseInt(timeMatch[2], 10) : 0;
 

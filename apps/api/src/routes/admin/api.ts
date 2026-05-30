@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { and, asc, eq, inArray } from 'drizzle-orm';
+import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 
 import { db, schema } from '../../db/index.js';
@@ -841,6 +841,224 @@ adminApi.post('/scrapers/run/:name', async (c) => {
       500
     );
   }
+});
+
+// ─── Debug: hoe groot is de globale enrich-worklist? ─────────────────
+adminApi.get('/debug/enrich-worklist-total', async (c) => {
+  const r = await db.execute(sql`
+    with names as (
+      select distinct lower(trim(item->>'name')) as lower_name
+      from occurrences o
+      join events e on e.id = o.event_id
+      cross join lateral jsonb_array_elements(o.lineup) as item
+      where o.starts_at > now()
+        and e.category = 'Muziek'
+        and e.kind = 'show'
+        and o.lineup is not null
+        and jsonb_typeof(o.lineup) = 'array'
+        and trim(item->>'name') <> ''
+    )
+    select
+      count(*) as total_unique,
+      count(*) filter (
+        where lower_name in (select lower(name) from artists)
+      ) as already_in_artists,
+      count(*) filter (
+        where lower_name not in (select lower(name) from artists)
+      ) as never_enriched
+    from names
+  `);
+  return c.json({ stats: r.rows ?? r });
+});
+
+// ─── Debug: enrich-loop diagnose — hoeveel kandidaten matched de filter? ─
+adminApi.get('/debug/enrich-worklist', async (c) => {
+  const venueId = c.req.query('venue');
+  // Reproduceer de filter uit _artists-enrich.ts: future + lineup +
+  // muziek + show. Per venue toon hoeveel events daar wel/niet in
+  // vallen + welke worden gefilterd op category/kind.
+  const r = await db.execute(sql`
+    select
+      o.venue_id,
+      e.category,
+      e.kind,
+      count(*) filter (where o.starts_at > now()) as future_occs,
+      count(*) filter (where o.starts_at > now() and e.category = 'Muziek' and e.kind = 'show') as enrich_eligible,
+      sum(jsonb_array_length(o.lineup)) filter (
+        where o.starts_at > now() and e.category = 'Muziek' and e.kind = 'show'
+      ) as lineup_items_eligible
+    from occurrences o
+    join events e on e.id = o.event_id
+    where o.lineup is not null
+      and jsonb_typeof(o.lineup) = 'array'
+      ${venueId ? sql`and o.venue_id = ${venueId}` : sql``}
+    group by o.venue_id, e.category, e.kind
+    order by future_occs desc nulls last
+    limit 50
+  `);
+  return c.json({ rows: r.rows ?? r });
+});
+
+// ─── Debug: zoek of een naam al in artists-tabel zit (case-insensitive) ─
+adminApi.get('/debug/artist-lookup', async (c) => {
+  const names = (c.req.query('names') ?? '').split(',').map((n) => n.trim()).filter(Boolean);
+  if (!names.length) return c.json({ error: 'pass ?names=a,b,c' }, 400);
+  const r = await db.execute(sql`
+    select id, name, mbid is not null as has_mb,
+      spotify_url is not null as has_spotify,
+      enriched_at
+    from artists
+    where lower(name) = any(${sql.raw(`array[${names.map((n) => `'${n.toLowerCase().replace(/'/g, "''")}'`).join(',')}]`)})
+  `);
+  return c.json({ queried: names.length, found: r.rows ?? r });
+});
+
+// ─── Debug: raw lineup-data per venue (om te zien waarom artists-
+//          enrich niet matched: rare namen, prefixen, missing splits) ─
+adminApi.get('/debug/lineup-sample', async (c) => {
+  const venueId = c.req.query('venue') ?? 'melkweg';
+  const linked = c.req.query('linked');   // 'yes' | 'no' | undefined
+  const limit = Math.min(+(c.req.query('limit') ?? '30'), 100);
+  const r = await db.execute(sql`
+    with lu as (
+      select
+        e.title as event_title,
+        o.starts_at,
+        jsonb_array_elements(o.lineup) as item
+      from occurrences o
+      join events e on e.id = o.event_id
+      where o.venue_id = ${venueId}
+        and o.lineup is not null
+        and jsonb_typeof(o.lineup) = 'array'
+        and o.starts_at > now()
+    )
+    select
+      event_title,
+      to_char(starts_at at time zone 'Europe/Amsterdam', 'DD-MM HH24:MI') as ams,
+      item->>'name' as name,
+      item->>'role' as role,
+      item ? 'artistId' as has_link,
+      item->>'artistId' as artist_id
+    from lu
+    where
+      case
+        when ${linked ?? null}::text = 'yes' then item ? 'artistId'
+        when ${linked ?? null}::text = 'no'  then not (item ? 'artistId')
+        else true
+      end
+    order by starts_at desc
+    limit ${limit}
+  `);
+  return c.json({ venueId, linked: linked ?? 'all', rows: r.rows ?? r });
+});
+
+// ─── Debug: oneshot cleanup van 'Private Event'-rijen ───────────────
+adminApi.post('/debug/cleanup-private-events', async (c) => {
+  const r = await db.execute(sql`
+    delete from events
+    where title ~* '^private[[:space:]]+event'
+    returning id
+  `);
+  return c.json({ deleted: r.rows ?? r });
+});
+
+// ─── Debug: artist-enrichment stats ─────────────────────────────────
+adminApi.get('/debug/artist-stats', async (c) => {
+  // Totaal in `artists`-tabel + hoeveel van die geënricht zijn (MB-match).
+  const overall = await db.execute(sql`
+    select
+      count(*) as total,
+      count(*) filter (where mbid is not null) as with_mbid,
+      count(*) filter (where spotify_url is not null) as with_spotify,
+      count(*) filter (where apple_music_url is not null) as with_apple,
+      count(*) filter (where enriched_at is not null) as enriched_at_set
+    from artists
+  `);
+  // Per-venue: hoeveel lineup-namen hebben een artistId-link?
+  const perVenue = await db.execute(sql`
+    with lu as (
+      select
+        o.venue_id,
+        jsonb_array_elements(o.lineup) as item
+      from occurrences o
+      where o.lineup is not null
+        and jsonb_typeof(o.lineup) = 'array'
+        and o.starts_at > now() - interval '90 days'
+    )
+    select
+      venue_id,
+      count(*) as total_lineup_items,
+      count(*) filter (where item ? 'artistId') as linked,
+      round(
+        100.0 * count(*) filter (where item ? 'artistId') / nullif(count(*), 0),
+        1
+      ) as pct
+    from lu
+    group by venue_id
+    order by total_lineup_items desc
+    limit 20
+  `);
+  return c.json({ overall: overall.rows ?? overall, perVenue: perVenue.rows ?? perVenue });
+});
+
+// ─── Debug: FH embed dag-listing — alle items op een datum ──────────
+adminApi.get('/debug/fh-day', async (c) => {
+  const date = c.req.query('date') ?? '2026-05-30';
+  const [y, m] = date.split('-');
+  const url = `https://fareharbor.com/embeds/book/boomchicago/items/date/${date}/${y}/${m}/`;
+  const r = await fetch(url, {
+    headers: { 'user-agent': 'Mozilla/5.0 (Andreas/1.0; +https://andreas.amsterdam)' },
+  });
+  if (!r.ok) return c.json({ error: `embed ${r.status}` }, 502);
+  const html = await r.text();
+  // FH embeds spuwen een SPA, maar in de initial state staat een
+  // `bridge_static_state` JSON-blob met alle items op de pagina.
+  const stateMatch = html.match(/bridge_static_state\s*=\s*({[\s\S]*?});\s*<\/script>/);
+  const itemMatches = Array.from(html.matchAll(/"pk":\s*(\d{4,7})\b[^}]*"name":\s*"([^"]{3,80})"/g));
+  const items = itemMatches
+    .map((m) => ({ pk: +m[1], name: m[2] }))
+    .filter((x, i, a) => a.findIndex((y) => y.pk === x.pk) === i);
+  return c.json({
+    url,
+    htmlBytes: html.length,
+    stateBlobBytes: stateMatch ? stateMatch[1].length : 0,
+    itemsCount: items.length,
+    items: items.slice(0, 50),
+  });
+});
+
+// ─── Debug: raw FareHarbor calendar ─────────────────────────────────
+//
+// Tijdelijke endpoint om de raw FH-response te inspecteren zodat we
+// kunnen zien of FH naive ISO of UTC-met-Z teruggeeft. Mag weer weg
+// nadat de Boom Chicago tz-bug bevestigd is.
+adminApi.get('/debug/fh-raw', async (c) => {
+  const itemId = c.req.query('item') ?? '575549';
+  const y = c.req.query('y') ?? '2026';
+  const m = c.req.query('m') ?? '5';
+  const url = `https://fareharbor.com/api/v1/companies/boomchicago/items/${itemId}/calendar/${y}/${m}/?allow_grouped=yes&bookable_only=no&asn=&path=1&is_fh_app=no`;
+  const r = await fetch(url, {
+    headers: {
+      'user-agent': 'Mozilla/5.0 (Andreas/1.0; +https://andreas.amsterdam)',
+      accept: 'application/json',
+      referer: 'https://fareharbor.com/',
+    },
+  });
+  if (!r.ok) {
+    const body = (await r.text()).slice(0, 400);
+    return c.json({ error: `FH ${r.status}`, body, url }, 502);
+  }
+  const data = (await r.json()) as { calendar?: { weeks?: Array<{ days?: Array<{ availabilities?: Array<{ start_at: string; end_at: string }> }> }> } };
+  const out: Array<{ start_at: string; end_at: string }> = [];
+  for (const w of data.calendar?.weeks ?? []) {
+    for (const day of w.days ?? []) {
+      for (const av of day.availabilities ?? []) {
+        out.push({ start_at: av.start_at, end_at: av.end_at });
+        if (out.length >= 8) return c.json({ itemId, samples: out });
+      }
+    }
+  }
+  return c.json({ itemId, samples: out });
 });
 
 // ─── OMDb enrichment voor Film-events ───────────────────────────────

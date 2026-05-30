@@ -152,6 +152,18 @@ function extractDetailDate(html: string): { day: number; month: number } | null 
   return null;
 }
 
+/** Akhnaton's detail-pages noemen tijd als "Doors open at 20:00" of
+ *  "aanvang: 20:00". Pak de eerste daarvan zodat we niet op default
+ *  22:00 hoeven te leunen. */
+function extractDetailTime(html: string): { hour: number; minute: number } | null {
+  const m =
+    html.match(/Doors\s+open\s+at\s+(\d{1,2})[:.](\d{2})/i) ??
+    html.match(/[Aa]anvang[^\d<]{0,20}(\d{1,2})[:.](\d{2})/) ??
+    html.match(/[Dd]eur[ae]n[^\d<]{0,40}(\d{1,2})[:.](\d{2})/);
+  if (!m) return null;
+  return { hour: parseInt(m[1], 10), minute: parseInt(m[2], 10) };
+}
+
 /** Pakt de eerste event-poster uit de detail-HTML: een `<img>` met src
  *  op `akhnaton.nl/wp-content/uploads/…`, .jpg/.png/.webp, niet logo/icon.
  *  Akhnaton zet geen WP `featured_media` op posts, dus de poster zit
@@ -280,12 +292,13 @@ export async function scrapeAkhnaton(options?: {
         const pubMonth = pub.getUTCMonth();
         const year = date.month < pubMonth ? pubYear + 1 : pubYear;
 
+        const time = extractDetailTime(detailHtml);
         const startsAt = shiftToLocalTime(
           year,
           date.month,
           date.day,
-          DEFAULT_HOUR,
-          DEFAULT_MINUTE
+          time?.hour ?? DEFAULT_HOUR,
+          time?.minute ?? DEFAULT_MINUTE
         );
         if (startsAt.getTime() < pastCutoff) continue;
         const imageSourceUrl = extractDetailImage(detailHtml);

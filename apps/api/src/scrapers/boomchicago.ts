@@ -1,7 +1,8 @@
-import { eq } from 'drizzle-orm';
+import { and, eq, gt, like, notInArray, sql } from 'drizzle-orm';
 
 import { db, schema } from '../db/index.js';
 import { uploadToBunny } from '../storage/bunny.js';
+import { parseAmsterdamLocal } from './_amsterdam-tz.js';
 import { enrichEvent, refineKindByDuration } from './enrich.js';
 
 /**
@@ -96,23 +97,40 @@ async function fetchHtml(url: string): Promise<string | null> {
 }
 
 async function discoverShows(): Promise<Array<{ slug: string; itemId: string }>> {
-  const html = await fetchHtml(SHOWS_LIST_URL);
-  if (!html) return [];
-  const slugs = new Set<string>();
-  for (const m of html.matchAll(/href="\/shows\/([a-z][a-z0-9-]+)\/"/g)) {
-    slugs.add(m[1]);
-  }
+  // Tot voorheen: /shows op boomchicago.nl scrapen voor item-id's. Te
+  // beperkt — die page toont ~7 hoofdshows, terwijl FH er ~100 heeft
+  // (WTF Improv, Pep & Greg Politically Incorrect, Music Improv
+  // Spectacular, Take the Cannoli quiz, etc.). Skip nu de website en
+  // pak alle items rechtstreeks uit FH's /items endpoint. Filter:
+  // - Academy-classes ("[Academy] ...")
+  // - Archived/disabled items
+  // - Private items en de TICKETS_WILDCARD generic "tickets" hub
+  // Voor de slug: kebab van de naam (alleen voor logging/idempotency,
+  // de eventId blijft `evt-bc-{itemId}` — onafhankelijk van de slug).
+  const url = `${FH_BASE}/items/`;
+  const data = await fetchJson<{
+    items?: Array<{
+      pk: number;
+      name?: string;
+      is_archived?: boolean;
+      is_private?: boolean;
+      is_retail?: boolean;
+    }>;
+  }>(url);
+  if (!data?.items) return [];
   const out: Array<{ slug: string; itemId: string }> = [];
-  for (const slug of slugs) {
-    const showHtml = await fetchHtml(`https://boomchicago.nl/shows/${slug}/`);
-    if (!showHtml) continue;
-    // Find all item-IDs and skip the wildcard 140084
-    const ids = new Set<string>();
-    for (const m of showHtml.matchAll(/\/items\/(\d+)/g)) {
-      if (m[1] !== TICKETS_WILDCARD_ITEM) ids.add(m[1]);
-    }
-    const itemId = Array.from(ids)[0];
-    if (itemId) out.push({ slug, itemId });
+  for (const it of data.items) {
+    const name = it.name ?? '';
+    if (!name || name.startsWith('[Academy]')) continue;
+    if (it.is_archived || it.is_private || it.is_retail) continue;
+    if (String(it.pk) === TICKETS_WILDCARD_ITEM) continue;
+    const slug = name
+      .toLowerCase()
+      .replace(/\s*\|.*$/, '')
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 60);
+    out.push({ slug, itemId: String(it.pk) });
   }
   return out;
 }
@@ -217,9 +235,17 @@ export async function scrapeBoomChicago(options?: {
   const shows = await discoverShows();
   result.fetched = shows.length;
   if (shows.length === 0) {
-    result.errors.push('geen shows ontdekt op /shows/');
+    result.errors.push('geen shows ontdekt via /items/');
     return [result];
   }
+
+  // Track alle availability-pks die FH nu kent — gebruikt straks om
+  // stale (verlopen/her-uitgegeven) occurrences uit de DB te kicken
+  // zodat we niet eindigen met twee rijen voor dezelfde show op
+  // dezelfde datum waarvan de oudste fout was. Zonder cleanup blijft
+  // een +2u-bug-occurrence eeuwig hangen omdat de upsert 'm niet
+  // raakt.
+  const seenPks = new Set<number>();
 
   for (const show of shows) {
     try {
@@ -272,9 +298,9 @@ export async function scrapeBoomChicago(options?: {
         }
 
         const headStart = availabilities[0]?.start_at
-          ? new Date(availabilities[0].start_at)
+          ? parseAmsterdamLocal(availabilities[0].start_at)
           : new Date();
-        const headEnd = availabilities[0]?.end_at ? new Date(availabilities[0].end_at) : null;
+        const headEnd = availabilities[0]?.end_at ? parseAmsterdamLocal(availabilities[0].end_at) : null;
         const eventKind = refineKindByDuration(enriched?.kind ?? 'show', headStart, headEnd);
 
         try {
@@ -301,13 +327,14 @@ export async function scrapeBoomChicago(options?: {
       const cutoff = Date.now() - 6 * 60 * 60 * 1000;
       for (const av of availabilities) {
         try {
-          const startsAt = new Date(av.start_at);
+          const startsAt = parseAmsterdamLocal(av.start_at);
           if (isNaN(startsAt.getTime())) { result.skipped++; continue; }
-          const endsAt = av.end_at ? new Date(av.end_at) : null;
+          const endsAt = av.end_at ? parseAmsterdamLocal(av.end_at) : null;
           const refTime = (endsAt ?? startsAt).getTime();
           if (refTime < cutoff) { result.skipped++; continue; }
 
           const occurrenceId = `occ-bc-${av.pk}`;
+          seenPks.add(av.pk);
           const status = av.is_sold_out ? 'sold_out' : 'scheduled';
           const ticketUrl = `https://fareharbor.com/embeds/book/boomchicago/items/${show.itemId}/?full-items=yes`;
 
@@ -338,6 +365,30 @@ export async function scrapeBoomChicago(options?: {
     } catch (e) {
       result.errors.push(`show ${show.slug}: ${(e as Error).message}`);
       result.skipped++;
+    }
+  }
+
+  // Stale-cleanup: verwijder toekomstige Boom Chicago occurrences die
+  // FH niet meer kent. Voorkomt dat oude (pre-fix of her-uitgegeven)
+  // rijen blijven zitten en de earliest-occurrence-sort de verkeerde
+  // tijd kiest.
+  if (seenPks.size > 0) {
+    try {
+      const ids = Array.from(seenPks).map((pk) => `occ-bc-${pk}`);
+      const r = await db
+        .delete(schema.occurrences)
+        .where(
+          and(
+            like(schema.occurrences.id, 'occ-bc-%'),
+            gt(schema.occurrences.startsAt, sql`now() - interval '6 hours'`),
+            notInArray(schema.occurrences.id, ids),
+          ),
+        );
+      result.errors.push(
+        `cleanup: deleted ${(r as { rowCount?: number }).rowCount ?? '?'} stale occurrences`,
+      );
+    } catch (e) {
+      result.errors.push(`cleanup: ${(e as Error).message}`);
     }
   }
 
