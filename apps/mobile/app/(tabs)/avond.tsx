@@ -75,7 +75,7 @@ import { useSession } from '@/lib/authClient';
 import { useContentMode } from '@/store/contentMode';
 import { useMode, useRoles } from '@/store/mode';
 import { useAddSavedVandaagSearch } from '@/store/savedVandaagSearches';
-import { useLastSessionTimestamp } from '@/store/sessionTimestamps';
+import { useNewBadgeSince } from '@/store/sessionTimestamps';
 import { useVandaagFilters } from '@/store/vandaagFilters';
 import { fontFamily, palette } from '@/theme/tokens';
 
@@ -1764,11 +1764,12 @@ function ShortcutsRow() {
 function NewBanner() {
   const roles = useRoles();
   const t = useT();
-  const since = useLastSessionTimestamp();
+  const since = useNewBadgeSince();
   const { data: events } = useNewArrivalsSince(since);
-  // Badge telt alleen events die sinds vorige sessie zijn toegevoegd.
-  // Bij since=null (eerste sessie) staat de query op pauze → 0, geen
-  // badge.
+  // Badge telt events nieuwer dan je laatste /new-bezoek → zakt naar 0
+  // zodra je de pagina hebt gezien, loopt pas weer op bij nieuwe
+  // aanwinsten. Bij since=null (eerste sessie) staat de query op pauze
+  // → 0, geen badge.
   const count = events?.length ?? 0;
   return (
     <Pressable

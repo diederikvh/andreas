@@ -7,20 +7,25 @@
  *    `current = now`. Binnen 30min reopens tellen we als dezelfde
  *    sessie (anders zou een korte background-fade direct het venster
  *    resetten).
- *  - `lastSeenNewAt`: timestamp waarop je /new daadwerkelijk hebt
- *    geopend. Wordt geset door `markNewSeen()` (via useFocusEffect op
+ *  - `lastSeenNewAt`: timestamp waarop je /new het laatst hebt
+ *    bekeken. Wordt geset door `markNewSeen()` (via useFocusEffect op
  *    de /new-route).
  *
- * De `since`-grens die we naar de API sturen is het MAXIMUM van
- * `previous` en `lastSeenNewAt`:
+ * Twee afnemers, twee verschillende grenzen — bewust ontkoppeld:
  *
- *  - Open je /new dagelijks → lastSeenNewAt is recent → badge telt
- *    alleen dingen sinds jouw laatste bezoek aan de pagina.
- *  - Negeer je /new → lastSeenNewAt veroudert, maar de sessie-grens
- *    `previous` vangt op → badge blijft bounded op "sinds vorige
- *    sessie" — geen runaway-getal.
- *  - Beide oud (weken weg geweest) → server-cap (30 dagen) zorgt
- *    alsnog voor een beheersbare payload.
+ *  - De LIJST op /new ankert op `previous` (de sessie-grens) en blijft
+ *    daardoor de hele sessie dezelfde "nieuw sinds je vorige bezoek"-
+ *    lijst tonen. Open-en-weer-terug binnen één sessie verandert er
+ *    niks aan — `useNewWindowStart()`. Pas een nieuwe sessie (>30min
+ *    weg) schuift het venster door.
+ *  - De BADGE-teller ankert op `max(previous, lastSeenNewAt)` zodat-ie
+ *    naar 0 zakt zodra je de pagina hebt gezien (lastSeenNewAt = nu) en
+ *    pas weer oploopt bij écht nieuwe aanwinsten —
+ *    `useNewBadgeSince()`. Negeer je /new dan vangt `previous` op zodat
+ *    de teller bounded blijft op "sinds vorige sessie".
+ *
+ * Bij beide grenzen oud (weken weg) zorgt de server-cap (30 dagen)
+ * alsnog voor een beheersbare payload.
  */
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { create } from 'zustand';
@@ -77,15 +82,32 @@ export const useSessionTimestamps = create<State>()(
 );
 
 /**
- * `since`-grens voor de /events/new query. De NEUWERE van:
- *   - `previous` (sessie-grens)
- *   - `lastSeenNewAt` (visit-grens)
+ * Venster-grens voor de LIJST op /new. Puur `previous` (de sessie-
+ * grens) — dus stabiel voor de hele sessie. Open je /new, stap je weg
+ * en kom je terug, dan toont de pagina exact dezelfde lijst; pas een
+ * nieuwe sessie (>30min weg) schuift 'm door.
  *
  * Null tot AsyncStorage hydrated en er een echte timestamp beschikbaar
  * is. Bij first-ever-launch staat previous gelijk aan now (zie
  * markLaunch), dus geen historie als "nieuw".
  */
-export function useLastSessionTimestamp(): Date | null {
+export function useNewWindowStart(): Date | null {
+  const previous = useSessionTimestamps((s) => s.previous);
+  const hydrated = useSessionTimestamps((s) => s.hydrated);
+  if (!hydrated) return null;
+  if (previous === 0) return null;
+  return new Date(previous);
+}
+
+/**
+ * `since`-grens voor de BADGE-teller. De NIEUWERE van:
+ *   - `previous` (sessie-grens)
+ *   - `lastSeenNewAt` (visit-grens)
+ *
+ * Zakt naar 0 zodra je /new hebt bekeken (lastSeenNewAt = nu) en loopt
+ * pas weer op bij echt nieuwe aanwinsten. Null tot hydrated.
+ */
+export function useNewBadgeSince(): Date | null {
   const previous = useSessionTimestamps((s) => s.previous);
   const lastSeenNewAt = useSessionTimestamps((s) => s.lastSeenNewAt);
   const hydrated = useSessionTimestamps((s) => s.hydrated);

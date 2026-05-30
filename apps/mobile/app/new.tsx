@@ -40,7 +40,7 @@ import { useLocale, useT } from '@/lib/i18n';
 import { useNewArrivalsSince, useRecentEvents } from '@/lib/queries';
 import type { BadgeTone } from '@/lib/types';
 import {
-  useLastSessionTimestamp,
+  useNewWindowStart,
   useSessionTimestamps,
 } from '@/store/sessionTimestamps';
 import { useMode, useRoles } from '@/store/mode';
@@ -56,14 +56,16 @@ export default function NewScreen() {
 
   const { data: session } = useSession();
   const authed = Boolean(session?.user?.id);
-  const since = useLastSessionTimestamp();
+  // De lijst ankert op de sessie-grens (`previous`), niet op je
+  // laatste bezoek. Daardoor blijft 'ie de hele sessie dezelfde "nieuw
+  // sinds je vorige bezoek"-lijst tonen — wegstappen en terugkomen
+  // verandert er niks aan. Pas een nieuwe sessie (>30min weg) schuift
+  // het venster door.
+  const since = useNewWindowStart();
 
-  // Bij BLUR (= je verlaat /new): bevestig dat de gebruiker de
-  // pagina heeft gezien. Op focus updaten zou de since-grens
-  // verschuiven vóórdat de query rendert → page toont dan meteen
-  // "niks nieuws" terwijl je net 25 items aan kwam kijken. Pas op
-  // wegnavigeren resetten zorgt dat je tijdens dit bezoek de items
-  // ziet, en dat de teller op je volgende bezoek terug naar 0 staat.
+  // Bij BLUR (= je verlaat /new): markeer de pagina als gezien zodat de
+  // badge-teller op /avond naar 0 zakt. Raakt de lijst hierboven niet —
+  // die hangt aan `previous`, niet aan dit bezoek-moment.
   useFocusEffect(
     useCallback(() => {
       return () => {
