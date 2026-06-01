@@ -246,10 +246,9 @@ export default function Theater() {
         // Virtualisatie: alleen wat in viewport (+ overscan) zit wordt
         // gemount. Cruciaal voor oude Android-toestellen — een ScrollView
         // met 100+ banner-cards tegelijk mounten gaat ze knock-out.
-        windowSize={7}
+        windowSize={9}
         initialNumToRender={6}
         maxToRenderPerBatch={6}
-        removeClippedSubviews
       />
 
       <AppHeader

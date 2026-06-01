@@ -310,10 +310,9 @@ export default function Clubs() {
             }
           />
         }
-        windowSize={7}
+        windowSize={9}
         initialNumToRender={6}
         maxToRenderPerBatch={6}
-        removeClippedSubviews
       />
 
       <AppHeader

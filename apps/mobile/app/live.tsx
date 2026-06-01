@@ -302,10 +302,9 @@ export default function Live() {
             }
           />
         }
-        windowSize={7}
+        windowSize={9}
         initialNumToRender={6}
         maxToRenderPerBatch={6}
-        removeClippedSubviews
         // scrollToLocation kan op een net-geremounte SectionList te
         // vroeg vuren — fallback: globale scrollTo(0).
         onScrollToIndexFailed={() => {

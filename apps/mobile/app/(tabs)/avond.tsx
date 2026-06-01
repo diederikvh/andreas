@@ -1797,7 +1797,7 @@ function VoorJouBanner() {
       onPress={() => router.push('/voor-jou' as never)}
       style={[styles.shortcutBtn, { backgroundColor: roles.bgLift }]}
     >
-      <Ionicons name="sparkles-outline" size={36} color={roles.accent} />
+      <Ionicons name="sparkles-outline" size={30} color={roles.accent} />
       <Text style={[styles.shortcutKicker, { color: roles.fgMuted }]}>
         {t('Voor jou', 'For you')}
       </Text>
@@ -1827,7 +1827,7 @@ function NewBanner() {
       ]}
     >
       <View style={styles.shortcutIconRow}>
-        <Ionicons name="flash-outline" size={36} color={roles.accent} />
+        <Ionicons name="flash-outline" size={30} color={roles.accent} />
         {count > 0 ? (
           <View
             style={[
@@ -1865,7 +1865,7 @@ function FriendsBanner() {
         { backgroundColor: roles.bgLift },
       ]}
     >
-      <Ionicons name="people-outline" size={36} color={roles.accent} />
+      <Ionicons name="people-outline" size={30} color={roles.accent} />
       <Text style={[styles.shortcutKicker, { color: roles.fgMuted }]}>
         {t('Friends', 'Friends')}
       </Text>
@@ -1889,7 +1889,7 @@ function OpGevoelBanner() {
     >
       <MaterialCommunityIcons
         name="cards-outline"
-        size={36}
+        size={30}
         color={roles.accent}
       />
       <Text style={[styles.shortcutKicker, { color: roles.fgMuted }]}>
@@ -1915,7 +1915,7 @@ function TheaterBanner() {
     >
       <MaterialCommunityIcons
         name="drama-masks"
-        size={36}
+        size={30}
         color={roles.accent}
       />
       <Text style={[styles.shortcutKicker, { color: roles.fgMuted }]}>
@@ -1939,7 +1939,7 @@ function ClubsBanner() {
         { backgroundColor: roles.bgLift },
       ]}
     >
-      <Ionicons name="disc-outline" size={36} color={roles.accent} />
+      <Ionicons name="disc-outline" size={30} color={roles.accent} />
       <Text style={[styles.shortcutKicker, { color: roles.fgMuted }]}>
         {t('Clubs', 'Clubs')}
       </Text>
@@ -1961,7 +1961,7 @@ function FilmsBanner() {
         { backgroundColor: roles.bgLift },
       ]}
     >
-      <Ionicons name="film-outline" size={36} color={roles.accent} />
+      <Ionicons name="film-outline" size={30} color={roles.accent} />
       <Text style={[styles.shortcutKicker, { color: roles.fgMuted }]}>
         {t('Films', 'Films')}
       </Text>
@@ -1983,7 +1983,7 @@ function LiveBanner() {
         { backgroundColor: roles.bgLift },
       ]}
     >
-      <Ionicons name="musical-notes-outline" size={36} color={roles.accent} />
+      <Ionicons name="musical-notes-outline" size={30} color={roles.accent} />
       <Text style={[styles.shortcutKicker, { color: roles.fgMuted }]}>
         {t('Live', 'Live')}
       </Text>
@@ -2005,7 +2005,7 @@ function KaartBanner() {
         { backgroundColor: roles.bgLift },
       ]}
     >
-      <Ionicons name="map-outline" size={36} color={roles.accent} />
+      <Ionicons name="map-outline" size={30} color={roles.accent} />
       <Text style={[styles.shortcutKicker, { color: roles.fgMuted }]}>
         {t('Kaart', 'Map')}
       </Text>
