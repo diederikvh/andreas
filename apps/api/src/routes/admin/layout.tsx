@@ -10,7 +10,7 @@ export const Layout: FC<PropsWithChildren<{ title: string; active?: string }>> =
   active,
   children,
 }) => (
-  <html lang="nl" data-theme="dark">
+  <html lang="nl" data-theme="light">
     <head>
       <meta charset="utf-8" />
       <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -20,15 +20,24 @@ export const Layout: FC<PropsWithChildren<{ title: string; active?: string }>> =
         href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css"
       />
       <style>{`
-        :root { --pico-font-size: 15px; }
-        html { background: #0a0a0b; min-height: 100%; }
+        /* Andreas dag-mode: cream/paper canvas, noir tekst, acid accent. */
+        :root {
+          --pico-font-size: 15px;
+          --pico-primary: #0a0a0b;
+          --pico-primary-hover: #2a2a2d;
+          --pico-primary-focus: rgba(212, 255, 58, 0.35);
+          --pico-primary-inverse: #fff;
+          --andreas-acid: #d4ff3a;
+        }
+        html { background: #efebe0; min-height: 100%; }
         body {
           max-width: 1100px;
           margin: 2rem auto 4rem;
           padding: 1.5rem 2rem 3rem;
-          background: #131316;
-          border: 1px solid var(--pico-muted-border-color);
+          background: #fdfaf2;
+          border: 1px solid #d8d2c2;
           border-radius: 12px;
+          color: #0a0a0b;
         }
         nav { margin-bottom: 1.75rem; align-items: center; gap: 0.5rem; }
         nav .brand {
@@ -76,8 +85,10 @@ export const Layout: FC<PropsWithChildren<{ title: string; active?: string }>> =
           text-transform: uppercase;
           letter-spacing: 0.05em;
         }
-        .pill-pub { background: #1d4d2c; color: #b6f3c8; }
-        .pill-unpub { background: #4d1d1d; color: #f3b6b6; }
+        .pill-pub { background: var(--andreas-acid); color: #0a0a0b; }
+        .pill-unpub { background: #e6dfca; color: #6e6354; }
+        /* Knop-rij: forms naast elkaar zonder rare paddings. */
+        form { margin: 0; padding: 0; }
         details summary { cursor: pointer; }
         .grid-2 { display: grid; gap: 0.75rem; grid-template-columns: 1fr 1fr; }
         .grid-3 { display: grid; gap: 0.75rem; grid-template-columns: 1fr 1fr 1fr; }
@@ -86,6 +97,17 @@ export const Layout: FC<PropsWithChildren<{ title: string; active?: string }>> =
         .stat strong { font-size: 28px; display: block; }
         .toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; gap: 0.75rem; flex-wrap: wrap; }
         .toolbar h2 { margin: 0; }
+        /* Drie-koloms layout voor de social-actions: video, carousel, tiktok. */
+        .social-actions {
+          display: grid;
+          grid-template-columns: 1.2fr 1.2fr 0.8fr;
+          gap: 1rem;
+          margin-bottom: 2rem;
+        }
+        .social-actions > article { margin: 0; height: 100%; }
+        @media (max-width: 900px) {
+          .social-actions { grid-template-columns: 1fr; }
+        }
 
         /* ─── Mobile (< 720px) ─────────────────────────────────────── */
         @media (max-width: 720px) {
@@ -103,7 +125,7 @@ export const Layout: FC<PropsWithChildren<{ title: string; active?: string }>> =
             margin-bottom: 1rem;
             position: sticky;
             top: 0;
-            background: #131316;
+            background: #fdfaf2;
             padding: 0.5rem 0;
             z-index: 10;
             margin-left: -1rem;
@@ -134,7 +156,7 @@ export const Layout: FC<PropsWithChildren<{ title: string; active?: string }>> =
             border-radius: 8px;
             margin-bottom: 0.75rem;
             padding: 0.75rem 0.9rem;
-            background: rgba(255,255,255,0.02);
+            background: rgba(10,10,11,0.025);
           }
           table td {
             padding: 0.3rem 0;

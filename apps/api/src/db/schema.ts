@@ -977,6 +977,11 @@ export const socialPosts = pgTable(
       permalink?: string;
       themeKey?: string;
       windowDays?: number;
+      kind?: string;
+      /** 9:16 carousel-set voor TikTok (parallel met `imageUrls` 4:5 voor IG). */
+      tiktokImageUrls?: string[];
+      tiktokPublishId?: string;
+      tiktokSentAt?: string;
     }>(),
     createdAt: timestamp({ withTimezone: true })
       .notNull()
@@ -1004,6 +1009,30 @@ export const igTokens = pgTable('ig_tokens', {
   id: text().primaryKey(),
   accessToken: text().notNull(),
   expiresAt: timestamp({ withTimezone: true }).notNull(),
+  refreshedAt: timestamp({ withTimezone: true })
+    .notNull()
+    .default(sql`now()`),
+  createdAt: timestamp({ withTimezone: true })
+    .notNull()
+    .default(sql`now()`),
+});
+
+/**
+ * TikTok Content Posting API OAuth tokens. Eén rij (id='main') voor
+ * de geconnecte Andreas-TikTok-account. Refresh-token is geldig 365d,
+ * access-token 24h; we refreshen automatisch wanneer access binnen
+ * 1h verloopt.
+ */
+export const tiktokTokens = pgTable('tiktok_tokens', {
+  id: text().primaryKey(),
+  accessToken: text().notNull(),
+  refreshToken: text().notNull(),
+  expiresAt: timestamp({ withTimezone: true }).notNull(),
+  refreshExpiresAt: timestamp({ withTimezone: true }).notNull(),
+  /** open_id van de geconnecte TikTok-user (uniek per app+user). */
+  openId: text().notNull(),
+  /** Display name uit user.info — voor admin-UI ("verbonden met @X"). */
+  displayName: text(),
   refreshedAt: timestamp({ withTimezone: true })
     .notNull()
     .default(sql`now()`),

@@ -1,0 +1,55 @@
+{
+  "totalNewCount": 23,
+  "hook": "Net aangekondigd in Amsterdam",
+  "audio": "audio/justin.mp3",
+  "picks": [
+    {
+      "imageUrl": "https://picsum.photos/seed/new1/1080/1350",
+      "title": "Sevdaliza · Sky in Reverse",
+      "venueName": "Paradiso",
+      "category": "Concert",
+      "dateLabel": "vr 22 aug",
+      "daysAgo": 0
+    },
+    {
+      "imageUrl": "https://picsum.photos/seed/new2/1080/1350",
+      "title": "Beatrice Rana speelt Goldberg-variaties",
+      "venueName": "Het Concertgebouw",
+      "category": "Klassiek",
+      "dateLabel": "za 30 aug",
+      "daysAgo": 1
+    },
+    {
+      "imageUrl": "https://picsum.photos/seed/new3/1080/1350",
+      "title": "Mat Collishaw — Petrichor",
+      "venueName": "Foam",
+      "category": "Expo",
+      "dateLabel": "do 4 sep",
+      "daysAgo": 2
+    },
+    {
+      "imageUrl": "https://picsum.photos/seed/new4/1080/1350",
+      "title": "Wie is er bang voor Virginia Woolf?",
+      "venueName": "ITA Grote Zaal",
+      "category": "Theater",
+      "dateLabel": "wo 10 sep",
+      "daysAgo": 4
+    },
+    {
+      "imageUrl": "https://picsum.photos/seed/new5/1080/1350",
+      "title": "All-nighter: Aurora Halal & Stenny",
+      "venueName": "RADION",
+      "category": "Club",
+      "dateLabel": "za 13 sep",
+      "daysAgo": 6
+    },
+    {
+      "imageUrl": "https://picsum.photos/seed/new6/1080/1350",
+      "title": "30 jaar Excelsior Recordings",
+      "venueName": "Paradiso",
+      "category": "Concert",
+      "dateLabel": "vr 19 sep",
+      "daysAgo": 6
+    }
+  ]
+}

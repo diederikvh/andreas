@@ -1,0 +1,590 @@
+import {
+  AbsoluteFill,
+  Audio,
+  Img,
+  Sequence,
+  interpolate,
+  spring,
+  staticFile,
+  useCurrentFrame,
+  useVideoConfig,
+} from 'remotion';
+import { z } from 'zod';
+
+// ─── Schema ──────────────────────────────────────────────────────────────
+// Eén Pick = 1 slide met hero-foto, titel, venue, datum, tijd.
+// Zelfde shape als CarouselPick in api/social/render.ts zodat we de
+// bestaande generator-output 1-op-1 kunnen voeden zonder transform.
+
+const pickSchema = z.object({
+  imageUrl: z.string().url(),
+  title: z.string(),
+  venueName: z.string(),
+  dateLabel: z.string(), // "do 12 sep"
+  timeLabel: z.string(), // "21:00"
+});
+
+export const dailyFilms5Schema = z.object({
+  themeKicker: z.string(), // "Film" — kleine pill onder elke slide
+  themeTitle: z.string(), // legacy, optional
+  hook: z.string().optional(), // "Films dit weekend" — intro-titel
+  audio: z.string().optional(), // bv. "audio/daily.mp3"
+  picks: z.array(pickSchema).length(6),
+});
+
+export type Pick = z.infer<typeof pickSchema>;
+export type DailyFilms5Props = z.infer<typeof dailyFilms5Schema>;
+
+// ─── Tokens ──────────────────────────────────────────────────────────────
+
+const NOIR = '#0a0a0b';
+const INK = '#f2f2ef';
+const INK_MUTED = '#9a9a94';
+const ACID = '#d4ff3a';
+
+const FONT_BODY =
+  'system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif';
+
+// ─── Slide-segmenten ─────────────────────────────────────────────────────
+// Elke slide krijgt 90 frames (3s @30fps): 12f intro (slide-in van rechts
+// + fade), 66f hold, 12f outro (fade + scale-out naar links). De volgende
+// slide overlapt 6f met de outro voor een vloeiende handoff zonder zwart
+// frame ertussen.
+
+const SLIDE_FRAMES = 90;
+const SLIDE_IN_FRAMES = 12;
+const SLIDE_OUT_FRAMES = 12;
+const SLIDE_OVERLAP = 6;
+const INTRO_FRAMES = 60; // 2s intro met hero + hook
+export const OUTRO_FRAMES = 180; // 6s overzicht aan einde
+
+// ─── Helpers ─────────────────────────────────────────────────────────────
+
+function easeOut(t: number) {
+  return 1 - Math.pow(1 - t, 3);
+}
+
+// ─── Subcomponents ───────────────────────────────────────────────────────
+
+// Intro — image-led cover met gecentreerde hook. Achtergrond = eerste
+// pick (al-zichtbaar maar sterk gedimd zodat de hook leesbaar is). Op
+// het einde fadet 'ie naar de eerste slide.
+const Intro: React.FC<{
+  hook: string;
+  themeKicker: string;
+  picks: Pick[];
+}> = ({ hook, themeKicker, picks }) => {
+  const frame = useCurrentFrame();
+
+  // Tekst slidet weg naar links. Image niet — die crossfadet onder
+  // slide 1 vandaan (slide 1 is al isFirst=vol-opacity, dus zodra de
+  // intro-image fade-out start zie je slide 1 doorkomen).
+  const outStart = INTRO_FRAMES - SLIDE_OUT_FRAMES;
+  const outProgress =
+    frame < outStart ? 0 : Math.min((frame - outStart) / SLIDE_OUT_FRAMES, 1);
+  const outEase = easeOut(outProgress);
+  // 160px = identiek aan de title-slide-out tussen de gewone slides, zo
+  // voelt de overgang dezelfde snelheid en easing-curve.
+  const slideX = -outEase * 160;
+  // Image-fade start iets eerder dan de tekst-slide om een rustigere
+  // overgang te geven (16f → ~530ms).
+  const imageFadeStart = INTRO_FRAMES - 16;
+  const imageFadeProgress =
+    frame < imageFadeStart ? 0 : Math.min((frame - imageFadeStart) / 16, 1);
+  const imageOpacity = 1 - easeOut(imageFadeProgress);
+
+  // Subtiele zoom-in zodat 'ie levend voelt.
+  const imgScale = interpolate(frame, [0, INTRO_FRAMES], [1.08, 1.18]);
+
+  // Andere image dan slide 1, anders is de handoff een 'gekke' cross-fade
+  // van dezelfde foto. We pakken liefst de laatste pick — middendomeinen
+  // tonen in de intro vermijdt herhaling met slide 1.
+  const bgImage =
+    picks[picks.length - 1]?.imageUrl ?? picks[0]?.imageUrl;
+
+  return (
+    <AbsoluteFill style={{ backgroundColor: NOIR }}>
+      {bgImage && (
+        <AbsoluteFill style={{ opacity: imageOpacity }}>
+          <Img
+            src={bgImage}
+            style={{
+              width: '100%',
+              height: '100%',
+              objectFit: 'cover',
+              transform: `scale(${imgScale})`,
+              transformOrigin: 'center',
+            }}
+          />
+        </AbsoluteFill>
+      )}
+      {/* Sterke dim — hook moet altijd leesbaar zijn ongeacht hero.
+          Fadet mee met de image zodat slide 1's eigen dim niet wordt
+          gestapeld. */}
+      <AbsoluteFill
+        style={{
+          backgroundColor: 'rgba(10,10,11,0.55)',
+          opacity: imageOpacity,
+        }}
+      />
+      <AbsoluteFill
+        style={{
+          background:
+            'linear-gradient(to bottom, rgba(10,10,11,0.4) 0%, rgba(10,10,11,0.1) 50%, rgba(10,10,11,0.6) 100%)',
+          opacity: imageOpacity,
+        }}
+      />
+
+      {/* Centraal blok — Andreas-brand pill + grote hook. Slidet weg
+          én fadet uit, parallel met de image-cross-fade naar slide 1.
+          De themeKicker (Film/Theater/…) komt pas terug op de slides
+          zelf — de intro is puur brand + concrete belofte. */}
+      <AbsoluteFill
+        style={{
+          justifyContent: 'center',
+          alignItems: 'center',
+          padding: '0 100px',
+          transform: `translateX(${slideX}px)`,
+          opacity: 1 - outEase,
+        }}
+      >
+        <div
+          style={{
+            backgroundColor: ACID,
+            color: NOIR,
+            fontFamily: FONT_BODY,
+            fontWeight: 700,
+            fontSize: 28,
+            letterSpacing: 3,
+            textTransform: 'uppercase',
+            padding: '10px 20px',
+            borderRadius: 4,
+            marginBottom: 40,
+          }}
+        >
+          Andreas
+        </div>
+        <div
+          style={{
+            color: INK,
+            fontFamily: FONT_BODY,
+            fontWeight: 800,
+            fontSize: 110,
+            lineHeight: 1.0,
+            letterSpacing: -3,
+            textAlign: 'center',
+            textShadow: '0 4px 24px rgba(0,0,0,0.8)',
+          }}
+        >
+          {hook}
+        </div>
+      </AbsoluteFill>
+    </AbsoluteFill>
+  );
+};
+
+const Slide: React.FC<{
+  pick: Pick;
+  index: number;
+  isLast: boolean;
+  themeKicker: string;
+}> = ({ pick, isLast, themeKicker }) => {
+  const frame = useCurrentFrame();
+  // Iedere slide — ook de eerste — fadet in. De intro fadet onder de
+  // eerste slide uit; zonder eigen fade-in zou de cut te hard zijn.
+  const inProgress = Math.min(frame / SLIDE_IN_FRAMES, 1);
+  const outStart = SLIDE_FRAMES - SLIDE_OUT_FRAMES;
+  const outProgress = isLast
+    ? 0
+    : frame < outStart
+      ? 0
+      : Math.min((frame - outStart) / SLIDE_OUT_FRAMES, 1);
+
+  const inEase = easeOut(inProgress);
+  const outEase = easeOut(outProgress);
+
+  // Image: cross-fade + heel subtiele scale (Ken Burns).
+  const imgScale = interpolate(frame, [0, SLIDE_FRAMES], [1.04, 1.12]);
+  const imgOpacity = interpolate(inEase, [0, 1], [0, 1]) * (1 - outEase);
+
+  // Title slide-in van rechts, slide-out naar links.
+  const titleX = (1 - inEase) * 160 - outEase * 160;
+  const titleOpacity = inEase * (1 - outEase);
+
+  return (
+    <AbsoluteFill style={{ backgroundColor: NOIR }}>
+      {/* Hero-image — fullbleed */}
+      <AbsoluteFill style={{ opacity: imgOpacity }}>
+        <Img
+          src={pick.imageUrl}
+          style={{
+            width: '100%',
+            height: '100%',
+            objectFit: 'cover',
+            transform: `scale(${imgScale})`,
+            transformOrigin: 'center',
+          }}
+        />
+      </AbsoluteFill>
+
+      {/* Geleidelijke fade van halverwege → onder, drie-stop voor een
+          natuurlijke curve i.p.v. een harde overgang. Niet meer een
+          zwart vlak, wel duidelijk zichtbaar leesbaarheidsverloop. */}
+      <AbsoluteFill
+        style={{
+          background:
+            'linear-gradient(to bottom, transparent 30%, rgba(10,10,11,0.5) 60%, rgba(10,10,11,0.95) 100%)',
+        }}
+      />
+
+      {/* Body — binnen IG Reels' bottom safe-area (~340px). Thema-pill
+          + datum/tijd + titel + venue. Geen losse top-left kicker meer:
+          alles staat samen onderaan zodat 't één visueel blok vormt. */}
+      <div
+        style={{
+          position: 'absolute',
+          left: 100,
+          right: 100,
+          bottom: 340,
+          opacity: titleOpacity,
+          transform: `translateX(${titleX}px)`,
+          textShadow: '0 2px 16px rgba(0,0,0,0.6)',
+        }}
+      >
+        {/* Thema-pill — acid bg + noir text. Inline-block zodat 'ie
+            alleen zo breed is als het label. */}
+        <div
+          style={{
+            display: 'flex',
+            marginBottom: 32,
+          }}
+        >
+          <div
+            style={{
+              backgroundColor: ACID,
+              color: NOIR,
+              fontFamily: FONT_BODY,
+              fontWeight: 700,
+              fontSize: 24,
+              letterSpacing: 2,
+              textTransform: 'uppercase',
+              padding: '8px 16px',
+              borderRadius: 4,
+              // Pill heeft eigen background — geen text-shadow overerven.
+              textShadow: 'none',
+            }}
+          >
+            {themeKicker}
+          </div>
+        </div>
+        <div
+          style={{
+            color: ACID,
+            fontFamily: FONT_BODY,
+            fontWeight: 700,
+            fontSize: 28,
+            letterSpacing: 3,
+            textTransform: 'uppercase',
+            marginBottom: 18,
+          }}
+        >
+          {pick.dateLabel} · {pick.timeLabel}
+        </div>
+        <div
+          style={{
+            color: INK,
+            fontFamily: FONT_BODY,
+            fontWeight: 800,
+            fontSize: 78,
+            lineHeight: 1.05,
+            letterSpacing: -1.5,
+            marginBottom: 18,
+          }}
+        >
+          {pick.title}
+        </div>
+        <div
+          style={{
+            color: INK,
+            fontFamily: FONT_BODY,
+            fontWeight: 700,
+            fontSize: 38,
+            letterSpacing: -0.5,
+          }}
+        >
+          {pick.venueName}
+        </div>
+      </div>
+    </AbsoluteFill>
+  );
+};
+
+const Outro: React.FC = () => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const fadeIn = spring({ frame, fps, config: { damping: 18 } });
+  const ctaY = spring({ frame: frame - 10, fps, config: { damping: 20 } });
+
+  return (
+    <AbsoluteFill
+      style={{
+        backgroundColor: NOIR,
+        justifyContent: 'center',
+        alignItems: 'center',
+        gap: 60,
+      }}
+    >
+      <Cross size={220} style={{ opacity: fadeIn }} />
+      <div
+        style={{
+          color: ACID,
+          fontFamily: FONT_BODY,
+          fontWeight: 700,
+          fontSize: 36,
+          letterSpacing: 4,
+          textTransform: 'uppercase',
+          opacity: ctaY,
+          transform: `translateY(${(1 - ctaY) * 24}px)`,
+        }}
+      >
+        Open Andreas
+      </div>
+      <div
+        style={{
+          color: INK_MUTED,
+          fontFamily: FONT_BODY,
+          fontSize: 28,
+          letterSpacing: 1,
+          opacity: ctaY,
+        }}
+      >
+        andreas.amsterdam
+      </div>
+    </AbsoluteFill>
+  );
+};
+
+// View-based Andreas-kruis — twee gedraaide rechthoeken in acid.
+const Cross: React.FC<{ size: number; style?: React.CSSProperties }> = ({
+  size,
+  style,
+}) => {
+  const bar = {
+    position: 'absolute' as const,
+    width: size * 0.18,
+    height: size,
+    backgroundColor: ACID,
+    borderRadius: size * 0.04,
+    top: 0,
+    left: size / 2 - (size * 0.18) / 2,
+  };
+  return (
+    <div
+      style={{
+        position: 'relative',
+        width: size,
+        height: size,
+        ...style,
+      }}
+    >
+      <div style={{ ...bar, transform: 'rotate(45deg)' }} />
+      <div style={{ ...bar, transform: 'rotate(-45deg)' }} />
+    </div>
+  );
+};
+
+// ─── Overview (laatste slide met alle 6 thumbnails) ─────────────────────
+// Smooth fade-in, geen stroboscope. Stijl matched de gewone slides:
+// rustige spring + lichte stagger zonder bounce. Header is
+// "Andreas X <ThemeKicker>" zonder spaties rond de X.
+
+const Overview: React.FC<{ picks: Pick[]; themeKicker: string }> = ({
+  picks,
+  themeKicker,
+}) => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+
+  const headerOpacity = Math.min(frame / 10, 1);
+  // Per-cell smooth spring met lichte stagger (3f delay), geen bounce.
+  const cellSpring = (i: number) =>
+    spring({
+      frame: frame - i * 3,
+      fps,
+      config: { damping: 18, mass: 0.6, stiffness: 140 },
+    });
+
+  return (
+    <AbsoluteFill style={{ backgroundColor: NOIR }}>
+      {/* Brand-header: Andreas X <ThemeKicker>. Top 240 zodat 'ie
+          binnen IG Reels' top safe-area valt. */}
+      <div
+        style={{
+          position: 'absolute',
+          top: 240,
+          left: 0,
+          right: 0,
+          textAlign: 'center',
+          fontFamily: FONT_BODY,
+          fontWeight: 900,
+          fontSize: 34,
+          letterSpacing: 4,
+          textTransform: 'uppercase',
+          opacity: headerOpacity,
+        }}
+      >
+        <span style={{ color: INK }}>Andreas</span>
+        <span style={{ color: ACID }}>X</span>
+        <span style={{ color: INK }}>{themeKicker}</span>
+      </div>
+
+      {/* Grid 2×3 — cells vierkant + side-pad 120 zodat 't binnen
+          IG Reels' safe-area past (geen overlap met UI overlays). */}
+      <div
+        style={{
+          position: 'absolute',
+          top: 300,
+          left: 120,
+          right: 120,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 16,
+        }}
+      >
+        {[0, 1, 2].map((row) => (
+          <div key={row} style={{ display: 'flex', gap: 16 }}>
+            {[0, 1].map((col) => {
+              const idx = row * 2 + col;
+              const pick = picks[idx];
+              if (!pick) return null;
+              const s = cellSpring(idx);
+              return (
+                <div
+                  key={col}
+                  style={{
+                    flex: 1,
+                    position: 'relative',
+                    aspectRatio: '1 / 1',
+                    overflow: 'hidden',
+                    borderRadius: 10,
+                    backgroundColor: '#1a1a1d',
+                    opacity: Math.min(s, 1),
+                    transform: `translateY(${(1 - s) * 24}px)`,
+                  }}
+                >
+                  <Img
+                    src={pick.imageUrl}
+                    style={{
+                      width: '100%',
+                      height: '100%',
+                      objectFit: 'cover',
+                    }}
+                  />
+                  <div
+                    style={{
+                      position: 'absolute',
+                      inset: 0,
+                      background:
+                        'linear-gradient(to bottom, transparent 45%, rgba(10,10,11,0.85) 100%)',
+                    }}
+                  />
+                  <div
+                    style={{
+                      position: 'absolute',
+                      left: 18,
+                      right: 18,
+                      bottom: 18,
+                    }}
+                  >
+                    <div
+                      style={{
+                        color: ACID,
+                        fontFamily: FONT_BODY,
+                        fontWeight: 700,
+                        fontSize: 24,
+                        letterSpacing: 2,
+                        textTransform: 'uppercase',
+                        marginBottom: 6,
+                      }}
+                    >
+                      {pick.dateLabel} · {pick.timeLabel}
+                    </div>
+                    <div
+                      style={{
+                        color: INK,
+                        fontFamily: FONT_BODY,
+                        fontWeight: 700,
+                        fontSize: 45,
+                        lineHeight: 1.08,
+                        letterSpacing: -0.8,
+                        display: '-webkit-box',
+                        WebkitLineClamp: 2,
+                        WebkitBoxOrient: 'vertical',
+                        overflow: 'hidden',
+                        textShadow: '0 2px 10px rgba(0,0,0,0.8)',
+                      }}
+                    >
+                      {pick.title}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ))}
+      </div>
+    </AbsoluteFill>
+  );
+};
+
+// ─── Composition ─────────────────────────────────────────────────────────
+
+export const DailyFilms5: React.FC<DailyFilms5Props> = ({
+  themeKicker,
+  hook,
+  picks,
+  audio,
+}) => {
+  const hookText = hook ?? themeKicker;
+  // Intro overlapt 6 frames met slide 1 zodat 'ie organisch overgaat
+  // in de eerste film i.p.v. een harde cut.
+  const slidesStart = INTRO_FRAMES - SLIDE_OVERLAP;
+  return (
+    <AbsoluteFill style={{ backgroundColor: NOIR }}>
+      {audio && (() => {
+        const A = Audio as unknown as React.FC<{ src: string; volume?: number }>;
+        return <A src={staticFile(audio)} volume={0.6} />;
+      })()}
+      <Sequence from={0} durationInFrames={INTRO_FRAMES} name="Intro">
+        <Intro hook={hookText} themeKicker={themeKicker} picks={picks} />
+      </Sequence>
+      {picks.map((pick, i) => {
+        const startAt = slidesStart + i * (SLIDE_FRAMES - SLIDE_OVERLAP);
+        return (
+          <Sequence
+            key={i}
+            from={startAt}
+            durationInFrames={SLIDE_FRAMES}
+            name={`Slide ${i + 1}: ${pick.title}`}
+          >
+            {/* Geen slide is "echt last" meer — Overview komt erna en
+                neemt de vol-content over. */}
+            <Slide
+              pick={pick}
+              index={i}
+              isLast={false}
+              themeKicker={themeKicker}
+            />
+          </Sequence>
+        );
+      })}
+      <Sequence
+        from={slidesStart + picks.length * (SLIDE_FRAMES - SLIDE_OVERLAP)}
+        durationInFrames={OUTRO_FRAMES}
+        name="Overview"
+      >
+        <Overview picks={picks} themeKicker={themeKicker} />
+      </Sequence>
+    </AbsoluteFill>
+  );
+};

@@ -18,8 +18,31 @@
  * dus adapteren naar de langere frame (croppen waar nodig).
  */
 
-export const SLIDE_WIDTH = 1080;
-export const SLIDE_HEIGHT = 1350;
+/** Twee carousel-formaten:
+ *  - 'ig'     → 1080×1350 (4:5) Instagram-feed-carousel maximum
+ *  - 'tiktok' → 1080×1920 (9:16) TikTok photo-carousel beeldvullend
+ *  Templates renderen per format zodat tekst-positionering en hero-crops
+ *  per platform optimaal blijven (geen letterboxing op TikTok, geen
+ *  centrale-crop op IG). */
+export type SlideFormat = 'ig' | 'tiktok';
+
+export const FORMATS: Record<SlideFormat, { width: number; height: number }> = {
+  ig: { width: 1080, height: 1350 },
+  tiktok: { width: 1080, height: 1920 },
+};
+
+/** Default-export voor backcompat — IG-formaat. Nieuwe code gebruikt
+ *  `FORMATS[format]`. */
+export const SLIDE_WIDTH = FORMATS.ig.width;
+export const SLIDE_HEIGHT = FORMATS.ig.height;
+
+function dims(format: SlideFormat | undefined): {
+  W: number;
+  H: number;
+} {
+  const f = FORMATS[format ?? 'ig'];
+  return { W: f.width, H: f.height };
+}
 
 const NOIR = '#0a0a0b';
 const NOIR2 = '#17171a';
@@ -137,16 +160,18 @@ export interface CoverInput {
   /** "Tips voor vandaag" (ochtend) of "Tips voor vanavond" (avond) —
       wordt onder de datum getoond. Caller bepaalt op basis van slot. */
   tagline?: string;
+  format?: SlideFormat;
 }
 
 export function coverSlide(input: CoverInput): VNode {
   const hasHero = !!input.heroImageUrl;
+  const { W, H } = dims(input.format);
   return el(
     'div',
     {
       style: {
-        width: SLIDE_WIDTH,
-        height: SLIDE_HEIGHT,
+        width: W,
+        height: H,
         backgroundColor: NOIR,
         display: 'flex',
         flexDirection: 'column',
@@ -162,14 +187,14 @@ export function coverSlide(input: CoverInput): VNode {
     hasHero
       ? el('img', {
           src: input.heroImageUrl,
-          width: SLIDE_WIDTH,
-          height: SLIDE_HEIGHT,
+          width: W,
+          height: H,
           style: {
             position: 'absolute',
             top: 0,
             left: 0,
-            width: SLIDE_WIDTH,
-            height: SLIDE_HEIGHT,
+            width: W,
+            height: H,
             objectFit: 'cover',
           },
         })
@@ -181,8 +206,8 @@ export function coverSlide(input: CoverInput): VNode {
             position: 'absolute',
             top: 0,
             left: 0,
-            width: SLIDE_WIDTH,
-            height: SLIDE_HEIGHT,
+            width: W,
+            height: H,
             backgroundImage:
               'linear-gradient(180deg, rgba(10,10,11,0.30) 0%, rgba(10,10,11,0.10) 25%, rgba(10,10,11,0.55) 55%, rgba(10,10,11,0.96) 88%)',
           },
@@ -265,6 +290,7 @@ export interface EventSlideInput {
   themeLabel?: string;
   /** Subtekst onder themeLabel: tijdseenheid ("Komende 7 dagen"). */
   windowLabel?: string;
+  format?: SlideFormat;
 }
 
 export function eventSlide(input: EventSlideInput): VNode {
@@ -273,13 +299,14 @@ export function eventSlide(input: EventSlideInput): VNode {
   // voldoende; bezoekers checken eind-tijd in de app/site.
   const fullDay = isFullDay(input.startsAt, input.endsAt);
   const time = fullDay ? 'Hele dag' : formatTimeNl(input.startsAt);
+  const { W, H } = dims(input.format);
 
   return el(
     'div',
     {
       style: {
-        width: SLIDE_WIDTH,
-        height: SLIDE_HEIGHT,
+        width: W,
+        height: H,
         backgroundColor: NOIR,
         display: 'flex',
         flexDirection: 'column',
@@ -291,14 +318,14 @@ export function eventSlide(input: EventSlideInput): VNode {
     // Hero image (full bleed)
     el('img', {
       src: input.imageUrl,
-      width: SLIDE_WIDTH,
-      height: SLIDE_HEIGHT,
+      width: W,
+      height: H,
       style: {
         position: 'absolute',
         top: 0,
         left: 0,
-        width: SLIDE_WIDTH,
-        height: SLIDE_HEIGHT,
+        width: W,
+        height: H,
         objectFit: 'cover',
       },
     }),
@@ -308,8 +335,8 @@ export function eventSlide(input: EventSlideInput): VNode {
         position: 'absolute',
         top: 0,
         left: 0,
-        width: SLIDE_WIDTH,
-        height: SLIDE_HEIGHT,
+        width: W,
+        height: H,
         backgroundImage:
           'linear-gradient(180deg, rgba(10,10,11,0.55) 0%, rgba(10,10,11,0.20) 30%, rgba(10,10,11,0.55) 60%, rgba(10,10,11,0.96) 88%)',
       },
@@ -442,13 +469,285 @@ export function eventSlide(input: EventSlideInput): VNode {
 
 // ─── Outro-slide ──────────────────────────────────────────────────────────
 
-export function outroSlide(): VNode {
+// ─── Intro + Overview (matched aan video-templates) ─────────────────────
+
+export interface IntroSlideInput {
+  /** Achtergrondafbeelding — gebruik bv. de laatste pick zodat de
+      intro niet dezelfde foto heeft als slide 1. */
+  heroImageUrl: string;
+  /** Pakkende hook-zin gecentreerd in beeld. */
+  hook: string;
+  format?: SlideFormat;
+}
+
+/**
+ * Intro slide voor de carousel — image-led achtergrond met sterke dim
+ * + grote gecentreerde hook + Andreas-pill onderaan. Matched de stijl
+ * van de Remotion-video introscherm.
+ */
+export function introSlide(input: IntroSlideInput): VNode {
+  const { W, H } = dims(input.format);
   return el(
     'div',
     {
       style: {
-        width: SLIDE_WIDTH,
-        height: SLIDE_HEIGHT,
+        width: W,
+        height: H,
+        backgroundColor: NOIR,
+        display: 'flex',
+        position: 'relative',
+        fontFamily: 'Archivo',
+      },
+    },
+    // Achtergrondafbeelding
+    el('img', {
+      src: input.heroImageUrl,
+      width: W,
+      height: H,
+      style: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        width: W,
+        height: H,
+        objectFit: 'cover',
+      },
+    }),
+    // Sterke noir-dim zodat de hook altijd leesbaar is
+    el('div', {
+      style: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        width: W,
+        height: H,
+        backgroundColor: 'rgba(10,10,11,0.65)',
+      },
+    }),
+    // Centrale tekst-blok
+    el(
+      'div',
+      {
+        style: {
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          width: W,
+          height: H,
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'center',
+          alignItems: 'center',
+          padding: 80,
+        },
+      },
+      // Grote hook-zin
+      el(
+        'div',
+        {
+          style: {
+            color: INK,
+            fontSize: 96,
+            fontWeight: 800,
+            lineHeight: 1.0,
+            letterSpacing: -2.5,
+            textAlign: 'center',
+            marginBottom: 36,
+          },
+        },
+        input.hook,
+      ),
+      // Acid-pill "ANDREAS"
+      el(
+        'div',
+        {
+          style: {
+            display: 'flex',
+            backgroundColor: ACID,
+            color: NOIR,
+            padding: '12px 24px',
+            borderRadius: 6,
+            fontSize: 32,
+            fontWeight: 700,
+            letterSpacing: 5,
+            textTransform: 'uppercase',
+          },
+        },
+        'Andreas',
+      ),
+    ),
+  );
+}
+
+export interface OverviewSlideInput {
+  /** Tekst tussen Andreas en X, bv. "Film", "Theater", "Live". */
+  themeKicker: string;
+  /** 6 picks die in 2x3 grid worden getoond. */
+  picks: Array<{
+    imageUrl: string;
+    title: string;
+    startsAt: Date;
+    endsAt: Date | null;
+  }>;
+  format?: SlideFormat;
+}
+
+/**
+ * Overview slide — 2x3 grid van alle picks met datum + titel als
+ * overlay-tekst linksonder in elke card. Matched de stijl van de
+ * Remotion-video overview slide.
+ */
+export function overviewSlide(input: OverviewSlideInput): VNode {
+  const { W, H } = dims(input.format);
+  // Cellbreedte = (slide-W − padding-l/r − gap) / 2. Cellhoogte schaalt
+  // dynamisch met slide-H zodat 3 rijen netjes passen tussen header
+  // (~140px) en bottom-padding (40px). 14px verticale gap tussen rijen.
+  const cellWidth = (W - 80 * 2 - 14) / 2; // 432px op 1080
+  const VERTICAL_OVERHEAD = 80 + 36 + 30 + 40; // top-padding + header + header-margin + bottom-padding
+  const cellHeight = Math.floor((H - VERTICAL_OVERHEAD - 14 * 2) / 3);
+
+  const card = (pick: OverviewSlideInput['picks'][number]): VNode =>
+    el(
+      'div',
+      {
+        style: {
+          width: cellWidth,
+          height: cellHeight,
+          position: 'relative',
+          borderRadius: 10,
+          overflow: 'hidden',
+          backgroundColor: NOIR2,
+          display: 'flex',
+        },
+      },
+      el('img', {
+        src: pick.imageUrl,
+        width: cellWidth,
+        height: cellHeight,
+        style: {
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          width: cellWidth,
+          height: cellHeight,
+          objectFit: 'cover',
+        },
+      }),
+      // Onder-gradient voor leesbaarheid
+      el('div', {
+        style: {
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          width: cellWidth,
+          height: cellHeight,
+          background:
+            'linear-gradient(to bottom, transparent 45%, rgba(10,10,11,0.9) 100%)',
+        },
+      }),
+      // Tekst-overlay onderaan
+      el(
+        'div',
+        {
+          style: {
+            position: 'absolute',
+            left: 16,
+            right: 16,
+            bottom: 16,
+            display: 'flex',
+            flexDirection: 'column',
+          },
+        },
+        el(
+          'div',
+          {
+            style: {
+              color: ACID,
+              fontSize: 27,
+              fontWeight: 700,
+              letterSpacing: 2,
+              textTransform: 'uppercase',
+              marginBottom: 6,
+            },
+          },
+          formatDateNl(pick.startsAt),
+        ),
+        el(
+          'div',
+          {
+            style: {
+              color: INK,
+              fontSize: 40,
+              fontWeight: 800,
+              lineHeight: 1.04,
+              letterSpacing: -0.8,
+              display: 'flex',
+              textShadow: '0 2px 10px rgba(0,0,0,0.8)',
+              // Satori heeft beperkte line-clamp support; we kappen op
+              // de data-laag indien titel > 40 chars (kortere strings
+              // bij grotere font om wrap netjes te houden).
+            },
+          },
+          pick.title.length > 40 ? pick.title.slice(0, 37) + '…' : pick.title,
+        ),
+      ),
+    );
+
+  const row = (start: number): VNode =>
+    el(
+      'div',
+      { style: { display: 'flex', gap: 14, marginBottom: 14 } },
+      card(input.picks[start]),
+      input.picks[start + 1] ? card(input.picks[start + 1]) : null,
+    );
+
+  return el(
+    'div',
+    {
+      style: {
+        width: W,
+        height: H,
+        backgroundColor: NOIR,
+        display: 'flex',
+        flexDirection: 'column',
+        padding: '80px 80px 40px',
+        fontFamily: 'Archivo',
+      },
+    },
+    // Header
+    el(
+      'div',
+      {
+        style: {
+          color: INK,
+          fontSize: 36,
+          fontWeight: 900,
+          letterSpacing: 5,
+          textTransform: 'uppercase',
+          textAlign: 'center',
+          marginBottom: 30,
+          display: 'flex',
+          justifyContent: 'center',
+        },
+      },
+      el('span', { style: { color: INK } }, 'Andreas'),
+      el('span', { style: { color: ACID } }, 'X'),
+      el('span', { style: { color: INK } }, input.themeKicker),
+    ),
+    row(0),
+    row(2),
+    input.picks[4] ? row(4) : null,
+  );
+}
+
+export function outroSlide(format?: SlideFormat): VNode {
+  const { W, H } = dims(format);
+  return el(
+    'div',
+    {
+      style: {
+        width: W,
+        height: H,
         backgroundColor: NOIR,
         display: 'flex',
         flexDirection: 'column',

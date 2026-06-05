@@ -117,7 +117,13 @@ async function getGraph(
   }
   if (!res.ok || json.error) {
     const e = json.error;
-    throw new Error(`IG API ${res.status}: ${e?.message ?? 'onbekende fout'}`);
+    console.error(`[ig-error] GET ${path} status=${res.status} body=${text}`);
+    throw new Error(
+      `IG API ${res.status}: ${e?.message ?? 'onbekende fout'}` +
+        (e?.code ? ` [code=${e.code}]` : '') +
+        (e?.error_subcode ? ` [subcode=${e.error_subcode}]` : '') +
+        (e?.fbtrace_id ? ` [trace=${e.fbtrace_id}]` : ''),
+    );
   }
   return json;
 }
@@ -247,8 +253,9 @@ export async function ensureFreshToken(opts: { force?: boolean } = {}): Promise<
 async function waitForContainerReady(
   containerId: string,
   token: string,
+  timeoutMs = 30_000,
 ): Promise<void> {
-  const deadline = Date.now() + 30_000;
+  const deadline = Date.now() + timeoutMs;
   let lastStatus = '';
   while (Date.now() < deadline) {
     const r = (await getGraph(
@@ -263,7 +270,9 @@ async function waitForContainerReady(
     }
     await new Promise((res) => setTimeout(res, 1000));
   }
-  throw new Error(`IG container niet klaar binnen 30s (last status=${lastStatus})`);
+  throw new Error(
+    `IG container niet klaar binnen ${Math.round(timeoutMs / 1000)}s (last status=${lastStatus})`,
+  );
 }
 
 export interface PublishInput {
@@ -374,6 +383,102 @@ export async function publishCarousel(input: PublishInput): Promise<PublishResul
     permalink = meta.permalink ?? null;
   } catch {
     // permalink-fetch is niet kritisch
+  }
+
+  return { igMediaId, permalink };
+}
+
+// ─── Reels publishing ────────────────────────────────────────────────────
+
+export interface PublishReelInput {
+  videoUrl: string;
+  caption: string;
+  /** Ook tonen in de feed (niet alleen Reels-tab). Default true. */
+  shareToFeed?: boolean;
+  /** Optionele thumbnail-URL voor de Reel-cover. */
+  coverUrl?: string;
+}
+
+/**
+ * Reel-flow:
+ *   1. POST /{ig-user-id}/media (media_type=REELS + video_url + caption)
+ *   2. Poll status (Reels-encoding duurt langer dan foto's — tot 90s)
+ *   3. POST /{ig-user-id}/media_publish (zelfde 4/2207051-workaround)
+ *
+ * IG-eisen voor de video: MP4/MOV, H.264, 9:16, ≤90s, ≤100MB.
+ * URL moet publiek bereikbaar zijn (Bunny CDN is prima).
+ */
+export async function publishReel(input: PublishReelInput): Promise<PublishResult> {
+  const userId = requireUserId();
+  const { accessToken: token } = await ensureFreshToken();
+
+  const containerParams: Record<string, string> = {
+    media_type: 'REELS',
+    video_url: input.videoUrl,
+    caption: input.caption,
+    share_to_feed: (input.shareToFeed ?? true) ? 'true' : 'false',
+  };
+  if (input.coverUrl) containerParams.cover_url = input.coverUrl;
+
+  const container = (await postGraph(
+    `${userId}/media`,
+    containerParams,
+    token,
+  )) as { id?: string };
+  if (!container.id) throw new Error('IG reel-container geen id terug');
+
+  // Reels-encoding kan tot 90s duren — verleng polling-timeout.
+  await waitForContainerReady(container.id, token, 120_000);
+
+  const publishStartedAt = Date.now();
+  let igMediaId: string;
+  try {
+    const published = (await postGraph(
+      `${userId}/media_publish`,
+      { creation_id: container.id },
+      token,
+    )) as { id?: string };
+    if (!published.id) throw new Error('IG reel publish geen media-id terug');
+    igMediaId = published.id;
+  } catch (e) {
+    const msg = (e as Error).message;
+    const isMetaBug = /\[code=4\].*\[subcode=2207051\]/.test(msg);
+    if (!isMetaBug) throw e;
+
+    console.warn(
+      `[publisher] reel media_publish 4/2207051 — fallback via /me/media: ${msg}`,
+    );
+    const recent = (await getGraph(
+      `${userId}/media`,
+      { fields: 'id,timestamp,permalink,media_type', limit: '5' },
+      token,
+    )) as {
+      data?: Array<{ id: string; timestamp: string; permalink?: string; media_type?: string }>;
+    };
+    const cutoff = publishStartedAt - 120_000;
+    const match = (recent.data ?? []).find((m) => {
+      const t = Date.parse(m.timestamp);
+      return !Number.isNaN(t) && t >= cutoff;
+    });
+    if (!match) {
+      throw new Error(
+        `IG reel publish faalde met 4/2207051 én geen recente post gevonden in /me/media — echte fout: ${msg}`,
+      );
+    }
+    console.log(`[publisher] reel fallback-detect: post staat live als ${match.id}`);
+    igMediaId = match.id;
+  }
+
+  let permalink: string | null = null;
+  try {
+    const meta = (await getGraph(
+      igMediaId,
+      { fields: 'permalink' },
+      token,
+    )) as { permalink?: string };
+    permalink = meta.permalink ?? null;
+  } catch {
+    // niet kritisch
   }
 
   return { igMediaId, permalink };
