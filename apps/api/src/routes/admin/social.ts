@@ -942,6 +942,69 @@ export async function runPublish(
  * Wordt aangeroepen door de GitHub Actions cron als veiligheidsnet —
  * de publisher zelf doet ook al lazy refresh-on-use.
  */
+/**
+ * Diagnostic — toont in één response de IG-token-scopes, app-id,
+ * IG-user-id en de huidige `content_publishing_limit`. Gebruikt om bij
+ * 4/2207051-fouten meteen te zien of het token de juiste scopes heeft
+ * én of het quota op is.
+ */
+adminSocial.get('/debug', async (c) => {
+  try {
+    const { accessToken } = await ensureFreshToken();
+    const userId = process.env.IG_USER_ID;
+    const base = 'https://graph.instagram.com/v23.0';
+
+    // 1. Token-debug op graph.facebook.com (graph.instagram.com heeft geen
+    //    debug_token, fallback op de FB-variant — werkt voor IG Business
+    //    Login tokens.)
+    const debugRes = await fetch(
+      `https://graph.facebook.com/debug_token?input_token=${encodeURIComponent(
+        accessToken,
+      )}&access_token=${encodeURIComponent(accessToken)}`,
+    );
+    const debugJson = (await debugRes.json()) as unknown;
+
+    // 2. /me met fields user_id,username
+    const meRes = await fetch(
+      `${base}/me?fields=user_id,username,account_type&access_token=${encodeURIComponent(
+        accessToken,
+      )}`,
+    );
+    const meJson = (await meRes.json()) as unknown;
+
+    // 2b. Scopes die ACTIEF in het token zitten — niet de app-config maar
+    //     het token zelf. Mismatch hier verklaart 4/2207051 wanneer je
+    //     een permission toevoegt na token-generatie.
+    const permsRes = await fetch(
+      `${base}/me/permissions?access_token=${encodeURIComponent(accessToken)}`,
+    );
+    const permsJson = (await permsRes.json()) as unknown;
+
+    // 3. Content publishing limit
+    let publishingLimit: unknown = null;
+    if (userId) {
+      const limitRes = await fetch(
+        `${base}/${userId}/content_publishing_limit?fields=config,quota_usage&access_token=${encodeURIComponent(
+          accessToken,
+        )}`,
+      );
+      publishingLimit = await limitRes.json();
+    }
+
+    return c.json({
+      env: {
+        IG_USER_ID: userId ?? null,
+      },
+      debugToken: debugJson,
+      me: meJson,
+      tokenPermissions: permsJson,
+      contentPublishingLimit: publishingLimit,
+    });
+  } catch (e) {
+    return c.json({ error: (e as Error).message }, 500);
+  }
+});
+
 adminSocial.post('/refresh-token', async (c) => {
   const force = c.req.query('force') === '1';
   try {

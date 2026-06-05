@@ -49,6 +49,23 @@ interface GraphError {
   };
 }
 
+/** Log de Meta rate-limit headers — `x-app-usage` (app-quota),
+ *  `x-business-use-case-usage` (per-IG-user-quota) en `x-ad-account-usage`.
+ *  Bij 100% op een teller is dat dé reden voor een 4/2207051. */
+function logQuotaHeaders(path: string, res: Response) {
+  const app = res.headers.get('x-app-usage');
+  const buc = res.headers.get('x-business-use-case-usage');
+  const ad = res.headers.get('x-ad-account-usage');
+  if (app || buc || ad) {
+    console.log(
+      `[ig-quota] ${path}` +
+        (app ? ` app=${app}` : '') +
+        (buc ? ` business=${buc}` : '') +
+        (ad ? ` ad=${ad}` : ''),
+    );
+  }
+}
+
 async function postGraph(
   path: string,
   params: Record<string, string>,
@@ -61,6 +78,7 @@ async function postGraph(
     headers: { 'content-type': 'application/x-www-form-urlencoded' },
     body,
   });
+  logQuotaHeaders(path, res);
   const text = await res.text();
   let json: Record<string, unknown> & GraphError;
   try {
@@ -70,10 +88,12 @@ async function postGraph(
   }
   if (!res.ok || json.error) {
     const e = json.error;
+    console.error(`[ig-error] ${path} status=${res.status} body=${text}`);
     throw new Error(
       `IG API ${res.status}: ${e?.message ?? 'onbekende fout'}` +
         (e?.code ? ` [code=${e.code}]` : '') +
-        (e?.error_subcode ? ` [subcode=${e.error_subcode}]` : ''),
+        (e?.error_subcode ? ` [subcode=${e.error_subcode}]` : '') +
+        (e?.fbtrace_id ? ` [trace=${e.fbtrace_id}]` : ''),
     );
   }
   return json;
@@ -87,6 +107,7 @@ async function getGraph(
   const qs = new URLSearchParams({ ...params, access_token: token });
   const url = `${GRAPH}/${VERSION}/${path}?${qs.toString()}`;
   const res = await fetch(url);
+  logQuotaHeaders(path, res);
   const text = await res.text();
   let json: Record<string, unknown> & GraphError;
   try {
@@ -297,19 +318,56 @@ export async function publishCarousel(input: PublishInput): Promise<PublishResul
   // 3. Wacht tot ready
   await waitForContainerReady(master.id, token);
 
-  // 4. Publish
-  const published = (await postGraph(
-    `${userId}/media_publish`,
-    { creation_id: master.id },
-    token,
-  )) as { id?: string };
-  if (!published.id) throw new Error('IG publish geen media-id terug');
+  // 4. Publish — met fallback-detectie voor de Meta-bug waar
+  //    `/media_publish` 4/2207051 retourneert ondanks dat de master-
+  //    container creatie de post al heeft gepubliceerd. We hebben dat
+  //    empirisch bevestigd: bij die error stond de post tóch op IG.
+  //    Workaround: bij specifiek 4/2207051 doen we een fallback-lookup
+  //    naar `/me/media` en zoeken de net-gepubliceerde post in de
+  //    laatste 60s. Vinden we 'm → behandelen we 't als success met
+  //    die media-id.
+  const publishStartedAt = Date.now();
+  let igMediaId: string;
+  try {
+    const published = (await postGraph(
+      `${userId}/media_publish`,
+      { creation_id: master.id },
+      token,
+    )) as { id?: string };
+    if (!published.id) throw new Error('IG publish geen media-id terug');
+    igMediaId = published.id;
+  } catch (e) {
+    const msg = (e as Error).message;
+    const isMetaBug = /\[code=4\].*\[subcode=2207051\]/.test(msg);
+    if (!isMetaBug) throw e;
+
+    console.warn(
+      `[publisher] media_publish 4/2207051 — fallback via /me/media: ${msg}`,
+    );
+    const recent = (await getGraph(
+      `${userId}/media`,
+      { fields: 'id,timestamp,permalink', limit: '5' },
+      token,
+    )) as { data?: Array<{ id: string; timestamp: string; permalink?: string }> };
+    const cutoff = publishStartedAt - 60_000;
+    const match = (recent.data ?? []).find((m) => {
+      const t = Date.parse(m.timestamp);
+      return !Number.isNaN(t) && t >= cutoff;
+    });
+    if (!match) {
+      throw new Error(
+        `IG publish faalde met 4/2207051 én geen recente post gevonden in /me/media — echte fout: ${msg}`,
+      );
+    }
+    console.log(`[publisher] fallback-detect: post staat live als ${match.id}`);
+    igMediaId = match.id;
+  }
 
   // 5. Permalink ophalen — best-effort
   let permalink: string | null = null;
   try {
     const meta = (await getGraph(
-      published.id,
+      igMediaId,
       { fields: 'permalink' },
       token,
     )) as { permalink?: string };
@@ -318,5 +376,5 @@ export async function publishCarousel(input: PublishInput): Promise<PublishResul
     // permalink-fetch is niet kritisch
   }
 
-  return { igMediaId: published.id, permalink };
+  return { igMediaId, permalink };
 }

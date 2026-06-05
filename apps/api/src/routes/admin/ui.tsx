@@ -3358,6 +3358,13 @@ adminUi.get('/social', async (c) => {
                         </form>
                         <form
                           method="post"
+                          action={`/admin/social/${post.id}/approve-and-publish`}
+                          onsubmit="return confirm('Goedkeuren én direct publiceren naar Instagram?');"
+                        >
+                          <button type="submit">Publiceer nu</button>
+                        </form>
+                        <form
+                          method="post"
                           action={`/admin/social/${post.id}/regenerate`}
                           onsubmit="return confirm('Slides + caption opnieuw genereren? Dit overschrijft de huidige.');"
                         >
@@ -3452,6 +3459,14 @@ adminUi.get('/social/:id', async (c) => {
           <>
             <form method="post" action={`/admin/social/${post.id}/approve`} style="margin:0;">
               <button type="submit">Goedkeuren</button>
+            </form>
+            <form
+              method="post"
+              action={`/admin/social/${post.id}/approve-and-publish`}
+              style="margin:0;"
+              onsubmit="return confirm('Goedkeuren én direct publiceren naar Instagram?');"
+            >
+              <button type="submit">Publiceer nu</button>
             </form>
             <form
               method="post"
@@ -3657,6 +3672,44 @@ adminUi.post('/social/:id/approve', async (c) => {
   return c.redirect(
     '/admin/social?flash=' + encodeURIComponent('Goedgekeurd — wacht op publish-cron'),
   );
+});
+
+/**
+ * Goedkeuren + direct publiceren in één klik. Handig voor ad-hoc
+ * posts waar je niet op de geplande cron-tijd wilt wachten — én voor
+ * snel debuggen van IG API-issues. Faalt de publish, dan blijft de
+ * status 'failed' staan (zoals runPublish doet) zodat je 't kan
+ * retryen.
+ */
+adminUi.post('/social/:id/approve-and-publish', async (c) => {
+  const id = c.req.param('id');
+  const [updated] = await db
+    .update(schema.socialPosts)
+    .set({ status: 'approved', updatedAt: new Date() })
+    .where(
+      and(
+        eq(schema.socialPosts.id, id),
+        eq(schema.socialPosts.status, 'draft'),
+      ),
+    )
+    .returning();
+  if (!updated) {
+    return c.redirect(
+      '/admin/social?error=' +
+        encodeURIComponent('Alleen concepten kunnen worden goedgekeurd'),
+    );
+  }
+  try {
+    const { igMediaId } = await runPublish(id);
+    return c.redirect(
+      `/admin/social/${id}?flash=` +
+        encodeURIComponent(`Gepubliceerd op Instagram (media-id ${igMediaId})`),
+    );
+  } catch (e) {
+    return c.redirect(
+      `/admin/social/${id}?error=` + encodeURIComponent((e as Error).message),
+    );
+  }
 });
 
 adminUi.post('/social/:id/publish', async (c) => {
