@@ -72,16 +72,31 @@ function shortId(): string {
   return randomBytes(6).toString('hex');
 }
 /**
- * Scene-weight: lichte voorkeur voor alt-scenes in slots 1+, mainstream
- * komt al via de pin op slide 0. Bewust gecomprimeerd t.o.v. de oude
- * range (0.6→1.0) zodat saves- en featured-boost meer doorslag krijgen
- * en één scene (m.n. underground = OT301/OCCII) niet structureel kaapt.
+ * Scene-weight: MAINSTREAM EERST. Een carousel is reclame voor wat er
+ * speelt in Amsterdam — herkenning triggert engagement. We gaan voor
+ * grote namen (Paradiso/Melkweg/Concertgebouw/Stedelijk) bovenaan en
+ * vullen aan met alternatief/underground/fringe als de mainstream-
+ * picks op zijn. Eerdere balans (mainstream=0.7, underground=0.85)
+ * was juist omgekeerd — dat maakte de carousel te obscuur.
  */
 const SCENE_WEIGHT: Record<string, number> = {
-  mainstream: 0.7,
-  alternatief: 0.8,
-  underground: 0.85,
-  fringe: 0.75,
+  mainstream: 1.0,
+  alternatief: 0.55,
+  fringe: 0.45,
+  underground: 0.35,
+};
+
+/**
+ * Capacity-weight: grotere zalen = meer reclame-waarde voor de carousel.
+ * Schaalt mee met scene maar als onafhankelijk signaal (sommige
+ * alternatieve venues zijn groot — bv. Melkweg Max — en horen op de
+ * eerste slide).
+ */
+const CAPACITY_WEIGHT: Record<string, number> = {
+  xl: 1.0,
+  groot: 0.85,
+  middel: 0.55,
+  klein: 0.3,
 };
 
 /** Bouwt de WHERE-clauses die uit een Theme volgen: categories +
@@ -172,6 +187,7 @@ interface Candidate {
   venueName: string;
   venueScene: string | null;
   venueType: string | null;
+  venueCapacity: string | null;
   venueInstagram: string | null;
   savesCount: number;
 }
@@ -187,18 +203,26 @@ function scoreCandidate(
 ): ScoredCandidate {
   const featuredBoost = c.featured ? 0.4 : 0;
   const sceneWeight = c.venueScene ? (SCENE_WEIGHT[c.venueScene] ?? 0.5) : 0.5;
-  const sceneScore = 0.3 * sceneWeight;
+  // Scene-multiplier verhoogd 0.3→0.6 zodat mainstream echt domineert.
+  // Carousel = reclame; herkenning moet boven exotiek staan.
+  const sceneScore = 0.6 * sceneWeight;
+  const capacityWeight = c.venueCapacity
+    ? (CAPACITY_WEIGHT[c.venueCapacity] ?? 0.5)
+    : 0.5;
+  const capacityScore = 0.4 * capacityWeight;
   const savesScore = 0.2 * Math.min(c.savesCount / 10, 1);
   const cooldownPenalty = opts.venueCooldownSet.has(c.venueId)
     ? VENUE_COOLDOWN_PENALTY
     : 0;
-  const score = featuredBoost + sceneScore + savesScore + cooldownPenalty;
+  const score =
+    featuredBoost + sceneScore + capacityScore + savesScore + cooldownPenalty;
   return {
     ...c,
     score,
     breakdown: {
       featured: featuredBoost,
       scene: sceneScore,
+      capacity: capacityScore,
       saves: savesScore,
       cooldown: cooldownPenalty,
     },
@@ -348,6 +372,7 @@ export async function selectPicksForTheme(
         venueName: schema.venues.name,
         venueScene: schema.venues.scene,
         venueType: schema.venues.type,
+        venueCapacity: schema.venues.capacity,
         venueInstagram: schema.venues.instagram,
         savesCount: sql<number>`(SELECT COUNT(*)::int FROM saves WHERE saves.occurrence_id = ${schema.occurrences.id})`.as('saves_count'),
       })
