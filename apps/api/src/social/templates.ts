@@ -44,6 +44,55 @@ function dims(format: SlideFormat | undefined): {
   return { W: f.width, H: f.height };
 }
 
+/**
+ * Safe-area paddings per format. TikTok's UI-overlay neemt boven ~180px
+ * (logo + tijdsbalk) en onder ~320-380px (caption + actie-knoppen +
+ * nav-bar) van het scherm. Hero-images mogen vol-bleed blijven (visueel
+ * decoratief), maar TEKST en KAART-elementen moeten binnen de safe-area
+ * blijven om leesbaar te zijn. IG-feed-carousel heeft die overlay niet.
+ *
+ * Output is element-specifieke padding (event-slide top-kicker en
+ * bottom-panel hebben verschillende offsets dan overview-grid).
+ */
+function pad(format: SlideFormat | undefined): {
+  /** Y-offset top-kicker (themeLabel) op event-slide. */
+  eventTop: number;
+  /** X-offset event-slide content (kicker + bottom-panel). */
+  eventSide: number;
+  /** Y-offset bottom-panel (datum/titel/venue) op event-slide. */
+  eventBottom: number;
+  /** Symmetrische padding voor intro-slide (hook is gecentreerd in box). */
+  introPadY: number;
+  introPadX: number;
+  /** Outer-padding (top/side/bottom) voor overview-grid. */
+  overviewTop: number;
+  overviewSide: number;
+  overviewBottom: number;
+} {
+  if (format === 'tiktok') {
+    return {
+      eventTop: 180,
+      eventSide: 120,
+      eventBottom: 380,
+      introPadY: 220,
+      introPadX: 140,
+      overviewTop: 180,
+      overviewSide: 120,
+      overviewBottom: 360,
+    };
+  }
+  return {
+    eventTop: 60,
+    eventSide: 60,
+    eventBottom: 56,
+    introPadY: 80,
+    introPadX: 80,
+    overviewTop: 80,
+    overviewSide: 80,
+    overviewBottom: 40,
+  };
+}
+
 const NOIR = '#0a0a0b';
 const NOIR2 = '#17171a';
 const INK = '#f2f2ef';
@@ -300,6 +349,7 @@ export function eventSlide(input: EventSlideInput): VNode {
   const fullDay = isFullDay(input.startsAt, input.endsAt);
   const time = fullDay ? 'Hele dag' : formatTimeNl(input.startsAt);
   const { W, H } = dims(input.format);
+  const p = pad(input.format);
 
   return el(
     'div',
@@ -351,9 +401,9 @@ export function eventSlide(input: EventSlideInput): VNode {
           {
             style: {
               position: 'absolute',
-              top: 60,
-              left: 60,
-              right: 60,
+              top: p.eventTop,
+              left: p.eventSide,
+              right: p.eventSide,
               display: 'flex',
               flexDirection: 'column',
               gap: 4,
@@ -396,9 +446,9 @@ export function eventSlide(input: EventSlideInput): VNode {
       {
         style: {
           position: 'absolute',
-          left: 60,
-          right: 60,
-          bottom: 56,
+          left: p.eventSide,
+          right: p.eventSide,
+          bottom: p.eventBottom,
           display: 'flex',
           flexDirection: 'column',
           gap: 12,
@@ -487,6 +537,7 @@ export interface IntroSlideInput {
  */
 export function introSlide(input: IntroSlideInput): VNode {
   const { W, H } = dims(input.format);
+  const p = pad(input.format);
   return el(
     'div',
     {
@@ -524,7 +575,8 @@ export function introSlide(input: IntroSlideInput): VNode {
         backgroundColor: 'rgba(10,10,11,0.65)',
       },
     }),
-    // Centrale tekst-blok
+    // Centrale tekst-blok — padding schaalt met safe-area zodat de
+    // hook op TikTok niet onder de caption/action-buttons valt.
     el(
       'div',
       {
@@ -538,7 +590,7 @@ export function introSlide(input: IntroSlideInput): VNode {
           flexDirection: 'column',
           justifyContent: 'center',
           alignItems: 'center',
-          padding: 80,
+          padding: `${p.introPadY}px ${p.introPadX}px`,
         },
       },
       // Grote hook-zin
@@ -599,11 +651,13 @@ export interface OverviewSlideInput {
  */
 export function overviewSlide(input: OverviewSlideInput): VNode {
   const { W, H } = dims(input.format);
+  const p = pad(input.format);
   // Cellbreedte = (slide-W − padding-l/r − gap) / 2. Cellhoogte schaalt
-  // dynamisch met slide-H zodat 3 rijen netjes passen tussen header
-  // (~140px) en bottom-padding (40px). 14px verticale gap tussen rijen.
-  const cellWidth = (W - 80 * 2 - 14) / 2; // 432px op 1080
-  const VERTICAL_OVERHEAD = 80 + 36 + 30 + 40; // top-padding + header + header-margin + bottom-padding
+  // dynamisch met slide-H + safe-area-padding zodat 3 rijen netjes
+  // passen tussen header en bottom-padding. 14px verticale gap.
+  const cellWidth = (W - p.overviewSide * 2 - 14) / 2;
+  const HEADER_BLOCK = 36 + 30; // header font + header-margin
+  const VERTICAL_OVERHEAD = p.overviewTop + HEADER_BLOCK + p.overviewBottom;
   const cellHeight = Math.floor((H - VERTICAL_OVERHEAD - 14 * 2) / 3);
 
   const card = (pick: OverviewSlideInput['picks'][number]): VNode =>
@@ -710,7 +764,7 @@ export function overviewSlide(input: OverviewSlideInput): VNode {
         backgroundColor: NOIR,
         display: 'flex',
         flexDirection: 'column',
-        padding: '80px 80px 40px',
+        padding: `${p.overviewTop}px ${p.overviewSide}px ${p.overviewBottom}px`,
         fontFamily: 'Archivo',
       },
     },
