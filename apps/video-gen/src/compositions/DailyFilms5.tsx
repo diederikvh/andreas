@@ -163,7 +163,7 @@ const Intro: React.FC<{
         <div
           style={{
             backgroundColor: NOIR,
-            color: ACID,
+            color: INK,
             fontFamily: FONT_BODY,
             fontWeight: 700,
             fontSize: 28,
