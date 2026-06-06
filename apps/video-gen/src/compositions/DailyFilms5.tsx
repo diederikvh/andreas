@@ -686,19 +686,9 @@ const Overview: React.FC<{
                       bottom: 18,
                     }}
                   >
-                    <div
-                      style={{
-                        color: ACID,
-                        fontFamily: FONT_BODY,
-                        fontWeight: 700,
-                        fontSize: 24,
-                        letterSpacing: 2,
-                        textTransform: 'uppercase',
-                        marginBottom: 6,
-                      }}
-                    >
-                      {pick.dateLabel} · {pick.timeLabel}
-                    </div>
+                    {/* Volgorde: titel → venue → datum. Matched de
+                        event-slide layout zodat overview en slides
+                        één visueel ritme volgen. */}
                     <div
                       style={{
                         color: INK,
@@ -721,18 +711,30 @@ const Overview: React.FC<{
                       style={{
                         color: INK,
                         fontFamily: FONT_BODY,
-                        fontWeight: 600,
-                        fontSize: 24,
+                        fontWeight: 700,
+                        fontSize: 26,
                         letterSpacing: -0.2,
-                        opacity: 0.95,
                         textShadow: '0 2px 8px rgba(0,0,0,0.7)',
                         display: '-webkit-box',
                         WebkitLineClamp: 1,
                         WebkitBoxOrient: 'vertical',
                         overflow: 'hidden',
+                        marginBottom: 4,
                       }}
                     >
                       {pick.venueName}
+                    </div>
+                    <div
+                      style={{
+                        color: ACID,
+                        fontFamily: FONT_BODY,
+                        fontWeight: 700,
+                        fontSize: 26,
+                        letterSpacing: -0.2,
+                        textShadow: '0 2px 8px rgba(0,0,0,0.7)',
+                      }}
+                    >
+                      {pick.dateLabel} · {pick.timeLabel}
                     </div>
                   </div>
                 </div>

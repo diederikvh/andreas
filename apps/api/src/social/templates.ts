@@ -884,20 +884,7 @@ export function overviewSlide(input: OverviewSlideInput): VNode {
             flexDirection: 'column',
           },
         },
-        el(
-          'div',
-          {
-            style: {
-              color: ACID,
-              fontSize: 27,
-              fontWeight: 700,
-              letterSpacing: 2,
-              textTransform: 'uppercase',
-              marginBottom: 6,
-            },
-          },
-          formatDateNl(pick.startsAt),
-        ),
+        // Volgorde: titel → venue → datum. Datum laatste als acid-marker.
         el(
           'div',
           {
@@ -909,7 +896,7 @@ export function overviewSlide(input: OverviewSlideInput): VNode {
               letterSpacing: -0.8,
               display: 'flex',
               textShadow: '0 2px 10px rgba(0,0,0,0.8)',
-              marginBottom: pick.venueName ? 6 : 0,
+              marginBottom: 6,
               // Satori heeft beperkte line-clamp support; we kappen op
               // de data-laag indien titel > 40 chars (kortere strings
               // bij grotere font om wrap netjes te houden).
@@ -923,12 +910,12 @@ export function overviewSlide(input: OverviewSlideInput): VNode {
               {
                 style: {
                   color: INK,
-                  fontSize: 22,
-                  fontWeight: 600,
+                  fontSize: 24,
+                  fontWeight: 700,
                   letterSpacing: -0.2,
-                  opacity: 0.92,
                   display: 'flex',
                   textShadow: '0 2px 8px rgba(0,0,0,0.75)',
+                  marginBottom: 4,
                 },
               },
               pick.venueName.length > 28
@@ -936,6 +923,20 @@ export function overviewSlide(input: OverviewSlideInput): VNode {
                 : pick.venueName,
             )
           : null,
+        el(
+          'div',
+          {
+            style: {
+              color: ACID,
+              fontSize: 24,
+              fontWeight: 700,
+              letterSpacing: -0.2,
+              display: 'flex',
+              textShadow: '0 2px 8px rgba(0,0,0,0.75)',
+            },
+          },
+          formatDateNl(pick.startsAt),
+        ),
       ),
     );
 
