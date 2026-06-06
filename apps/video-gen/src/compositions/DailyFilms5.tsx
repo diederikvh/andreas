@@ -376,7 +376,7 @@ const Slide: React.FC<{
   index: number;
   isLast: boolean;
   themeKicker: string;
-}> = ({ pick, isLast, themeKicker }) => {
+}> = ({ pick, index, isLast, themeKicker }) => {
   const frame = useCurrentFrame();
   // Iedere slide — ook de eerste — fadet in. De intro fadet onder de
   // eerste slide uit; zonder eigen fade-in zou de cut te hard zijn.
