@@ -96,7 +96,6 @@ function pad(format: SlideFormat | undefined): {
 const NOIR = '#0a0a0b';
 const NOIR2 = '#17171a';
 const INK = '#f2f2ef';
-const INK_MUTED = '#9a9a94';
 const ACID = '#d4ff3a';
 
 type VNode = {
@@ -486,8 +485,8 @@ export function eventSlide(input: EventSlideInput): VNode {
           gap: 12,
         },
       },
-      // LabelPair direct boven de datum: acid-cel = slide-nummer,
-      // noir-cel = themeLabel. Matched DailyFilms5.tsx layout.
+      // Volgorde: labelPair → title → venue → datum/tijd. Venue en datum
+      // hebben dezelfde grootte en gewicht; alleen kleur verschilt.
       input.themeLabel
         ? el(
             'div',
@@ -500,34 +499,6 @@ export function eventSlide(input: EventSlideInput): VNode {
             }),
           )
         : null,
-      // Datum links, tijd rechts op één regel. Datum vertelt de lezer
-      // welke dag, tijd staat als sterke acid-marker rechts.
-      el(
-        'div',
-        {
-          style: {
-            display: 'flex',
-            flexDirection: 'row',
-            justifyContent: 'space-between',
-            alignItems: 'baseline',
-            width: '100%',
-          },
-        },
-        // Datum + tijd op één regel — niet meer uppercase, zelfde stijl
-        // als de video-slide.
-        el(
-          'div',
-          {
-            style: {
-              fontSize: 46,
-              fontWeight: 700,
-              color: ACID,
-              letterSpacing: 0,
-            },
-          },
-          `${formatDateNl(input.startsAt)} · ${time}`
-        )
-      ),
       // Title
       el(
         'div',
@@ -545,18 +516,33 @@ export function eventSlide(input: EventSlideInput): VNode {
         },
         input.title
       ),
-      // Venue
+      // Venue — zelfde maat/gewicht als datum, alleen kleur verschilt.
       el(
         'div',
         {
           style: {
-            fontSize: 42,
+            fontSize: 44,
             fontWeight: 700,
             color: INK,
-            letterSpacing: -1,
+            letterSpacing: -0.5,
+            display: 'flex',
           },
         },
         input.venueName
+      ),
+      // Datum + tijd onderaan — acid-marker dat het concreet wordt.
+      el(
+        'div',
+        {
+          style: {
+            fontSize: 44,
+            fontWeight: 700,
+            color: ACID,
+            letterSpacing: -0.5,
+            display: 'flex',
+          },
+        },
+        `${formatDateNl(input.startsAt)} · ${time}`,
       )
     )
   );

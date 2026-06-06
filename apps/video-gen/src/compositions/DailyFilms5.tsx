@@ -444,18 +444,8 @@ const Slide: React.FC<{
             marginBottom={0}
           />
         </div>
-        <div
-          style={{
-            color: ACID,
-            fontFamily: FONT_BODY,
-            fontWeight: 700,
-            fontSize: 42,
-            letterSpacing: 0,
-            marginBottom: 22,
-          }}
-        >
-          {pick.dateLabel} · {pick.timeLabel}
-        </div>
+        {/* Volgorde: title → venue → datum. Venue en datum dezelfde
+            maat/gewicht; alleen kleur verschilt (venue wit, datum acid). */}
         <div
           style={{
             color: INK,
@@ -464,7 +454,7 @@ const Slide: React.FC<{
             fontSize: 82,
             lineHeight: 1.05,
             letterSpacing: -1.5,
-            marginBottom: 22,
+            marginBottom: 18,
           }}
         >
           {pick.title}
@@ -474,11 +464,23 @@ const Slide: React.FC<{
             color: INK,
             fontFamily: FONT_BODY,
             fontWeight: 700,
-            fontSize: 46,
+            fontSize: 44,
             letterSpacing: -0.5,
+            marginBottom: 8,
           }}
         >
           {pick.venueName}
+        </div>
+        <div
+          style={{
+            color: ACID,
+            fontFamily: FONT_BODY,
+            fontWeight: 700,
+            fontSize: 44,
+            letterSpacing: -0.5,
+          }}
+        >
+          {pick.dateLabel} · {pick.timeLabel}
         </div>
       </div>
     </AbsoluteFill>
