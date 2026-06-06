@@ -191,11 +191,7 @@ function renderHookStack(units: HookUnit[]): React.ReactNode[] {
     const next = units[i + 1];
     if (u.role === 'eyebrow' && next?.role === 'countLead') {
       nodes.push(
-        <EyebrowCountLeadGroup
-          key={`pg-${i}`}
-          eyebrow={u}
-          countLead={next}
-        />,
+        <LabelPair key={`pg-${i}`} left={u.text} right={next.text} />,
       );
       i++; // skip de countLead want al gerenderd
       continue;
@@ -205,20 +201,27 @@ function renderHookStack(units: HookUnit[]): React.ReactNode[] {
   return nodes;
 }
 
-// Twee-kleuren-blok: eyebrow links (NOIR/INK), countLead rechts (INK/NOIR),
-// gedeelde 4px border-radius via overflow-hidden container, één gedeelde
-// shadow. Voelt als één label dat uit twee kleuren bestaat.
-const EyebrowCountLeadGroup: React.FC<{
-  eyebrow: HookUnit;
-  countLead: HookUnit;
-}> = ({ eyebrow, countLead }) => {
+// Twee-kleuren-blok: linker cel NOIR/INK, rechter cel ACID/NOIR, gedeelde
+// 4px border-radius via overflow-hidden container, één gedeelde shadow.
+// Voelt als één label dat uit twee kleuren bestaat. Hergebruikt door
+// intro (eyebrow + TOP) én slides (themeKicker + slide-nummer).
+const LabelPair: React.FC<{
+  left: string;
+  right: string;
+  /** Basisfontgrootte van de cellen. Default = intro-formaat (36). */
+  fontSize?: number;
+  /** Padding (verticaal × horizontaal). Default schaalt mee met fontSize. */
+  padding?: string;
+  marginBottom?: number;
+}> = ({ left, right, fontSize = 36, padding, marginBottom = 36 }) => {
+  const cellPad = padding ?? `${Math.round(fontSize / 3)}px ${Math.round(fontSize * 0.72)}px`;
   const cellStyle: React.CSSProperties = {
     fontFamily: FONT_BODY,
     fontWeight: 700,
-    fontSize: 36,
-    letterSpacing: 5,
+    fontSize,
+    letterSpacing: Math.max(2, Math.round(fontSize / 7)),
     textTransform: 'uppercase',
-    padding: '12px 26px',
+    padding: cellPad,
   };
   return (
     <div
@@ -227,7 +230,7 @@ const EyebrowCountLeadGroup: React.FC<{
         flexDirection: 'row',
         borderRadius: 4,
         overflow: 'hidden',
-        marginBottom: 36,
+        marginBottom,
         boxShadow: '0 4px 18px rgba(0,0,0,0.45)',
       }}
     >
@@ -238,17 +241,17 @@ const EyebrowCountLeadGroup: React.FC<{
           color: INK,
         }}
       >
-        {eyebrow.text}
+        {left}
       </div>
       <div
         style={{
           ...cellStyle,
-          backgroundColor: INK,
+          backgroundColor: ACID,
           color: NOIR,
           fontWeight: 800,
         }}
       >
-        {countLead.text}
+        {right}
       </div>
     </div>
   );
@@ -287,13 +290,13 @@ const HookUnitView: React.FC<{ unit: HookUnit }> = ({ unit }) => {
         </div>
       );
     case 'countLead':
-      // Stand-alone fallback — wordt normaal door EyebrowPillGroup tegen
-      // de eyebrow-pill aan getekend. Deze tak wordt alleen geraakt als
+      // Stand-alone fallback — wordt normaal door LabelPair tegen de
+      // eyebrow-pill aan getekend. Deze tak wordt alleen geraakt als
       // er een countLead zonder voorafgaande eyebrow staat.
       return (
         <div
           style={{
-            backgroundColor: INK,
+            backgroundColor: ACID,
             color: NOIR,
             fontFamily: FONT_BODY,
             fontWeight: 800,
@@ -422,9 +425,9 @@ const Slide: React.FC<{
         }}
       />
 
-      {/* Body — binnen IG Reels' bottom safe-area (~340px). Thema-pill
-          + datum/tijd + titel + venue. Geen losse top-left kicker meer:
-          alles staat samen onderaan zodat 't één visueel blok vormt. */}
+      {/* Body — binnen IG Reels' bottom safe-area (~340px). Twee-kleuren-
+          label (themeKicker + slide-nummer) zodat de slide visueel in de
+          serie zit, gevolgd door datum/tijd + titel + venue als één blok. */}
       <div
         style={{
           position: 'absolute',
@@ -436,41 +439,33 @@ const Slide: React.FC<{
           textShadow: '0 2px 16px rgba(0,0,0,0.6)',
         }}
       >
-        {/* Thema-pill — acid bg + noir text. Inline-block zodat 'ie
-            alleen zo breed is als het label. */}
+        {/* Twee-kleuren-label: noir-cel themeKicker, acid-cel slide-nummer.
+            Zelfde stijl als intro maar iets kleiner zodat 't niet
+            concurreert met de titel eronder. textShadow weg — pill heeft
+            eigen background. */}
         <div
           style={{
             display: 'flex',
-            marginBottom: 32,
+            marginBottom: 28,
+            textShadow: 'none',
           }}
         >
-          <div
-            style={{
-              backgroundColor: ACID,
-              color: NOIR,
-              fontFamily: FONT_BODY,
-              fontWeight: 700,
-              fontSize: 24,
-              letterSpacing: 2,
-              textTransform: 'uppercase',
-              padding: '8px 16px',
-              borderRadius: 4,
-              // Pill heeft eigen background — geen text-shadow overerven.
-              textShadow: 'none',
-            }}
-          >
-            {themeKicker}
-          </div>
+          <LabelPair
+            left={themeKicker.toUpperCase()}
+            right={String(index + 1)}
+            fontSize={30}
+            marginBottom={0}
+          />
         </div>
         <div
           style={{
             color: ACID,
             fontFamily: FONT_BODY,
             fontWeight: 700,
-            fontSize: 28,
+            fontSize: 42,
             letterSpacing: 3,
             textTransform: 'uppercase',
-            marginBottom: 18,
+            marginBottom: 22,
           }}
         >
           {pick.dateLabel} · {pick.timeLabel}
@@ -480,10 +475,10 @@ const Slide: React.FC<{
             color: INK,
             fontFamily: FONT_BODY,
             fontWeight: 800,
-            fontSize: 78,
+            fontSize: 82,
             lineHeight: 1.05,
             letterSpacing: -1.5,
-            marginBottom: 18,
+            marginBottom: 22,
           }}
         >
           {pick.title}
@@ -493,7 +488,7 @@ const Slide: React.FC<{
             color: INK,
             fontFamily: FONT_BODY,
             fontWeight: 700,
-            fontSize: 38,
+            fontSize: 46,
             letterSpacing: -0.5,
           }}
         >
