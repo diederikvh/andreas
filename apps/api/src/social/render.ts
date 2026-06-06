@@ -53,6 +53,26 @@ async function renderSlide(
   return await sharp(png).jpeg({ quality: 90, progressive: true }).toBuffer();
 }
 
+/**
+ * Pre-fetch + converteer naar JPEG data-URL. Satori ondersteunt PNG/
+ * JPEG/GIF maar GEEN WebP — veel Bunny-uploads zijn .webp dus zonder
+ * deze conversie missen die slides hun hero-image. We doen 't voor
+ * álle URLs (idempotent voor jpeg) zodat we niet hoeven raden naar
+ * extensions. Bij netwerk-fail fallt 'ie terug op de originele URL
+ * (Satori zal er dan z'n eigen ding mee doen).
+ */
+async function imageToDataUrl(url: string): Promise<string> {
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return url;
+    const buf = Buffer.from(await res.arrayBuffer());
+    const jpeg = await sharp(buf).jpeg({ quality: 88 }).toBuffer();
+    return `data:image/jpeg;base64,${jpeg.toString('base64')}`;
+  } catch {
+    return url;
+  }
+}
+
 export async function renderCarousel(
   picks: CarouselPick[],
   options: {
@@ -95,6 +115,23 @@ export async function renderCarousel(
           ? new Date(p.endsAt)
           : p.endsAt,
   }));
+
+  // Pre-fetch alle imageUrls + converteer naar JPEG data-URL. Satori
+  // ondersteunt geen WebP — zonder deze stap missen Bunny-webp-events
+  // hun hero. Idempotent voor jpeg/png sources. Parallel zodat 't niet
+  // de render-tijd opblaast.
+  const uniqueUrls = Array.from(
+    new Set(normalized.map((p) => p.imageUrl).filter(Boolean)),
+  );
+  const urlMap = new Map<string, string>();
+  await Promise.all(
+    uniqueUrls.map(async (url) => {
+      urlMap.set(url, await imageToDataUrl(url));
+    }),
+  );
+  for (const pick of normalized) {
+    if (pick.imageUrl) pick.imageUrl = urlMap.get(pick.imageUrl) ?? pick.imageUrl;
+  }
 
   // Intro-slide: gebruikt de LAATSTE pick als achtergrond zodat 'm
   // niet gelijk is aan slide 2 (= eerste event). Hook valt terug op
