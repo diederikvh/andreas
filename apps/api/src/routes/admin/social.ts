@@ -230,41 +230,52 @@ function scoreCandidate(
 }
 
 /**
- * Slide 0 = mainstream-hook: het bekendere event dat herkenning triggert
- * bij scrollers (Paradiso/Melkweg/Concertgebouw/Stedelijk). Slides 1..N
- * gaan ruimer — alternatief/underground/fringe als verdieping na de hook.
+ * Mainstream-eerst pick-strategie met spreiding over de week.
  *
  * Volgorde:
- *  1. Pin: hoogst-scorende mainstream event (al gerouleerd door cooldown).
- *  2. Spread: top-score, 1 per venue, 1 per category.
- *  3. Fallback 1: venue-uniek maar cat-dupes toegestaan.
- *  4. Fallback 2: alles toegestaan (last resort, bij erg dun aanbod).
+ *  1. Hook-pin: hoogst-scorende mainstream event (herkenning triggert
+ *     engagement bij scrollers).
+ *  2. Spread strict: top-score met venue-uniek EN dag-uniek (Y-M-D in
+ *     Amsterdam-tz) — zorgt dat de carousel mooi over de week loopt.
+ *  3. Fallback A: venue-uniek (dag-dup toegestaan).
+ *  4. Fallback B: alles toegestaan (last resort bij erg dun aanbod).
  *
- * Geen mainstream beschikbaar? Dan begint stap 2 meteen en is de eerste
- * pick een alt-scene event — niet ideaal maar beter dan een lege post.
+ * Output is gesorteerd op startsAt zodat de slides chronologisch lopen.
+ * Geen mainstream beschikbaar? Stap 2 begint meteen — niet ideaal maar
+ * beter dan een lege post.
  */
 function pickWithSpread(scored: ScoredCandidate[], limit: number): ScoredCandidate[] {
   const sorted = [...scored].sort((a, b) => b.score - a.score);
   const picked: ScoredCandidate[] = [];
-  const seenCats = new Set<string>();
   const seenVenues = new Set<string>();
+  const seenDays = new Set<string>();
 
+  /** Amsterdam-Y-M-D dagsleutel voor spread-detection. */
+  const dayKey = (c: ScoredCandidate): string => {
+    const ymd = amsterdamYMD(c.startsAt);
+    return `${ymd.year}-${ymd.month}-${ymd.day}`;
+  };
+
+  // 1. Hook-pin
   const hook = sorted.find((c) => c.venueScene === 'mainstream');
   if (hook) {
     picked.push(hook);
-    seenCats.add(hook.category);
     seenVenues.add(hook.venueId);
+    seenDays.add(dayKey(hook));
   }
 
+  // 2. Strict spread: venue-uniek EN dag-uniek
   for (const c of sorted) {
     if (picked.length >= limit) break;
     if (picked.some((p) => p.occurrenceId === c.occurrenceId)) continue;
-    if (seenCats.has(c.category) || seenVenues.has(c.venueId)) continue;
+    if (seenVenues.has(c.venueId)) continue;
+    if (seenDays.has(dayKey(c))) continue;
     picked.push(c);
-    seenCats.add(c.category);
     seenVenues.add(c.venueId);
+    seenDays.add(dayKey(c));
   }
 
+  // 3. Fallback A: venue-uniek (dag-dup OK)
   if (picked.length < limit) {
     for (const c of sorted) {
       if (picked.length >= limit) break;
@@ -275,6 +286,7 @@ function pickWithSpread(scored: ScoredCandidate[], limit: number): ScoredCandida
     }
   }
 
+  // 4. Fallback B: alles toegestaan
   if (picked.length < limit) {
     for (const c of sorted) {
       if (picked.length >= limit) break;
@@ -282,6 +294,9 @@ function pickWithSpread(scored: ScoredCandidate[], limit: number): ScoredCandida
       picked.push(c);
     }
   }
+
+  // Chronologisch sorteren zodat de slides door de week heen lopen.
+  picked.sort((a, b) => a.startsAt.getTime() - b.startsAt.getTime());
   return picked;
 }
 
@@ -491,11 +506,9 @@ function videoHookForTheme(theme: Theme): string {
   const hooks: Partial<Record<ThemeKey, string>> = {
     'theater': 'De voorstellingen waar Amsterdam over praat',
     'live-music': 'De concerten die je deze week niet wil missen',
-    'film': 'Films die je echt moet zien dit weekend in Amsterdam',
-    'weekend-kickoff': 'Het weekend dat Amsterdam wakker schudt',
+    'film': 'Films die je deze week wil zien',
+    'clubs': 'De clubnachten waar Amsterdam naartoe gaat',
     'galleries': 'De tentoonstellingen waar Amsterdam naartoe gaat',
-    'tonight': 'Wat je vanavond in Amsterdam wil doen',
-    'week-preview': 'De week die Amsterdam aan het praten houdt',
   };
   return hooks[theme.key] ?? theme.label.nl;
 }

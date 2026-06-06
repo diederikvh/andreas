@@ -1,17 +1,16 @@
 /**
  * Day-themed social posts: één post per dag met een herkenbaar
- * concept dat de weekstructuur leesbaar maakt voor de IG-volger
- * ("op maandag is het theater-tips").
+ * concept dat de weekstructuur leesbaar maakt voor de IG-volger.
+ * Alle thema's tonen "Top X in Amsterdam voor de komende 7 dagen".
  *
- *   ma  theater         · komende 7 dagen
- *   di  live muziek     · komende 7 dagen (excl. clubs)
- *   wo  film            · deze week
- *   do  weekend kickoff · komend weekend  (clubs)
- *   vr  galleries       · dit weekend     (alleen galeries, geen musea)
- *   za  vanavond        · zaterdagavond   (mixed)
- *   zo  deze week       · komende 7 dagen (mixed preview)
+ *   ma  theater       · komende 7 dagen (alleen Theater)
+ *   di  live muziek   · komende 7 dagen (Muziek excl. club-venues)
+ *   wo  film          · komende 7 dagen (alleen Film)
+ *   do  clubs         · komende 7 dagen (alleen club-venues)
+ *   vr  galleries     · komende 7 dagen (alleen galerie-venues)
+ *   za/zo: geen vast thema — admin kan handmatig kiezen.
  *
- * Window-expansie zit in selectPicksForTheme: heeft een dag te weinig
+ * Window-expansie zit in selectPicksForTheme: heeft een week te weinig
  * candidates, dan groeit het venster (windowDays → +7 tot maxWindowDays)
  * tot er genoeg events zijn — i.p.v. de theme te wisselen.
  */
@@ -25,10 +24,8 @@ export type ThemeKey =
   | 'theater'
   | 'live-music'
   | 'film'
-  | 'weekend-kickoff'
-  | 'galleries'
-  | 'tonight'
-  | 'week-preview';
+  | 'clubs'
+  | 'galleries';
 
 export interface Theme {
   key: ThemeKey;
@@ -75,45 +72,29 @@ export const THEMES: readonly Theme[] = [
     key: 'film',
     weekday: 3,
     label: { nl: 'Film', en: 'Film' },
-    windowLabel: { nl: 'Deze week', en: 'This week' },
+    windowLabel: { nl: 'Komende 7 dagen', en: 'Next 7 days' },
     windowDays: 7,
     maxWindowDays: 14,
     categories: ['Film'],
   },
   {
-    key: 'weekend-kickoff',
+    key: 'clubs',
     weekday: 4,
-    label: { nl: 'Weekend kickoff', en: 'Weekend kickoff' },
-    windowLabel: { nl: 'Komend weekend', en: 'This weekend' },
-    windowDays: 4,
-    maxWindowDays: 11,
+    label: { nl: 'Clubs', en: 'Clubs' },
+    windowLabel: { nl: 'Komende 7 dagen', en: 'Next 7 days' },
+    windowDays: 7,
+    maxWindowDays: 14,
     venueTypes: ['club'],
   },
   {
     key: 'galleries',
     weekday: 5,
     label: { nl: 'Galleries', en: 'Galleries' },
-    windowLabel: { nl: 'Dit weekend', en: 'This weekend' },
-    windowDays: 3,
-    maxWindowDays: 14,
-    categories: ['Kunst'],
-    venueTypes: ['galerie'],
-  },
-  {
-    key: 'tonight',
-    weekday: 6,
-    label: { nl: 'Vanavond', en: 'Tonight' },
-    windowLabel: { nl: 'Zaterdagavond', en: 'Saturday night' },
-    windowDays: 1,
-    maxWindowDays: 7,
-  },
-  {
-    key: 'week-preview',
-    weekday: 0,
-    label: { nl: 'Deze week', en: 'This week' },
     windowLabel: { nl: 'Komende 7 dagen', en: 'Next 7 days' },
     windowDays: 7,
-    maxWindowDays: 14,
+    maxWindowDays: 28,
+    categories: ['Kunst'],
+    venueTypes: ['galerie'],
   },
 ];
 

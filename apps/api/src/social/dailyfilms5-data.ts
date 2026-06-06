@@ -61,20 +61,16 @@ export const KICKERS: Partial<Record<ThemeKey, string>> = {
   'theater': 'Theater',
   'live-music': 'Live',
   'film': 'Film',
-  'weekend-kickoff': 'Weekend',
+  'clubs': 'Clubs',
   'galleries': 'Galeries',
-  'tonight': 'Vanavond',
-  'week-preview': 'Week',
 };
 
 export const HOOKS: Partial<Record<ThemeKey, string>> = {
   'theater': 'De voorstellingen waar Amsterdam over praat',
   'live-music': 'De concerten die je deze week niet wil missen',
-  'film': 'Films die je echt moet zien dit weekend in Amsterdam',
-  'weekend-kickoff': 'Het weekend dat Amsterdam wakker schudt',
+  'film': 'Films die je deze week wil zien',
+  'clubs': 'De clubnachten waar Amsterdam naartoe gaat',
   'galleries': 'De tentoonstellingen waar Amsterdam naartoe gaat',
-  'tonight': 'Wat je vanavond in Amsterdam wil doen',
-  'week-preview': 'De week die Amsterdam aan het praten houdt',
 };
 
 /**
@@ -105,29 +101,21 @@ export const HOOK_UNITS: Partial<Record<ThemeKey, HookUnit[]>> = {
     { role: 'countLead', text: 'TOP' },
     { role: 'count', text: '6' },
     { role: 'headline', text: 'films in de filmhuizen' },
-    { role: 'meta', text: 'Amsterdam · dit weekend\n{date}' },
+    { role: 'meta', text: 'Amsterdam · deze week\n{date}' },
   ],
-  'weekend-kickoff': [
-    { role: 'eyebrow', text: 'WEEKEND' },
-    { role: 'headline', text: 'Dit ga je doen' },
-    { role: 'meta', text: 'Amsterdam · dit weekend\n{date}' },
+  'clubs': [
+    { role: 'eyebrow', text: 'CLUBS' },
+    { role: 'countLead', text: 'TOP' },
+    { role: 'count', text: '6' },
+    { role: 'headline', text: 'clubnachten' },
+    { role: 'meta', text: 'Amsterdam · deze week\n{date}' },
   ],
   'galleries': [
     { role: 'eyebrow', text: 'EXPO' },
     { role: 'countLead', text: 'TOP' },
-    { role: 'count', text: '5' },
+    { role: 'count', text: '6' },
     { role: 'headline', text: 'exposities' },
-    { role: 'meta', text: 'Amsterdam · nu open' },
-  ],
-  'tonight': [
-    { role: 'eyebrow', text: 'VANAVOND' },
-    { role: 'headline', text: 'Dit ga je doen' },
-    { role: 'meta', text: 'Amsterdam · vanavond\n{date}' },
-  ],
-  'week-preview': [
-    { role: 'eyebrow', text: 'DEZE WEEK' },
-    { role: 'headline', text: 'Dit is er te doen' },
-    { role: 'meta', text: 'Amsterdam\n{date}' },
+    { role: 'meta', text: 'Amsterdam · deze week\n{date}' },
   ],
 };
 
@@ -144,10 +132,8 @@ export const OVERVIEW_TITLES: Partial<Record<ThemeKey, string>> = {
   'theater': 'Top {count} voorstellingen deze week',
   'live-music': 'Top {count} concerten deze week',
   'film': 'Top {count} films deze week',
-  'weekend-kickoff': 'Dit ga je doen dit weekend',
-  'galleries': 'Top {count} exposities nu open',
-  'tonight': 'Dit ga je doen vanavond',
-  'week-preview': 'Dit is er te doen deze week',
+  'clubs': 'Top {count} clubnachten deze week',
+  'galleries': 'Top {count} exposities deze week',
 };
 
 /**
