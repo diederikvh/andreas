@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { and, asc, desc, eq, gte, inArray, isNotNull, lt, lte, notInArray, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, inArray, lt, lte, notInArray, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 
 import { db, schema } from '../../db/index.js';
@@ -386,7 +386,7 @@ export async function selectPicksForTheme(
         eventId: schema.events.id,
         title: schema.events.title,
         description: schema.events.description,
-        imageUrl: schema.events.imageUrl,
+        imageUrl: sql<string | null>`COALESCE(${schema.events.imageUrl}, ${schema.venues.imageUrl})`.as('image_url'),
         category: schema.events.category,
         featured: schema.events.featured,
         venueId: schema.venues.id,
@@ -404,7 +404,9 @@ export async function selectPicksForTheme(
         and(
           eq(schema.events.published, true),
           eq(schema.venues.published, true),
-          isNotNull(schema.events.imageUrl),
+          // Tenminste één foto-bron (event of venue) moet bestaan.
+          // Coalesced in de SELECT zodat downstream gewoon imageUrl ziet.
+          sql`COALESCE(${schema.events.imageUrl}, ${schema.venues.imageUrl}) IS NOT NULL`,
           eq(schema.occurrences.status, 'scheduled'),
           gte(schema.occurrences.startsAt, window.start),
           lt(schema.occurrences.startsAt, window.end),

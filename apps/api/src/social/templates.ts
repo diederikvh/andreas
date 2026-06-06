@@ -198,7 +198,6 @@ function labelPair(opts: {
         overflow: 'hidden',
         marginBottom: opts.marginBottom ?? 36,
         boxShadow: '0 4px 18px rgba(0,0,0,0.45)',
-        alignSelf: 'flex-start',
       },
     },
     el(
@@ -470,28 +469,9 @@ export function eventSlide(input: EventSlideInput): VNode {
           'linear-gradient(180deg, rgba(10,10,11,0.55) 0%, rgba(10,10,11,0.20) 30%, rgba(10,10,11,0.55) 60%, rgba(10,10,11,0.96) 88%)',
       },
     }),
-    // Top-left: twee-kleuren-label (acid-cel = slide-nummer, noir-cel =
-    // themeLabel). Matched DailyFilms5.tsx zodat carousel en video één
-    // visuele taal hebben.
-    input.themeLabel
-      ? el(
-          'div',
-          {
-            style: {
-              position: 'absolute',
-              top: p.eventTop,
-              left: p.eventSide,
-              display: 'flex',
-            },
-          },
-          labelPair({
-            left: String(input.index),
-            right: input.themeLabel.toUpperCase(),
-            fontSize: 32,
-            marginBottom: 0,
-          }),
-        )
-      : null,
+    // Top-kicker verwijderd — labelPair zit nu in de bottom-panel, direct
+    // boven de datum (zie hieronder).
+    null,
     // Bottom panel
     el(
       'div',
@@ -506,6 +486,20 @@ export function eventSlide(input: EventSlideInput): VNode {
           gap: 12,
         },
       },
+      // LabelPair direct boven de datum: acid-cel = slide-nummer,
+      // noir-cel = themeLabel. Matched DailyFilms5.tsx layout.
+      input.themeLabel
+        ? el(
+            'div',
+            { style: { display: 'flex' } },
+            labelPair({
+              left: String(input.index),
+              right: input.themeLabel.toUpperCase(),
+              fontSize: 32,
+              marginBottom: 8,
+            }),
+          )
+        : null,
       // Datum links, tijd rechts op één regel. Datum vertelt de lezer
       // welke dag, tijd staat als sterke acid-marker rechts.
       el(
@@ -834,7 +828,9 @@ export function overviewSlide(input: OverviewSlideInput): VNode {
   // dynamisch met slide-H + safe-area-padding zodat 3 rijen netjes
   // passen tussen header en bottom-padding. 14px verticale gap.
   const cellWidth = (W - p.overviewSide * 2 - 14) / 2;
-  const HEADER_BLOCK = 36 + 30; // header font + header-margin
+  // Header is óf overviewTitle (46px font + 64 margin = ~115) óf
+  // "Andreas X kicker" (36px + 30 margin = ~66).
+  const HEADER_BLOCK = input.overviewTitle ? 46 * 1.1 + 64 : 36 + 30;
   const VERTICAL_OVERHEAD = p.overviewTop + HEADER_BLOCK + p.overviewBottom;
   const cellHeight = Math.floor((H - VERTICAL_OVERHEAD - 14 * 2) / 3);
 
@@ -865,7 +861,19 @@ export function overviewSlide(input: OverviewSlideInput): VNode {
           objectFit: 'cover',
         },
       }),
-      // Onder-gradient voor leesbaarheid
+      // Flat dim over de hele card zodat foto's met druk midden ook
+      // contrast geven aan de tekst onderaan.
+      el('div', {
+        style: {
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          width: cellWidth,
+          height: cellHeight,
+          backgroundColor: 'rgba(10,10,11,0.28)',
+        },
+      }),
+      // Stevigere onder-gradient voor leesbaarheid van datum/titel/venue.
       el('div', {
         style: {
           position: 'absolute',
@@ -874,7 +882,7 @@ export function overviewSlide(input: OverviewSlideInput): VNode {
           width: cellWidth,
           height: cellHeight,
           background:
-            'linear-gradient(to bottom, transparent 45%, rgba(10,10,11,0.9) 100%)',
+            'linear-gradient(to bottom, transparent 30%, rgba(10,10,11,0.7) 70%, rgba(10,10,11,0.96) 100%)',
         },
       }),
       // Tekst-overlay onderaan
@@ -973,12 +981,12 @@ export function overviewSlide(input: OverviewSlideInput): VNode {
           {
             style: {
               color: INK,
-              fontSize: 54,
+              fontSize: 46,
               fontWeight: 800,
               lineHeight: 1.1,
               letterSpacing: -1,
               textAlign: 'center',
-              marginBottom: 30,
+              marginBottom: 64,
               display: 'flex',
               justifyContent: 'center',
               alignSelf: 'center',
