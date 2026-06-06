@@ -3292,7 +3292,7 @@ adminUi.get('/social', async (c) => {
         <div style="display:flex;gap:0.5rem;flex-wrap:wrap;">
           {THEMES.map((theme) => {
             const isToday =
-              theme.key === getThemeForDate(new Date()).key;
+              theme.key === getThemeForDate(new Date())?.key;
             return (
               <form method="post" action="/admin/social/generate" style="margin:0;">
                 <input type="hidden" name="theme" value={theme.key} />
@@ -4216,7 +4216,9 @@ adminUi.post('/social/:id/regenerate', async (c) => {
     const themeKey =
       (existing.meta?.themeKey as string | undefined) ?? existing.slot;
     const theme =
-      getThemeByKey(themeKey) ?? getThemeForDate(new Date());
+      getThemeByKey(themeKey) ??
+      getThemeForDate(new Date()) ??
+      THEMES[0]; // weekend → fallback op eerste theme i.p.v. crash
     await runGenerate(theme, {
       existingId: id,
       skipIds: accumulated,

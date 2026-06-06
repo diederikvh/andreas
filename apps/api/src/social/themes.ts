@@ -112,11 +112,9 @@ export function amsterdamWeekday(at: Date): number {
 }
 
 /** Geef de theme voor de Amsterdam-dag waarop `at` valt. */
-export function getThemeForDate(at: Date): Theme {
+export function getThemeForDate(at: Date): Theme | null {
   const wd = amsterdamWeekday(at);
-  const found = THEMES.find((t) => t.weekday === wd);
-  if (!found) throw new Error(`geen theme voor weekday=${wd}`);
-  return found;
+  return THEMES.find((t) => t.weekday === wd) ?? null;
 }
 
 export function getThemeByKey(key: string): Theme | null {

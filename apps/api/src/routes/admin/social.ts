@@ -1516,7 +1516,8 @@ adminSocial.post('/posts/:id/regenerate', async (c) => {
   }
   const themeKey =
     (existing.meta?.themeKey as string | undefined) ?? existing.slot;
-  const theme = getThemeByKey(themeKey) ?? getThemeForDate(new Date());
+  const theme =
+    getThemeByKey(themeKey) ?? getThemeForDate(new Date()) ?? THEMES[0];
   try {
     const { post, warnings } = await runGenerate(theme, {
       skipIds,
