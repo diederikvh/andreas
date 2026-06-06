@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { and, asc, desc, eq, gte, inArray, lt, lte, notInArray, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, inArray, lt, lte, notInArray, sql, type SQL } from 'drizzle-orm';
 import { Hono } from 'hono';
 
 import { db, schema } from '../../db/index.js';
@@ -106,11 +106,12 @@ const CAPACITY_WEIGHT: Record<string, number> = {
 };
 
 /** Bouwt de WHERE-clauses die uit een Theme volgen: categories +
-    venueTypes-whitelist + exclude-list. Returns een array van Drizzle
-    SQL-expressies die met `and(...)` in de hoofdquery gecombineerd
-    worden. Leeg als de theme geen filter heeft (mixed). */
+    venueTypes-whitelist + exclude-list + per-venuetype start-uur-filter.
+    Returns een array van Drizzle SQL-expressies die met `and(...)` in
+    de hoofdquery gecombineerd worden. Leeg als de theme geen filter
+    heeft (mixed). */
 function whereClausesForTheme(theme: Theme) {
-  const cls: ReturnType<typeof inArray>[] = [];
+  const cls: Array<ReturnType<typeof inArray> | SQL> = [];
   if (theme.categories && theme.categories.length > 0) {
     cls.push(
       inArray(schema.events.category, [...theme.categories])
@@ -121,6 +122,35 @@ function whereClausesForTheme(theme: Theme) {
   }
   if (theme.excludeVenueTypes && theme.excludeVenueTypes.length > 0) {
     cls.push(notInArray(schema.venues.type, [...theme.excludeVenueTypes]));
+  }
+  if (theme.minStartHourByVenueType) {
+    // Voor elk venue-type met een min-uur: vereis dat startsAt's
+    // Amsterdam-tz uur >= min OF < 6 (cross-midnight). Venue-types
+    // zonder min-uur entry passen niet door clubs-theme (omdat
+    // venueTypes-whitelist al filtert), maar voor de zekerheid
+    // accepteren we ze.
+    const branches: SQL[] = [];
+    for (const [vt, minH] of Object.entries(theme.minStartHourByVenueType)) {
+      branches.push(sql`(
+        ${schema.venues.type} = ${vt}
+        AND (
+          EXTRACT(HOUR FROM (${schema.occurrences.startsAt} AT TIME ZONE 'Europe/Amsterdam'))::int >= ${minH}
+          OR EXTRACT(HOUR FROM (${schema.occurrences.startsAt} AT TIME ZONE 'Europe/Amsterdam'))::int < 6
+        )
+      )`);
+    }
+    const allTypesWithMin = Object.keys(theme.minStartHourByVenueType);
+    // Andere venue-types (mochten ze meekomen via venueTypes-whitelist)
+    // blijven onaangetast.
+    branches.push(
+      sql`${schema.venues.type} NOT IN (${sql.join(
+        allTypesWithMin.map((t) => sql`${t}`),
+        sql.raw(', '),
+      )})`,
+    );
+    cls.push(
+      sql`(${sql.join(branches, sql.raw(' OR '))})`,
+    );
   }
   return cls;
 }

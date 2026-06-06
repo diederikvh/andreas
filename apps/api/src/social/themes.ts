@@ -46,6 +46,12 @@ export interface Theme {
   venueTypes?: VenueType[];
   /** Blacklist venue-types — past ná de whitelist. */
   excludeVenueTypes?: VenueType[];
+  /** Per-venuetype minimum-uur (Amsterdam-tz) waarop het event moet
+      starten. Events vóór dit uur worden uit de selectie gefilterd.
+      Cross-midnight wordt afgehandeld: events tussen 00:00 en 06:00
+      blijven toegestaan (horen bij de avond ervoor). Voor clubs:
+      `{ club: 20, podium: 23 }` zodat dagprogrammering wordt gefilterd. */
+  minStartHourByVenueType?: Partial<Record<VenueType, number>>;
 }
 
 export const THEMES: readonly Theme[] = [
@@ -84,7 +90,11 @@ export const THEMES: readonly Theme[] = [
     windowLabel: { nl: 'Komende 7 dagen', en: 'Next 7 days' },
     windowDays: 7,
     maxWindowDays: 14,
-    venueTypes: ['club'],
+    // Clubs + podia (late-night). Per venue-type een eigen
+    // start-uur-filter — club-events starten na 20:00, podium-events
+    // na 23:00 (alleen echte nachtprogrammering).
+    venueTypes: ['club', 'podium'],
+    minStartHourByVenueType: { club: 20, podium: 23 },
   },
   {
     key: 'galleries',
