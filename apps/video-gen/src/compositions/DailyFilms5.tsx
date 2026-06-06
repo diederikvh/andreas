@@ -359,10 +359,11 @@ const HookUnitView: React.FC<{ unit: HookUnit }> = ({ unit }) => {
             fontFamily: FONT_BODY,
             fontWeight: 600,
             fontSize: 54,
-            lineHeight: 1.1,
+            lineHeight: 1.15,
             letterSpacing: -0.5,
             textAlign: 'center',
             textShadow: '0 3px 14px rgba(0,0,0,0.75)',
+            whiteSpace: 'pre-line',
           }}
         >
           {unit.text}

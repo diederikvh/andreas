@@ -89,26 +89,26 @@ export const HOOK_UNITS: Partial<Record<ThemeKey, HookUnit[]>> = {
     { role: 'countLead', text: 'TOP' },
     { role: 'count', text: '6' },
     { role: 'headline', text: 'voorstellingen' },
-    { role: 'meta', text: 'Amsterdam · deze week · {date}' },
+    { role: 'meta', text: 'Amsterdam · deze week\n{date}' },
   ],
   'live-music': [
     { role: 'eyebrow', text: 'LIVE' },
     { role: 'countLead', text: 'TOP' },
     { role: 'count', text: '5' },
     { role: 'headline', text: 'concerten' },
-    { role: 'meta', text: 'Amsterdam · deze week · {date}' },
+    { role: 'meta', text: 'Amsterdam · deze week\n{date}' },
   ],
   'film': [
     { role: 'eyebrow', text: 'FILM' },
     { role: 'countLead', text: 'TOP' },
     { role: 'count', text: '6' },
     { role: 'headline', text: 'films in de filmhuizen' },
-    { role: 'meta', text: 'Amsterdam · dit weekend · {date}' },
+    { role: 'meta', text: 'Amsterdam · dit weekend\n{date}' },
   ],
   'weekend-kickoff': [
     { role: 'eyebrow', text: 'WEEKEND' },
     { role: 'headline', text: 'Dit ga je doen' },
-    { role: 'meta', text: 'Amsterdam · dit weekend · {date}' },
+    { role: 'meta', text: 'Amsterdam · dit weekend\n{date}' },
   ],
   'galleries': [
     { role: 'eyebrow', text: 'EXPO' },
@@ -120,12 +120,12 @@ export const HOOK_UNITS: Partial<Record<ThemeKey, HookUnit[]>> = {
   'tonight': [
     { role: 'eyebrow', text: 'VANAVOND' },
     { role: 'headline', text: 'Dit ga je doen' },
-    { role: 'meta', text: 'Amsterdam · vanavond · {date}' },
+    { role: 'meta', text: 'Amsterdam · vanavond\n{date}' },
   ],
   'week-preview': [
     { role: 'eyebrow', text: 'DEZE WEEK' },
     { role: 'headline', text: 'Dit is er te doen' },
-    { role: 'meta', text: 'Amsterdam · {date}' },
+    { role: 'meta', text: 'Amsterdam\n{date}' },
   ],
 };
 
@@ -264,7 +264,7 @@ export async function fetchDailyFilms5Props(
     { role: 'eyebrow', text: theme.label.nl },
     { role: 'count', text: String(picks.length) },
     { role: 'headline', text: 'highlights' },
-    { role: 'meta', text: 'Amsterdam · {date}' },
+    { role: 'meta', text: 'Amsterdam\n{date}' },
   ];
   const dateRange = formatWindowRange(theme.windowDays, now);
   const hookUnits = withDynamicDate(
