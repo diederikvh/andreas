@@ -420,11 +420,8 @@ export interface EventSlideInput {
 }
 
 export function eventSlide(input: EventSlideInput): VNode {
-  // Geen eind-tijd op de carousel-slides: te druk en geeft een verkeerd
-  // signaal (alsof de show maar tot dat moment is). Start-tijd is
-  // voldoende; bezoekers checken eind-tijd in de app/site.
-  const fullDay = isFullDay(input.startsAt, input.endsAt);
-  const time = fullDay ? 'Hele dag' : formatTimeNl(input.startsAt);
+  // Geen tijd op carousel-slides: datum is voldoende voor reclame-doel.
+  // Wie het precieze tijdstip wil weten checkt 't in de app.
   const { W, H } = dims(input.format);
   const p = pad(input.format);
 
@@ -542,7 +539,7 @@ export function eventSlide(input: EventSlideInput): VNode {
             display: 'flex',
           },
         },
-        `${formatDateNl(input.startsAt)} · ${time}`,
+        formatDateNl(input.startsAt),
       )
     )
   );

@@ -1,6 +1,14 @@
 {
   "totalNewCount": 23,
   "hook": "Net aangekondigd in Amsterdam",
+  "hookUnits": [
+    { "role": "eyebrow", "text": "JUST IN" },
+    { "role": "countLead", "text": "NIEUW" },
+    { "role": "count", "text": "6" },
+    { "role": "headline", "text": "shows aangekondigd" },
+    { "role": "meta", "text": "Amsterdam\n6 jun" }
+  ],
+  "overviewTitle": "Top 6 net aangekondigd",
   "audio": "audio/justin.mp3",
   "picks": [
     {

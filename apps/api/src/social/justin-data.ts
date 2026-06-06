@@ -1,14 +1,28 @@
 import { and, asc, desc, eq, gte, inArray, isNotNull, sql } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
+import {
+  formatWindowRange,
+  withDynamicCount,
+  withDynamicDate,
+  type HookUnit,
+} from './dailyfilms5-data.js';
 
 /**
  * Bouwt de DailyJustIn5-props uit de DB: events met `createdAt` binnen
- * de laatste 7 dagen, sorteer nieuwste eerst, 5 picks. Gedeeld tussen
+ * de laatste 7 dagen, sorteer nieuwste eerst, 6 picks. Gedeeld tussen
  * de UI-knop en de JSON-endpoint zodat beide identieke data hebben.
+ *
+ * Urgentie-framing: matches news-ticker stijl — "JUST IN · NIEUW",
+ * dagsmarker per pick zodat "kaartjes regelen voor het uitverkocht is"
+ * voelbaar is.
  */
 export interface JustInProps {
   totalNewCount: number;
   hook: string;
+  /** Gestructureerde intro-hook (zelfde shape als DailyFilms5). */
+  hookUnits: HookUnit[];
+  /** Eén-regelige titel boven de Overview-slide. */
+  overviewTitle: string;
   audio: string;
   picks: Array<{
     imageUrl: string;
@@ -111,9 +125,25 @@ export async function fetchJustInPropsForUi(): Promise<JustInProps> {
     };
   });
 
+  // Hook-units in news-ticker stijl: [JUST IN][NIEUW] + count + zin + datum.
+  const baseUnits: HookUnit[] = [
+    { role: 'eyebrow', text: 'JUST IN' },
+    { role: 'countLead', text: 'NIEUW' },
+    { role: 'count', text: String(picks.length) },
+    { role: 'headline', text: 'shows aangekondigd' },
+    { role: 'meta', text: 'Amsterdam\n{date}' },
+  ];
+  const dateRange = formatWindowRange(1, now); // vandaag — single date
+  const hookUnits = withDynamicDate(
+    withDynamicCount(baseUnits, picks.length),
+    dateRange,
+  );
+
   return {
     totalNewCount,
     hook: 'Net aangekondigd in Amsterdam',
+    hookUnits,
+    overviewTitle: `Top ${picks.length} net aangekondigd`,
     audio: 'audio/justin.mp3',
     picks,
   };

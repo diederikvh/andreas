@@ -481,7 +481,7 @@ const Slide: React.FC<{
             letterSpacing: -0.5,
           }}
         >
-          {pick.dateLabel} · {pick.timeLabel}
+          {pick.dateLabel}
         </div>
       </div>
     </AbsoluteFill>
@@ -735,7 +735,7 @@ const Overview: React.FC<{
                         textShadow: '0 2px 8px rgba(0,0,0,0.7)',
                       }}
                     >
-                      {pick.dateLabel} · {pick.timeLabel}
+                      {pick.dateLabel}
                     </div>
                   </div>
                 </div>
