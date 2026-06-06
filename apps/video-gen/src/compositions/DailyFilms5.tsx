@@ -465,8 +465,7 @@ const Slide: React.FC<{
             fontFamily: FONT_BODY,
             fontWeight: 700,
             fontSize: 42,
-            letterSpacing: 3,
-            textTransform: 'uppercase',
+            letterSpacing: 0,
             marginBottom: 22,
           }}
         >
