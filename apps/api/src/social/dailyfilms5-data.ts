@@ -13,9 +13,33 @@ import {
  * /video-props endpoint identieke output geven.
  */
 
+/**
+ * Een hook-zin opgesplitst in getypeerde units zodat elk deel zijn
+ * eigen styling kan krijgen in de Remotion-intro.
+ *
+ *  - eyebrow  → categorie-label ("THEATER")
+ *  - count    → het getal van de aftelbare lijst ("6") — wordt op
+ *               render-tijd automatisch overschreven met picks.length
+ *               zodat de belofte altijd klopt met wat volgt.
+ *  - headline → waar de lijst over gaat ("voorstellingen")
+ *  - meta     → plek + tijd ("Amsterdam · komende 7 dagen")
+ *
+ * Sfeer mag terug als aparte gedempte unit (rol `meta`), niet vermengd
+ * met de belofte.
+ */
+export type HookRole = 'eyebrow' | 'count' | 'headline' | 'meta';
+
+export interface HookUnit {
+  role: HookRole;
+  text: string;
+}
+
 export interface DailyFilms5Props {
   themeKicker: string;
+  /** Legacy: platte hook-string voor carousel-render. */
   hook: string;
+  /** Nieuwe gestructureerde hook voor de Remotion-intro. */
+  hookUnits: HookUnit[];
   audio: string;
   picks: Array<{
     imageUrl: string;
@@ -47,6 +71,72 @@ export const HOOKS: Partial<Record<ThemeKey, string>> = {
   'tonight': 'Wat je vanavond in Amsterdam wil doen',
   'week-preview': 'De week die Amsterdam aan het praten houdt',
 };
+
+/**
+ * Gestructureerde hooks per thema. De `count`-unit krijgt op render-tijd
+ * de werkelijke `picks.length` als text-overschrijving — wat hier staat
+ * is een placeholder voor type-soundness.
+ *
+ * Principe: één concrete belofte per hook (getal + categorie + plek +
+ * tijd). Geen zachte bijzinnen als "die je echt moet zien".
+ */
+export const HOOK_UNITS: Partial<Record<ThemeKey, HookUnit[]>> = {
+  'theater': [
+    { role: 'eyebrow', text: 'Theater' },
+    { role: 'count', text: '6' },
+    { role: 'headline', text: 'voorstellingen' },
+    { role: 'meta', text: 'Amsterdam · komende 7 dagen' },
+  ],
+  'live-music': [
+    { role: 'eyebrow', text: 'Live muziek' },
+    { role: 'count', text: '6' },
+    { role: 'headline', text: 'concerten' },
+    { role: 'meta', text: 'Amsterdam · komende 7 dagen' },
+  ],
+  'film': [
+    { role: 'eyebrow', text: 'Film' },
+    { role: 'count', text: '6' },
+    { role: 'headline', text: 'films' },
+    { role: 'meta', text: 'Amsterdam · deze week' },
+  ],
+  'weekend-kickoff': [
+    { role: 'eyebrow', text: 'Weekend' },
+    { role: 'count', text: '6' },
+    { role: 'headline', text: 'clubnachten' },
+    { role: 'meta', text: 'Amsterdam · komend weekend' },
+  ],
+  'galleries': [
+    { role: 'eyebrow', text: 'Galeries' },
+    { role: 'count', text: '6' },
+    { role: 'headline', text: 'exposities' },
+    { role: 'meta', text: 'Amsterdam · dit weekend' },
+  ],
+  'tonight': [
+    { role: 'eyebrow', text: 'Vanavond' },
+    { role: 'count', text: '6' },
+    { role: 'headline', text: 'tips' },
+    { role: 'meta', text: 'Amsterdam · vanavond' },
+  ],
+  'week-preview': [
+    { role: 'eyebrow', text: 'Deze week' },
+    { role: 'count', text: '6' },
+    { role: 'headline', text: 'highlights' },
+    { role: 'meta', text: 'Amsterdam · komende 7 dagen' },
+  ],
+};
+
+/**
+ * Vervangt de placeholder-text van de count-unit door het werkelijke
+ * aantal picks zodat de hook altijd matcht met wat volgt in de video.
+ */
+export function withDynamicCount(
+  units: HookUnit[],
+  count: number,
+): HookUnit[] {
+  return units.map((u) =>
+    u.role === 'count' ? { ...u, text: String(count) } : u,
+  );
+}
 
 function formatDateLabel(d: Date): string {
   const days = ['zo', 'ma', 'di', 'wo', 'do', 'vr', 'za'];
@@ -115,9 +205,22 @@ export async function fetchDailyFilms5Props(
     }
   }
 
+  // Hook-units: per-theme structured array, count overschreven met de
+  // werkelijke pick-count zodat de belofte altijd matcht. Fallback voor
+  // themes zonder HOOK_UNITS-entry: bouw een minimale 4-unit hook uit
+  // het theme-label.
+  const baseUnits: HookUnit[] = HOOK_UNITS[theme.key] ?? [
+    { role: 'eyebrow', text: theme.label.nl },
+    { role: 'count', text: String(picks.length) },
+    { role: 'headline', text: 'highlights' },
+    { role: 'meta', text: `Amsterdam · ${theme.windowLabel.nl.toLowerCase()}` },
+  ];
+  const hookUnits = withDynamicCount(baseUnits, picks.length);
+
   return {
     themeKicker: KICKERS[theme.key] ?? theme.label.nl,
     hook: HOOKS[theme.key] ?? theme.label.nl,
+    hookUnits,
     audio: 'audio/daily.mp3',
     picks: picks.map((p) => ({
       imageUrl: heroByEventId.get(p.eventId) ?? p.imageUrl,

@@ -24,15 +24,22 @@ const pickSchema = z.object({
   timeLabel: z.string(), // "21:00"
 });
 
+const hookUnitSchema = z.object({
+  role: z.enum(['eyebrow', 'count', 'headline', 'meta']),
+  text: z.string(),
+});
+
 export const dailyFilms5Schema = z.object({
   themeKicker: z.string(), // "Film" — kleine pill onder elke slide
   themeTitle: z.string(), // legacy, optional
-  hook: z.string().optional(), // "Films dit weekend" — intro-titel
+  hook: z.string().optional(), // legacy platte string — fallback voor preview
+  hookUnits: z.array(hookUnitSchema).optional(),
   audio: z.string().optional(), // bv. "audio/daily.mp3"
   picks: z.array(pickSchema).length(6),
 });
 
 export type Pick = z.infer<typeof pickSchema>;
+export type HookUnit = z.infer<typeof hookUnitSchema>;
 export type DailyFilms5Props = z.infer<typeof dailyFilms5Schema>;
 
 // ─── Tokens ──────────────────────────────────────────────────────────────
@@ -66,14 +73,17 @@ function easeOut(t: number) {
 
 // ─── Subcomponents ───────────────────────────────────────────────────────
 
-// Intro — image-led cover met gecentreerde hook. Achtergrond = eerste
-// pick (al-zichtbaar maar sterk gedimd zodat de hook leesbaar is). Op
-// het einde fadet 'ie naar de eerste slide.
+// Intro — image-led cover met gecentreerde, getypeerde hook. Elke
+// HookUnit (eyebrow/count/headline/meta) krijgt zijn eigen styling
+// zodat de belofte structureel zichtbaar is: categorie → getal →
+// onderwerp → plek/tijd. Count wordt door fetchDailyFilms5Props al
+// gelijkgesteld aan picks.length zodat de belofte klopt. Op het
+// einde fadet 'ie naar de eerste slide.
 const Intro: React.FC<{
-  hook: string;
+  hookUnits: HookUnit[];
   themeKicker: string;
   picks: Pick[];
-}> = ({ hook, themeKicker, picks }) => {
+}> = ({ hookUnits, themeKicker, picks }) => {
   const frame = useCurrentFrame();
 
   // Tekst slidet weg naar links. Image niet — die crossfadet onder
@@ -135,10 +145,10 @@ const Intro: React.FC<{
         }}
       />
 
-      {/* Centraal blok — Andreas-brand pill + grote hook. Slidet weg
-          én fadet uit, parallel met de image-cross-fade naar slide 1.
-          De themeKicker (Film/Theater/…) komt pas terug op de slides
-          zelf — de intro is puur brand + concrete belofte. */}
+      {/* Centraal blok — Andreas-brand pill + getypeerde hook-units.
+          Per rol een eigen visuele weight zodat de belofte (categorie →
+          getal → onderwerp → plek/tijd) gestructureerd leest. Slidet
+          weg én fadet uit, parallel met de image-cross-fade naar slide 1. */}
       <AbsoluteFill
         style={{
           justifyContent: 'center',
@@ -159,28 +169,97 @@ const Intro: React.FC<{
             textTransform: 'uppercase',
             padding: '10px 20px',
             borderRadius: 4,
-            marginBottom: 40,
+            marginBottom: 48,
           }}
         >
           Andreas
         </div>
+        {hookUnits.map((unit, i) => (
+          <HookUnitView key={`${unit.role}-${i}`} unit={unit} />
+        ))}
+      </AbsoluteFill>
+    </AbsoluteFill>
+  );
+};
+
+// Per-rol styling voor één hook-unit. Layout: vertical stack, alles
+// horizontaal gecentreerd. Marges zijn rol-afhankelijk zodat count en
+// headline visueel als één blok lezen, met meta er los onder.
+const HookUnitView: React.FC<{ unit: HookUnit }> = ({ unit }) => {
+  switch (unit.role) {
+    case 'eyebrow':
+      return (
+        <div
+          style={{
+            color: ACID,
+            fontFamily: FONT_BODY,
+            fontWeight: 700,
+            fontSize: 40,
+            letterSpacing: 6,
+            textTransform: 'uppercase',
+            textAlign: 'center',
+            marginBottom: 12,
+            textShadow: '0 2px 12px rgba(0,0,0,0.7)',
+          }}
+        >
+          {unit.text}
+        </div>
+      );
+    case 'count':
+      return (
+        <div
+          style={{
+            color: INK,
+            fontFamily: FONT_BODY,
+            fontWeight: 900,
+            fontSize: 220,
+            lineHeight: 0.9,
+            letterSpacing: -8,
+            textAlign: 'center',
+            marginBottom: 4,
+            textShadow: '0 6px 28px rgba(0,0,0,0.85)',
+          }}
+        >
+          {unit.text}
+        </div>
+      );
+    case 'headline':
+      return (
         <div
           style={{
             color: INK,
             fontFamily: FONT_BODY,
             fontWeight: 800,
-            fontSize: 110,
+            fontSize: 92,
             lineHeight: 1.0,
-            letterSpacing: -3,
+            letterSpacing: -2,
             textAlign: 'center',
-            textShadow: '0 4px 24px rgba(0,0,0,0.8)',
+            marginBottom: 28,
+            textShadow: '0 4px 20px rgba(0,0,0,0.8)',
           }}
         >
-          {hook}
+          {unit.text}
         </div>
-      </AbsoluteFill>
-    </AbsoluteFill>
-  );
+      );
+    case 'meta':
+      return (
+        <div
+          style={{
+            color: INK_MUTED,
+            fontFamily: FONT_BODY,
+            fontWeight: 500,
+            fontSize: 32,
+            letterSpacing: 0.5,
+            textAlign: 'center',
+            textShadow: '0 2px 10px rgba(0,0,0,0.7)',
+          }}
+        >
+          {unit.text}
+        </div>
+      );
+    default:
+      return null;
+  }
 };
 
 const Slide: React.FC<{
@@ -542,10 +621,25 @@ const Overview: React.FC<{ picks: Pick[]; themeKicker: string }> = ({
 export const DailyFilms5: React.FC<DailyFilms5Props> = ({
   themeKicker,
   hook,
+  hookUnits,
   picks,
   audio,
 }) => {
-  const hookText = hook ?? themeKicker;
+  // Resolved hook-units: directe input > legacy string > minimale
+  // fallback uit themeKicker + count. De count-unit krijgt altijd de
+  // werkelijke pick-count zodat de belofte klopt met wat volgt.
+  const resolvedHookUnits: HookUnit[] = (
+    hookUnits && hookUnits.length > 0
+      ? hookUnits
+      : ([
+          { role: 'eyebrow', text: themeKicker },
+          { role: 'count', text: String(picks.length) },
+          { role: 'headline', text: hook ?? 'highlights' },
+          { role: 'meta', text: 'Amsterdam' },
+        ] as HookUnit[])
+  ).map((u) =>
+    u.role === 'count' ? { ...u, text: String(picks.length) } : u,
+  );
   // Intro overlapt 6 frames met slide 1 zodat 'ie organisch overgaat
   // in de eerste film i.p.v. een harde cut.
   const slidesStart = INTRO_FRAMES - SLIDE_OVERLAP;
@@ -556,7 +650,11 @@ export const DailyFilms5: React.FC<DailyFilms5Props> = ({
         return <A src={staticFile(audio)} volume={0.6} />;
       })()}
       <Sequence from={0} durationInFrames={INTRO_FRAMES} name="Intro">
-        <Intro hook={hookText} themeKicker={themeKicker} picks={picks} />
+        <Intro
+          hookUnits={resolvedHookUnits}
+          themeKicker={themeKicker}
+          picks={picks}
+        />
       </Sequence>
       {picks.map((pick, i) => {
         const startAt = slidesStart + i * (SLIDE_FRAMES - SLIDE_OVERLAP);
