@@ -225,7 +225,7 @@ const LabelPair: React.FC<{
           padding: `${padY}px ${padX}px ${padY}px ${padX + extraRound}px`,
           backgroundColor: ACID,
           color: NOIR,
-          fontWeight: 800,
+          fontWeight: 700,
         }}
       >
         {left}
@@ -286,7 +286,7 @@ const HookUnitView: React.FC<{ unit: HookUnit }> = ({ unit }) => {
             backgroundColor: ACID,
             color: NOIR,
             fontFamily: FONT_BODY,
-            fontWeight: 800,
+            fontWeight: 700,
             fontSize: 36,
             letterSpacing: 1,
             textTransform: 'uppercase',
