@@ -145,10 +145,9 @@ const Intro: React.FC<{
         }}
       />
 
-      {/* Centraal blok — getypeerde hook-units + Andreas-afzender. Per
-          rol een eigen visuele weight zodat de belofte (categorie →
-          getal → onderwerp → plek/tijd) gestructureerd leest. Andreas-
-          pill sluit de stack als afzender. Slidet weg én fadet uit,
+      {/* Centraal blok — getypeerde hook-units. Per rol een eigen
+          visuele weight zodat de belofte (categorie → getal → onderwerp
+          → plek/tijd) gestructureerd leest. Slidet weg én fadet uit,
           parallel met de image-cross-fade naar slide 1. */}
       <AbsoluteFill
         style={{
@@ -160,22 +159,6 @@ const Intro: React.FC<{
         }}
       >
         {renderHookStack(hookUnits)}
-        <div
-          style={{
-            backgroundColor: NOIR,
-            color: INK,
-            fontFamily: FONT_BODY,
-            fontWeight: 700,
-            fontSize: 28,
-            letterSpacing: 3,
-            textTransform: 'uppercase',
-            padding: '10px 20px',
-            borderRadius: 4,
-            marginTop: 36,
-          }}
-        >
-          Andreas
-        </div>
       </AbsoluteFill>
     </AbsoluteFill>
   );
