@@ -93,12 +93,14 @@ const LabelPair: React.FC<{
 }> = ({ left, right, fontSize = 36, marginBottom = 36 }) => {
   const padY = Math.round(fontSize / 3);
   const padX = Math.round(fontSize * 0.72);
+  // Extra padding aan de afgeronde buitenkant zodat de tekst optisch
+  // gecentreerd lijkt (de rounding "snoept" anders visueel ruimte af).
+  const extraRound = Math.round(fontSize / 4);
   const cellBase: React.CSSProperties = {
     fontFamily: FONT_BODY,
     fontSize,
-    letterSpacing: Math.max(2, Math.round(fontSize / 7)),
+    letterSpacing: 1,
     textTransform: 'uppercase',
-    padding: `${padY}px ${padX}px`,
   };
   return (
     <div
@@ -108,12 +110,12 @@ const LabelPair: React.FC<{
         borderRadius: 999,
         overflow: 'hidden',
         marginBottom,
-        boxShadow: '0 4px 18px rgba(0,0,0,0.45)',
       }}
     >
       <div
         style={{
           ...cellBase,
+          padding: `${padY}px ${padX}px ${padY}px ${padX + extraRound}px`,
           backgroundColor: ACID,
           color: NOIR,
           fontWeight: 800,
@@ -124,6 +126,7 @@ const LabelPair: React.FC<{
       <div
         style={{
           ...cellBase,
+          padding: `${padY}px ${padX + extraRound}px ${padY}px ${padX}px`,
           backgroundColor: NOIR,
           color: ACID,
           fontWeight: 700,
@@ -149,13 +152,12 @@ const HookUnitView: React.FC<{ unit: HookUnit }> = ({ unit }) => {
             fontFamily: FONT_BODY,
             fontWeight: 700,
             fontSize: 36,
-            letterSpacing: 5,
+            letterSpacing: 1,
             textTransform: 'uppercase',
             padding: '12px 26px',
             borderRadius: 999,
             marginBottom: 36,
-            boxShadow: '0 4px 18px rgba(0,0,0,0.45)',
-          }}
+                      }}
         >
           {unit.text}
         </div>
@@ -169,7 +171,7 @@ const HookUnitView: React.FC<{ unit: HookUnit }> = ({ unit }) => {
             fontFamily: FONT_BODY,
             fontWeight: 800,
             fontSize: 36,
-            letterSpacing: 5,
+            letterSpacing: 1,
             textTransform: 'uppercase',
             padding: '12px 26px',
             borderRadius: 999,

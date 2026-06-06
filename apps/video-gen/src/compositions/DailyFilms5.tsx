@@ -195,20 +195,19 @@ function renderHookStack(units: HookUnit[]): React.ReactNode[] {
 const LabelPair: React.FC<{
   left: string;
   right: string;
-  /** Basisfontgrootte van de cellen. Default = intro-formaat (36). */
   fontSize?: number;
-  /** Padding (verticaal × horizontaal). Default schaalt mee met fontSize. */
-  padding?: string;
   marginBottom?: number;
-}> = ({ left, right, fontSize = 36, padding, marginBottom = 36 }) => {
-  const cellPad = padding ?? `${Math.round(fontSize / 3)}px ${Math.round(fontSize * 0.72)}px`;
-  const cellStyle: React.CSSProperties = {
+}> = ({ left, right, fontSize = 36, marginBottom = 36 }) => {
+  const padY = Math.round(fontSize / 3);
+  const padX = Math.round(fontSize * 0.72);
+  // Extra padding aan de afgeronde buitenkant compenseert visuele
+  // ruimte die de rounding "afsnoept".
+  const extraRound = Math.round(fontSize / 4);
+  const cellBase: React.CSSProperties = {
     fontFamily: FONT_BODY,
-    fontWeight: 700,
     fontSize,
-    letterSpacing: Math.max(2, Math.round(fontSize / 7)),
+    letterSpacing: 1,
     textTransform: 'uppercase',
-    padding: cellPad,
   };
   return (
     <div
@@ -218,12 +217,12 @@ const LabelPair: React.FC<{
         borderRadius: 999,
         overflow: 'hidden',
         marginBottom,
-        boxShadow: '0 4px 18px rgba(0,0,0,0.45)',
       }}
     >
       <div
         style={{
-          ...cellStyle,
+          ...cellBase,
+          padding: `${padY}px ${padX}px ${padY}px ${padX + extraRound}px`,
           backgroundColor: ACID,
           color: NOIR,
           fontWeight: 800,
@@ -233,9 +232,11 @@ const LabelPair: React.FC<{
       </div>
       <div
         style={{
-          ...cellStyle,
+          ...cellBase,
+          padding: `${padY}px ${padX + extraRound}px ${padY}px ${padX}px`,
           backgroundColor: NOIR,
           color: ACID,
+          fontWeight: 700,
         }}
       >
         {right}
@@ -265,13 +266,12 @@ const HookUnitView: React.FC<{ unit: HookUnit }> = ({ unit }) => {
             fontFamily: FONT_BODY,
             fontWeight: 700,
             fontSize: 36,
-            letterSpacing: 5,
+            letterSpacing: 1,
             textTransform: 'uppercase',
             padding: '12px 26px',
             borderRadius: 999,
             marginBottom: 36,
-            boxShadow: '0 4px 18px rgba(0,0,0,0.45)',
-          }}
+                      }}
         >
           {unit.text}
         </div>
@@ -288,13 +288,12 @@ const HookUnitView: React.FC<{ unit: HookUnit }> = ({ unit }) => {
             fontFamily: FONT_BODY,
             fontWeight: 800,
             fontSize: 36,
-            letterSpacing: 5,
+            letterSpacing: 1,
             textTransform: 'uppercase',
             padding: '12px 26px',
             borderRadius: 999,
             marginBottom: 36,
-            boxShadow: '0 4px 18px rgba(0,0,0,0.45)',
-          }}
+                      }}
         >
           {unit.text}
         </div>

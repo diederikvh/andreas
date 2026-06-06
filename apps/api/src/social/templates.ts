@@ -179,14 +179,19 @@ function labelPair(opts: {
   const fontSize = opts.fontSize ?? 36;
   const padY = Math.round(fontSize / 3);
   const padX = Math.round(fontSize * 0.72);
-  const cellStyle = {
+  // Extra horizontale padding aan de afgeronde buitenkant zodat de
+  // tekst optisch gecentreerd lijkt (de rounding "snoept" er anders
+  // visueel ruimte vanaf). Toegepast left-cell-left + right-cell-right.
+  const extraRound = Math.round(fontSize / 4);
+  const cellBase = {
     fontFamily: 'Archivo',
     fontSize,
-    letterSpacing: Math.max(2, Math.round(fontSize / 7)),
+    letterSpacing: 1,
     textTransform: 'uppercase' as const,
-    padding: `${padY}px ${padX}px`,
     display: 'flex',
   };
+  const leftCellPad = `${padY}px ${padX}px ${padY}px ${padX + extraRound}px`;
+  const rightCellPad = `${padY}px ${padX + extraRound}px ${padY}px ${padX}px`;
   return el(
     'div',
     {
@@ -196,14 +201,14 @@ function labelPair(opts: {
         borderRadius: 999,
         overflow: 'hidden',
         marginBottom: opts.marginBottom ?? 36,
-        boxShadow: '0 4px 18px rgba(0,0,0,0.45)',
       },
     },
     el(
       'div',
       {
         style: {
-          ...cellStyle,
+          ...cellBase,
+          padding: leftCellPad,
           backgroundColor: ACID,
           color: NOIR,
           fontWeight: 800,
@@ -215,7 +220,8 @@ function labelPair(opts: {
       'div',
       {
         style: {
-          ...cellStyle,
+          ...cellBase,
+          padding: rightCellPad,
           backgroundColor: NOIR,
           color: ACID,
           fontWeight: 700,
@@ -703,12 +709,11 @@ function introUnit(unit: HookUnit): VNode {
             fontFamily: 'Archivo',
             fontWeight: 700,
             fontSize: 36,
-            letterSpacing: 5,
+            letterSpacing: 1,
             textTransform: 'uppercase',
             padding: '12px 26px',
             borderRadius: 999,
             marginBottom: 36,
-            boxShadow: '0 4px 18px rgba(0,0,0,0.45)',
             display: 'flex',
           },
         },
@@ -724,7 +729,7 @@ function introUnit(unit: HookUnit): VNode {
             fontFamily: 'Archivo',
             fontWeight: 800,
             fontSize: 36,
-            letterSpacing: 5,
+            letterSpacing: 1,
             textTransform: 'uppercase',
             padding: '12px 26px',
             borderRadius: 999,
