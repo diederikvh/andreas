@@ -162,8 +162,8 @@ const Intro: React.FC<{
         {renderHookStack(hookUnits)}
         <div
           style={{
-            backgroundColor: ACID,
-            color: NOIR,
+            backgroundColor: NOIR,
+            color: ACID,
             fontFamily: FONT_BODY,
             fontWeight: 700,
             fontSize: 28,
