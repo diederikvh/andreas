@@ -61,8 +61,8 @@ export const KICKERS: Partial<Record<ThemeKey, string>> = {
   'theater': 'Theater',
   'live-music': 'Live',
   'film': 'Film',
-  'clubs': 'Clubs',
-  'galleries': 'Galeries',
+  'clubs': 'Club',
+  'galleries': 'Galerie',
 };
 
 export const HOOKS: Partial<Record<ThemeKey, string>> = {
@@ -104,7 +104,7 @@ export const HOOK_UNITS: Partial<Record<ThemeKey, HookUnit[]>> = {
     { role: 'meta', text: 'Amsterdam\n{date}' },
   ],
   'clubs': [
-    { role: 'eyebrow', text: 'CLUBS' },
+    { role: 'eyebrow', text: 'CLUB' },
     { role: 'countLead', text: 'TOP' },
     { role: 'count', text: '6' },
     { role: 'headline', text: 'clubnachten' },

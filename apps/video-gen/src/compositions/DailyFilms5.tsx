@@ -174,10 +174,11 @@ function renderHookStack(units: HookUnit[]): React.ReactNode[] {
     const u = units[i];
     const next = units[i + 1];
     if (u.role === 'eyebrow' && next?.role === 'countLead') {
-      // Visuele volgorde: acid-cel (TOP/getal) links, noir-cel (categorie)
-      // rechts — countLead krijgt dus de left-slot, eyebrow de right.
+      // Visuele volgorde: acid-cel (categorie) links, noir-cel (TOP/getal)
+      // rechts — eyebrow krijgt dus de left-slot, countLead de right.
+      // Bv. [FILM (acid bg, noir text)][TOP (noir bg, acid text)].
       nodes.push(
-        <LabelPair key={`pg-${i}`} left={next.text} right={u.text} />,
+        <LabelPair key={`pg-${i}`} left={u.text} right={next.text} />,
       );
       i++; // skip de countLead want al gerenderd
       continue;
@@ -438,8 +439,8 @@ const Slide: React.FC<{
           }}
         >
           <LabelPair
-            left={String(index + 1)}
-            right={themeKicker.toUpperCase()}
+            left={themeKicker.toUpperCase()}
+            right={String(index + 1)}
             fontSize={30}
             marginBottom={0}
           />

@@ -492,8 +492,8 @@ export function eventSlide(input: EventSlideInput): VNode {
             'div',
             { style: { display: 'flex' } },
             labelPair({
-              left: String(input.index),
-              right: input.themeLabel.toUpperCase(),
+              left: input.themeLabel.toUpperCase(),
+              right: String(input.index),
               fontSize: 32,
               marginBottom: 8,
             }),
@@ -673,10 +673,10 @@ function renderIntroHookStack(
     const u = units[i];
     const next = units[i + 1];
     // Eyebrow direct gevolgd door countLead → labelPair (acid links,
-    // noir rechts). Volgorde: countLead-text = acid-cel, eyebrow-text =
-    // noir-cel — matched DailyFilms5.tsx (TOP | THEATER).
+    // noir rechts). Volgorde: eyebrow-text = acid-cel, countLead-text =
+    // noir-cel — bv. [FILM (acid bg, noir text)][TOP (noir bg, acid text)].
     if (u.role === 'eyebrow' && next?.role === 'countLead') {
-      out.push(labelPair({ left: next.text, right: u.text }));
+      out.push(labelPair({ left: u.text, right: next.text }));
       i++;
       continue;
     }
