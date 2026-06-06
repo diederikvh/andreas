@@ -9,6 +9,7 @@ import {
   introSlide,
   overviewSlide,
   type EventSlideInput,
+  type HookUnit,
   type SlideFormat,
 } from './templates.js';
 
@@ -61,8 +62,15 @@ export async function renderCarousel(
     themeLabel?: string;
     /** Subtekst onder de themeLabel, bv. "Komende 7 dagen". */
     windowLabel?: string;
-    /** Hook-zin voor de intro-slide. Default: themeLabel of "Vandaag in Amsterdam". */
+    /** Hook-zin voor de intro-slide. Default: themeLabel of "Vandaag in Amsterdam".
+        Wordt alleen gebruikt als `hookUnits` niet is gegeven. */
     hook?: string;
+    /** Gestructureerde hook-units (eyebrow/countLead/count/headline/meta).
+        Matched de Remotion-video — labelPair + grote count + zin + tijd. */
+    hookUnits?: HookUnit[];
+    /** Eén-regelige titel boven de Overview-slide grid, bv. "Top 6 films
+        deze week". Als ontbreekt: header valt terug op "Andreas X kicker". */
+    overviewTitle?: string;
     /** Slide-formaat. 'ig' = 1080×1350 (4:5), 'tiktok' = 1080×1920 (9:16).
         Default 'ig' voor backcompat. */
     format?: SlideFormat;
@@ -100,6 +108,7 @@ export async function renderCarousel(
         introSlide({
           heroImageUrl: heroForIntro,
           hook: hookText,
+          hookUnits: options.hookUnits,
           format,
         }),
         format,
@@ -134,9 +143,11 @@ export async function renderCarousel(
     await renderSlide(
       overviewSlide({
         themeKicker: options.themeLabel ?? 'Nieuw',
+        overviewTitle: options.overviewTitle,
         picks: normalized.map((p) => ({
           imageUrl: p.imageUrl,
           title: p.title,
+          venueName: p.venueName,
           startsAt: p.startsAt as Date,
           endsAt: p.endsAt as Date | null,
         })),

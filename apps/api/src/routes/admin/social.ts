@@ -15,7 +15,13 @@ import {
 } from '../../social/tiktok.js';
 import {
   HOOKS as VIDEO_HOOKS,
+  HOOK_UNITS,
   KICKERS as THEME_KICKERS,
+  OVERVIEW_TITLES,
+  formatWindowRange,
+  withDynamicCount,
+  withDynamicDate,
+  type HookUnit,
 } from '../../social/dailyfilms5-data.js';
 import { renderCarousel, type CarouselPick } from '../../social/render.js';
 import {
@@ -1002,7 +1008,26 @@ export async function runGenerate(
     throw new Error(`geen picks voor theme=${theme.key} in huidig window`);
   }
 
-  // 1. Render slides in TWEE formaten:
+  // 1. Bouw structuur-data voor de intro + overview (matched de video).
+  const baseUnits: HookUnit[] = HOOK_UNITS[theme.key] ?? [
+    { role: 'eyebrow', text: theme.label.nl.toUpperCase() },
+    { role: 'count', text: String(picks.length) },
+    { role: 'headline', text: 'highlights' },
+    { role: 'meta', text: 'Amsterdam\n{date}' },
+  ];
+  const dateRange = formatWindowRange(theme.windowDays, now);
+  const hookUnits = withDynamicDate(
+    withDynamicCount(baseUnits, picks.length),
+    dateRange,
+  );
+  const overviewTitleTemplate =
+    OVERVIEW_TITLES[theme.key] ?? `Top ${picks.length} ${theme.label.nl}`;
+  const overviewTitle = overviewTitleTemplate.replace(
+    '{count}',
+    String(picks.length),
+  );
+
+  // 2. Render slides in TWEE formaten:
   //    - 'ig'     → 1080×1350 (4:5) — Instagram-feed-carousel maximum
   //    - 'tiktok' → 1080×1920 (9:16) — TikTok photo-carousel beeldvullend
   //    Beide worden parallel gerenderd. IG-set blijft `imageUrls` (zodat
@@ -1013,6 +1038,8 @@ export async function runGenerate(
     themeLabel: THEME_KICKERS[theme.key] ?? theme.label.nl,
     windowLabel: theme.windowLabel.nl,
     hook: VIDEO_HOOKS[theme.key],
+    hookUnits,
+    overviewTitle,
   };
   const carouselPicks = picks.map((p) => ({
     imageUrl: p.imageUrl,

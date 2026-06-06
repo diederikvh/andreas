@@ -166,6 +166,85 @@ function cross(size: number, thickness: number, color: string): VNode {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────
 
+// ─── LabelPair (twee-kleuren-blok) ───────────────────────────────────────
+//
+// Acid-cel links, noir-cel rechts, gedeelde 4px border-radius via
+// overflow-hidden. Matched 1:1 de video-template (DailyFilms5).
+
+function labelPair(opts: {
+  left: string;
+  right: string;
+  fontSize?: number;
+  marginBottom?: number;
+}): VNode {
+  const fontSize = opts.fontSize ?? 36;
+  const padY = Math.round(fontSize / 3);
+  const padX = Math.round(fontSize * 0.72);
+  const cellStyle = {
+    fontFamily: 'Archivo',
+    fontSize,
+    letterSpacing: Math.max(2, Math.round(fontSize / 7)),
+    textTransform: 'uppercase' as const,
+    padding: `${padY}px ${padX}px`,
+    display: 'flex',
+  };
+  return el(
+    'div',
+    {
+      style: {
+        display: 'flex',
+        flexDirection: 'row',
+        borderRadius: 4,
+        overflow: 'hidden',
+        marginBottom: opts.marginBottom ?? 36,
+        boxShadow: '0 4px 18px rgba(0,0,0,0.45)',
+        alignSelf: 'flex-start',
+      },
+    },
+    el(
+      'div',
+      {
+        style: {
+          ...cellStyle,
+          backgroundColor: ACID,
+          color: NOIR,
+          fontWeight: 800,
+        },
+      },
+      opts.left,
+    ),
+    el(
+      'div',
+      {
+        style: {
+          ...cellStyle,
+          backgroundColor: NOIR,
+          color: ACID,
+          fontWeight: 700,
+        },
+      },
+      opts.right,
+    ),
+  );
+}
+
+/** Split een tekst met "\n" en render elke regel als aparte div in een
+ *  flexcolumn — Satori ondersteunt geen whiteSpace: pre-line, dus we
+ *  doen 't expliciet. */
+function multilineText(
+  text: string,
+  style: Record<string, unknown>,
+): VNode {
+  const lines = text.split('\n');
+  return el(
+    'div',
+    {
+      style: { display: 'flex', flexDirection: 'column', ...style },
+    },
+    ...lines.map((line) => el('div', { style: { display: 'flex' } }, line)),
+  );
+}
+
 /** "Za 16 mei" — Amsterdam-locale Nederlandstalige short-date, capital weekday. */
 function formatDateNl(d: Date): string {
   const fmt = new Intl.DateTimeFormat('nl-NL', {
@@ -391,10 +470,9 @@ export function eventSlide(input: EventSlideInput): VNode {
           'linear-gradient(180deg, rgba(10,10,11,0.55) 0%, rgba(10,10,11,0.20) 30%, rgba(10,10,11,0.55) 60%, rgba(10,10,11,0.96) 88%)',
       },
     }),
-    // Top-left: dag-thema kicker (themeLabel + windowLabel). Vervangt
-    // de oude cat/venue-pills omdat de category nu impliciet is via
-    // het thema (ma=theater, di=muziek, …). Twee tekstregels: groot
-    // acid label + kleinere muted-subtekst voor tijdseenheid.
+    // Top-left: twee-kleuren-label (acid-cel = slide-nummer, noir-cel =
+    // themeLabel). Matched DailyFilms5.tsx zodat carousel en video één
+    // visuele taal hebben.
     input.themeLabel
       ? el(
           'div',
@@ -403,41 +481,15 @@ export function eventSlide(input: EventSlideInput): VNode {
               position: 'absolute',
               top: p.eventTop,
               left: p.eventSide,
-              right: p.eventSide,
               display: 'flex',
-              flexDirection: 'column',
-              gap: 4,
             },
           },
-          el(
-            'div',
-            {
-              style: {
-                fontSize: 44,
-                fontWeight: 900,
-                color: ACID,
-                letterSpacing: -1,
-                textTransform: 'uppercase',
-              },
-            },
-            input.themeLabel
-          ),
-          input.windowLabel
-            ? el(
-                'div',
-                {
-                  style: {
-                    fontSize: 26,
-                    fontWeight: 700,
-                    color: INK,
-                    letterSpacing: 0,
-                    textTransform: 'uppercase',
-                    opacity: 0.85,
-                  },
-                },
-                input.windowLabel
-              )
-            : null
+          labelPair({
+            left: String(input.index),
+            right: input.themeLabel.toUpperCase(),
+            fontSize: 32,
+            marginBottom: 0,
+          }),
         )
       : null,
     // Bottom panel
@@ -467,17 +519,16 @@ export function eventSlide(input: EventSlideInput): VNode {
             width: '100%',
           },
         },
-        // Datum + tijd op één regel: "VR 25 MEI · 20:00". Minder
-        // verticale ruimte, meer compact.
+        // Datum + tijd op één regel — niet meer uppercase, zelfde stijl
+        // als de video-slide.
         el(
           'div',
           {
             style: {
               fontSize: 46,
-              fontWeight: 900,
+              fontWeight: 700,
               color: ACID,
-              letterSpacing: -1,
-              textTransform: 'uppercase',
+              letterSpacing: 0,
             },
           },
           `${formatDateNl(input.startsAt)} · ${time}`
@@ -521,12 +572,26 @@ export function eventSlide(input: EventSlideInput): VNode {
 
 // ─── Intro + Overview (matched aan video-templates) ─────────────────────
 
+/** HookUnit-spiegel van dailyfilms5-data.ts. Lokaal gedupliceerd zodat
+ *  templates.ts géén cyclische dep heeft (dailyfilms5-data importeert
+ *  via een diepere keten waar templates onder kan vallen). */
+export type HookRole = 'eyebrow' | 'countLead' | 'count' | 'headline' | 'meta';
+export interface HookUnit {
+  role: HookRole;
+  text: string;
+}
+
 export interface IntroSlideInput {
   /** Achtergrondafbeelding — gebruik bv. de laatste pick zodat de
       intro niet dezelfde foto heeft als slide 1. */
   heroImageUrl: string;
-  /** Pakkende hook-zin gecentreerd in beeld. */
+  /** Legacy: pakkende hook-zin gecentreerd in beeld. Gebruikt als
+      fallback wanneer geen hookUnits zijn meegegeven. */
   hook: string;
+  /** Nieuwe gestructureerde hook (eyebrow/countLead/count/headline/meta)
+      die de intro-slide rendert als labelPair + groot getal + zin +
+      gedempte tijdsregel. Matched 1:1 de Remotion-video-intro. */
+  hookUnits?: HookUnit[];
   format?: SlideFormat;
 }
 
@@ -575,8 +640,8 @@ export function introSlide(input: IntroSlideInput): VNode {
         backgroundColor: 'rgba(10,10,11,0.65)',
       },
     }),
-    // Centrale tekst-blok — padding schaalt met safe-area zodat de
-    // hook op TikTok niet onder de caption/action-buttons valt.
+    // Centrale tekst-blok — padding schaalt met safe-area zodat alles
+    // op TikTok binnen de caption-bar/action-buttons valt.
     el(
       'div',
       {
@@ -593,7 +658,20 @@ export function introSlide(input: IntroSlideInput): VNode {
           padding: `${p.introPadY}px ${p.introPadX}px`,
         },
       },
-      // Grote hook-zin
+      ...renderIntroHookStack(input.hookUnits, input.hook),
+    ),
+  );
+}
+
+/** Walk door HookUnit-array en render eyebrow→countLead als labelPair,
+ *  count groot, headline groot, meta multiline. Valt terug op een
+ *  enkelvoudige hook-string als geen units zijn meegegeven. */
+function renderIntroHookStack(
+  units: HookUnit[] | undefined,
+  fallbackHook: string,
+): VNode[] {
+  if (!units || units.length === 0) {
+    return [
       el(
         'div',
         {
@@ -604,40 +682,140 @@ export function introSlide(input: IntroSlideInput): VNode {
             lineHeight: 1.0,
             letterSpacing: -2.5,
             textAlign: 'center',
-            marginBottom: 36,
           },
         },
-        input.hook,
+        fallbackHook,
       ),
-      // Acid-pill "ANDREAS"
-      el(
+    ];
+  }
+  const out: VNode[] = [];
+  for (let i = 0; i < units.length; i++) {
+    const u = units[i];
+    const next = units[i + 1];
+    // Eyebrow direct gevolgd door countLead → labelPair (acid links,
+    // noir rechts). Volgorde: countLead-text = acid-cel, eyebrow-text =
+    // noir-cel — matched DailyFilms5.tsx (TOP | THEATER).
+    if (u.role === 'eyebrow' && next?.role === 'countLead') {
+      out.push(labelPair({ left: next.text, right: u.text }));
+      i++;
+      continue;
+    }
+    out.push(introUnit(u));
+  }
+  return out;
+}
+
+/** Per-rol styling voor een hook-unit in de intro-stack. */
+function introUnit(unit: HookUnit): VNode {
+  switch (unit.role) {
+    case 'eyebrow':
+      return el(
         'div',
         {
           style: {
-            display: 'flex',
-            backgroundColor: ACID,
-            color: NOIR,
-            padding: '12px 24px',
-            borderRadius: 6,
-            fontSize: 32,
+            backgroundColor: NOIR,
+            color: ACID,
+            fontFamily: 'Archivo',
             fontWeight: 700,
+            fontSize: 36,
             letterSpacing: 5,
             textTransform: 'uppercase',
+            padding: '12px 26px',
+            borderRadius: 4,
+            marginBottom: 36,
+            boxShadow: '0 4px 18px rgba(0,0,0,0.45)',
+            display: 'flex',
           },
         },
-        'Andreas',
-      ),
-    ),
-  );
+        unit.text,
+      );
+    case 'countLead':
+      return el(
+        'div',
+        {
+          style: {
+            backgroundColor: ACID,
+            color: NOIR,
+            fontFamily: 'Archivo',
+            fontWeight: 800,
+            fontSize: 36,
+            letterSpacing: 5,
+            textTransform: 'uppercase',
+            padding: '12px 26px',
+            borderRadius: 4,
+            marginBottom: 36,
+            display: 'flex',
+          },
+        },
+        unit.text,
+      );
+    case 'count':
+      return el(
+        'div',
+        {
+          style: {
+            color: INK,
+            fontFamily: 'Archivo',
+            fontWeight: 900,
+            fontSize: 240,
+            lineHeight: 0.88,
+            letterSpacing: -10,
+            marginBottom: 12,
+            display: 'flex',
+            textShadow: '0 6px 28px rgba(0,0,0,0.85)',
+          },
+        },
+        unit.text,
+      );
+    case 'headline':
+      return el(
+        'div',
+        {
+          style: {
+            color: INK,
+            fontFamily: 'Archivo',
+            fontWeight: 700,
+            fontSize: 108,
+            lineHeight: 1.04,
+            letterSpacing: -2,
+            textAlign: 'center',
+            marginBottom: 32,
+            maxWidth: 900,
+            display: 'flex',
+            textShadow: '0 4px 20px rgba(0,0,0,0.8)',
+          },
+        },
+        unit.text,
+      );
+    case 'meta':
+      return multilineText(unit.text, {
+        color: ACID,
+        fontFamily: 'Archivo',
+        fontWeight: 600,
+        fontSize: 54,
+        lineHeight: 1.15,
+        letterSpacing: -0.5,
+        textAlign: 'center',
+        textShadow: '0 3px 14px rgba(0,0,0,0.75)',
+        alignItems: 'center',
+      });
+    default:
+      return el('div', { style: { display: 'flex' } }, '');
+  }
 }
 
 export interface OverviewSlideInput {
-  /** Tekst tussen Andreas en X, bv. "Film", "Theater", "Live". */
+  /** Legacy: tekst tussen Andreas en X. Wordt alleen gebruikt als
+      `overviewTitle` ontbreekt — dan rendert de header "Andreas X <kicker>". */
   themeKicker: string;
+  /** Eén-regelige titel boven de grid, bv. "Top 6 films deze week".
+      Matched DailyFilms5.tsx Overview. */
+  overviewTitle?: string;
   /** 6 picks die in 2x3 grid worden getoond. */
   picks: Array<{
     imageUrl: string;
     title: string;
+    venueName?: string;
     startsAt: Date;
     endsAt: Date | null;
   }>;
@@ -737,6 +915,7 @@ export function overviewSlide(input: OverviewSlideInput): VNode {
               letterSpacing: -0.8,
               display: 'flex',
               textShadow: '0 2px 10px rgba(0,0,0,0.8)',
+              marginBottom: pick.venueName ? 6 : 0,
               // Satori heeft beperkte line-clamp support; we kappen op
               // de data-laag indien titel > 40 chars (kortere strings
               // bij grotere font om wrap netjes te houden).
@@ -744,6 +923,25 @@ export function overviewSlide(input: OverviewSlideInput): VNode {
           },
           pick.title.length > 40 ? pick.title.slice(0, 37) + '…' : pick.title,
         ),
+        pick.venueName
+          ? el(
+              'div',
+              {
+                style: {
+                  color: INK,
+                  fontSize: 22,
+                  fontWeight: 600,
+                  letterSpacing: -0.2,
+                  opacity: 0.92,
+                  display: 'flex',
+                  textShadow: '0 2px 8px rgba(0,0,0,0.75)',
+                },
+              },
+              pick.venueName.length > 28
+                ? pick.venueName.slice(0, 26) + '…'
+                : pick.venueName,
+            )
+          : null,
       ),
     );
 
@@ -768,25 +966,44 @@ export function overviewSlide(input: OverviewSlideInput): VNode {
         fontFamily: 'Archivo',
       },
     },
-    // Header
-    el(
-      'div',
-      {
-        style: {
-          color: INK,
-          fontSize: 36,
-          fontWeight: 900,
-          letterSpacing: 5,
-          textTransform: 'uppercase',
-          textAlign: 'center',
-          marginBottom: 30,
-          display: 'flex',
-          justifyContent: 'center',
-        },
-      },
-      el('span', { style: { color: INK } }, 'Andreas'),
-      el('span', { style: { color: ACID } }, 'X'),
-      el('span', { style: { color: INK } }, input.themeKicker),
+    // Header: overviewTitle als gegeven, anders fallback "Andreas X kicker".
+    input.overviewTitle
+      ? el(
+          'div',
+          {
+            style: {
+              color: INK,
+              fontSize: 54,
+              fontWeight: 800,
+              lineHeight: 1.1,
+              letterSpacing: -1,
+              textAlign: 'center',
+              marginBottom: 30,
+              display: 'flex',
+              justifyContent: 'center',
+              alignSelf: 'center',
+            },
+          },
+          input.overviewTitle,
+        )
+      : el(
+          'div',
+          {
+            style: {
+              color: INK,
+              fontSize: 36,
+              fontWeight: 900,
+              letterSpacing: 5,
+              textTransform: 'uppercase',
+              textAlign: 'center',
+              marginBottom: 30,
+              display: 'flex',
+              justifyContent: 'center',
+            },
+          },
+          el('span', { style: { color: INK } }, 'Andreas'),
+          el('span', { style: { color: ACID } }, 'X'),
+          el('span', { style: { color: INK } }, input.themeKicker),
     ),
     row(0),
     row(2),
