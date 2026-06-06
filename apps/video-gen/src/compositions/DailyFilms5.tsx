@@ -25,7 +25,7 @@ const pickSchema = z.object({
 });
 
 const hookUnitSchema = z.object({
-  role: z.enum(['eyebrow', 'count', 'headline', 'meta']),
+  role: z.enum(['eyebrow', 'countLead', 'count', 'headline', 'meta']),
   text: z.string(),
 });
 
@@ -145,9 +145,10 @@ const Intro: React.FC<{
         }}
       />
 
-      {/* Centraal blok — getypeerde hook-units. Per rol een eigen
-          visuele weight zodat de belofte (categorie → getal → onderwerp
-          → plek/tijd) gestructureerd leest. Slidet weg én fadet uit,
+      {/* Centraal blok — getypeerde hook-units + Andreas-afzender. Per
+          rol een eigen visuele weight zodat de belofte (categorie →
+          getal → onderwerp → plek/tijd) gestructureerd leest. Andreas-
+          pill sluit de stack als afzender. Slidet weg én fadet uit,
           parallel met de image-cross-fade naar slide 1. */}
       <AbsoluteFill
         style={{
@@ -161,19 +162,6 @@ const Intro: React.FC<{
         {hookUnits.map((unit, i) => (
           <HookUnitView key={`${unit.role}-${i}`} unit={unit} />
         ))}
-      </AbsoluteFill>
-      {/* Andreas-pill als afzender helemaal onderaan — fadet en slidet
-          mee met de hook zodat de overgang naar slide 1 één beweging is. */}
-      <AbsoluteFill
-        style={{
-          justifyContent: 'flex-end',
-          alignItems: 'center',
-          paddingBottom: 90,
-          transform: `translateX(${slideX}px)`,
-          opacity: 1 - outEase,
-          pointerEvents: 'none',
-        }}
-      >
         <div
           style={{
             backgroundColor: ACID,
@@ -185,6 +173,7 @@ const Intro: React.FC<{
             textTransform: 'uppercase',
             padding: '10px 20px',
             borderRadius: 4,
+            marginTop: 36,
           }}
         >
           Andreas
@@ -221,6 +210,25 @@ const HookUnitView: React.FC<{ unit: HookUnit }> = ({ unit }) => {
             borderRadius: 4,
             marginBottom: 36,
             boxShadow: '0 4px 18px rgba(0,0,0,0.45)',
+          }}
+        >
+          {unit.text}
+        </div>
+      );
+    case 'countLead':
+      // Klein acid label vlak boven count — geeft het top-X-signaal.
+      return (
+        <div
+          style={{
+            color: ACID,
+            fontFamily: FONT_BODY,
+            fontWeight: 800,
+            fontSize: 44,
+            letterSpacing: 8,
+            textTransform: 'uppercase',
+            textAlign: 'center',
+            marginBottom: -8,
+            textShadow: '0 2px 12px rgba(0,0,0,0.7)',
           }}
         >
           {unit.text}

@@ -4,8 +4,9 @@
   "hook": "Films die je echt moet zien dit weekend in Amsterdam",
   "hookUnits": [
     { "role": "eyebrow", "text": "FILM" },
+    { "role": "countLead", "text": "TOP" },
     { "role": "count", "text": "6" },
-    { "role": "headline", "text": "films in de bioscoop" },
+    { "role": "headline", "text": "films in de filmhuizen" },
     { "role": "meta", "text": "Amsterdam · dit weekend" }
   ],
   "audio": "audio/daily.mp3",

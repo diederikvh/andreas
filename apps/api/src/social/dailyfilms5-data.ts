@@ -17,17 +17,20 @@ import {
  * Een hook-zin opgesplitst in getypeerde units zodat elk deel zijn
  * eigen styling kan krijgen in de Remotion-intro.
  *
- *  - eyebrow  → categorie-label ("THEATER")
- *  - count    → het getal van de aftelbare lijst ("6") — wordt op
- *               render-tijd automatisch overschreven met picks.length
- *               zodat de belofte altijd klopt met wat volgt.
- *  - headline → waar de lijst over gaat ("voorstellingen")
- *  - meta     → plek + tijd ("Amsterdam · komende 7 dagen")
+ *  - eyebrow   → categorie-label ("THEATER")
+ *  - countLead → mini-label vlak boven count ("TOP") — ranglijst-signaal,
+ *                zodat de eerste pick er echt toe doet, en de tweede,
+ *                en de derde.
+ *  - count     → het getal van de aftelbare lijst ("6") — wordt op
+ *                render-tijd automatisch overschreven met picks.length
+ *                zodat de belofte altijd klopt met wat volgt.
+ *  - headline  → waar de lijst over gaat ("voorstellingen")
+ *  - meta      → plek + tijd ("Amsterdam · komende 7 dagen")
  *
  * Sfeer mag terug als aparte gedempte unit (rol `meta`), niet vermengd
  * met de belofte.
  */
-export type HookRole = 'eyebrow' | 'count' | 'headline' | 'meta';
+export type HookRole = 'eyebrow' | 'countLead' | 'count' | 'headline' | 'meta';
 
 export interface HookUnit {
   role: HookRole;
@@ -83,20 +86,23 @@ export const HOOKS: Partial<Record<ThemeKey, string>> = {
 export const HOOK_UNITS: Partial<Record<ThemeKey, HookUnit[]>> = {
   'theater': [
     { role: 'eyebrow', text: 'THEATER' },
+    { role: 'countLead', text: 'TOP' },
     { role: 'count', text: '6' },
     { role: 'headline', text: 'voorstellingen' },
     { role: 'meta', text: 'Amsterdam · deze week' },
   ],
   'live-music': [
     { role: 'eyebrow', text: 'LIVE' },
+    { role: 'countLead', text: 'TOP' },
     { role: 'count', text: '5' },
     { role: 'headline', text: 'concerten' },
     { role: 'meta', text: 'Amsterdam · deze week' },
   ],
   'film': [
     { role: 'eyebrow', text: 'FILM' },
+    { role: 'countLead', text: 'TOP' },
     { role: 'count', text: '6' },
-    { role: 'headline', text: 'films in de bioscoop' },
+    { role: 'headline', text: 'films in de filmhuizen' },
     { role: 'meta', text: 'Amsterdam · dit weekend' },
   ],
   'weekend-kickoff': [
@@ -106,6 +112,7 @@ export const HOOK_UNITS: Partial<Record<ThemeKey, HookUnit[]>> = {
   ],
   'galleries': [
     { role: 'eyebrow', text: 'EXPO' },
+    { role: 'countLead', text: 'TOP' },
     { role: 'count', text: '5' },
     { role: 'headline', text: 'exposities' },
     { role: 'meta', text: 'Amsterdam · nu open' },
