@@ -89,26 +89,26 @@ export const HOOK_UNITS: Partial<Record<ThemeKey, HookUnit[]>> = {
     { role: 'countLead', text: 'TOP' },
     { role: 'count', text: '6' },
     { role: 'headline', text: 'voorstellingen' },
-    { role: 'meta', text: 'Amsterdam · deze week' },
+    { role: 'meta', text: 'Amsterdam · deze week · {date}' },
   ],
   'live-music': [
     { role: 'eyebrow', text: 'LIVE' },
     { role: 'countLead', text: 'TOP' },
     { role: 'count', text: '5' },
     { role: 'headline', text: 'concerten' },
-    { role: 'meta', text: 'Amsterdam · deze week' },
+    { role: 'meta', text: 'Amsterdam · deze week · {date}' },
   ],
   'film': [
     { role: 'eyebrow', text: 'FILM' },
     { role: 'countLead', text: 'TOP' },
     { role: 'count', text: '6' },
     { role: 'headline', text: 'films in de filmhuizen' },
-    { role: 'meta', text: 'Amsterdam · dit weekend' },
+    { role: 'meta', text: 'Amsterdam · dit weekend · {date}' },
   ],
   'weekend-kickoff': [
     { role: 'eyebrow', text: 'WEEKEND' },
     { role: 'headline', text: 'Dit ga je doen' },
-    { role: 'meta', text: 'Amsterdam · dit weekend' },
+    { role: 'meta', text: 'Amsterdam · dit weekend · {date}' },
   ],
   'galleries': [
     { role: 'eyebrow', text: 'EXPO' },
@@ -120,12 +120,12 @@ export const HOOK_UNITS: Partial<Record<ThemeKey, HookUnit[]>> = {
   'tonight': [
     { role: 'eyebrow', text: 'VANAVOND' },
     { role: 'headline', text: 'Dit ga je doen' },
-    { role: 'meta', text: 'Amsterdam · vanavond' },
+    { role: 'meta', text: 'Amsterdam · vanavond · {date}' },
   ],
   'week-preview': [
     { role: 'eyebrow', text: 'DEZE WEEK' },
     { role: 'headline', text: 'Dit is er te doen' },
-    { role: 'meta', text: 'Amsterdam' },
+    { role: 'meta', text: 'Amsterdam · {date}' },
   ],
 };
 
@@ -139,6 +139,52 @@ export function withDynamicCount(
 ): HookUnit[] {
   return units.map((u) =>
     u.role === 'count' ? { ...u, text: String(count) } : u,
+  );
+}
+
+/** Maandafkortingen NL — 3 letters, lowercase. */
+const MONTHS_NL = [
+  'jan', 'feb', 'mrt', 'apr', 'mei', 'jun',
+  'jul', 'aug', 'sep', 'okt', 'nov', 'dec',
+];
+
+/**
+ * Bouwt een korte date-range tekst voor de meta-unit, gebaseerd op
+ * theme.windowDays + start-datum. Voorbeelden:
+ *
+ *   windowDays=1                   → "12 jun"
+ *   windowDays=3, zelfde maand     → "13–15 jun"
+ *   windowDays=7, maand-grens      → "28 jun – 4 jul"
+ *
+ * Geeft de carousel/video een tijdstempel zodat een terugkijker ook
+ * later begrijpt over welke periode het ging.
+ */
+export function formatWindowRange(windowDays: number, now: Date): string {
+  if (windowDays <= 1) {
+    return `${now.getDate()} ${MONTHS_NL[now.getMonth()]}`;
+  }
+  const end = new Date(now.getTime() + (windowDays - 1) * 24 * 60 * 60 * 1000);
+  const startDay = now.getDate();
+  const endDay = end.getDate();
+  if (now.getMonth() === end.getMonth()) {
+    return `${startDay}–${endDay} ${MONTHS_NL[end.getMonth()]}`;
+  }
+  return `${startDay} ${MONTHS_NL[now.getMonth()]} – ${endDay} ${MONTHS_NL[end.getMonth()]}`;
+}
+
+/**
+ * Vervangt het `{date}`-token in elke unit-text met de gegeven string.
+ * Themes die geen {date}-token hebben (zoals galleries' "nu open")
+ * blijven onaangetast — die zijn intrinsiek tijd-bestendig.
+ */
+export function withDynamicDate(
+  units: HookUnit[],
+  dateText: string,
+): HookUnit[] {
+  return units.map((u) =>
+    u.text.includes('{date}')
+      ? { ...u, text: u.text.replace('{date}', dateText) }
+      : u,
   );
 }
 
@@ -209,17 +255,22 @@ export async function fetchDailyFilms5Props(
     }
   }
 
-  // Hook-units: per-theme structured array, count overschreven met de
-  // werkelijke pick-count zodat de belofte altijd matcht. Fallback voor
-  // themes zonder HOOK_UNITS-entry: bouw een minimale 4-unit hook uit
-  // het theme-label.
+  // Hook-units: per-theme structured array. Twee dynamische overrides
+  // op render-tijd:
+  //   - count → werkelijke pick-count zodat de belofte altijd matcht.
+  //   - {date} → concrete date-range zodat een terugkijker ook later
+  //              ziet wanneer dit speelde (i.p.v. alleen 'dit weekend').
   const baseUnits: HookUnit[] = HOOK_UNITS[theme.key] ?? [
     { role: 'eyebrow', text: theme.label.nl },
     { role: 'count', text: String(picks.length) },
     { role: 'headline', text: 'highlights' },
-    { role: 'meta', text: `Amsterdam · ${theme.windowLabel.nl.toLowerCase()}` },
+    { role: 'meta', text: 'Amsterdam · {date}' },
   ];
-  const hookUnits = withDynamicCount(baseUnits, picks.length);
+  const dateRange = formatWindowRange(theme.windowDays, now);
+  const hookUnits = withDynamicDate(
+    withDynamicCount(baseUnits, picks.length),
+    dateRange,
+  );
 
   return {
     themeKicker: KICKERS[theme.key] ?? theme.label.nl,
