@@ -159,9 +159,7 @@ const Intro: React.FC<{
           opacity: 1 - outEase,
         }}
       >
-        {hookUnits.map((unit, i) => (
-          <HookUnitView key={`${unit.role}-${i}`} unit={unit} />
-        ))}
+        {renderHookStack(hookUnits)}
         <div
           style={{
             backgroundColor: ACID,
@@ -180,6 +178,79 @@ const Intro: React.FC<{
         </div>
       </AbsoluteFill>
     </AbsoluteFill>
+  );
+};
+
+// Render de hook-stack. Detecteert eyebrow → countLead-paren en
+// rendert die als één twee-kleuren-blok (noir-pill + wit-pill tegen
+// elkaar aan, gedeelde border-radius). Andere units gaan via HookUnitView.
+function renderHookStack(units: HookUnit[]): React.ReactNode[] {
+  const nodes: React.ReactNode[] = [];
+  for (let i = 0; i < units.length; i++) {
+    const u = units[i];
+    const next = units[i + 1];
+    if (u.role === 'eyebrow' && next?.role === 'countLead') {
+      nodes.push(
+        <EyebrowCountLeadGroup
+          key={`pg-${i}`}
+          eyebrow={u}
+          countLead={next}
+        />,
+      );
+      i++; // skip de countLead want al gerenderd
+      continue;
+    }
+    nodes.push(<HookUnitView key={`${u.role}-${i}`} unit={u} />);
+  }
+  return nodes;
+}
+
+// Twee-kleuren-blok: eyebrow links (NOIR/INK), countLead rechts (INK/NOIR),
+// gedeelde 4px border-radius via overflow-hidden container, één gedeelde
+// shadow. Voelt als één label dat uit twee kleuren bestaat.
+const EyebrowCountLeadGroup: React.FC<{
+  eyebrow: HookUnit;
+  countLead: HookUnit;
+}> = ({ eyebrow, countLead }) => {
+  const cellStyle: React.CSSProperties = {
+    fontFamily: FONT_BODY,
+    fontWeight: 700,
+    fontSize: 36,
+    letterSpacing: 5,
+    textTransform: 'uppercase',
+    padding: '12px 26px',
+  };
+  return (
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'row',
+        borderRadius: 4,
+        overflow: 'hidden',
+        marginBottom: 36,
+        boxShadow: '0 4px 18px rgba(0,0,0,0.45)',
+      }}
+    >
+      <div
+        style={{
+          ...cellStyle,
+          backgroundColor: NOIR,
+          color: INK,
+        }}
+      >
+        {eyebrow.text}
+      </div>
+      <div
+        style={{
+          ...cellStyle,
+          backgroundColor: INK,
+          color: NOIR,
+          fontWeight: 800,
+        }}
+      >
+        {countLead.text}
+      </div>
+    </div>
   );
 };
 
@@ -216,19 +287,23 @@ const HookUnitView: React.FC<{ unit: HookUnit }> = ({ unit }) => {
         </div>
       );
     case 'countLead':
-      // Klein acid label vlak boven count — geeft het top-X-signaal.
+      // Stand-alone fallback — wordt normaal door EyebrowPillGroup tegen
+      // de eyebrow-pill aan getekend. Deze tak wordt alleen geraakt als
+      // er een countLead zonder voorafgaande eyebrow staat.
       return (
         <div
           style={{
-            color: ACID,
+            backgroundColor: INK,
+            color: NOIR,
             fontFamily: FONT_BODY,
             fontWeight: 800,
-            fontSize: 44,
-            letterSpacing: 8,
+            fontSize: 36,
+            letterSpacing: 5,
             textTransform: 'uppercase',
-            textAlign: 'center',
-            marginBottom: -8,
-            textShadow: '0 2px 12px rgba(0,0,0,0.7)',
+            padding: '12px 26px',
+            borderRadius: 4,
+            marginBottom: 36,
+            boxShadow: '0 4px 18px rgba(0,0,0,0.45)',
           }}
         >
           {unit.text}
