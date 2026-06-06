@@ -43,6 +43,8 @@ export interface DailyFilms5Props {
   hook: string;
   /** Nieuwe gestructureerde hook voor de Remotion-intro. */
   hookUnits: HookUnit[];
+  /** Eén-regelige titel boven de Overview-slide (laatste frame). */
+  overviewTitle: string;
   audio: string;
   picks: Array<{
     imageUrl: string;
@@ -127,6 +129,25 @@ export const HOOK_UNITS: Partial<Record<ThemeKey, HookUnit[]>> = {
     { role: 'headline', text: 'Dit is er te doen' },
     { role: 'meta', text: 'Amsterdam\n{date}' },
   ],
+};
+
+/**
+ * Eén-regelige titel voor de Overview-slide (laatste video-frame).
+ * Komt op de plek van "Andreas X <ThemeKicker>" en moet zelfstandig
+ * uitleggen wat de kijker heeft gezien.
+ *
+ *   {count}  → wordt vervangen door picks.length
+ *
+ * Voor themes zonder count blijft de zin gewoon staan zoals 'ie is.
+ */
+export const OVERVIEW_TITLES: Partial<Record<ThemeKey, string>> = {
+  'theater': 'Top {count} voorstellingen deze week',
+  'live-music': 'Top {count} concerten deze week',
+  'film': 'Top {count} films deze week',
+  'weekend-kickoff': 'Dit ga je doen dit weekend',
+  'galleries': 'Top {count} exposities nu open',
+  'tonight': 'Dit ga je doen vanavond',
+  'week-preview': 'Dit is er te doen deze week',
 };
 
 /**
@@ -272,10 +293,18 @@ export async function fetchDailyFilms5Props(
     dateRange,
   );
 
+  const overviewTitleTemplate =
+    OVERVIEW_TITLES[theme.key] ?? `Top ${picks.length} ${theme.label.nl}`;
+  const overviewTitle = overviewTitleTemplate.replace(
+    '{count}',
+    String(picks.length),
+  );
+
   return {
     themeKicker: KICKERS[theme.key] ?? theme.label.nl,
     hook: HOOKS[theme.key] ?? theme.label.nl,
     hookUnits,
+    overviewTitle,
     audio: 'audio/daily.mp3',
     picks: picks.map((p) => ({
       imageUrl: heroByEventId.get(p.eventId) ?? p.imageUrl,

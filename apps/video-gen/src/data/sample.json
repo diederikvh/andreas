@@ -2,6 +2,7 @@
   "themeKicker": "Film",
   "themeTitle": "Donderdag 12 september",
   "hook": "Films die je echt moet zien dit weekend in Amsterdam",
+  "overviewTitle": "Top 6 films deze week",
   "hookUnits": [
     { "role": "eyebrow", "text": "FILM" },
     { "role": "countLead", "text": "TOP" },

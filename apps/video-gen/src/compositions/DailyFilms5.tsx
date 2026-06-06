@@ -34,6 +34,7 @@ export const dailyFilms5Schema = z.object({
   themeTitle: z.string(), // legacy, optional
   hook: z.string().optional(), // legacy platte string — fallback voor preview
   hookUnits: z.array(hookUnitSchema).optional(),
+  overviewTitle: z.string().optional(), // titel boven Overview-slide
   audio: z.string().optional(), // bv. "audio/daily.mp3"
   picks: z.array(pickSchema).length(6),
 });
@@ -563,10 +564,11 @@ const Cross: React.FC<{ size: number; style?: React.CSSProperties }> = ({
 // rustige spring + lichte stagger zonder bounce. Header is
 // "Andreas X <ThemeKicker>" zonder spaties rond de X.
 
-const Overview: React.FC<{ picks: Pick[]; themeKicker: string }> = ({
-  picks,
-  themeKicker,
-}) => {
+const Overview: React.FC<{
+  picks: Pick[];
+  themeKicker: string;
+  title?: string;
+}> = ({ picks, themeKicker, title }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
 
@@ -579,28 +581,49 @@ const Overview: React.FC<{ picks: Pick[]; themeKicker: string }> = ({
       config: { damping: 18, mass: 0.6, stiffness: 140 },
     });
 
+  // Header: vrije titel (bv. "Top 6 films deze week") als gegeven,
+  // anders fallback op "Andreas X <ThemeKicker>".
+  const headerText = title ?? null;
+
   return (
     <AbsoluteFill style={{ backgroundColor: NOIR }}>
-      {/* Brand-header: Andreas X <ThemeKicker>. Top 240 zodat 'ie
-          binnen IG Reels' top safe-area valt. */}
       <div
         style={{
           position: 'absolute',
-          top: 240,
-          left: 0,
-          right: 0,
+          top: 220,
+          left: 80,
+          right: 80,
           textAlign: 'center',
           fontFamily: FONT_BODY,
-          fontWeight: 900,
-          fontSize: 34,
-          letterSpacing: 4,
-          textTransform: 'uppercase',
           opacity: headerOpacity,
         }}
       >
-        <span style={{ color: INK }}>Andreas</span>
-        <span style={{ color: ACID }}>X</span>
-        <span style={{ color: INK }}>{themeKicker}</span>
+        {headerText ? (
+          <div
+            style={{
+              color: INK,
+              fontWeight: 800,
+              fontSize: 54,
+              lineHeight: 1.1,
+              letterSpacing: -1,
+            }}
+          >
+            {headerText}
+          </div>
+        ) : (
+          <div
+            style={{
+              fontWeight: 900,
+              fontSize: 34,
+              letterSpacing: 4,
+              textTransform: 'uppercase',
+            }}
+          >
+            <span style={{ color: INK }}>Andreas</span>
+            <span style={{ color: ACID }}>X</span>
+            <span style={{ color: INK }}>{themeKicker}</span>
+          </div>
+        )}
       </div>
 
       {/* Grid 2×3 — cells vierkant + side-pad 120 zodat 't binnen
@@ -679,17 +702,35 @@ const Overview: React.FC<{ picks: Pick[]; themeKicker: string }> = ({
                         color: INK,
                         fontFamily: FONT_BODY,
                         fontWeight: 700,
-                        fontSize: 45,
-                        lineHeight: 1.08,
+                        fontSize: 42,
+                        lineHeight: 1.06,
                         letterSpacing: -0.8,
                         display: '-webkit-box',
                         WebkitLineClamp: 2,
                         WebkitBoxOrient: 'vertical',
                         overflow: 'hidden',
                         textShadow: '0 2px 10px rgba(0,0,0,0.8)',
+                        marginBottom: 6,
                       }}
                     >
                       {pick.title}
+                    </div>
+                    <div
+                      style={{
+                        color: INK,
+                        fontFamily: FONT_BODY,
+                        fontWeight: 600,
+                        fontSize: 24,
+                        letterSpacing: -0.2,
+                        opacity: 0.95,
+                        textShadow: '0 2px 8px rgba(0,0,0,0.7)',
+                        display: '-webkit-box',
+                        WebkitLineClamp: 1,
+                        WebkitBoxOrient: 'vertical',
+                        overflow: 'hidden',
+                      }}
+                    >
+                      {pick.venueName}
                     </div>
                   </div>
                 </div>
@@ -708,6 +749,7 @@ export const DailyFilms5: React.FC<DailyFilms5Props> = ({
   themeKicker,
   hook,
   hookUnits,
+  overviewTitle,
   picks,
   audio,
 }) => {
@@ -767,7 +809,11 @@ export const DailyFilms5: React.FC<DailyFilms5Props> = ({
         durationInFrames={OUTRO_FRAMES}
         name="Overview"
       >
-        <Overview picks={picks} themeKicker={themeKicker} />
+        <Overview
+          picks={picks}
+          themeKicker={themeKicker}
+          title={overviewTitle}
+        />
       </Sequence>
     </AbsoluteFill>
   );
