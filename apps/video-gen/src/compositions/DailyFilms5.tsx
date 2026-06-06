@@ -190,8 +190,10 @@ function renderHookStack(units: HookUnit[]): React.ReactNode[] {
     const u = units[i];
     const next = units[i + 1];
     if (u.role === 'eyebrow' && next?.role === 'countLead') {
+      // Visuele volgorde: acid-cel (TOP/getal) links, noir-cel (categorie)
+      // rechts — countLead krijgt dus de left-slot, eyebrow de right.
       nodes.push(
-        <LabelPair key={`pg-${i}`} left={u.text} right={next.text} />,
+        <LabelPair key={`pg-${i}`} left={next.text} right={u.text} />,
       );
       i++; // skip de countLead want al gerenderd
       continue;
@@ -237,8 +239,9 @@ const LabelPair: React.FC<{
       <div
         style={{
           ...cellStyle,
-          backgroundColor: NOIR,
-          color: ACID,
+          backgroundColor: ACID,
+          color: NOIR,
+          fontWeight: 800,
         }}
       >
         {left}
@@ -246,9 +249,8 @@ const LabelPair: React.FC<{
       <div
         style={{
           ...cellStyle,
-          backgroundColor: ACID,
-          color: NOIR,
-          fontWeight: 800,
+          backgroundColor: NOIR,
+          color: ACID,
         }}
       >
         {right}
@@ -451,8 +453,8 @@ const Slide: React.FC<{
           }}
         >
           <LabelPair
-            left={themeKicker.toUpperCase()}
-            right={String(index + 1)}
+            left={String(index + 1)}
+            right={themeKicker.toUpperCase()}
             fontSize={30}
             marginBottom={0}
           />
