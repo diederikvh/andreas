@@ -145,10 +145,10 @@ const Intro: React.FC<{
         }}
       />
 
-      {/* Centraal blok — Andreas-brand pill + getypeerde hook-units.
-          Per rol een eigen visuele weight zodat de belofte (categorie →
-          getal → onderwerp → plek/tijd) gestructureerd leest. Slidet
-          weg én fadet uit, parallel met de image-cross-fade naar slide 1. */}
+      {/* Centraal blok — getypeerde hook-units. Per rol een eigen
+          visuele weight zodat de belofte (categorie → getal → onderwerp
+          → plek/tijd) gestructureerd leest. Slidet weg én fadet uit,
+          parallel met de image-cross-fade naar slide 1. */}
       <AbsoluteFill
         style={{
           justifyContent: 'center',
@@ -156,6 +156,22 @@ const Intro: React.FC<{
           padding: '0 100px',
           transform: `translateX(${slideX}px)`,
           opacity: 1 - outEase,
+        }}
+      >
+        {hookUnits.map((unit, i) => (
+          <HookUnitView key={`${unit.role}-${i}`} unit={unit} />
+        ))}
+      </AbsoluteFill>
+      {/* Andreas-pill als afzender helemaal onderaan — fadet en slidet
+          mee met de hook zodat de overgang naar slide 1 één beweging is. */}
+      <AbsoluteFill
+        style={{
+          justifyContent: 'flex-end',
+          alignItems: 'center',
+          paddingBottom: 90,
+          transform: `translateX(${slideX}px)`,
+          opacity: 1 - outEase,
+          pointerEvents: 'none',
         }}
       >
         <div
@@ -169,14 +185,10 @@ const Intro: React.FC<{
             textTransform: 'uppercase',
             padding: '10px 20px',
             borderRadius: 4,
-            marginBottom: 48,
           }}
         >
           Andreas
         </div>
-        {hookUnits.map((unit, i) => (
-          <HookUnitView key={`${unit.role}-${i}`} unit={unit} />
-        ))}
       </AbsoluteFill>
     </AbsoluteFill>
   );
@@ -206,9 +218,8 @@ const HookUnitView: React.FC<{ unit: HookUnit }> = ({ unit }) => {
             letterSpacing: 5,
             textTransform: 'uppercase',
             padding: '12px 26px',
-            borderRadius: 6,
+            borderRadius: 4,
             marginBottom: 36,
-            border: '2px solid rgba(255,255,255,0.18)',
             boxShadow: '0 4px 18px rgba(0,0,0,0.45)',
           }}
         >
