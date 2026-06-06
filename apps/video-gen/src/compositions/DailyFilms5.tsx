@@ -238,7 +238,7 @@ const LabelPair: React.FC<{
         style={{
           ...cellStyle,
           backgroundColor: NOIR,
-          color: INK,
+          color: ACID,
         }}
       >
         {left}
