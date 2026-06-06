@@ -355,7 +355,7 @@ const HookUnitView: React.FC<{ unit: HookUnit }> = ({ unit }) => {
       return (
         <div
           style={{
-            color: INK,
+            color: ACID,
             fontFamily: FONT_BODY,
             fontWeight: 600,
             fontSize: 54,
