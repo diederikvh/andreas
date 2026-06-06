@@ -361,9 +361,10 @@ const HookUnitView: React.FC<{ unit: HookUnit }> = ({ unit }) => {
 const Slide: React.FC<{
   pick: Pick;
   index: number;
+  total: number;
   isLast: boolean;
   themeKicker: string;
-}> = ({ pick, index, isLast, themeKicker }) => {
+}> = ({ pick, index, total, isLast, themeKicker }) => {
   const frame = useCurrentFrame();
   // Iedere slide — ook de eerste — fadet in. De intro fadet onder de
   // eerste slide uit; zonder eigen fade-in zou de cut te hard zijn.
@@ -439,7 +440,7 @@ const Slide: React.FC<{
         >
           <LabelPair
             left={themeKicker.toUpperCase()}
-            right={String(index + 1)}
+            right={String(total - index)}
             fontSize={30}
             marginBottom={0}
           />
@@ -802,6 +803,7 @@ export const DailyFilms5: React.FC<DailyFilms5Props> = ({
             <Slide
               pick={pick}
               index={i}
+              total={picks.length}
               isLast={false}
               themeKicker={themeKicker}
             />

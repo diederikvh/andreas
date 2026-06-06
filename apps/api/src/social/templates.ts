@@ -499,13 +499,14 @@ export function eventSlide(input: EventSlideInput): VNode {
         },
       },
       // Volgorde: labelPair → title → venue → datum. Acid-cel links,
-      // noir-cel rechts. Default uit themeLabel+index (DailyFilms);
-      // overschrijfbaar via labelLeft/labelRight (bv. JustIn).
+      // noir-cel rechts. Default: countdown 6→1 (we bouwen op naar de
+      // winnaar, niet 1→6). labelLeft/labelRight overschrijft de default.
       (() => {
         const left =
           input.labelLeft ??
           (input.themeLabel ? input.themeLabel.toUpperCase() : null);
-        const right = input.labelRight ?? String(input.index);
+        const right =
+          input.labelRight ?? String(input.total - input.index + 1);
         return left
           ? el(
               'div',
