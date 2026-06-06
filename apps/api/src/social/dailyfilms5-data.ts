@@ -82,46 +82,43 @@ export const HOOKS: Partial<Record<ThemeKey, string>> = {
  */
 export const HOOK_UNITS: Partial<Record<ThemeKey, HookUnit[]>> = {
   'theater': [
-    { role: 'eyebrow', text: 'Theater' },
+    { role: 'eyebrow', text: 'THEATER' },
     { role: 'count', text: '6' },
     { role: 'headline', text: 'voorstellingen' },
-    { role: 'meta', text: 'Amsterdam · komende 7 dagen' },
-  ],
-  'live-music': [
-    { role: 'eyebrow', text: 'Live muziek' },
-    { role: 'count', text: '6' },
-    { role: 'headline', text: 'concerten' },
-    { role: 'meta', text: 'Amsterdam · komende 7 dagen' },
-  ],
-  'film': [
-    { role: 'eyebrow', text: 'Film' },
-    { role: 'count', text: '6' },
-    { role: 'headline', text: 'films' },
     { role: 'meta', text: 'Amsterdam · deze week' },
   ],
-  'weekend-kickoff': [
-    { role: 'eyebrow', text: 'Weekend' },
-    { role: 'count', text: '6' },
-    { role: 'headline', text: 'clubnachten' },
-    { role: 'meta', text: 'Amsterdam · komend weekend' },
+  'live-music': [
+    { role: 'eyebrow', text: 'LIVE' },
+    { role: 'count', text: '5' },
+    { role: 'headline', text: 'concerten' },
+    { role: 'meta', text: 'Amsterdam · deze week' },
   ],
-  'galleries': [
-    { role: 'eyebrow', text: 'Galeries' },
+  'film': [
+    { role: 'eyebrow', text: 'FILM' },
     { role: 'count', text: '6' },
-    { role: 'headline', text: 'exposities' },
+    { role: 'headline', text: 'films in de bioscoop' },
     { role: 'meta', text: 'Amsterdam · dit weekend' },
   ],
+  'weekend-kickoff': [
+    { role: 'eyebrow', text: 'WEEKEND' },
+    { role: 'headline', text: 'Dit ga je doen' },
+    { role: 'meta', text: 'Amsterdam · dit weekend' },
+  ],
+  'galleries': [
+    { role: 'eyebrow', text: 'EXPO' },
+    { role: 'count', text: '5' },
+    { role: 'headline', text: 'exposities' },
+    { role: 'meta', text: 'Amsterdam · nu open' },
+  ],
   'tonight': [
-    { role: 'eyebrow', text: 'Vanavond' },
-    { role: 'count', text: '6' },
-    { role: 'headline', text: 'tips' },
+    { role: 'eyebrow', text: 'VANAVOND' },
+    { role: 'headline', text: 'Dit ga je doen' },
     { role: 'meta', text: 'Amsterdam · vanavond' },
   ],
   'week-preview': [
-    { role: 'eyebrow', text: 'Deze week' },
-    { role: 'count', text: '6' },
-    { role: 'headline', text: 'highlights' },
-    { role: 'meta', text: 'Amsterdam · komende 7 dagen' },
+    { role: 'eyebrow', text: 'DEZE WEEK' },
+    { role: 'headline', text: 'Dit is er te doen' },
+    { role: 'meta', text: 'Amsterdam' },
   ],
 };
 

@@ -183,23 +183,33 @@ const Intro: React.FC<{
 };
 
 // Per-rol styling voor één hook-unit. Layout: vertical stack, alles
-// horizontaal gecentreerd. Marges zijn rol-afhankelijk zodat count en
-// headline visueel als één blok lezen, met meta er los onder.
+// horizontaal gecentreerd.
+//
+//  - eyebrow  → pill (achtergrond-card) zodat de categorie als duidelijk
+//              label leest, los van de zin eronder.
+//  - count    → enorm/wit/dominant — het "wat krijg je"-getal.
+//  - headline → groot, leesbaar als zin (700-gewicht, royale line-height).
+//  - meta     → kleinere variant van headline (zelfde kleur/gewicht,
+//              alleen kleiner) — geen gedempt-grijs meer, blijft mee-
+//              spelen met de belofte.
 const HookUnitView: React.FC<{ unit: HookUnit }> = ({ unit }) => {
   switch (unit.role) {
     case 'eyebrow':
       return (
         <div
           style={{
-            color: ACID,
+            backgroundColor: NOIR,
+            color: INK,
             fontFamily: FONT_BODY,
             fontWeight: 700,
-            fontSize: 40,
-            letterSpacing: 6,
+            fontSize: 36,
+            letterSpacing: 5,
             textTransform: 'uppercase',
-            textAlign: 'center',
-            marginBottom: 12,
-            textShadow: '0 2px 12px rgba(0,0,0,0.7)',
+            padding: '12px 26px',
+            borderRadius: 6,
+            marginBottom: 36,
+            border: '2px solid rgba(255,255,255,0.18)',
+            boxShadow: '0 4px 18px rgba(0,0,0,0.45)',
           }}
         >
           {unit.text}
@@ -212,11 +222,11 @@ const HookUnitView: React.FC<{ unit: HookUnit }> = ({ unit }) => {
             color: INK,
             fontFamily: FONT_BODY,
             fontWeight: 900,
-            fontSize: 220,
-            lineHeight: 0.9,
-            letterSpacing: -8,
+            fontSize: 240,
+            lineHeight: 0.88,
+            letterSpacing: -10,
             textAlign: 'center',
-            marginBottom: 4,
+            marginBottom: 12,
             textShadow: '0 6px 28px rgba(0,0,0,0.85)',
           }}
         >
@@ -229,13 +239,14 @@ const HookUnitView: React.FC<{ unit: HookUnit }> = ({ unit }) => {
           style={{
             color: INK,
             fontFamily: FONT_BODY,
-            fontWeight: 800,
-            fontSize: 92,
-            lineHeight: 1.0,
+            fontWeight: 700,
+            fontSize: 108,
+            lineHeight: 1.04,
             letterSpacing: -2,
             textAlign: 'center',
-            marginBottom: 28,
+            marginBottom: 32,
             textShadow: '0 4px 20px rgba(0,0,0,0.8)',
+            maxWidth: 900,
           }}
         >
           {unit.text}
@@ -245,13 +256,14 @@ const HookUnitView: React.FC<{ unit: HookUnit }> = ({ unit }) => {
       return (
         <div
           style={{
-            color: INK_MUTED,
+            color: INK,
             fontFamily: FONT_BODY,
-            fontWeight: 500,
-            fontSize: 32,
-            letterSpacing: 0.5,
+            fontWeight: 600,
+            fontSize: 54,
+            lineHeight: 1.1,
+            letterSpacing: -0.5,
             textAlign: 'center',
-            textShadow: '0 2px 10px rgba(0,0,0,0.7)',
+            textShadow: '0 3px 14px rgba(0,0,0,0.75)',
           }}
         >
           {unit.text}

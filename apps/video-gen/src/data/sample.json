@@ -3,10 +3,10 @@
   "themeTitle": "Donderdag 12 september",
   "hook": "Films die je echt moet zien dit weekend in Amsterdam",
   "hookUnits": [
-    { "role": "eyebrow", "text": "Film" },
+    { "role": "eyebrow", "text": "FILM" },
     { "role": "count", "text": "6" },
-    { "role": "headline", "text": "films" },
-    { "role": "meta", "text": "Amsterdam · deze week" }
+    { "role": "headline", "text": "films in de bioscoop" },
+    { "role": "meta", "text": "Amsterdam · dit weekend" }
   ],
   "audio": "audio/daily.mp3",
   "picks": [
