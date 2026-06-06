@@ -18,17 +18,17 @@
  * dus adapteren naar de langere frame (croppen waar nodig).
  */
 
-/** Twee carousel-formaten:
+/** Twee carousel-formaten (zelfde aspect, eigen safe-area):
  *  - 'ig'     → 1080×1350 (4:5) Instagram-feed-carousel maximum
- *  - 'tiktok' → 1080×1920 (9:16) TikTok photo-carousel beeldvullend
- *  Templates renderen per format zodat tekst-positionering en hero-crops
- *  per platform optimaal blijven (geen letterboxing op TikTok, geen
- *  centrale-crop op IG). */
+ *  - 'tiktok' → 1080×1350 (4:5) — TikTok's photo-carousel viewer rendert
+ *               geen 9:16, maar tussen 1:1 en 4:5. Bij 9:16 oogde de
+ *               slide te hoog (caption-bar overlapt onderkant). 4:5
+ *               past beeldvullend zonder gekke crops. */
 export type SlideFormat = 'ig' | 'tiktok';
 
 export const FORMATS: Record<SlideFormat, { width: number; height: number }> = {
   ig: { width: 1080, height: 1350 },
-  tiktok: { width: 1080, height: 1920 },
+  tiktok: { width: 1080, height: 1350 },
 };
 
 /** Default-export voor backcompat — IG-formaat. Nieuwe code gebruikt
@@ -70,15 +70,19 @@ function pad(format: SlideFormat | undefined): {
   overviewBottom: number;
 } {
   if (format === 'tiktok') {
+    // 4:5-frame is dezelfde grootte als IG; TikTok's caption-bar dekt
+    // proportioneel minder onderkant dan bij 9:16. Iets meer bottom-pad
+    // dan IG (160 ipv 40) zodat de audio-sticker niet over de venue valt;
+    // de rest gelijk aan IG.
     return {
-      eventTop: 180,
-      eventSide: 120,
-      eventBottom: 380,
-      introPadY: 220,
-      introPadX: 140,
-      overviewTop: 180,
-      overviewSide: 120,
-      overviewBottom: 360,
+      eventTop: 60,
+      eventSide: 60,
+      eventBottom: 160,
+      introPadY: 80,
+      introPadX: 80,
+      overviewTop: 80,
+      overviewSide: 80,
+      overviewBottom: 160,
     };
   }
   return {
