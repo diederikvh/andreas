@@ -105,7 +105,7 @@ const LabelPair: React.FC<{
       style={{
         display: 'flex',
         flexDirection: 'row',
-        borderRadius: 4,
+        borderRadius: 999,
         overflow: 'hidden',
         marginBottom,
         boxShadow: '0 4px 18px rgba(0,0,0,0.45)',
@@ -152,7 +152,7 @@ const HookUnitView: React.FC<{ unit: HookUnit }> = ({ unit }) => {
             letterSpacing: 5,
             textTransform: 'uppercase',
             padding: '12px 26px',
-            borderRadius: 4,
+            borderRadius: 999,
             marginBottom: 36,
             boxShadow: '0 4px 18px rgba(0,0,0,0.45)',
           }}
@@ -172,7 +172,7 @@ const HookUnitView: React.FC<{ unit: HookUnit }> = ({ unit }) => {
             letterSpacing: 5,
             textTransform: 'uppercase',
             padding: '12px 26px',
-            borderRadius: 4,
+            borderRadius: 999,
             marginBottom: 36,
           }}
         >
@@ -408,50 +408,9 @@ const Slide: React.FC<{ pick: JustInPick; index: number; isLast: boolean }> = ({
         />
       )}
 
-      {/* News-ticker tag rechtsboven — pulserend "JUST IN · 2d geleden".
-          Index + daysAgo combineren zodat 't ook hint geeft welke pick. */}
-      <div
-        style={{
-          position: 'absolute',
-          top: 180,
-          right: 100,
-          opacity: flicker(frame + index * 4, 24, 0.7, 1),
-          display: 'flex',
-          flexDirection: 'row',
-          borderRadius: 4,
-          overflow: 'hidden',
-          boxShadow: '0 4px 18px rgba(0,0,0,0.55)',
-          fontFamily: FONT_BODY,
-          fontSize: 26,
-          fontWeight: 800,
-          letterSpacing: 3,
-          textTransform: 'uppercase',
-        }}
-      >
-        <div
-          style={{
-            backgroundColor: ACID,
-            color: NOIR,
-            padding: '8px 16px',
-          }}
-        >
-          JUST IN
-        </div>
-        <div
-          style={{
-            backgroundColor: NOIR,
-            color: ACID,
-            padding: '8px 16px',
-            fontWeight: 700,
-          }}
-        >
-          {pick.daysAgo === 0 ? 'VANDAAG' : `${pick.daysAgo}D GELEDEN`}
-        </div>
-      </div>
-
-      {/* Body onderaan — volgorde title → venue → datum, géén tijd.
-          Hard ge-stamp'd met flicker. Venue en datum gelijk in maat
-          en gewicht, alleen kleur verschilt. */}
+      {/* Body onderaan — volgorde [JUST IN][2D] label → title → venue
+          → datum. Identieke layout-stijl als DailyFilms event-slides
+          zodat carousel en video één visuele taal hebben. */}
       <div
         style={{
           position: 'absolute',
@@ -462,6 +421,23 @@ const Slide: React.FC<{ pick: JustInPick; index: number; isLast: boolean }> = ({
           textShadow: '0 2px 16px rgba(0,0,0,0.6)',
         }}
       >
+        {/* LabelPair direct boven de titel — pulserend zodat de news-
+            ticker-urgentie meekomt. */}
+        <div
+          style={{
+            display: 'flex',
+            marginBottom: 18,
+            textShadow: 'none',
+            opacity: flicker(frame + index * 4, 24, 0.7, 1),
+          }}
+        >
+          <LabelPair
+            left="JUST IN"
+            right={pick.daysAgo === 0 ? 'VANDAAG' : `${pick.daysAgo}D GELEDEN`}
+            fontSize={28}
+            marginBottom={0}
+          />
+        </div>
         <div
           style={{
             color: INK,

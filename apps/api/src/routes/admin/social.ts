@@ -23,6 +23,7 @@ import {
   withDynamicDate,
   type HookUnit,
 } from '../../social/dailyfilms5-data.js';
+import { fetchJustInCarouselData } from '../../social/justin-data.js';
 import { renderCarousel, type CarouselPick } from '../../social/render.js';
 import {
   THEMES,
@@ -1193,6 +1194,150 @@ export async function runGenerate(
     warnings,
   };
 }
+
+/**
+ * Genereer een JustIn-carousel (news-ticker stijl, 6 picks, [JUST IN][2D]
+ * label per slide). Eigen flow naast runGenerate omdat:
+ *  - de pick-source anders is (recente events, niet pick-spread)
+ *  - per-pick label dynamisch is (daysAgo)
+ *  - meta.kind = 'just-in' zodat de UI ze later van DailyFilms onderscheidt
+ */
+export async function runJustInCarouselGenerate(
+  options: { existingId?: string } = {},
+): Promise<{ post: PersistedPost; warnings: string[] }> {
+  const warnings: string[] = [];
+  const now = new Date();
+  const data = await fetchJustInCarouselData();
+
+  const carouselPicks: CarouselPick[] = data.picks.map((p) => ({
+    imageUrl: p.imageUrl,
+    title: p.title,
+    venueName: p.venueName,
+    category: p.category,
+    venueType: p.venueType,
+    startsAt: p.startsAt,
+    endsAt: p.endsAt,
+  }));
+
+  // Per-pick label: [JUST IN][VANDAAG] of [JUST IN][2D GELEDEN].
+  const perPickLabel = (_pick: CarouselPick, i: number) => {
+    const d = data.picks[i].daysAgo;
+    return {
+      left: 'JUST IN',
+      right: d === 0 ? 'VANDAAG' : `${d}D GELEDEN`,
+    };
+  };
+
+  const renderOpts = {
+    date: now,
+    hookUnits: data.hookUnits,
+    overviewTitle: data.overviewTitle,
+    perPickLabel,
+  };
+  const [slidesIg, slidesTt] = await Promise.all([
+    renderCarousel(carouselPicks, { ...renderOpts, format: 'ig' }),
+    renderCarousel(carouselPicks, { ...renderOpts, format: 'tiktok' }),
+  ]);
+
+  const ymd = now.toISOString().slice(0, 10);
+  const postId = options.existingId ?? `sp-${shortId()}`;
+  const generation = now.getTime().toString(36);
+  const [imageUrls, tiktokImageUrls] = await Promise.all([
+    Promise.all(
+      slidesIg.map((buf, i) =>
+        uploadToBunny(
+          `media/social/${ymd}/${postId}-${generation}-ig-${i}.jpg`,
+          buf,
+          'image/jpeg',
+        ),
+      ),
+    ),
+    Promise.all(
+      slidesTt.map((buf, i) =>
+        uploadToBunny(
+          `media/social/${ymd}/${postId}-${generation}-tt-${i}.jpg`,
+          buf,
+          'image/jpeg',
+        ),
+      ),
+    ),
+  ]);
+
+  const captionResult = await generateCaption({
+    date: now,
+    picks: data.picks.map((p) => ({
+      title: p.title,
+      venueName: p.venueName,
+      venueType: p.venueType,
+      venueInstagram: null,
+      category: p.category,
+      startsAt: p.startsAt,
+      endsAt: p.endsAt,
+    })),
+  });
+  if (captionResult.source === 'fallback') {
+    warnings.push('caption gebruikt fallback-template (Claude niet bereikt)');
+  }
+
+  const scheduledFor = computeScheduledFor(now);
+  const eventIds = data.picks.map((p) => p.eventId);
+
+  if (options.existingId) {
+    await db
+      .update(schema.socialPosts)
+      .set({
+        eventIds,
+        imageUrls,
+        caption: captionResult.caption,
+        scheduledFor,
+        status: 'draft',
+        error: null,
+        slot: 'just-in',
+        meta: {
+          templateVersion: '3',
+          kind: 'just-in',
+          tiktokImageUrls,
+        },
+        updatedAt: now,
+      })
+      .where(eq(schema.socialPosts.id, options.existingId));
+  } else {
+    await db.insert(schema.socialPosts).values({
+      id: postId,
+      slot: 'just-in',
+      eventIds,
+      imageUrls,
+      caption: captionResult.caption,
+      scheduledFor,
+      status: 'draft',
+      meta: {
+        templateVersion: '3',
+        kind: 'just-in',
+        tiktokImageUrls,
+      },
+      createdAt: now,
+      updatedAt: now,
+    });
+  }
+
+  const [persisted] = await db
+    .select()
+    .from(schema.socialPosts)
+    .where(eq(schema.socialPosts.id, postId));
+
+  return { post: persisted as PersistedPost, warnings };
+}
+
+/** Genereer een JustIn-carousel post. Geen theme-param nodig — pakt
+    altijd de 6 meest-recent toegevoegde events van de laatste 7 dagen. */
+adminSocial.post('/generate-just-in', async (c) => {
+  try {
+    const { post, warnings } = await runJustInCarouselGenerate();
+    return c.json({ post, warnings });
+  } catch (e) {
+    return c.json({ error: (e as Error).message }, 500);
+  }
+});
 
 /** Genereer een nieuw concept-post voor een theme. Default: vandaag's
     theme (auto-gekozen via Amsterdam-weekday). `?theme=<key>` overschrijft

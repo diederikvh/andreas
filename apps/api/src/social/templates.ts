@@ -193,7 +193,7 @@ function labelPair(opts: {
       style: {
         display: 'flex',
         flexDirection: 'row',
-        borderRadius: 4,
+        borderRadius: 999,
         overflow: 'hidden',
         marginBottom: opts.marginBottom ?? 36,
         boxShadow: '0 4px 18px rgba(0,0,0,0.45)',
@@ -411,11 +411,17 @@ export interface EventSlideInput {
   endsAt: Date | null;
   index: number; // 1..N
   total: number;
-  /** Dag-thema label (bv. "Theater" of "Live muziek") — rendert als
-      acid-kicker top-left. Optioneel; bij ontbreken geen kicker. */
+  /** Dag-thema label (bv. "Theater" of "Live muziek") — gebruikt als
+      labelLeft als geen expliciet labelLeft/labelRight is meegegeven.
+      Voor DailyFilms: [themeLabel][index]; voor JustIn: [JUST IN][2D]. */
   themeLabel?: string;
   /** Subtekst onder themeLabel: tijdseenheid ("Komende 7 dagen"). */
   windowLabel?: string;
+  /** Linker cel van de labelPair (acid bg, noir text). Overschrijft de
+      default uit themeLabel. Beide of geen van labelLeft+labelRight. */
+  labelLeft?: string;
+  /** Rechter cel van de labelPair (noir bg, acid text). Default = String(index). */
+  labelRight?: string;
   format?: SlideFormat;
 }
 
@@ -482,20 +488,22 @@ export function eventSlide(input: EventSlideInput): VNode {
           gap: 12,
         },
       },
-      // Volgorde: labelPair → title → venue → datum/tijd. Venue en datum
-      // hebben dezelfde grootte en gewicht; alleen kleur verschilt.
-      input.themeLabel
-        ? el(
-            'div',
-            { style: { display: 'flex' } },
-            labelPair({
-              left: input.themeLabel.toUpperCase(),
-              right: String(input.index),
-              fontSize: 32,
-              marginBottom: 8,
-            }),
-          )
-        : null,
+      // Volgorde: labelPair → title → venue → datum. Acid-cel links,
+      // noir-cel rechts. Default uit themeLabel+index (DailyFilms);
+      // overschrijfbaar via labelLeft/labelRight (bv. JustIn).
+      (() => {
+        const left =
+          input.labelLeft ??
+          (input.themeLabel ? input.themeLabel.toUpperCase() : null);
+        const right = input.labelRight ?? String(input.index);
+        return left
+          ? el(
+              'div',
+              { style: { display: 'flex' } },
+              labelPair({ left, right, fontSize: 32, marginBottom: 8 }),
+            )
+          : null;
+      })(),
       // Title
       el(
         'div',
@@ -698,7 +706,7 @@ function introUnit(unit: HookUnit): VNode {
             letterSpacing: 5,
             textTransform: 'uppercase',
             padding: '12px 26px',
-            borderRadius: 4,
+            borderRadius: 999,
             marginBottom: 36,
             boxShadow: '0 4px 18px rgba(0,0,0,0.45)',
             display: 'flex',
@@ -719,7 +727,7 @@ function introUnit(unit: HookUnit): VNode {
             letterSpacing: 5,
             textTransform: 'uppercase',
             padding: '12px 26px',
-            borderRadius: 4,
+            borderRadius: 999,
             marginBottom: 36,
             display: 'flex',
           },

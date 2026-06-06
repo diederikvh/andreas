@@ -91,6 +91,13 @@ export async function renderCarousel(
     /** Eén-regelige titel boven de Overview-slide grid, bv. "Top 6 films
         deze week". Als ontbreekt: header valt terug op "Andreas X kicker". */
     overviewTitle?: string;
+    /** Optionele callback: per pick een eigen labelPair-paar. Default
+        (= ongezet) gebruikt themeLabel + slide-index. Voor JustIn:
+        retourneer { left: 'JUST IN', right: '2D GELEDEN' }. */
+    perPickLabel?: (
+      pick: CarouselPick,
+      index: number,
+    ) => { left: string; right: string };
     /** Slide-formaat. 'ig' = 1080×1350 (4:5), 'tiktok' = 1080×1920 (9:16).
         Default 'ig' voor backcompat. */
     format?: SlideFormat;
@@ -156,6 +163,7 @@ export async function renderCarousel(
   // 1..N event-slides
   for (let i = 0; i < normalized.length; i++) {
     const pick = normalized[i];
+    const customLabel = options.perPickLabel?.(pick, i);
     const input: EventSlideInput = {
       imageUrl: pick.imageUrl,
       title: pick.title,
@@ -168,6 +176,8 @@ export async function renderCarousel(
       total: normalized.length,
       themeLabel: options.themeLabel,
       windowLabel: options.windowLabel,
+      labelLeft: customLabel?.left,
+      labelRight: customLabel?.right,
       format,
     };
     slides.push(await renderSlide(eventSlide(input), format));

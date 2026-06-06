@@ -3306,6 +3306,15 @@ adminUi.get('/social', async (c) => {
               </form>
             );
           })}
+          <form method="post" action="/admin/social/generate-just-in" style="margin:0;">
+            <button
+              type="submit"
+              class="secondary"
+              title="Top 6 net aangekondigd — news-ticker stijl"
+            >
+              JustIn
+            </button>
+          </form>
         </div>
       </article>
 
@@ -3998,6 +4007,23 @@ adminUi.post('/social/generate', async (c) => {
     const { post, warnings } = await runGenerate(theme);
     const flash =
       `Concept aangemaakt voor ${theme.label.nl}.` +
+      (warnings.length > 0 ? ' Let op: ' + warnings.join('; ') : '');
+    return c.redirect(
+      `/admin/social/${post.id}?flash=${encodeURIComponent(flash)}`,
+    );
+  } catch (e) {
+    return c.redirect(
+      '/admin/social?error=' + encodeURIComponent((e as Error).message),
+    );
+  }
+});
+
+adminUi.post('/social/generate-just-in', async (c) => {
+  try {
+    const { runJustInCarouselGenerate } = await import('./social.js');
+    const { post, warnings } = await runJustInCarouselGenerate();
+    const flash =
+      'JustIn-carousel aangemaakt.' +
       (warnings.length > 0 ? ' Let op: ' + warnings.join('; ') : '');
     return c.redirect(
       `/admin/social/${post.id}?flash=${encodeURIComponent(flash)}`,

@@ -148,3 +148,128 @@ export async function fetchJustInPropsForUi(): Promise<JustInProps> {
     picks,
   };
 }
+
+/**
+ * Variant voor de carousel-renderer: levert dezelfde 6 picks maar met
+ * richer velden (startsAt als Date, eventId, venueType, category) zodat
+ * renderCarousel + CarouselPick-shape gevuld kan worden, plus de
+ * dynamische hookUnits + overviewTitle uit dezelfde bron. Hergebruikt
+ * de query-logica van fetchJustInPropsForUi.
+ */
+export interface JustInCarouselData {
+  hookUnits: HookUnit[];
+  overviewTitle: string;
+  /** "do 6 jun" — gebruikt in intro-meta. */
+  dateLabel: string;
+  picks: Array<{
+    eventId: string;
+    imageUrl: string;
+    title: string;
+    venueName: string;
+    venueType: string | null;
+    category: string;
+    startsAt: Date;
+    endsAt: Date | null;
+    daysAgo: number;
+  }>;
+}
+
+export async function fetchJustInCarouselData(): Promise<JustInCarouselData> {
+  const now = new Date();
+  const since = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+
+  const rows = await db
+    .select({
+      id: schema.events.id,
+      title: schema.events.title,
+      imageUrl: schema.events.imageUrl,
+      venueImageUrl: schema.venues.imageUrl,
+      category: schema.events.category,
+      createdAt: schema.events.createdAt,
+      venueName: schema.venues.name,
+      venueType: schema.venues.type,
+    })
+    .from(schema.events)
+    .innerJoin(schema.venues, eq(schema.events.venueId, schema.venues.id))
+    .where(
+      and(
+        eq(schema.events.published, true),
+        eq(schema.venues.published, true),
+        gte(schema.events.createdAt, since),
+        sql`COALESCE(${schema.events.imageUrl}, ${schema.venues.imageUrl}) IS NOT NULL`,
+      ),
+    )
+    .orderBy(desc(schema.events.createdAt))
+    .limit(6);
+  if (rows.length < 6) {
+    throw new Error(`minder dan 6 nieuwe events deze week (${rows.length})`);
+  }
+
+  const occRows = await db
+    .select({
+      eventId: schema.occurrences.eventId,
+      startsAt: schema.occurrences.startsAt,
+      endsAt: schema.occurrences.endsAt,
+    })
+    .from(schema.occurrences)
+    .where(
+      and(
+        inArray(
+          schema.occurrences.eventId,
+          rows.map((r) => r.id),
+        ),
+        gte(schema.occurrences.startsAt, now),
+      ),
+    )
+    .orderBy(asc(schema.occurrences.startsAt));
+  const firstOccByEvent = new Map<
+    string,
+    { startsAt: Date; endsAt: Date | null }
+  >();
+  for (const o of occRows) {
+    if (!firstOccByEvent.has(o.eventId)) {
+      firstOccByEvent.set(o.eventId, { startsAt: o.startsAt, endsAt: o.endsAt });
+    }
+  }
+
+  const picks = rows.map((r) => {
+    const occ = firstOccByEvent.get(r.id);
+    const startsAt = occ?.startsAt ?? r.createdAt;
+    return {
+      eventId: r.id,
+      imageUrl: r.imageUrl ?? r.venueImageUrl ?? '',
+      title: r.title,
+      venueName: r.venueName,
+      venueType: r.venueType,
+      category: r.category,
+      startsAt,
+      endsAt: occ?.endsAt ?? null,
+      daysAgo: Math.max(
+        0,
+        Math.floor(
+          (now.getTime() - r.createdAt.getTime()) / (24 * 60 * 60 * 1000),
+        ),
+      ),
+    };
+  });
+
+  const baseUnits: HookUnit[] = [
+    { role: 'eyebrow', text: 'JUST IN' },
+    { role: 'countLead', text: 'NIEUW' },
+    { role: 'count', text: String(picks.length) },
+    { role: 'headline', text: 'shows aangekondigd' },
+    { role: 'meta', text: 'Amsterdam\n{date}' },
+  ];
+  const dateRange = formatWindowRange(1, now);
+  const hookUnits = withDynamicDate(
+    withDynamicCount(baseUnits, picks.length),
+    dateRange,
+  );
+
+  return {
+    hookUnits,
+    overviewTitle: `Top ${picks.length} net aangekondigd`,
+    dateLabel: dateRange,
+    picks,
+  };
+}

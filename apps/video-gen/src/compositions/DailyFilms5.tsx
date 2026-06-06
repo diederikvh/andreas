@@ -215,7 +215,7 @@ const LabelPair: React.FC<{
       style={{
         display: 'flex',
         flexDirection: 'row',
-        borderRadius: 4,
+        borderRadius: 999,
         overflow: 'hidden',
         marginBottom,
         boxShadow: '0 4px 18px rgba(0,0,0,0.45)',
@@ -268,7 +268,7 @@ const HookUnitView: React.FC<{ unit: HookUnit }> = ({ unit }) => {
             letterSpacing: 5,
             textTransform: 'uppercase',
             padding: '12px 26px',
-            borderRadius: 4,
+            borderRadius: 999,
             marginBottom: 36,
             boxShadow: '0 4px 18px rgba(0,0,0,0.45)',
           }}
@@ -291,7 +291,7 @@ const HookUnitView: React.FC<{ unit: HookUnit }> = ({ unit }) => {
             letterSpacing: 5,
             textTransform: 'uppercase',
             padding: '12px 26px',
-            borderRadius: 4,
+            borderRadius: 999,
             marginBottom: 36,
             boxShadow: '0 4px 18px rgba(0,0,0,0.45)',
           }}
