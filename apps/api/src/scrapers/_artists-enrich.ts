@@ -3,25 +3,31 @@
  * `occurrences.lineup`-items naar de juiste artist-record via een
  * `artistId`-pointer in de JSON-blob.
  *
- * Flow per run:
- *   1. Verzamel alle unieke `lineup[i].name`-waarden uit Muziek-
- *      occurrences die nog een toekomstige startsAt hebben.
- *   2. Per unieke naam (case-insensitive):
- *        a. Bestaat al een artist-row? → hergebruik die id.
- *        b. Anders: MB-search → artist-record maken met URL-rels.
- *        c. Bij geen MB-match: maak alsnog een record (alleen naam),
- *           zet enrichedAt zodat we 'm niet morgen opnieuw zoeken.
- *   3. Update alle lineup-items met de gevonden artistId.
+ * Flow per run (twee stappen):
  *
- * Throttle: 1500ms per MB-call (rate-limit = 1/sec, we doen 1/1.5s
- * voor jitter). 503 = stop immediately (MB flagged ons).
+ *   STAP A — ensure-rows (snel, geen MB):
+ *     Elke unieke lineup-naam zonder artist-record krijgt direct
+ *     een minimale row (alleen `name`, `enrichedAt: null`). App kan
+ *     altijd naar een artist linken, ook voor long-tail-acts die
+ *     nog niet bij MB ge-enriched zijn.
+ *
+ *   STAP B — MB-enrich (langzaam, rate-limited):
+ *     Artists met enrichedAt:null (= nooit MB-search gedaan) eerst,
+ *     daarna stale rechecks. Sorteert binnen elke groep op aantal
+ *     callsites zodat festival-headliners voorrang krijgen.
+ *
+ *   Patch: alle lineup-items krijgen `artistId`-pointer (ook voor
+ *   artists die niet in deze run bij MB zijn opgezocht).
+ *
+ * Throttle: 3500ms per MB-call (~1029/uur, ruim onder MB's 1200/uur
+ * anonymous rate-limit op gedeeld Fly-IP). 503 = stop met logging
+ * van x-ratelimit-* headers.
  *
  * Retry-window: artists met enrichedAt jonger dan 7 dagen worden
- * niet opnieuw bij MB gezocht — alleen lineup-links worden
- * bijgewerkt voor nieuwe events.
+ * niet opnieuw bij MB gezocht.
  */
 
-import { and, eq, gte, inArray, isNull, lt, or, sql } from 'drizzle-orm';
+import { and, eq, gte, sql } from 'drizzle-orm';
 
 import { db, schema } from '../db/index.js';
 import { isLineupPlaceholderName } from './enrich.js';
@@ -273,30 +279,72 @@ export async function enrichLineupArtists(
     allArtists.map((a) => [a.name.toLowerCase(), a])
   );
 
-  // Worklist:
-  //  - Bestaande namen worden ALTIJD in `resolved` gezet (geen MB-call
-  //    nodig) zodat hun lineup-items in nieuwe events gepatched worden.
-  //  - Voor nieuwe + stale namen geldt de cron-limit. Sorteer op
-  //    aantal callsites zodat festival-headliners met 3 shows vóór
-  //    een eenmalige opener komen — onder een limit dekken we zo de
-  //    meeste app-pageviews. Tie-break alfabetisch (stabiel).
+  // ─── STAP A: ensure-rows ──────────────────────────────────────────
+  // Elke unieke lineup-naam zonder artist-record krijgt direct een
+  // minimale row (alleen `name`, `enrichedAt: null`). Snel, geen MB-
+  // call, geen rate-limit. Doel: app kan altijd naar een artist
+  // linken, ook voor long-tail-acts die nog niet bij MB ge-enriched
+  // zijn. Stap B (verderop) doet de MB-data daarna binnen.
   const entries = [...nameToCallsites.values()];
+  const resolved = new Map<string, string>(); // lower → artistId
+
+  for (const entry of entries) {
+    const ex = existingByLower.get(entry.lower);
+    if (ex) {
+      resolved.set(entry.lower, ex.id);
+      continue;
+    }
+    const id = `${slugify(entry.original)}-${Math.random().toString(36).slice(2, 6)}`;
+    try {
+      await db.insert(schema.artists).values({
+        id,
+        name: entry.original,
+        enrichedAt: null, // signal: nog niet bij MB gezocht
+      });
+      existingByLower.set(entry.lower, {
+        id,
+        name: entry.original,
+        enrichedAt: null,
+      });
+      resolved.set(entry.lower, id);
+      result.artistsInserted += 1;
+    } catch {
+      // Race: parallelle insert won. Re-select case-insensitive.
+      const [now] = await db
+        .select({
+          id: schema.artists.id,
+          name: schema.artists.name,
+          enrichedAt: schema.artists.enrichedAt,
+        })
+        .from(schema.artists)
+        .where(sql`LOWER(${schema.artists.name}) = ${entry.lower}`)
+        .limit(1);
+      if (now) {
+        existingByLower.set(entry.lower, now);
+        resolved.set(entry.lower, now.id);
+      }
+    }
+  }
+
+  // ─── STAP B: MB-enrich ────────────────────────────────────────────
+  // Pak artists waar enrichedAt IS NULL (nooit gezocht) OF stale.
+  // Sorteer "nog-niet-enriched" eerst, dan stale, binnen op aantal
+  // callsites. Limit cap'd door de MB-rate-limit (1029/uur).
   const todo = entries
     .filter((e) => {
       const ex = existingByLower.get(e.lower);
-      if (!ex) return true; // nieuw
+      if (!ex) return false; // safety — stap A heeft deze net gezet
       const stale =
         !ex.enrichedAt ||
         ex.enrichedAt.getTime() < Date.now() - RETRY_AFTER_DAYS * 86_400_000;
       return stale;
     })
     .sort((a, b) => {
-      // 1. Nieuwe namen (geen artist-record) eerst — daar voegt MB-
-      //    enrich daadwerkelijk nieuwe data toe. Stale-rechecks van
-      //    bestaande artists hebben al data; vullen alleen aan.
-      const aNew = !existingByLower.has(a.lower);
-      const bNew = !existingByLower.has(b.lower);
-      if (aNew !== bNew) return aNew ? -1 : 1;
+      // 1. Nooit-enriched (enrichedAt:null) eerst — daar is MB-data
+      //    helemaal nieuw. Stale-rechecks daarna.
+      const aFresh = existingByLower.get(a.lower)?.enrichedAt == null;
+      const bFresh = existingByLower.get(b.lower)?.enrichedAt == null;
+      if (aFresh !== bFresh) return aFresh ? -1 : 1;
       // 2. Binnen elke groep: meeste callsites eerst (festival-
       //    headliners vóór eenmalige supports).
       if (b.sites.length !== a.sites.length) return b.sites.length - a.sites.length;
@@ -305,99 +353,25 @@ export async function enrichLineupArtists(
     })
     .slice(0, limit ?? Number.MAX_SAFE_INTEGER);
 
-  // Resolved namen → artistId (voor de lineup-patch-stap).
-  const resolved = new Map<string, string>(); // lower → artistId
-
-  // Pre-resolve: alle bestaande artists die we deze run NIET bij MB
-  // gaan re-enrichen (te vers) tóch in resolved zetten, zodat hun
-  // lineup-items in nieuwe events alsnog een artistId krijgen.
-  // Zonder dit zou een Spotify-gelinkte "Trentemøller" niet aan een
-  // net-gescrapete-Paradiso-show gekoppeld worden enkel omdat 'ie
-  // buiten de cron-limit valt.
-  for (const entry of entries) {
-    const ex = existingByLower.get(entry.lower);
-    if (!ex) continue;
-    const stale =
-      !ex.enrichedAt ||
-      ex.enrichedAt.getTime() < Date.now() - RETRY_AFTER_DAYS * 86_400_000;
-    if (stale) continue; // wordt in main loop afgehandeld
-    resolved.set(entry.lower, ex.id);
-    result.alreadyEnriched += 1;
-  }
+  // Tel niet-stale artists die geen MB-call meer nodig hebben.
+  result.alreadyEnriched = entries.length - todo.length - result.artistsInserted;
 
   for (let i = 0; i < todo.length; i += 1) {
     const entry = todo[i];
     const existing = existingByLower.get(entry.lower);
+    if (!existing) continue; // safety
 
-    if (existing) {
-      // Hergebruik. Eventueel re-enrich als 'ie ouder dan retry-window
-      // is, voor het geval MB-community ondertussen meer links toevoegde.
-      const enrichedAt = existing.enrichedAt;
-      const stale =
-        !enrichedAt ||
-        enrichedAt.getTime() < Date.now() - RETRY_AFTER_DAYS * 86_400_000;
-      if (!stale) {
-        result.alreadyEnriched += 1;
-        resolved.set(entry.lower, existing.id);
-        continue;
-      }
-      // Stale: opnieuw bij MB zoeken om eventuele nieuwe links.
-      result.searched += 1;
-      const data = await searchAndFetchMb(entry.original);
-      if (data === 'fatal') {
-        result.fatalEarlyStop = true;
-        break;
-      }
-      if (data.mbid) result.mbHit += 1;
-      try {
-        await db
-          .update(schema.artists)
-          .set({
-            mbid: data.mbid,
-            description: data.description ?? null,
-            spotifyUrl: data.spotifyUrl,
-            appleMusicUrl: data.appleMusicUrl,
-            bandcampUrl: data.bandcampUrl,
-            youtubeUrl: data.youtubeUrl,
-            officialUrl: data.officialUrl,
-            genres: data.genres,
-            enrichedAt: new Date(),
-          })
-          .where(eq(schema.artists.id, existing.id));
-      } catch {
-        // Unique-violation op mbid: deze MB-record hangt al aan een
-        // andere artist-row (bv. NL/EN-spelling van dezelfde act).
-        // Update zonder mbid zodat de overige enrich-data wel landt.
-        await db
-          .update(schema.artists)
-          .set({
-            description: data.description ?? null,
-            spotifyUrl: data.spotifyUrl,
-            appleMusicUrl: data.appleMusicUrl,
-            bandcampUrl: data.bandcampUrl,
-            youtubeUrl: data.youtubeUrl,
-            officialUrl: data.officialUrl,
-            genres: data.genres,
-            enrichedAt: new Date(),
-          })
-          .where(eq(schema.artists.id, existing.id));
-      }
-      result.artistsUpdated += 1;
-      resolved.set(entry.lower, existing.id);
-    } else {
-      // Nieuw — eerst MB-zoeken, dan record maken.
-      result.searched += 1;
-      const data = await searchAndFetchMb(entry.original);
-      if (data === 'fatal') {
-        result.fatalEarlyStop = true;
-        break;
-      }
-      if (data.mbid) result.mbHit += 1;
-      const id = `${slugify(entry.original)}-${Math.random().toString(36).slice(2, 6)}`;
-      try {
-        await db.insert(schema.artists).values({
-          id,
-          name: entry.original,
+    result.searched += 1;
+    const data = await searchAndFetchMb(entry.original);
+    if (data === 'fatal') {
+      result.fatalEarlyStop = true;
+      break;
+    }
+    if (data.mbid) result.mbHit += 1;
+    try {
+      await db
+        .update(schema.artists)
+        .set({
           mbid: data.mbid,
           description: data.description ?? null,
           spotifyUrl: data.spotifyUrl,
@@ -407,28 +381,31 @@ export async function enrichLineupArtists(
           officialUrl: data.officialUrl,
           genres: data.genres,
           enrichedAt: new Date(),
-        });
-        result.artistsInserted += 1;
-        resolved.set(entry.lower, id);
-      } catch (e) {
-        // MBID-uniqueness race: een andere parallelle insert ving 'm
-        // al op. Re-select. Niet fataal.
-        const [existingNow] = await db
-          .select({ id: schema.artists.id })
-          .from(schema.artists)
-          .where(
-            data.mbid
-              ? eq(schema.artists.mbid, data.mbid)
-              : sql`LOWER(${schema.artists.name}) = ${entry.lower}`
-          )
-          .limit(1);
-        if (existingNow) resolved.set(entry.lower, existingNow.id);
-      }
+        })
+        .where(eq(schema.artists.id, existing.id));
+    } catch {
+      // Unique-violation op mbid: deze MB-record hangt al aan een
+      // andere artist-row (bv. NL/EN-spelling van dezelfde act).
+      // Update zonder mbid zodat de overige enrich-data wel landt.
+      await db
+        .update(schema.artists)
+        .set({
+          description: data.description ?? null,
+          spotifyUrl: data.spotifyUrl,
+          appleMusicUrl: data.appleMusicUrl,
+          bandcampUrl: data.bandcampUrl,
+          youtubeUrl: data.youtubeUrl,
+          officialUrl: data.officialUrl,
+          genres: data.genres,
+          enrichedAt: new Date(),
+        })
+        .where(eq(schema.artists.id, existing.id));
     }
+    result.artistsUpdated += 1;
 
     if ((i + 1) % 25 === 0) {
       console.log(
-        `  …${i + 1}/${todo.length}  searched=${result.searched} mb-hit=${result.mbHit} inserted=${result.artistsInserted}`
+        `  …${i + 1}/${todo.length}  searched=${result.searched} mb-hit=${result.mbHit}`
       );
     }
   }
