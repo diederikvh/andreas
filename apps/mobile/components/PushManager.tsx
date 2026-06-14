@@ -4,6 +4,7 @@ import { useEffect, useRef } from 'react';
 import { AppState } from 'react-native';
 
 import { useSession } from '@/lib/authClient';
+import { useInboxToast } from '@/components/InboxToast';
 import {
   Notifications,
   registerForPushNotificationsAsync,
@@ -24,6 +25,7 @@ export function PushManager() {
   const { data: session } = useSession();
   const userId = session?.user?.id ?? null;
   const lastTriedUserId = useRef<string | null>(null);
+  const { showToast } = useInboxToast();
 
   // Registreer bij login. Bij wisseling van user (bv. logout + login)
   // opnieuw aanvragen. Bij logout is er niets actief op te ruimen —
@@ -74,7 +76,20 @@ export function PushManager() {
       qc.invalidateQueries({ queryKey: ['invitations'] });
       qc.invalidateQueries({ queryKey: ['groups'] });
     };
-    const pushSub = Notifications.addNotificationReceivedListener(invalidate);
+    const pushSub = Notifications.addNotificationReceivedListener((n) => {
+      invalidate();
+      // Toon óók een in-app banner — als de app open is voor de server-
+      // push komt iOS/Android default niet met een banner over je
+      // huidige scherm. Eigen overlay zorgt dat een binnenkomend
+      // friend-verzoek of invite ook bij actief gebruik opvalt.
+      const content = n.request.content;
+      const data = content.data as { url?: unknown } | undefined;
+      showToast({
+        title: content.title ?? '',
+        body: content.body ?? '',
+        url: typeof data?.url === 'string' ? data.url : null,
+      });
+    });
     const appSub = AppState.addEventListener('change', (next) => {
       if (next === 'active') invalidate();
     });
@@ -82,7 +97,7 @@ export function PushManager() {
       pushSub.remove();
       appSub.remove();
     };
-  }, [qc]);
+  }, [qc, showToast]);
 
   return null;
 }

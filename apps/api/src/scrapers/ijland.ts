@@ -46,7 +46,7 @@ type Card = {
   ticketUrl: string | null;
 };
 
-function parseCards(html: string): Card[] {
+async function parseCards(html: string): Promise<Card[]> {
   const out: Card[] = [];
   const cardRe = /<div class="agenda_card">([\s\S]*?)<\/div>\s*<\/div>/g;
   for (const m of html.matchAll(cardRe)) {
@@ -69,10 +69,30 @@ function parseCards(html: string): Card[] {
     const day = parseInt(dateM[1], 10);
     const month = parseInt(dateM[2], 10);
     const year = parseInt(dateM[3], 10);
-    // Geen start-tijd op listing → default 23:00 (club).
     const dst = month >= 3 && month <= 10;
     const off = dst ? '+02:00' : '+01:00';
-    const startsAt = new Date(`${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}T23:00:00${off}`);
+
+    // Default 23:00 (club) maar detail-pagina kan overrulen via
+    // `<span>HH:MM - HH:MM</span>` of `aanvang HH:MM`. Listing zelf
+    // bevat de tijd niet — Music Bingo bv. start om 20:00, niet 23:00.
+    let hour = 23;
+    let minute = 0;
+    try {
+      const det = await fetch(url, { headers: { 'user-agent': UA } });
+      if (det.ok) {
+        const html = await det.text();
+        const tm =
+          html.match(/<span>\s*(\d{1,2})[:.](\d{2})\s*-\s*\d{1,2}[:.]\d{2}\s*<\/span>/) ??
+          html.match(/aanvang[^<]{0,40}?(\d{1,2})[:.](\d{2})/i);
+        if (tm) {
+          hour = parseInt(tm[1], 10);
+          minute = parseInt(tm[2], 10);
+        }
+      }
+    } catch {
+      /* gebruik default 23:00 */
+    }
+    const startsAt = new Date(`${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}T${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}:00${off}`);
     if (Number.isNaN(startsAt.getTime())) continue;
 
     // Title
@@ -80,6 +100,9 @@ function parseCards(html: string): Card[] {
     if (!titleM) continue;
     const title = decodeEntities(stripTags(titleM[1])).trim();
     if (!title) continue;
+    // Private events filteren — verhuurde avonden zonder publieke
+    // tickets, geen UX-waarde.
+    if (/^private\s+event/i.test(title)) continue;
 
     // Tag
     let tag: string | null = null;
@@ -154,7 +177,7 @@ export async function scrapeIJland(_options?: {
     return [result];
   }
 
-  const cards = parseCards(html);
+  const cards = await parseCards(html);
   result.fetched = cards.length;
 
   const cutoff = Date.now() - 6 * 60 * 60 * 1000;

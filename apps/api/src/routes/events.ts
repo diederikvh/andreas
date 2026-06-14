@@ -152,6 +152,9 @@ eventsRoute.get('/', async (c) => {
             // event zelf geen image heeft (theater/live banner valt
             // dan terug op venue-image). Voegt 1 string per event toe.
             imageUrl: schema.venues.imageUrl,
+            // wijk gebruikt door clubs/live/theater venue-header
+            // ("Club · Noord"). 1 short string per event.
+            wijk: schema.venues.wijk,
           },
         })
         .from(schema.events)
@@ -178,6 +181,7 @@ eventsRoute.get('/', async (c) => {
             lat: schema.venues.lat,
             lng: schema.venues.lng,
             type: schema.venues.type,
+            wijk: schema.venues.wijk,
             scene: schema.venues.scene,
             subtype: schema.venues.subtype,
             imageUrl: schema.venues.imageUrl,
@@ -217,6 +221,28 @@ eventsRoute.get('/', async (c) => {
   const friendsByOcc = me
     ? await buildFriendsByOccurrence(me, occurrenceIdsForFriends)
     : new Map();
+  // Per nextOccurrence: aantal non-revoked invites die ik zelf verstuurd
+  // heb. Mobile toont 'n klein badge op de invite-icoon zodat je in de
+  // lijst direct ziet of je al iemand uitgenodigd hebt. Goedkope count-
+  // query, dezelfde id-set als friends-lookup.
+  const myInvitesByOcc = new Map<string, number>();
+  if (me && occurrenceIdsForFriends.length > 0) {
+    const invRows = await db
+      .select({
+        occurrenceId: schema.invitations.occurrenceId,
+        count: count(),
+      })
+      .from(schema.invitations)
+      .where(
+        and(
+          eq(schema.invitations.fromUserId, me),
+          isNull(schema.invitations.revokedAt),
+          inArray(schema.invitations.occurrenceId, occurrenceIdsForFriends)
+        )
+      )
+      .groupBy(schema.invitations.occurrenceId);
+    for (const r of invRows) myInvitesByOcc.set(r.occurrenceId, Number(r.count));
+  }
   // Series-array idem: in lean wordt 'ie niet op rail-cards getoond.
   const seriesMap = lean
     ? new Map()
@@ -227,12 +253,13 @@ eventsRoute.get('/', async (c) => {
 
   const events = ordered.map(({ event, occ }) => {
     // Per occurrence: friendsSaved van vrienden die díe specifieke
-    // voorstelling/avond gesaved hebben. In lean-mode laten we deze
-    // info weg — de event-level friendsSaved (van nextOccurrence) is
-    // genoeg voor rail-cards.
+    // voorstelling/avond gesaved hebben. In lean-mode hebben we alleen
+    // de nextOccurrence-friends in de map; we hangen die ook aan de
+    // bijbehorende occurrence-rij zodat clubs/live (die per occurrence
+    // een card renderen) de friends-pill op die kaart kunnen tonen.
     const isExhibition = event.kind === 'exhibition';
     const occurrencesInRange = occ.all.map((o) => {
-      const f = lean ? undefined : friendsByOcc.get(o.id);
+      const f = friendsByOcc.get(o.id);
       return {
         ...o,
         startsAt: isExhibition
@@ -273,6 +300,11 @@ eventsRoute.get('/', async (c) => {
       friendsSavedCount: headFriends?.count ?? 0,
       venueFollowed: followedVenueIds.has(event.venue.id),
       series: seriesMap.get(event.id) ?? [],
+      // Aantal non-revoked invites die de gebruiker zelf verstuurd
+      // heeft voor de eerstvolgende occurrence van dit event. Mobile
+      // toont 'n badge naast de invite-icoon zodat je in de lijst
+      // direct ziet of je al iemand uitgenodigd hebt.
+      myInvitesCount: occ.next ? (myInvitesByOcc.get(occ.next.id) ?? 0) : 0,
     };
   });
 
@@ -683,21 +715,55 @@ eventsRoute.get('/agenda', async (c) => {
 
 /**
  * "Voor jou" — gepersonaliseerde aanbevelingen op basis van je save-
- * historie en gevolgde venues. Geen ML, gewoon een transparante linear-
- * weighted score:
+ * historie, gevolgde venues en vrienden-saves. Geen ML, gewoon een
+ * transparante linear-weighted score:
  *
  *   +1 per save in je historie met overlappend genre
  *   +2 per save in je historie bij hetzelfde venue
  *   +5 bonus als het venue gevolgd is
+ *   +3 per vriend die dit event gesaved heeft (cap 9, dus max 3 vrienden tellen)
  *
- * Excludes: events die je al gesaved hebt, occurrences die je weggeswipet
- * hebt, geblokkeerde venues. Range: nu → +21 dagen. Cap: 30 events.
+ * Inclusie: events met score > 0 OF events bij een gevolgde venue
+ * (zelfs zonder smaak-match). Excludes: events die je al gesaved hebt,
+ * occurrences die je weggeswipet hebt, geblokkeerde venues, exhibitions.
  *
- * Empty als de gebruiker nog geen saves heeft — UI verbergt de rail.
+ * Twee modes:
+ *   mode=rail (default) — score-desc sort, 21d horizon (of 7d met
+ *     `week=1`), cap 30. Empty als gebruiker geen profiel-input heeft.
+ *   mode=feed — chronologisch (eerstvolgend eerst), open horizon,
+ *     cursor-pagination (`?cursor=<isoTime>|<eventId>` + `?limit=20`).
+ *     Returnt `nextCursor` voor infinite scroll.
  */
 eventsRoute.get('/for-you', async (c) => {
   const me = await maybeUserId(c);
-  if (!me) return c.json({ events: [] });
+  if (!me) return c.json({ events: [], nextCursor: null });
+
+  const mode = c.req.query('mode') === 'feed' ? 'feed' : 'rail';
+  const weekOnly = c.req.query('week') === '1';
+  const limit = Math.min(
+    50,
+    Math.max(1, parseInt(c.req.query('limit') ?? '', 10) || (mode === 'feed' ? 20 : 30)),
+  );
+  const cursorRaw = c.req.query('cursor') ?? null;
+  let cursor: { time: number; eventId: string } | null = null;
+  if (cursorRaw) {
+    const [t, id] = cursorRaw.split('|');
+    const tMs = Date.parse(t ?? '');
+    if (!Number.isNaN(tMs) && id) cursor = { time: tMs, eventId: id };
+  }
+  const allowedCategories = ['Muziek', 'Theater', 'Film', 'Kunst', 'Lezing', 'Literatuur'] as const;
+  type Cat = (typeof allowedCategories)[number];
+  // `?category=Muziek,Film` voor multi-select. Onbekende waardes
+  // worden weggefilterd; lege lijst (of geen param) = geen filter.
+  const categoryRaw = c.req.query('category');
+  const categoryFilters: Cat[] = categoryRaw
+    ? categoryRaw
+        .split(',')
+        .map((s) => s.trim())
+        .filter((s): s is Cat =>
+          (allowedCategories as readonly string[]).includes(s),
+        )
+    : [];
 
   // Stap 1 — bouw genre-count + venue-count uit gebruikers-historie.
   const historyRows = await db
@@ -713,11 +779,22 @@ eventsRoute.get('/for-you', async (c) => {
     .innerJoin(schema.events, eq(schema.occurrences.eventId, schema.events.id))
     .where(eq(schema.saves.userId, me));
 
-  if (historyRows.length === 0) return c.json({ events: [] });
+  const [followedRaw, blockedRaw, friendIds] = await Promise.all([
+    getFollowedVenueIds(me),
+    getBlockedVenueIds(me),
+    getFriendIdsFor(me),
+  ]);
+  const followedVenueIds = new Set(followedRaw);
+  const blockedSet = new Set(blockedRaw);
+
+  // Gebruiker zonder enig profiel-signaal (geen saves, geen follows)
+  // krijgt een lege response — niets om op te scoren.
+  if (historyRows.length === 0 && followedRaw.length === 0) {
+    return c.json({ events: [], nextCursor: null });
+  }
 
   const genreCount = new Map<string, number>();
   const venueCount = new Map<string, number>();
-  const savedEventIds = new Set<string>();
   for (const r of historyRows) {
     for (const g of r.genres ?? []) {
       const key = g.trim().toLowerCase();
@@ -727,6 +804,7 @@ eventsRoute.get('/for-you', async (c) => {
   }
 
   // Welke events heb ik al gesaved? Niet opnieuw aanbevelen.
+  const savedEventIds = new Set<string>();
   const savedEventRows = await db
     .selectDistinct({ eventId: schema.occurrences.eventId })
     .from(schema.saves)
@@ -744,25 +822,44 @@ eventsRoute.get('/for-you', async (c) => {
     .where(eq(schema.dismisses.userId, me));
   const dismissedOccIds = new Set(dismissRows.map((r) => r.occurrenceId));
 
-  const [followedRaw, blockedRaw] = await Promise.all([
-    getFollowedVenueIds(me),
-    getBlockedVenueIds(me),
-  ]);
-  const followedVenueIds = new Set(followedRaw);
-  const blockedSet = new Set(blockedRaw);
+  // Friend-save counts per event — voor scoring (vriend-signaal). Hier
+  // tellen we ruw alle saves van vrienden, ongeacht hun privacy-toggle.
+  // De zichtbare friend-pills in de response blijven door
+  // `buildFriendsByOccurrence` heen lopen, dat respecteert privacy.
+  const friendSaveCountByEvent = new Map<string, number>();
+  if (friendIds.length > 0) {
+    const rows = await db
+      .select({
+        eventId: schema.occurrences.eventId,
+        n: count(),
+      })
+      .from(schema.saves)
+      .innerJoin(
+        schema.occurrences,
+        eq(schema.saves.occurrenceId, schema.occurrences.id)
+      )
+      .where(inArray(schema.saves.userId, friendIds))
+      .groupBy(schema.occurrences.eventId);
+    for (const r of rows) friendSaveCountByEvent.set(r.eventId, r.n);
+  }
 
   // Stap 2 — kandidaat-events: published, niet-geblokte venue, niet al
-  // gesaved. We pakken hier breed (geen featured-filter, alle categorieën)
+  // gesaved, kind=show (exhibitions horen niet in een tijd-gebaseerde
+  // feed). We pakken hier breed (geen featured-filter, alle categorieën)
   // omdat de score zelf het sorteert.
   const eventConditions: SQL[] = [
     eq(schema.events.published, true),
     eq(schema.venues.published, true),
+    eq(schema.events.kind, 'show'),
   ];
   if (savedEventIds.size > 0) {
     eventConditions.push(not(inArray(schema.events.id, [...savedEventIds])));
   }
   if (blockedSet.size > 0) {
     eventConditions.push(not(inArray(schema.events.venueId, [...blockedSet])));
+  }
+  if (categoryFilters.length > 0) {
+    eventConditions.push(inArray(schema.events.category, categoryFilters));
   }
 
   const candidates = await db
@@ -796,7 +893,8 @@ eventsRoute.get('/for-you', async (c) => {
     .innerJoin(schema.venues, eq(schema.events.venueId, schema.venues.id))
     .where(and(...eventConditions));
 
-  // Stap 3 — score elke kandidaat. Filter score=0 weg.
+  // Stap 3 — score elke kandidaat. Inclusie: score > 0 OF event-venue
+  // is gevolgd (gevolgde venues mogen ook zonder smaak-match meedoen).
   type Scored = (typeof candidates)[number] & { score: number };
   const scored: Scored[] = [];
   for (const ev of candidates) {
@@ -807,47 +905,84 @@ eventsRoute.get('/for-you', async (c) => {
     }
     score += 2 * (venueCount.get(ev.venue.id) ?? 0);
     if (followedVenueIds.has(ev.venue.id)) score += 5;
-    if (score > 0) scored.push({ ...ev, score });
+    // Friend-signaal — cap op 3 vrienden (max +9) zodat één super-
+    // populair event niet alles overruled. Bij ≥3 vrienden is de
+    // sociale push al sterk genoeg.
+    const friendN = Math.min(3, friendSaveCountByEvent.get(ev.id) ?? 0);
+    score += 3 * friendN;
+    if (score > 0 || followedVenueIds.has(ev.venue.id)) {
+      scored.push({ ...ev, score });
+    }
   }
 
-  if (scored.length === 0) return c.json({ events: [] });
+  if (scored.length === 0) return c.json({ events: [], nextCursor: null });
 
-  // Stap 4 — match tegen toekomstige occurrences (next 21 dagen). Events
-  // zonder occurrence-in-range vallen weg. Dismisses filteren we per
-  // occurrence — als alle next-occurrences gedismisst zijn, valt 't event
-  // weg.
+  // Stap 4 — horizon bepalen. Rail-mode: 21d (of 7d met weekOnly).
+  // Feed-mode: open horizon (2 jaar = effectief unlimited; cursor
+  // pagineert).
   const horizonEnd = new Date();
-  horizonEnd.setDate(horizonEnd.getDate() + 21);
+  if (mode === 'feed') {
+    horizonEnd.setFullYear(horizonEnd.getFullYear() + 2);
+  } else if (weekOnly) {
+    horizonEnd.setDate(horizonEnd.getDate() + 7);
+  } else {
+    horizonEnd.setDate(horizonEnd.getDate() + 21);
+  }
   const occRange = await findEventsWithOccurrencesInRange({
     from: new Date(),
     to: horizonEnd,
     eventIds: scored.map((s) => s.id),
   });
 
-  // Sorteer op score (desc), met als secundaire sleutel de eerstvolgende
-  // occurrence (asc) zodat events met gelijke score vandaag-eerst.
-  const eventScores = new Map(scored.map((s) => [s.id, s.score]));
-  const ranked: string[] = [...occRange.eventIds]
-    .filter((id) => {
-      const occ = occRange.byEvent.get(id);
-      if (!occ) return false;
-      // Tenminste één niet-gedismist occurrence in range.
-      return occ.all.some((o) => !dismissedOccIds.has(o.id));
+  // Bouw sorteerlijst: { id, score, anchorTime } per event met
+  // tenminste één niet-gedismist occurrence in range.
+  const ranked = scored
+    .map((s) => {
+      const occ = occRange.byEvent.get(s.id);
+      if (!occ) return null;
+      const firstActive = occ.all.find((o) => !dismissedOccIds.has(o.id));
+      if (!firstActive) return null;
+      return {
+        id: s.id,
+        score: s.score,
+        anchorTime: firstActive.startsAt.getTime(),
+      };
     })
-    .sort((a, b) => {
-      const dScore = (eventScores.get(b) ?? 0) - (eventScores.get(a) ?? 0);
+    .filter(<T,>(x: T | null): x is T => x !== null);
+
+  // Sortering verschilt per mode.
+  let sorted: typeof ranked;
+  if (mode === 'feed') {
+    sorted = [...ranked].sort((a, b) => {
+      if (a.anchorTime !== b.anchorTime) return a.anchorTime - b.anchorTime;
+      return a.id.localeCompare(b.id);
+    });
+    if (cursor) {
+      sorted = sorted.filter((e) => {
+        if (e.anchorTime > cursor.time) return true;
+        if (e.anchorTime < cursor.time) return false;
+        return e.id.localeCompare(cursor.eventId) > 0;
+      });
+    }
+  } else {
+    sorted = [...ranked].sort((a, b) => {
+      const dScore = b.score - a.score;
       if (dScore !== 0) return dScore;
-      const aT = occRange.byEvent.get(a)?.next?.startsAt.getTime() ?? Infinity;
-      const bT = occRange.byEvent.get(b)?.next?.startsAt.getTime() ?? Infinity;
-      return aT - bT;
-    })
-    .slice(0, 30);
+      return a.anchorTime - b.anchorTime;
+    });
+  }
+
+  const page = sorted.slice(0, limit);
+  const nextCursor =
+    mode === 'feed' && page.length === limit
+      ? `${new Date(page[page.length - 1].anchorTime).toISOString()}|${page[page.length - 1].id}`
+      : null;
 
   const eventById = new Map(scored.map((s) => [s.id, s]));
-  const ordered = ranked
-    .map((id) => ({
-      event: eventById.get(id)!,
-      occ: occRange.byEvent.get(id)!,
+  const ordered = page
+    .map((p) => ({
+      event: eventById.get(p.id)!,
+      occ: occRange.byEvent.get(p.id)!,
     }))
     .filter((x) => x.event);
 
@@ -898,7 +1033,7 @@ eventsRoute.get('/for-you', async (c) => {
     };
   });
 
-  return c.json({ events });
+  return c.json({ events, nextCursor });
 });
 
 /**
@@ -939,6 +1074,145 @@ eventsRoute.get('/genres', async (c) => {
     count: Number(r.n),
   }));
   return c.json({ genres });
+});
+
+/**
+ * "Net binnen" — events op createdAt desc. Twee query-modes:
+ *
+ *  - `?since=ISO`: alleen events met createdAt > since (gebruikt door
+ *    de homepage-shortcut badge en als primaire lijst op /new). Cap
+ *    op 30 dagen terug om gigantische payloads voor langdurig-
+ *    inactieve gebruikers te voorkomen.
+ *  - geen `since`: laatste N events (default 10, cap 100). Fallback-
+ *    query die /new client-side firet wanneer de since-query leeg is,
+ *    zodat de pagina nooit kaal blijft.
+ *
+ * Filter: published + venue published + ≥1 toekomstige occurrence
+ * (events die al voorbij zijn op moment van scrape zijn ruis).
+ *
+ * Lean shape — dezelfde velden als `/events?lean=1` zodat de mobile
+ * client met EventListRow + bestaande types kan renderen.
+ */
+eventsRoute.get('/new', async (c) => {
+  const sinceParam = c.req.query('since');
+  let since: Date | null = null;
+  if (sinceParam) {
+    const parsed = new Date(sinceParam);
+    if (Number.isNaN(parsed.getTime()))
+      return c.json({ error: 'bad-since' }, 400);
+    // Cap aan de oude kant: gebruiker die 3 maanden weg is geweest
+    // krijgt geen lijst van honderden weken oude items.
+    const minSince = new Date(Date.now() - 30 * 24 * 3600 * 1000);
+    since = parsed < minSince ? minSince : parsed;
+  }
+
+  // Default limit verschilt per mode: with-since 200 (volledig
+  // gewenst), without-since 10 (alleen "wat is er sowieso recent
+  // toegevoegd" voor de fallback-rij).
+  const defaultLimit = since ? 200 : 10;
+  const limit = Math.min(
+    Number(c.req.query('limit') ?? defaultLimit),
+    since ? 500 : 100
+  );
+
+  const me = await maybeUserId(c);
+  const blockedVenueIds = me
+    ? new Set(await getBlockedVenueIds(me))
+    : new Set<string>();
+
+  const eventRows = await db
+    .select({
+      id: schema.events.id,
+      title: schema.events.title,
+      kind: schema.events.kind,
+      category: schema.events.category,
+      featured: schema.events.featured,
+      genres: schema.events.genres,
+      imageUrl: schema.events.imageUrl,
+      posterUrl: schema.events.posterUrl,
+      stillUrl: schema.events.stillUrl,
+      trailerUrl: schema.events.trailerUrl,
+      createdAt: schema.events.createdAt,
+      venue: {
+        id: schema.venues.id,
+        slug: schema.venues.slug,
+        name: schema.venues.name,
+        lat: schema.venues.lat,
+        lng: schema.venues.lng,
+        type: schema.venues.type,
+        imageUrl: schema.venues.imageUrl,
+        wijk: schema.venues.wijk,
+      },
+    })
+    .from(schema.events)
+    .innerJoin(schema.venues, eq(schema.events.venueId, schema.venues.id))
+    .where(
+      and(
+        eq(schema.events.published, true),
+        eq(schema.venues.published, true),
+        since ? gt(schema.events.createdAt, since) : sql`true`,
+        blockedVenueIds.size > 0
+          ? not(inArray(schema.venues.id, Array.from(blockedVenueIds)))
+          : sql`true`
+      )
+    )
+    .orderBy(desc(schema.events.createdAt))
+    .limit(limit);
+
+  if (eventRows.length === 0) return c.json({ events: [] });
+
+  // Stap 2: future occurrences voor deze events.
+  const occRange = await findEventsWithOccurrencesInRange({
+    eventIds: eventRows.map((e) => e.id),
+  });
+
+  const followedVenueIds = me
+    ? new Set(await getFollowedVenueIds(me))
+    : new Set<string>();
+
+  // Stap 3: lean response — strip events zonder upcoming occurrence
+  // (events.createdAt > since maar alle occurrences zijn voorbij — bv.
+  // een laat-gescraped event van vorige week).
+  const events = eventRows
+    .filter((e) => occRange.byEvent.has(e.id))
+    .map((event) => {
+      const occ = occRange.byEvent.get(event.id)!;
+      const isExhibition = event.kind === 'exhibition';
+      const nextStarts = occ.next?.startsAt ?? null;
+      const nextEnds = occ.next?.endsAt ?? null;
+      return {
+        ...event,
+        startsAt: isExhibition
+          ? normalizeExhibitionTime(nextStarts as unknown as string | null, 'start')
+          : nextStarts,
+        endsAt: isExhibition
+          ? normalizeExhibitionTime(nextEnds as unknown as string | null, 'end')
+          : nextEnds,
+        priceCents: occ.next?.priceCents ?? null,
+        priceNote: occ.next?.priceNote ?? null,
+        ticketUrl: occ.next?.ticketUrl ?? null,
+        occurrenceCount: occ.count,
+        nextOccurrenceVenue: occ.next?.venue ?? null,
+        occurrencesInRange: occ.all.map((o) => ({
+          ...o,
+          startsAt: isExhibition
+            ? normalizeExhibitionTime(o.startsAt as unknown as string, 'start')!
+            : o.startsAt,
+          endsAt: isExhibition
+            ? normalizeExhibitionTime(o.endsAt as unknown as string | null, 'end')
+            : o.endsAt,
+          friendsSaved: [],
+          friendsSavedCount: 0,
+        })),
+        friendsSaved: [],
+        friendsSavedCount: 0,
+        venueFollowed: followedVenueIds.has(event.venue.id),
+        series: [],
+        myInvitesCount: 0,
+      };
+    });
+
+  return c.json({ events });
 });
 
 eventsRoute.get('/:id', async (c) => {

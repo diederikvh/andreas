@@ -267,13 +267,16 @@ Volgorde op verwachte event-impact + scrape-effort.
 - ✅ **The Movies**
 - ✅ **The Ketelhuis**
 - ✅ **Studio/K**
-- ⬜ **Rialto**
-- ⬜ **Lab111**
-- ⬜ **De Uitkijk**
-- ⬜ **Cavia**
-- ⬜ **FilmHallen**
-- ⬜ **FC Hyena** 
-- ⬜ **Cinema The Pulse** — eigen Webflow + FilmGenie (custom scraper schrijven)
+- ✅ **Rialto**
+- ✅ **Lab111**
+- ✅ **De Uitkijk**
+- ✅ **Cavia**
+- ✅ **FilmHallen**
+- ✅ **FC Hyena** 
+- ✅ **Cinema The Pulse** — eigen Webflow + FilmGenie 
+- ✅ **Cinecenter**
+- ✅ **Cinema De Vlugt**
+- ✅ **Rialto VU**
 
 **Clubs zonder bron:**
 - ⬜ **Café Café** — geen publieke feed gevonden

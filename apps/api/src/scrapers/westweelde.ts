@@ -113,6 +113,29 @@ function parseTimeRange(time: string | null | undefined): {
   return null;
 }
 
+/**
+ * West Weelde laat `time` regelmatig leeg op een event en zet de
+ * canonieke tijd in de beschrijving (bv "⏰ TIJDEN: 18:00 - 02:00"
+ * of "deuren open 19:00"). Zonder dit valt de scraper terug op
+ * `defaultStartHour` (22:00 voor clubnights) en staan Latin Nights
+ * 4u te laat in de app. Eerste plausibele tijd-pattern wint.
+ */
+function extractTimeFromDescription(
+  desc: LocaleBlockContent | null | undefined,
+): string | null {
+  if (!desc) return null;
+  const text = `${blocksToText(desc.nl)}\n${blocksToText(desc.en)}`;
+  if (!text) return null;
+  // Voorkeur: expliciete "TIJDEN ... HH:MM - HH:MM"-regel.
+  const tijdRegex = /(?:tijden?|aanvang|deuren|doors)[^\n]{0,40}?(\d{1,2}[:.]\d{2}\s*[-–]\s*\d{1,2}[:.]\d{2})/i;
+  const tijdMatch = text.match(tijdRegex);
+  if (tijdMatch) return tijdMatch[1];
+  // Anders: eerste HH:MM - HH:MM range (vaak de Area-1 hoofdtijd).
+  const range = text.match(/\b(\d{1,2}[:.]\d{2}\s*[-–]\s*\d{1,2}[:.]\d{2})\b/);
+  if (range) return range[1];
+  return null;
+}
+
 /** Default starttijd op basis van category als `time` ontbreekt. Most
  *  events bij West Weelde zijn club/dance (~22:00). Food/cocktails =
  *  middag. Voetbal kijken = ~20:00. */
@@ -238,7 +261,8 @@ export async function scrapeWestWeelde(_options?: {
         continue;
       }
 
-      const tr = parseTimeRange(ev.time);
+      const effectiveTime = ev.time || extractTimeFromDescription(ev.description);
+      const tr = parseTimeRange(effectiveTime);
       const startHour = tr?.startHour ?? defaultStartHour(ev.category);
       const startMin = tr?.startMin ?? 0;
       const startsAt = buildAmsDate(ev.date, startHour, startMin);
@@ -310,6 +334,24 @@ export async function scrapeWestWeelde(_options?: {
         } catch (e) {
           result.errors.push(`insert event ${eventId}: ${(e as Error).message}`);
           continue;
+        }
+      }
+
+      // Bestaande events: hercorrigeer `kind` als de huidige
+      // start/end tot een andere classificatie leiden. Zonder dit
+      // blijven events die per ongeluk eerder als 'exhibition'
+      // werden weggezet (door foutieve 00:00/24h-duurtijden) hangen,
+      // wat de Hele-dag-normalisatie in `events.ts` triggert en de
+      // app de echte tijd verbergt.
+      if (existing) {
+        const corrected = refineKindByDuration('show', startsAt, endsAt);
+        try {
+          await db
+            .update(schema.events)
+            .set({ kind: corrected })
+            .where(eq(schema.events.id, eventId));
+        } catch (e) {
+          result.errors.push(`update kind ${eventId}: ${(e as Error).message}`);
         }
       }
 

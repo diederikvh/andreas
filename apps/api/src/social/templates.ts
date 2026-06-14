@@ -18,13 +18,88 @@
  * dus adapteren naar de langere frame (croppen waar nodig).
  */
 
-export const SLIDE_WIDTH = 1080;
-export const SLIDE_HEIGHT = 1350;
+/** Twee carousel-formaten (zelfde aspect, eigen safe-area):
+ *  - 'ig'     → 1080×1350 (4:5) Instagram-feed-carousel maximum
+ *  - 'tiktok' → 1080×1350 (4:5) — TikTok's photo-carousel viewer rendert
+ *               geen 9:16, maar tussen 1:1 en 4:5. Bij 9:16 oogde de
+ *               slide te hoog (caption-bar overlapt onderkant). 4:5
+ *               past beeldvullend zonder gekke crops. */
+export type SlideFormat = 'ig' | 'tiktok';
+
+export const FORMATS: Record<SlideFormat, { width: number; height: number }> = {
+  ig: { width: 1080, height: 1350 },
+  tiktok: { width: 1080, height: 1350 },
+};
+
+/** Default-export voor backcompat — IG-formaat. Nieuwe code gebruikt
+ *  `FORMATS[format]`. */
+export const SLIDE_WIDTH = FORMATS.ig.width;
+export const SLIDE_HEIGHT = FORMATS.ig.height;
+
+function dims(format: SlideFormat | undefined): {
+  W: number;
+  H: number;
+} {
+  const f = FORMATS[format ?? 'ig'];
+  return { W: f.width, H: f.height };
+}
+
+/**
+ * Safe-area paddings per format. TikTok's UI-overlay neemt boven ~180px
+ * (logo + tijdsbalk) en onder ~320-380px (caption + actie-knoppen +
+ * nav-bar) van het scherm. Hero-images mogen vol-bleed blijven (visueel
+ * decoratief), maar TEKST en KAART-elementen moeten binnen de safe-area
+ * blijven om leesbaar te zijn. IG-feed-carousel heeft die overlay niet.
+ *
+ * Output is element-specifieke padding (event-slide top-kicker en
+ * bottom-panel hebben verschillende offsets dan overview-grid).
+ */
+function pad(format: SlideFormat | undefined): {
+  /** Y-offset top-kicker (themeLabel) op event-slide. */
+  eventTop: number;
+  /** X-offset event-slide content (kicker + bottom-panel). */
+  eventSide: number;
+  /** Y-offset bottom-panel (datum/titel/venue) op event-slide. */
+  eventBottom: number;
+  /** Symmetrische padding voor intro-slide (hook is gecentreerd in box). */
+  introPadY: number;
+  introPadX: number;
+  /** Outer-padding (top/side/bottom) voor overview-grid. */
+  overviewTop: number;
+  overviewSide: number;
+  overviewBottom: number;
+} {
+  if (format === 'tiktok') {
+    // 4:5-frame is dezelfde grootte als IG; TikTok's caption-bar dekt
+    // proportioneel minder onderkant dan bij 9:16. Iets meer bottom-pad
+    // dan IG (160 ipv 40) zodat de audio-sticker niet over de venue valt;
+    // de rest gelijk aan IG.
+    return {
+      eventTop: 60,
+      eventSide: 60,
+      eventBottom: 160,
+      introPadY: 80,
+      introPadX: 80,
+      overviewTop: 80,
+      overviewSide: 80,
+      overviewBottom: 160,
+    };
+  }
+  return {
+    eventTop: 60,
+    eventSide: 60,
+    eventBottom: 56,
+    introPadY: 80,
+    introPadX: 80,
+    overviewTop: 80,
+    overviewSide: 80,
+    overviewBottom: 40,
+  };
+}
 
 const NOIR = '#0a0a0b';
 const NOIR2 = '#17171a';
 const INK = '#f2f2ef';
-const INK_MUTED = '#9a9a94';
 const ACID = '#d4ff3a';
 
 type VNode = {
@@ -94,6 +169,90 @@ function cross(size: number, thickness: number, color: string): VNode {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────
 
+// ─── LabelPair (twee-kleuren-blok) ───────────────────────────────────────
+//
+// Acid-cel links, noir-cel rechts, gedeelde 4px border-radius via
+// overflow-hidden. Matched 1:1 de video-template (DailyFilms5).
+
+function labelPair(opts: {
+  left: string;
+  right: string;
+  fontSize?: number;
+  marginBottom?: number;
+}): VNode {
+  const fontSize = opts.fontSize ?? 36;
+  const padY = Math.round(fontSize / 3);
+  const padX = Math.round(fontSize * 0.72);
+  // Extra horizontale padding aan de afgeronde buitenkant zodat de
+  // tekst optisch gecentreerd lijkt (de rounding "snoept" er anders
+  // visueel ruimte vanaf). Toegepast left-cell-left + right-cell-right.
+  const extraRound = Math.round(fontSize / 4);
+  const cellBase = {
+    fontFamily: 'Archivo',
+    fontSize,
+    letterSpacing: 1,
+    textTransform: 'uppercase' as const,
+    display: 'flex',
+  };
+  const leftCellPad = `${padY}px ${padX}px ${padY}px ${padX + extraRound}px`;
+  const rightCellPad = `${padY}px ${padX + extraRound}px ${padY}px ${padX}px`;
+  return el(
+    'div',
+    {
+      style: {
+        display: 'flex',
+        flexDirection: 'row',
+        borderRadius: 999,
+        overflow: 'hidden',
+        marginBottom: opts.marginBottom ?? 36,
+      },
+    },
+    el(
+      'div',
+      {
+        style: {
+          ...cellBase,
+          padding: leftCellPad,
+          backgroundColor: ACID,
+          color: NOIR,
+          fontWeight: 700,
+        },
+      },
+      opts.left,
+    ),
+    el(
+      'div',
+      {
+        style: {
+          ...cellBase,
+          padding: rightCellPad,
+          backgroundColor: NOIR,
+          color: ACID,
+          fontWeight: 700,
+        },
+      },
+      opts.right,
+    ),
+  );
+}
+
+/** Split een tekst met "\n" en render elke regel als aparte div in een
+ *  flexcolumn — Satori ondersteunt geen whiteSpace: pre-line, dus we
+ *  doen 't expliciet. */
+function multilineText(
+  text: string,
+  style: Record<string, unknown>,
+): VNode {
+  const lines = text.split('\n');
+  return el(
+    'div',
+    {
+      style: { display: 'flex', flexDirection: 'column', ...style },
+    },
+    ...lines.map((line) => el('div', { style: { display: 'flex' } }, line)),
+  );
+}
+
 /** "Za 16 mei" — Amsterdam-locale Nederlandstalige short-date, capital weekday. */
 function formatDateNl(d: Date): string {
   const fmt = new Intl.DateTimeFormat('nl-NL', {
@@ -137,16 +296,18 @@ export interface CoverInput {
   /** "Tips voor vandaag" (ochtend) of "Tips voor vanavond" (avond) —
       wordt onder de datum getoond. Caller bepaalt op basis van slot. */
   tagline?: string;
+  format?: SlideFormat;
 }
 
 export function coverSlide(input: CoverInput): VNode {
   const hasHero = !!input.heroImageUrl;
+  const { W, H } = dims(input.format);
   return el(
     'div',
     {
       style: {
-        width: SLIDE_WIDTH,
-        height: SLIDE_HEIGHT,
+        width: W,
+        height: H,
         backgroundColor: NOIR,
         display: 'flex',
         flexDirection: 'column',
@@ -162,14 +323,14 @@ export function coverSlide(input: CoverInput): VNode {
     hasHero
       ? el('img', {
           src: input.heroImageUrl,
-          width: SLIDE_WIDTH,
-          height: SLIDE_HEIGHT,
+          width: W,
+          height: H,
           style: {
             position: 'absolute',
             top: 0,
             left: 0,
-            width: SLIDE_WIDTH,
-            height: SLIDE_HEIGHT,
+            width: W,
+            height: H,
             objectFit: 'cover',
           },
         })
@@ -181,8 +342,8 @@ export function coverSlide(input: CoverInput): VNode {
             position: 'absolute',
             top: 0,
             left: 0,
-            width: SLIDE_WIDTH,
-            height: SLIDE_HEIGHT,
+            width: W,
+            height: H,
             backgroundImage:
               'linear-gradient(180deg, rgba(10,10,11,0.30) 0%, rgba(10,10,11,0.10) 25%, rgba(10,10,11,0.55) 55%, rgba(10,10,11,0.96) 88%)',
           },
@@ -260,26 +421,32 @@ export interface EventSlideInput {
   endsAt: Date | null;
   index: number; // 1..N
   total: number;
-  /** Dag-thema label (bv. "Theater" of "Live muziek") — rendert als
-      acid-kicker top-left. Optioneel; bij ontbreken geen kicker. */
+  /** Dag-thema label (bv. "Theater" of "Live muziek") — gebruikt als
+      labelLeft als geen expliciet labelLeft/labelRight is meegegeven.
+      Voor DailyFilms: [themeLabel][index]; voor JustIn: [JUST IN][2D]. */
   themeLabel?: string;
   /** Subtekst onder themeLabel: tijdseenheid ("Komende 7 dagen"). */
   windowLabel?: string;
+  /** Linker cel van de labelPair (acid bg, noir text). Overschrijft de
+      default uit themeLabel. Beide of geen van labelLeft+labelRight. */
+  labelLeft?: string;
+  /** Rechter cel van de labelPair (noir bg, acid text). Default = String(index). */
+  labelRight?: string;
+  format?: SlideFormat;
 }
 
 export function eventSlide(input: EventSlideInput): VNode {
-  // Geen eind-tijd op de carousel-slides: te druk en geeft een verkeerd
-  // signaal (alsof de show maar tot dat moment is). Start-tijd is
-  // voldoende; bezoekers checken eind-tijd in de app/site.
-  const fullDay = isFullDay(input.startsAt, input.endsAt);
-  const time = fullDay ? 'Hele dag' : formatTimeNl(input.startsAt);
+  // Geen tijd op carousel-slides: datum is voldoende voor reclame-doel.
+  // Wie het precieze tijdstip wil weten checkt 't in de app.
+  const { W, H } = dims(input.format);
+  const p = pad(input.format);
 
   return el(
     'div',
     {
       style: {
-        width: SLIDE_WIDTH,
-        height: SLIDE_HEIGHT,
+        width: W,
+        height: H,
         backgroundColor: NOIR,
         display: 'flex',
         flexDirection: 'column',
@@ -291,14 +458,14 @@ export function eventSlide(input: EventSlideInput): VNode {
     // Hero image (full bleed)
     el('img', {
       src: input.imageUrl,
-      width: SLIDE_WIDTH,
-      height: SLIDE_HEIGHT,
+      width: W,
+      height: H,
       style: {
         position: 'absolute',
         top: 0,
         left: 0,
-        width: SLIDE_WIDTH,
-        height: SLIDE_HEIGHT,
+        width: W,
+        height: H,
         objectFit: 'cover',
       },
     }),
@@ -308,104 +475,46 @@ export function eventSlide(input: EventSlideInput): VNode {
         position: 'absolute',
         top: 0,
         left: 0,
-        width: SLIDE_WIDTH,
-        height: SLIDE_HEIGHT,
+        width: W,
+        height: H,
         backgroundImage:
           'linear-gradient(180deg, rgba(10,10,11,0.55) 0%, rgba(10,10,11,0.20) 30%, rgba(10,10,11,0.55) 60%, rgba(10,10,11,0.96) 88%)',
       },
     }),
-    // Top-left: dag-thema kicker (themeLabel + windowLabel). Vervangt
-    // de oude cat/venue-pills omdat de category nu impliciet is via
-    // het thema (ma=theater, di=muziek, …). Twee tekstregels: groot
-    // acid label + kleinere muted-subtekst voor tijdseenheid.
-    input.themeLabel
-      ? el(
-          'div',
-          {
-            style: {
-              position: 'absolute',
-              top: 60,
-              left: 60,
-              right: 60,
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 4,
-            },
-          },
-          el(
-            'div',
-            {
-              style: {
-                fontSize: 44,
-                fontWeight: 900,
-                color: ACID,
-                letterSpacing: -1,
-                textTransform: 'uppercase',
-              },
-            },
-            input.themeLabel
-          ),
-          input.windowLabel
-            ? el(
-                'div',
-                {
-                  style: {
-                    fontSize: 26,
-                    fontWeight: 700,
-                    color: INK,
-                    letterSpacing: 0,
-                    textTransform: 'uppercase',
-                    opacity: 0.85,
-                  },
-                },
-                input.windowLabel
-              )
-            : null
-        )
-      : null,
+    // Top-kicker verwijderd — labelPair zit nu in de bottom-panel, direct
+    // boven de datum (zie hieronder).
+    null,
     // Bottom panel
     el(
       'div',
       {
         style: {
           position: 'absolute',
-          left: 60,
-          right: 60,
-          bottom: 56,
+          left: p.eventSide,
+          right: p.eventSide,
+          bottom: p.eventBottom,
           display: 'flex',
           flexDirection: 'column',
           gap: 12,
         },
       },
-      // Datum links, tijd rechts op één regel. Datum vertelt de lezer
-      // welke dag, tijd staat als sterke acid-marker rechts.
-      el(
-        'div',
-        {
-          style: {
-            display: 'flex',
-            flexDirection: 'row',
-            justifyContent: 'space-between',
-            alignItems: 'baseline',
-            width: '100%',
-          },
-        },
-        // Datum + tijd op één regel: "VR 25 MEI · 20:00". Minder
-        // verticale ruimte, meer compact.
-        el(
-          'div',
-          {
-            style: {
-              fontSize: 46,
-              fontWeight: 900,
-              color: ACID,
-              letterSpacing: -1,
-              textTransform: 'uppercase',
-            },
-          },
-          `${formatDateNl(input.startsAt)} · ${time}`
-        )
-      ),
+      // Volgorde: labelPair → title → venue → datum. Acid-cel links,
+      // noir-cel rechts. Default: countdown 6→1 (we bouwen op naar de
+      // winnaar, niet 1→6). labelLeft/labelRight overschrijft de default.
+      (() => {
+        const left =
+          input.labelLeft ??
+          (input.themeLabel ? input.themeLabel.toUpperCase() : null);
+        const right =
+          input.labelRight ?? String(input.total - input.index + 1);
+        return left
+          ? el(
+              'div',
+              { style: { display: 'flex' } },
+              labelPair({ left, right, fontSize: 32, marginBottom: 8 }),
+            )
+          : null;
+      })(),
       // Title
       el(
         'div',
@@ -423,18 +532,33 @@ export function eventSlide(input: EventSlideInput): VNode {
         },
         input.title
       ),
-      // Venue
+      // Venue — zelfde maat/gewicht als datum, alleen kleur verschilt.
       el(
         'div',
         {
           style: {
-            fontSize: 42,
+            fontSize: 44,
             fontWeight: 700,
             color: INK,
-            letterSpacing: -1,
+            letterSpacing: -0.5,
+            display: 'flex',
           },
         },
         input.venueName
+      ),
+      // Datum + tijd onderaan — acid-marker dat het concreet wordt.
+      el(
+        'div',
+        {
+          style: {
+            fontSize: 44,
+            fontWeight: 700,
+            color: ACID,
+            letterSpacing: -0.5,
+            display: 'flex',
+          },
+        },
+        formatDateNl(input.startsAt),
       )
     )
   );
@@ -442,13 +566,469 @@ export function eventSlide(input: EventSlideInput): VNode {
 
 // ─── Outro-slide ──────────────────────────────────────────────────────────
 
-export function outroSlide(): VNode {
+// ─── Intro + Overview (matched aan video-templates) ─────────────────────
+
+/** HookUnit-spiegel van dailyfilms5-data.ts. Lokaal gedupliceerd zodat
+ *  templates.ts géén cyclische dep heeft (dailyfilms5-data importeert
+ *  via een diepere keten waar templates onder kan vallen). */
+export type HookRole = 'eyebrow' | 'countLead' | 'count' | 'headline' | 'meta';
+export interface HookUnit {
+  role: HookRole;
+  text: string;
+}
+
+export interface IntroSlideInput {
+  /** Achtergrondafbeelding — gebruik bv. de laatste pick zodat de
+      intro niet dezelfde foto heeft als slide 1. */
+  heroImageUrl: string;
+  /** Legacy: pakkende hook-zin gecentreerd in beeld. Gebruikt als
+      fallback wanneer geen hookUnits zijn meegegeven. */
+  hook: string;
+  /** Nieuwe gestructureerde hook (eyebrow/countLead/count/headline/meta)
+      die de intro-slide rendert als labelPair + groot getal + zin +
+      gedempte tijdsregel. Matched 1:1 de Remotion-video-intro. */
+  hookUnits?: HookUnit[];
+  format?: SlideFormat;
+}
+
+/**
+ * Intro slide voor de carousel — image-led achtergrond met sterke dim
+ * + grote gecentreerde hook + Andreas-pill onderaan. Matched de stijl
+ * van de Remotion-video introscherm.
+ */
+export function introSlide(input: IntroSlideInput): VNode {
+  const { W, H } = dims(input.format);
+  const p = pad(input.format);
   return el(
     'div',
     {
       style: {
-        width: SLIDE_WIDTH,
-        height: SLIDE_HEIGHT,
+        width: W,
+        height: H,
+        backgroundColor: NOIR,
+        display: 'flex',
+        position: 'relative',
+        fontFamily: 'Archivo',
+      },
+    },
+    // Achtergrondafbeelding
+    el('img', {
+      src: input.heroImageUrl,
+      width: W,
+      height: H,
+      style: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        width: W,
+        height: H,
+        objectFit: 'cover',
+      },
+    }),
+    // Sterke noir-dim zodat de hook altijd leesbaar is
+    el('div', {
+      style: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        width: W,
+        height: H,
+        backgroundColor: 'rgba(10,10,11,0.65)',
+      },
+    }),
+    // Centrale tekst-blok — padding schaalt met safe-area zodat alles
+    // op TikTok binnen de caption-bar/action-buttons valt.
+    el(
+      'div',
+      {
+        style: {
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          width: W,
+          height: H,
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'center',
+          alignItems: 'center',
+          padding: `${p.introPadY}px ${p.introPadX}px`,
+        },
+      },
+      ...renderIntroHookStack(input.hookUnits, input.hook),
+    ),
+  );
+}
+
+/** Walk door HookUnit-array en render eyebrow→countLead als labelPair,
+ *  count groot, headline groot, meta multiline. Valt terug op een
+ *  enkelvoudige hook-string als geen units zijn meegegeven. */
+function renderIntroHookStack(
+  units: HookUnit[] | undefined,
+  fallbackHook: string,
+): VNode[] {
+  if (!units || units.length === 0) {
+    return [
+      el(
+        'div',
+        {
+          style: {
+            color: INK,
+            fontSize: 96,
+            fontWeight: 800,
+            lineHeight: 1.0,
+            letterSpacing: -2.5,
+            textAlign: 'center',
+          },
+        },
+        fallbackHook,
+      ),
+    ];
+  }
+  const out: VNode[] = [];
+  for (let i = 0; i < units.length; i++) {
+    const u = units[i];
+    const next = units[i + 1];
+    // Eyebrow direct gevolgd door countLead → labelPair (acid links,
+    // noir rechts). Volgorde: eyebrow-text = acid-cel, countLead-text =
+    // noir-cel — bv. [FILM (acid bg, noir text)][TOP (noir bg, acid text)].
+    if (u.role === 'eyebrow' && next?.role === 'countLead') {
+      out.push(labelPair({ left: u.text, right: next.text }));
+      i++;
+      continue;
+    }
+    out.push(introUnit(u));
+  }
+  return out;
+}
+
+/** Per-rol styling voor een hook-unit in de intro-stack. */
+function introUnit(unit: HookUnit): VNode {
+  switch (unit.role) {
+    case 'eyebrow':
+      return el(
+        'div',
+        {
+          style: {
+            backgroundColor: NOIR,
+            color: ACID,
+            fontFamily: 'Archivo',
+            fontWeight: 700,
+            fontSize: 36,
+            letterSpacing: 1,
+            textTransform: 'uppercase',
+            padding: '12px 26px',
+            borderRadius: 999,
+            marginBottom: 36,
+            display: 'flex',
+          },
+        },
+        unit.text,
+      );
+    case 'countLead':
+      return el(
+        'div',
+        {
+          style: {
+            backgroundColor: ACID,
+            color: NOIR,
+            fontFamily: 'Archivo',
+            fontWeight: 700,
+            fontSize: 36,
+            letterSpacing: 1,
+            textTransform: 'uppercase',
+            padding: '12px 26px',
+            borderRadius: 999,
+            marginBottom: 36,
+            display: 'flex',
+          },
+        },
+        unit.text,
+      );
+    case 'count':
+      return el(
+        'div',
+        {
+          style: {
+            color: INK,
+            fontFamily: 'Archivo',
+            fontWeight: 900,
+            fontSize: 240,
+            lineHeight: 0.88,
+            letterSpacing: -10,
+            marginBottom: 12,
+            display: 'flex',
+            textShadow: '0 6px 28px rgba(0,0,0,0.85)',
+          },
+        },
+        unit.text,
+      );
+    case 'headline':
+      return el(
+        'div',
+        {
+          style: {
+            color: INK,
+            fontFamily: 'Archivo',
+            fontWeight: 700,
+            fontSize: 108,
+            lineHeight: 1.04,
+            letterSpacing: -2,
+            textAlign: 'center',
+            marginBottom: 32,
+            maxWidth: 900,
+            display: 'flex',
+            textShadow: '0 4px 20px rgba(0,0,0,0.8)',
+          },
+        },
+        unit.text,
+      );
+    case 'meta':
+      return multilineText(unit.text, {
+        color: ACID,
+        fontFamily: 'Archivo',
+        fontWeight: 600,
+        fontSize: 54,
+        lineHeight: 1.15,
+        letterSpacing: -0.5,
+        textAlign: 'center',
+        textShadow: '0 3px 14px rgba(0,0,0,0.75)',
+        alignItems: 'center',
+      });
+    default:
+      return el('div', { style: { display: 'flex' } }, '');
+  }
+}
+
+export interface OverviewSlideInput {
+  /** Legacy: tekst tussen Andreas en X. Wordt alleen gebruikt als
+      `overviewTitle` ontbreekt — dan rendert de header "Andreas X <kicker>". */
+  themeKicker: string;
+  /** Eén-regelige titel boven de grid, bv. "Top 6 films deze week".
+      Matched DailyFilms5.tsx Overview. */
+  overviewTitle?: string;
+  /** 6 picks die in 2x3 grid worden getoond. */
+  picks: Array<{
+    imageUrl: string;
+    title: string;
+    venueName?: string;
+    startsAt: Date;
+    endsAt: Date | null;
+  }>;
+  format?: SlideFormat;
+}
+
+/**
+ * Overview slide — 2x3 grid van alle picks met datum + titel als
+ * overlay-tekst linksonder in elke card. Matched de stijl van de
+ * Remotion-video overview slide.
+ */
+export function overviewSlide(input: OverviewSlideInput): VNode {
+  const { W, H } = dims(input.format);
+  const p = pad(input.format);
+  // Cellbreedte = (slide-W − padding-l/r − gap) / 2. Cellhoogte schaalt
+  // dynamisch met slide-H + safe-area-padding zodat 3 rijen netjes
+  // passen tussen header en bottom-padding. 14px verticale gap.
+  const cellWidth = (W - p.overviewSide * 2 - 14) / 2;
+  // Header is óf overviewTitle (46px font + 64 margin = ~115) óf
+  // "Andreas X kicker" (36px + 30 margin = ~66).
+  const HEADER_BLOCK = input.overviewTitle ? 46 * 1.1 + 64 : 36 + 30;
+  const VERTICAL_OVERHEAD = p.overviewTop + HEADER_BLOCK + p.overviewBottom;
+  const cellHeight = Math.floor((H - VERTICAL_OVERHEAD - 14 * 2) / 3);
+
+  const card = (pick: OverviewSlideInput['picks'][number]): VNode =>
+    el(
+      'div',
+      {
+        style: {
+          width: cellWidth,
+          height: cellHeight,
+          position: 'relative',
+          borderRadius: 10,
+          overflow: 'hidden',
+          backgroundColor: NOIR2,
+          display: 'flex',
+        },
+      },
+      el('img', {
+        src: pick.imageUrl,
+        width: cellWidth,
+        height: cellHeight,
+        style: {
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          width: cellWidth,
+          height: cellHeight,
+          objectFit: 'cover',
+        },
+      }),
+      // Flat dim over de hele card zodat foto's met druk midden ook
+      // contrast geven aan de tekst onderaan.
+      el('div', {
+        style: {
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          width: cellWidth,
+          height: cellHeight,
+          backgroundColor: 'rgba(10,10,11,0.28)',
+        },
+      }),
+      // Stevigere onder-gradient voor leesbaarheid van datum/titel/venue.
+      el('div', {
+        style: {
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          width: cellWidth,
+          height: cellHeight,
+          background:
+            'linear-gradient(to bottom, transparent 30%, rgba(10,10,11,0.7) 70%, rgba(10,10,11,0.96) 100%)',
+        },
+      }),
+      // Tekst-overlay onderaan
+      el(
+        'div',
+        {
+          style: {
+            position: 'absolute',
+            left: 16,
+            right: 16,
+            bottom: 16,
+            display: 'flex',
+            flexDirection: 'column',
+          },
+        },
+        // Volgorde: titel → venue → datum. Datum laatste als acid-marker.
+        el(
+          'div',
+          {
+            style: {
+              color: INK,
+              fontSize: 40,
+              fontWeight: 800,
+              lineHeight: 1.04,
+              letterSpacing: -0.8,
+              display: 'flex',
+              textShadow: '0 2px 10px rgba(0,0,0,0.8)',
+              marginBottom: 6,
+              // Satori heeft beperkte line-clamp support; we kappen op
+              // de data-laag indien titel > 40 chars (kortere strings
+              // bij grotere font om wrap netjes te houden).
+            },
+          },
+          pick.title.length > 40 ? pick.title.slice(0, 37) + '…' : pick.title,
+        ),
+        pick.venueName
+          ? el(
+              'div',
+              {
+                style: {
+                  color: INK,
+                  fontSize: 24,
+                  fontWeight: 700,
+                  letterSpacing: -0.2,
+                  display: 'flex',
+                  textShadow: '0 2px 8px rgba(0,0,0,0.75)',
+                  marginBottom: 4,
+                },
+              },
+              pick.venueName.length > 28
+                ? pick.venueName.slice(0, 26) + '…'
+                : pick.venueName,
+            )
+          : null,
+        el(
+          'div',
+          {
+            style: {
+              color: ACID,
+              fontSize: 24,
+              fontWeight: 700,
+              letterSpacing: -0.2,
+              display: 'flex',
+              textShadow: '0 2px 8px rgba(0,0,0,0.75)',
+            },
+          },
+          formatDateNl(pick.startsAt),
+        ),
+      ),
+    );
+
+  const row = (start: number): VNode =>
+    el(
+      'div',
+      { style: { display: 'flex', gap: 14, marginBottom: 14 } },
+      card(input.picks[start]),
+      input.picks[start + 1] ? card(input.picks[start + 1]) : null,
+    );
+
+  return el(
+    'div',
+    {
+      style: {
+        width: W,
+        height: H,
+        backgroundColor: NOIR,
+        display: 'flex',
+        flexDirection: 'column',
+        padding: `${p.overviewTop}px ${p.overviewSide}px ${p.overviewBottom}px`,
+        fontFamily: 'Archivo',
+      },
+    },
+    // Header: overviewTitle als gegeven, anders fallback "Andreas X kicker".
+    input.overviewTitle
+      ? el(
+          'div',
+          {
+            style: {
+              color: INK,
+              fontSize: 46,
+              fontWeight: 800,
+              lineHeight: 1.1,
+              letterSpacing: -1,
+              textAlign: 'center',
+              marginBottom: 64,
+              display: 'flex',
+              justifyContent: 'center',
+              alignSelf: 'center',
+            },
+          },
+          input.overviewTitle,
+        )
+      : el(
+          'div',
+          {
+            style: {
+              color: INK,
+              fontSize: 36,
+              fontWeight: 900,
+              letterSpacing: 5,
+              textTransform: 'uppercase',
+              textAlign: 'center',
+              marginBottom: 30,
+              display: 'flex',
+              justifyContent: 'center',
+            },
+          },
+          el('span', { style: { color: INK } }, 'Andreas'),
+          el('span', { style: { color: ACID } }, 'X'),
+          el('span', { style: { color: INK } }, input.themeKicker),
+    ),
+    row(0),
+    row(2),
+    input.picks[4] ? row(4) : null,
+  );
+}
+
+export function outroSlide(format?: SlideFormat): VNode {
+  const { W, H } = dims(format);
+  return el(
+    'div',
+    {
+      style: {
+        width: W,
+        height: H,
         backgroundColor: NOIR,
         display: 'flex',
         flexDirection: 'column',

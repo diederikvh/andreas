@@ -255,8 +255,19 @@ export async function scrapeKetelhuis(): Promise<KetelhuisResult[]> {
 // ─── Helpers ────────────────────────────────────────────────────────────
 
 /** Ketelhuis schrijft soms `+1:00` i.p.v. `+01:00` — JS Date faalt dan. */
+/**
+ * Ketelhuis publiceert in JSON-LD een wall-time in UTC maar tagged
+ * 'm met een broken `+1:00`-offset (zonder leading-zero) — bv
+ * `"2026-06-11T08:45:00+1:00"` voor een vertoning die op de website
+ * als `10:45` getoond wordt. Naïef gefixt naar `+01:00` zou JS er
+ * 09:45 Ams van maken — 1u te vroeg. De wall-time IS dus UTC; de
+ * offset-tag liegt. Strip 'm en behandel als Z.
+ */
 function fixIsoTimezone(s: string): string {
-  return s.replace(/([+-])(\d):(\d{2})$/, (_, sign, h, m) => `${sign}0${h}:${m}`);
+  // Naive trailing `+1:00`/`+01:00` weghalen, vervangen door 'Z' zodat
+  // JS de tijd correct als UTC interpreteert. Zonder Z zou Node het
+  // als host-local lezen (= UTC in Fly = correct, maar fragiel).
+  return s.replace(/[+-]\d{1,2}:?\d{2}$/, 'Z');
 }
 
 function decodeEntities(s: string): string {

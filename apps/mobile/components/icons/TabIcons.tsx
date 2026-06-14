@@ -53,14 +53,14 @@ export function TabIconGered({ color }: IconProps) {
 }
 
 /**
- * Social-tab — Andreas-kruis als brand-glyph. Erfde z'n plek van de
- * vorige Gered-tab, voelt nog steeds passend voor de cluster-tab waar
- * vrienden + planning samenkomen.
+ * Social-tab — open cirkel. Eerder een Cross, maar gebruikers
+ * interpreteerden dat als "app sluiten"-X. Een ring past in dezelfde
+ * lichte geometrische lijn als de andere tab-iconen.
  */
 export function TabIconSocial({ color }: IconProps) {
   return (
     <View style={styles.box}>
-      <Cross size={18} thickness={STROKE} color={color} />
+      <View style={[styles.ring, { borderColor: color }]} />
     </View>
   );
 }

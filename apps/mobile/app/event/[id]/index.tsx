@@ -1437,7 +1437,16 @@ function TrailerCard({
   const t = useT();
   return (
     <Pressable
-      onPress={() => WebBrowser.openBrowserAsync(trailerUrl)}
+      onPress={() => {
+        // Linking.openURL pakt op iOS de YouTube-app als die
+        // geinstalleerd is (YouTube-app-claim op youtu.be /
+        // youtube.com Universal Links). Anders valt 't terug op
+        // de browser. WebBrowser.openBrowserAsync zou altijd in
+        // de in-app browser openen — minder fijn voor video.
+        Linking.openURL(trailerUrl).catch(() => {
+          WebBrowser.openBrowserAsync(trailerUrl).catch(() => {});
+        });
+      }}
       style={[styles.trailerCard, { backgroundColor: roles.bgLift }]}
     >
       <View style={styles.trailerThumbWrap}>
@@ -1474,11 +1483,13 @@ function TrailerCard({
 function ShareButton({ event }: { event: ApiEvent }) {
   const { data: session } = useSession();
   const t = useT();
+  const locale = useLocale();
   const onPress = async () => {
-    const refQs = session?.user?.id
-      ? `?ref=${encodeURIComponent(session.user.id)}`
-      : '';
-    const url = `https://andreas.amsterdam/e/${encodeURIComponent(event.id)}${refQs}`;
+    const params = new URLSearchParams();
+    if (session?.user?.id) params.set('ref', session.user.id);
+    if (locale === 'en') params.set('lang', 'en');
+    const qs = params.toString();
+    const url = `https://andreas.amsterdam/e/${encodeURIComponent(event.id)}${qs ? `?${qs}` : ''}`;
     const messageBody = t(
       `Ik ga naar ${event.title} via Andreas. Wil je mee?\n${url}`,
       `I’m going to ${event.title} via Andreas. Want to come?\n${url}`

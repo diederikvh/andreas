@@ -56,6 +56,9 @@ type ZiggoEvent = {
   showDate: string;
   showState: string;
   showTimeUnknown: number;
+  /** 1 = tijd in `showDate` klopt, 0 = placeholder (vaak 18:00). Bij 0
+      moet de echte tijd via Ticketmaster's JSON-LD opgehaald worden. */
+  showShowTime?: number;
   performerName: string;
   event: { title?: string };
   description: string | null;
@@ -217,6 +220,10 @@ export async function scrapeZiggodome(options?: {
     groups.set(key, arr);
   }
 
+  // Cache TM-page-lookups zodat een artist-page met 5 shows maar
+  // één keer gefetched wordt (zelfde salesUrl bij groups).
+  const tmStartCache = new Map<string, string | null>();
+
   for (const [groupKey, instances] of groups) {
     instances.sort(
       (a, b) =>
@@ -239,7 +246,7 @@ export async function scrapeZiggodome(options?: {
 
       if (existing) {
         for (const inst of instances) {
-          const startsAt = parseLocalDateTime(inst.showDate);
+          const startsAt = await resolveStartsAt(inst, tmStartCache);
           const occurrenceId = `occ-zd-${VENUE_ID}-${shortHash(`${groupKey}|${inst.showDate}`)}`;
           const status: 'scheduled' | 'cancelled' | 'sold_out' =
             inst.showState === 'SoldOut'
@@ -321,7 +328,7 @@ export async function scrapeZiggodome(options?: {
         result.inserted++;
 
         for (const inst of instances) {
-          const startsAt = parseLocalDateTime(inst.showDate);
+          const startsAt = await resolveStartsAt(inst, tmStartCache);
           const occurrenceId = `occ-zd-${VENUE_ID}-${shortHash(`${groupKey}|${inst.showDate}`)}`;
           const status: 'scheduled' | 'cancelled' | 'sold_out' =
             inst.showState === 'SoldOut'
@@ -365,6 +372,67 @@ export async function scrapeZiggodome(options?: {
   }
 
   return [result];
+}
+
+/**
+ * Ziggo Dome's API geeft voor 88% van de events een placeholder
+ * `showDate` (vaak 18:00) met `showShowTime: 0` — "tijd nog niet
+ * definitief". De echte showtime staat wel op de Ticketmaster-page
+ * waar `salesUrl` naar wijst, in een JSON-LD `MusicEvent.startDate`.
+ *
+ * Cache wordt door de caller bijgehouden zodat we per salesUrl maar
+ * één keer fetchen. TM throttle: ~500ms per call is genoeg.
+ */
+async function fetchTicketmasterStartTime(
+  salesUrl: string,
+  cache: Map<string, string | null>,
+): Promise<string | null> {
+  if (cache.has(salesUrl)) return cache.get(salesUrl) ?? null;
+  try {
+    const r = await fetch(salesUrl, {
+      headers: {
+        'user-agent':
+          'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        accept: 'text/html',
+      },
+      redirect: 'follow',
+      signal: AbortSignal.timeout(15000),
+    });
+    if (!r.ok) {
+      cache.set(salesUrl, null);
+      return null;
+    }
+    const html = await r.text();
+    // JSON-LD MusicEvent blok extract: zoekt `"startDate":"<ISO>"`.
+    // Naive ISO (geen Z) want TM levert lokaal-tijd.
+    const m = html.match(/"startDate"\s*:\s*"(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})"/);
+    const start = m?.[1] ?? null;
+    cache.set(salesUrl, start);
+    return start;
+  } catch {
+    cache.set(salesUrl, null);
+    return null;
+  }
+}
+
+/**
+ * Bepaal het juiste startsAt voor een Ziggo-event. Default: `showDate`
+ * uit hun eigen API. Maar als `showShowTime === 0` (88% van events)
+ * is `showDate` een placeholder en moeten we via Ticketmaster's
+ * JSON-LD de echte tijd halen.
+ */
+async function resolveStartsAt(
+  inst: ZiggoEvent,
+  tmCache: Map<string, string | null>,
+): Promise<Date> {
+  const fallback = parseLocalDateTime(inst.showDate);
+  if (inst.showShowTime === 1 || !inst.salesUrl) return fallback;
+  const tmStart = await fetchTicketmasterStartTime(inst.salesUrl, tmCache);
+  if (!tmStart) return fallback;
+  // TM levert naive ISO (geen Z, Amsterdam-local), bv. "2026-06-14T20:00:00".
+  // parseLocalDateTime verwacht "YYYY-MM-DD HH:MM:SS" — converteer.
+  const normalized = tmStart.replace('T', ' ');
+  return parseLocalDateTime(normalized);
 }
 
 /** Parse "2026-05-08 18:00:00" (Europe/Amsterdam, geen offset) naar UTC Date. */

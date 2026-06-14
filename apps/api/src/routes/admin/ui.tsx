@@ -19,6 +19,15 @@ import {
 } from './layout.js';
 import { generateCaption } from '../../social/caption.js';
 import { runGenerate, runPublish } from './social.js';
+import { publishReel } from '../../social/publisher.js';
+import { renderVideo } from '../../social/render-video.js';
+import {
+  fetchPublishStatus as fetchTikTokStatus,
+  getTikTokConnection,
+  publishTikTokInbox,
+  publishTikTokPhotos,
+} from '../../social/tiktok.js';
+import { uploadToBunny } from '../../storage/bunny.js';
 import {
   THEMES,
   getThemeByKey,
@@ -3171,13 +3180,13 @@ function socialStatusPillStyle(status: string): string {
     case 'draft':
       return base + 'background:#3a3a1d;color:#f3eab6;';
     case 'approved':
-      return base + 'background:#1d4d2c;color:#b6f3c8;';
+      return base + 'background:#d4ff3a;color:#0a0a0b;';
     case 'posted':
       return base + 'background:#1d3a4d;color:#b6d8f3;';
     case 'skipped':
       return base + 'background:#2a2a2e;color:#9a9a94;';
     case 'failed':
-      return base + 'background:#4d1d1d;color:#f3b6b6;';
+      return base + 'background:#ffe2dd;color:#7a1f15;border:1px solid #c9453a;';
     default:
       return base + 'background:#2a2a2e;color:#9a9a94;';
   }
@@ -3214,28 +3223,66 @@ adminUi.get('/social', async (c) => {
     .orderBy(desc(schema.socialPosts.createdAt))
     .limit(50)) as SocialPostRow[];
 
+  // TikTok-connection-state — wordt gebruikt om wel/geen "Verbind" knop te tonen.
+  let tiktokConn: Awaited<ReturnType<typeof getTikTokConnection>> = {
+    connected: false,
+    displayName: null,
+    openId: null,
+  };
+  try {
+    tiktokConn = await getTikTokConnection();
+  } catch {
+    // Geen TikTok-config → val terug op default (niet verbonden)
+  }
+
   return c.html(
     <Layout title="Social" active="social">
       <div class="toolbar">
-        <h2>Social — IG-posts</h2>
+        <h2>Social</h2>
       </div>
 
       {flash && (
         <p
-          style="background:#1d4d2c;color:#b6f3c8;padding:0.6rem 0.9rem;border-radius:6px;font-size:13px;margin-bottom:1rem;"
+          style="background:#d4ff3a;color:#0a0a0b;padding:0.6rem 0.9rem;border-radius:6px;font-size:13px;margin-bottom:1rem;"
         >
           {flash}
         </p>
       )}
       {error && (
         <p
-          style="background:#4d1d1d;color:#f3b6b6;padding:0.6rem 0.9rem;border-radius:6px;font-size:13px;margin-bottom:1rem;"
+          style="background:#ffe2dd;color:#7a1f15;border:1px solid #c9453a;padding:0.6rem 0.9rem;border-radius:6px;font-size:13px;margin-bottom:1rem;"
         >
           {error}
         </p>
       )}
 
-      <article style="margin-bottom:2rem;">
+      <div class="social-actions">
+      <article>
+        <h3 style="margin-top:0;">Video genereren (lokaal)</h3>
+        <p style="font-size:13px;color:var(--pico-muted-color);margin-bottom:0.75rem;">
+          Rendert lokaal via Remotion + uploadt naar Bunny. Maakt een
+          draft-post die je hierna kan bekijken en publiceren wanneer je
+          wil. Duurt ~30s. Vereist dat de API <strong>op je laptop</strong> draait.
+        </p>
+        <form
+          method="post"
+          action="/admin/social/run-video-ui"
+          style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap;"
+          onsubmit="this.querySelector('button').disabled=true;this.querySelector('button').innerText='Renderen…';"
+        >
+          <select name="selection" style="max-width:280px;">
+            <option value="justin">JustIn — Net bekend</option>
+            {THEMES.map((t) => (
+              <option value={`daily:${t.key}`}>
+                {`DailyFilms5 — ${t.label.nl}`}
+              </option>
+            ))}
+          </select>
+          <button type="submit">Genereer video</button>
+        </form>
+      </article>
+
+      <article>
         <h3 style="margin-top:0;">Nieuwe carousel genereren</h3>
         <p style="font-size:13px;color:var(--pico-muted-color);margin-bottom:0.75rem;">
           Eén post per dag met een week-thema. De cron pakt 's ochtends
@@ -3245,7 +3292,7 @@ adminUi.get('/social', async (c) => {
         <div style="display:flex;gap:0.5rem;flex-wrap:wrap;">
           {THEMES.map((theme) => {
             const isToday =
-              theme.key === getThemeForDate(new Date()).key;
+              theme.key === getThemeForDate(new Date())?.key;
             return (
               <form method="post" action="/admin/social/generate" style="margin:0;">
                 <input type="hidden" name="theme" value={theme.key} />
@@ -3259,8 +3306,47 @@ adminUi.get('/social', async (c) => {
               </form>
             );
           })}
+          <form method="post" action="/admin/social/generate-just-in" style="margin:0;">
+            <button
+              type="submit"
+              class="secondary"
+              title="Top 6 net aangekondigd — news-ticker stijl"
+            >
+              JustIn
+            </button>
+          </form>
         </div>
       </article>
+
+      <article>
+        <h3 style="margin-top:0;">TikTok-koppeling</h3>
+        {tiktokConn.connected ? (
+          <>
+            <p style="font-size:13px;color:var(--pico-muted-color);margin:0 0 0.5rem 0;">
+              Verbonden met <strong>{tiktokConn.displayName ?? tiktokConn.openId}</strong>.
+            </p>
+            <form
+              method="post"
+              action="/admin/social/tiktok-disconnect"
+              onsubmit="return confirm('TikTok-koppeling verbreken? Je moet daarna opnieuw inloggen om video\\'s te kunnen posten.');"
+            >
+              <button type="submit" class="secondary outline" style="font-size:13px;padding:0.25rem 0.75rem;">
+                Ontkoppel TikTok
+              </button>
+            </form>
+          </>
+        ) : (
+          <>
+            <p style="font-size:13px;color:var(--pico-muted-color);margin-bottom:0.5rem;">
+              Geen TikTok-account verbonden.
+            </p>
+            <a href="/admin/api/social/tiktok/connect" role="button" class="outline">
+              Verbind TikTok
+            </a>
+          </>
+        )}
+      </article>
+      </div>
 
       {rows.length === 0 ? (
         <p style="color:var(--pico-muted-color);">
@@ -3316,7 +3402,15 @@ adminUi.get('/social', async (c) => {
                     )}
                   </td>
                   <td>
-                    {firstImage ? (
+                    {(post.meta as { kind?: string } | null)?.kind === 'reel' ? (
+                      <a
+                        href={`/admin/social/${post.id}`}
+                        title="Reel-video"
+                        style="display:flex;width:60px;height:75px;border-radius:4px;background:#1a1a1d;align-items:center;justify-content:center;color:var(--pico-muted-color);font-size:11px;"
+                      >
+                        ▶ video
+                      </a>
+                    ) : firstImage ? (
                       <a
                         href={`/admin/social/${post.id}`}
                         title={`${post.imageUrls.length} slides`}
@@ -3331,7 +3425,9 @@ adminUi.get('/social', async (c) => {
                       <small style="color:var(--pico-muted-color);">geen slides</small>
                     )}
                     <small style="display:block;color:var(--pico-muted-color);margin-top:2px;font-size:11px;">
-                      {post.imageUrls.length} slides · {post.eventIds.length} events
+                      {(post.meta as { kind?: string } | null)?.kind === 'reel'
+                        ? 'Reel'
+                        : `${post.imageUrls.length} slides · ${post.eventIds.length} events`}
                     </small>
                   </td>
                   <td style="font-size:13px;max-width:340px;">
@@ -3355,6 +3451,13 @@ adminUi.get('/social', async (c) => {
                           action={`/admin/social/${post.id}/approve`}
                         >
                           <button type="submit">Goedkeuren</button>
+                        </form>
+                        <form
+                          method="post"
+                          action={`/admin/social/${post.id}/approve-and-publish`}
+                          onsubmit="return confirm('Goedkeuren én direct publiceren naar Instagram?');"
+                        >
+                          <button type="submit">Publiceer nu</button>
                         </form>
                         <form
                           method="post"
@@ -3400,6 +3503,8 @@ adminUi.get('/social', async (c) => {
 
 adminUi.get('/social/:id', async (c) => {
   const id = c.req.param('id');
+  const flash = c.req.query('flash');
+  const error = c.req.query('error');
   const [post] = (await db
     .select()
     .from(schema.socialPosts)
@@ -3426,6 +3531,17 @@ adminUi.get('/social/:id', async (c) => {
         </a>
       </div>
 
+      {flash && (
+        <p style="background:#d4ff3a;color:#0a0a0b;padding:0.6rem 0.9rem;border-radius:6px;font-size:13px;margin-bottom:1rem;">
+          {flash}
+        </p>
+      )}
+      {error && (
+        <p style="background:#ffe2dd;color:#7a1f15;border:1px solid #c9453a;padding:0.6rem 0.9rem;border-radius:6px;font-size:13px;margin-bottom:1rem;">
+          {error}
+        </p>
+      )}
+
       <p style="color:var(--pico-muted-color);font-size:13px;margin-top:-0.5rem;">
         ID <code>{post.id}</code> · gepland {fmtDate(post.scheduledFor)} · aangemaakt{' '}
         {fmtDate(post.createdAt)}
@@ -3433,14 +3549,14 @@ adminUi.get('/social/:id', async (c) => {
       </p>
 
       {post.error && (
-        <article style="background:#4d1d1d;color:#f3b6b6;">
+        <article style="background:#ffe2dd;color:#7a1f15;border:1px solid #c9453a;">
           <strong>Fout:</strong> {post.error}
         </article>
       )}
 
       {post.status === 'approved' && (
         <p
-          style="background:#1d4d2c;color:#b6f3c8;padding:0.6rem 0.9rem;border-radius:6px;font-size:13px;"
+          style="background:#d4ff3a;color:#0a0a0b;padding:0.6rem 0.9rem;border-radius:6px;font-size:13px;"
         >
           Publiceert automatisch op {fmtDate(post.scheduledFor)} via de
           publish-cron. "Nu publiceren" forceert direct.
@@ -3452,6 +3568,14 @@ adminUi.get('/social/:id', async (c) => {
           <>
             <form method="post" action={`/admin/social/${post.id}/approve`} style="margin:0;">
               <button type="submit">Goedkeuren</button>
+            </form>
+            <form
+              method="post"
+              action={`/admin/social/${post.id}/approve-and-publish`}
+              style="margin:0;"
+              onsubmit="return confirm('Goedkeuren én direct publiceren naar Instagram?');"
+            >
+              <button type="submit">Publiceer nu</button>
             </form>
             <form
               method="post"
@@ -3475,11 +3599,21 @@ adminUi.get('/social/:id', async (c) => {
             <button type="submit" class="outline">Nu publiceren</button>
           </form>
         )}
+        {post.imageUrls.length > 0 && (
+          <form
+            method="post"
+            action={`/admin/social/${post.id}/tiktok-draft`}
+            style="margin:0;"
+            onsubmit="if(!confirm('Als draft naar TikTok sturen? Komt in je TikTok-app onder Drafts.')) return false; const b=this.querySelector('button'); b.disabled=true; b.innerText='Sturen naar TikTok…';"
+          >
+            <button type="submit" class="outline">Naar TikTok-drafts</button>
+          </form>
+        )}
         {post.status === 'posted' && post.meta?.permalink && (
           <a
             href={post.meta.permalink}
             role="button"
-            class="outline"
+            class="secondary outline"
             target="_blank"
             rel="noreferrer"
           >
@@ -3502,8 +3636,23 @@ adminUi.get('/social/:id', async (c) => {
 
       {post.status === 'posted' && post.igMediaId && (
         <p style="color:var(--pico-muted-color);font-size:13px;">
-          IG media-id: <code>{post.igMediaId}</code>
+          Instagram media-id: <code>{post.igMediaId}</code>
         </p>
+      )}
+      {(post.meta as { tiktokPublishId?: string; tiktokSentAt?: string } | null)?.tiktokPublishId && (
+        <div style="color:var(--pico-muted-color);font-size:13px;display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap;margin:0.5rem 0;">
+          <span>
+            TikTok publish-id: <code>{(post.meta as { tiktokPublishId?: string }).tiktokPublishId}</code>
+            {(post.meta as { tiktokSentAt?: string }).tiktokSentAt && (
+              <> · verstuurd {fmtDate((post.meta as { tiktokSentAt: string }).tiktokSentAt)}</>
+            )}
+          </span>
+          <form method="post" action={`/admin/social/${post.id}/tiktok-status`} style="margin:0;">
+            <button type="submit" class="secondary outline" style="font-size:12px;padding:0.2rem 0.5rem;">
+              Check status
+            </button>
+          </form>
+        </div>
       )}
 
       <div style="display:flex;align-items:center;gap:0.75rem;margin-top:0.5rem;">
@@ -3524,25 +3673,39 @@ adminUi.get('/social/:id', async (c) => {
           </form>
         )}
       </div>
-      <pre style="background:#0a0a0b;padding:1rem;border-radius:6px;white-space:pre-wrap;font-family:inherit;font-size:14px;line-height:1.5;">
+      <pre style="background:#f5f1e8;color:#0a0a0b;padding:1rem;border-radius:6px;border:1px solid #d8d2c2;white-space:pre-wrap;font-family:inherit;font-size:14px;line-height:1.5;">
         {post.caption ?? '(geen caption)'}
       </pre>
 
-      <h3 style="margin-top:1.5rem;">Slides ({post.imageUrls.length})</h3>
-      <div style="display:flex;flex-wrap:wrap;gap:12px;">
-        {post.imageUrls.map((url, i) => (
-          <figure style="margin:0;flex:0 0 auto;">
-            <img
-              src={url}
-              alt={`slide ${i + 1}`}
-              style="width:min(260px,45vw);aspect-ratio:1080/1350;height:auto;object-fit:cover;border-radius:8px;display:block;background:#0a0a0b;"
-            />
-            <figcaption style="font-size:11px;color:var(--pico-muted-color);text-align:center;margin-top:4px;">
-              slide {i + 1}
-            </figcaption>
-          </figure>
-        ))}
-      </div>
+      {(post.meta as { kind?: string } | null)?.kind === 'reel' ? (
+        <>
+          <h3 style="margin-top:1.5rem;">Video-preview</h3>
+          <video
+            src={post.imageUrls[0]}
+            controls
+            playsinline
+            style="width:min(360px,80vw);aspect-ratio:9/16;height:auto;border-radius:8px;display:block;background:#0a0a0b;"
+          />
+        </>
+      ) : (
+        <>
+          <h3 style="margin-top:1.5rem;">Slides ({post.imageUrls.length})</h3>
+          <div style="display:flex;flex-wrap:wrap;gap:12px;">
+            {post.imageUrls.map((url, i) => (
+              <figure style="margin:0;flex:0 0 auto;">
+                <img
+                  src={url}
+                  alt={`slide ${i + 1}`}
+                  style="width:min(260px,45vw);aspect-ratio:1080/1350;height:auto;object-fit:cover;border-radius:8px;display:block;background:#0a0a0b;"
+                />
+                <figcaption style="font-size:11px;color:var(--pico-muted-color);text-align:center;margin-top:4px;">
+                  slide {i + 1}
+                </figcaption>
+              </figure>
+            ))}
+          </div>
+        </>
+      )}
 
       <h3 style="margin-top:1.5rem;">Events ({post.eventIds.length})</h3>
       <ul style="list-style:none;padding:0;">
@@ -3610,6 +3773,225 @@ adminUi.get('/social/:id', async (c) => {
   );
 });
 
+/**
+ * Upload + post als Reel. Wordt aangeroepen door het form op /admin/social
+ * (multipart). Doorgestuurd naar de JSON-endpoint `/admin/api/social/post-video`
+ * via een interne fetch zou roundtrip-overhead toevoegen — daarom hier
+ * direct inline.
+ */
+/**
+ * UI-handler die de gehele render+post-pipeline aanroept en daarna naar
+ * /admin/social redirect. Roept dezelfde logica aan als de JSON-endpoint
+ * `/admin/api/social/run-video`, maar dan via een form-POST.
+ */
+/**
+ * Render + upload-only flow (geen publish). Maakt een draft-rij aan met
+ * de video-URL in imageUrls[0]; vanaf de detail-page kan je 'm bekijken
+ * en dan met de "Publiceer"-knop naar IG sturen.
+ */
+adminUi.post('/social/:id/tiktok-status', async (c) => {
+  const id = c.req.param('id');
+  const [post] = (await db
+    .select()
+    .from(schema.socialPosts)
+    .where(eq(schema.socialPosts.id, id))) as SocialPostRow[];
+  const publishId = (post?.meta as { tiktokPublishId?: string } | null)?.tiktokPublishId;
+  if (!publishId) {
+    return c.redirect(
+      `/admin/social/${id}?error=` + encodeURIComponent('Geen TikTok publish-id'),
+    );
+  }
+  try {
+    const status = await fetchTikTokStatus(publishId);
+    const msg = status.failReason
+      ? `TikTok status: ${status.status} — ${status.failReason}`
+      : `TikTok status: ${status.status}`;
+    return c.redirect(`/admin/social/${id}?flash=` + encodeURIComponent(msg));
+  } catch (e) {
+    return c.redirect(
+      `/admin/social/${id}?error=` + encodeURIComponent((e as Error).message),
+    );
+  }
+});
+
+adminUi.post('/social/tiktok-disconnect', async (c) => {
+  await db.delete(schema.tiktokTokens).where(eq(schema.tiktokTokens.id, 'main'));
+  return c.redirect(
+    '/admin/social?flash=' + encodeURIComponent('TikTok ontkoppeld'),
+  );
+});
+
+adminUi.post('/social/:id/tiktok-draft', async (c) => {
+  const id = c.req.param('id');
+  const [post] = (await db
+    .select()
+    .from(schema.socialPosts)
+    .where(eq(schema.socialPosts.id, id))) as SocialPostRow[];
+  if (!post) {
+    return c.redirect('/admin/social?error=' + encodeURIComponent('Post niet gevonden'));
+  }
+  if (post.imageUrls.length === 0) {
+    return c.redirect(
+      `/admin/social/${id}?error=` + encodeURIComponent('Geen media'),
+    );
+  }
+  const isReel = (post.meta as { kind?: string } | null)?.kind === 'reel';
+  // Voor TikTok-photo-carousels gebruiken we de 9:16-set die parallel
+  // met de IG-set (4:5) is gerenderd. Oude posts (vóór dubbele render)
+  // vallen terug op de IG-set — die werkt op TikTok maar met letterbox.
+  const tiktokUrls =
+    (post.meta as { tiktokImageUrls?: string[] } | null)?.tiktokImageUrls ??
+    post.imageUrls;
+  try {
+    const result = isReel
+      ? await publishTikTokInbox({
+          videoUrl: post.imageUrls[0],
+          caption: post.caption ?? undefined,
+        })
+      : await publishTikTokPhotos({
+          imageUrls: tiktokUrls,
+          caption: post.caption ?? undefined,
+        });
+
+    // Bewaar publish_id + sent_at in meta — UI toont 't dan op detail-page.
+    const existingMeta = (post.meta ?? {}) as Record<string, unknown>;
+    const newMeta = {
+      ...existingMeta,
+      tiktokPublishId: result.publishId,
+      tiktokSentAt: new Date().toISOString(),
+    } as Record<string, unknown>;
+    await db
+      .update(schema.socialPosts)
+      .set({
+        meta: newMeta as never,
+        updatedAt: new Date(),
+      })
+      .where(eq(schema.socialPosts.id, id));
+
+    return c.redirect(
+      `/admin/social/${id}?flash=` +
+        encodeURIComponent(
+          `Naar TikTok gestuurd (publish_id ${result.publishId}). Check je TikTok-app voor de notificatie.`,
+        ),
+    );
+  } catch (e) {
+    return c.redirect(
+      `/admin/social/${id}?error=` + encodeURIComponent((e as Error).message),
+    );
+  }
+});
+
+adminUi.post('/social/run-video-ui', async (c) => {
+  const form = await c.req.parseBody();
+  // Selection-format: "justin" of "daily:<theme-key>" (bv. daily:film).
+  const selection = typeof form.selection === 'string' ? form.selection : 'justin';
+
+  try {
+    let compositionId: string;
+    let props: unknown;
+    let caption: string;
+
+    if (selection === 'justin') {
+      const { fetchJustInPropsForUi } = await import('../../social/justin-data.js');
+      compositionId = 'JustIn';
+      props = await fetchJustInPropsForUi();
+      caption =
+        'De 5 events die net bekend zijn in Amsterdam. Bewaar voor later op andreas.amsterdam';
+    } else if (selection.startsWith('daily:')) {
+      const themeKey = selection.slice('daily:'.length);
+      const { fetchDailyFilms5Props } = await import('../../social/dailyfilms5-data.js');
+      const { selectPicksForTheme } = await import('./social.js');
+      compositionId = 'DailyFilms5';
+      props = await fetchDailyFilms5Props(themeKey, selectPicksForTheme);
+      caption = (props as { hook?: string }).hook ?? 'Vandaag in Amsterdam';
+      caption += '. Meer op andreas.amsterdam';
+    } else {
+      return c.redirect(
+        '/admin/social?error=' + encodeURIComponent(`onbekende selection: ${selection}`),
+      );
+    }
+
+    const mp4 = await renderVideo({ compositionId, props });
+    const ymd = new Date().toISOString().slice(0, 10);
+    const uploadId = randomBytes(6).toString('hex');
+    const path = `social-videos/${ymd}-${compositionId.toLowerCase()}-${uploadId}.mp4`;
+    const videoUrl = await uploadToBunny(path, mp4, 'video/mp4');
+
+    const postId = `sp-${randomBytes(6).toString('hex')}`;
+    await db.insert(schema.socialPosts).values({
+      id: postId,
+      slot: 'evening',
+      status: 'draft',
+      caption,
+      imageUrls: [videoUrl],
+      eventIds: [],
+      scheduledFor: new Date(),
+      meta: { kind: 'reel', themeKey: selection } as Record<string, unknown>,
+    });
+    return c.redirect(
+      `/admin/social/${postId}?flash=` +
+        encodeURIComponent('Video gerenderd — bekijk en publiceer wanneer je wil'),
+    );
+  } catch (e) {
+    return c.redirect(
+      '/admin/social?error=' + encodeURIComponent((e as Error).message),
+    );
+  }
+});
+
+adminUi.post('/social/post-video', async (c) => {
+  const form = await c.req.parseBody();
+  const file = form.video;
+  const caption = typeof form.caption === 'string' ? form.caption : '';
+  const themeKey = typeof form.theme === 'string' ? form.theme : null;
+
+  if (!file || !(file instanceof File)) {
+    return c.redirect('/admin/social?error=' + encodeURIComponent('video-bestand ontbreekt'));
+  }
+  if (!caption.trim()) {
+    return c.redirect('/admin/social?error=' + encodeURIComponent('caption is verplicht'));
+  }
+
+  try {
+    const ymd = new Date().toISOString().slice(0, 10);
+    const id = randomBytes(6).toString('hex');
+    const path = `social-videos/${ymd}-${themeKey ?? 'video'}-${id}.mp4`;
+    const buf = await file.arrayBuffer();
+    const videoUrl = await uploadToBunny(path, buf, 'video/mp4');
+
+    const { igMediaId, permalink } = await publishReel({
+      videoUrl,
+      caption,
+      shareToFeed: true,
+    });
+
+    const postId = `sp-${randomBytes(6).toString('hex')}`;
+    await db.insert(schema.socialPosts).values({
+      id: postId,
+      slot: 'evening',
+      status: 'posted',
+      caption,
+      imageUrls: [videoUrl],
+      eventIds: [],
+      scheduledFor: new Date(),
+      postedAt: new Date(),
+      igMediaId,
+      meta: {
+        ...(permalink ? { permalink } : {}),
+        ...(themeKey ? { themeKey } : {}),
+      },
+    });
+    return c.redirect(
+      '/admin/social?flash=' +
+        encodeURIComponent(`Reel geplaatst (media-id ${igMediaId})`),
+    );
+  } catch (e) {
+    return c.redirect(
+      '/admin/social?error=' + encodeURIComponent((e as Error).message),
+    );
+  }
+});
+
 adminUi.post('/social/generate', async (c) => {
   const form = await c.req.parseBody();
   const themeKey = String(form.theme ?? '');
@@ -3625,6 +4007,23 @@ adminUi.post('/social/generate', async (c) => {
     const { post, warnings } = await runGenerate(theme);
     const flash =
       `Concept aangemaakt voor ${theme.label.nl}.` +
+      (warnings.length > 0 ? ' Let op: ' + warnings.join('; ') : '');
+    return c.redirect(
+      `/admin/social/${post.id}?flash=${encodeURIComponent(flash)}`,
+    );
+  } catch (e) {
+    return c.redirect(
+      '/admin/social?error=' + encodeURIComponent((e as Error).message),
+    );
+  }
+});
+
+adminUi.post('/social/generate-just-in', async (c) => {
+  try {
+    const { runJustInCarouselGenerate } = await import('./social.js');
+    const { post, warnings } = await runJustInCarouselGenerate();
+    const flash =
+      'JustIn-carousel aangemaakt.' +
       (warnings.length > 0 ? ' Let op: ' + warnings.join('; ') : '');
     return c.redirect(
       `/admin/social/${post.id}?flash=${encodeURIComponent(flash)}`,
@@ -3657,6 +4056,44 @@ adminUi.post('/social/:id/approve', async (c) => {
   return c.redirect(
     '/admin/social?flash=' + encodeURIComponent('Goedgekeurd — wacht op publish-cron'),
   );
+});
+
+/**
+ * Goedkeuren + direct publiceren in één klik. Handig voor ad-hoc
+ * posts waar je niet op de geplande cron-tijd wilt wachten — én voor
+ * snel debuggen van IG API-issues. Faalt de publish, dan blijft de
+ * status 'failed' staan (zoals runPublish doet) zodat je 't kan
+ * retryen.
+ */
+adminUi.post('/social/:id/approve-and-publish', async (c) => {
+  const id = c.req.param('id');
+  const [updated] = await db
+    .update(schema.socialPosts)
+    .set({ status: 'approved', updatedAt: new Date() })
+    .where(
+      and(
+        eq(schema.socialPosts.id, id),
+        eq(schema.socialPosts.status, 'draft'),
+      ),
+    )
+    .returning();
+  if (!updated) {
+    return c.redirect(
+      '/admin/social?error=' +
+        encodeURIComponent('Alleen concepten kunnen worden goedgekeurd'),
+    );
+  }
+  try {
+    const { igMediaId } = await runPublish(id);
+    return c.redirect(
+      `/admin/social/${id}?flash=` +
+        encodeURIComponent(`Gepubliceerd op Instagram (media-id ${igMediaId})`),
+    );
+  } catch (e) {
+    return c.redirect(
+      `/admin/social/${id}?error=` + encodeURIComponent((e as Error).message),
+    );
+  }
 });
 
 adminUi.post('/social/:id/publish', async (c) => {
@@ -3805,7 +4242,9 @@ adminUi.post('/social/:id/regenerate', async (c) => {
     const themeKey =
       (existing.meta?.themeKey as string | undefined) ?? existing.slot;
     const theme =
-      getThemeByKey(themeKey) ?? getThemeForDate(new Date());
+      getThemeByKey(themeKey) ??
+      getThemeForDate(new Date()) ??
+      THEMES[0]; // weekend → fallback op eerste theme i.p.v. crash
     await runGenerate(theme, {
       existingId: id,
       skipIds: accumulated,

@@ -20,7 +20,7 @@ import { fontFamily } from '@/theme/tokens';
 // 3-op-een-rij in een 393px iPhone-viewport: 393 - 44 (rail-padding
 // 22×2) = 349, minus 2 gaps van 10 = 329, /3 ≈ 109 → 108 voor wat
 // adem.
-const SQUARE_CARD_WIDTH = 108;
+export const SQUARE_CARD_WIDTH = 108;
 
 export function VenueSquareRailCard({
   slug,

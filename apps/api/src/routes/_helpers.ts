@@ -124,7 +124,7 @@ export async function buildFriendsByOccurrence(
     );
   const favoritedMe = new Set(favoritedByRows.map((r) => r.ownerId));
 
-  const rows = await db
+  const savedRows = await db
     .select({
       occurrenceId: schema.saves.occurrenceId,
       id: schema.users.id,
@@ -143,11 +143,55 @@ export async function buildFriendsByOccurrence(
       )
     );
 
-  for (const r of rows) {
-    // Gate: 'favorites'-visibility verlangt dat de owner mij in z'n
-    // favorieten heeft staan. 'friends' zien alle vrienden zonder verdere
-    // check.
-    if (r.savesVisibility === 'favorites' && !favoritedMe.has(r.id)) continue;
+  // Friends die 'going' hebben geantwoord op een (niet-revoked) invitation
+  // voor deze occurrence. Een vriend die jouw invite accepteert verschijnt
+  // op detail (crew) — diezelfde signal hoort ook op de lijst-pill. Anders
+  // zie je op /clubs of /live alleen je vriend als-ie zelf saved, maar
+  // mist je 'm als-ie alleen RSVP'd.
+  const goingRows = await db
+    .select({
+      occurrenceId: schema.invitations.occurrenceId,
+      id: schema.users.id,
+      name: schema.users.name,
+      handle: schema.users.handle,
+      avatarUrl: schema.users.avatarUrl,
+      savesVisibility: schema.users.savesVisibility,
+    })
+    .from(schema.invitationResponses)
+    .innerJoin(
+      schema.invitations,
+      eq(schema.invitations.id, schema.invitationResponses.invitationId)
+    )
+    .innerJoin(
+      schema.users,
+      eq(schema.users.id, schema.invitationResponses.userId)
+    )
+    .where(
+      and(
+        eq(schema.invitationResponses.status, 'going'),
+        inArray(schema.invitationResponses.userId, friendIds),
+        isNull(schema.invitations.revokedAt),
+        inArray(schema.invitations.occurrenceId, occurrenceIds),
+        inArray(schema.users.savesVisibility, ['friends', 'favorites'])
+      )
+    );
+
+  // Dedupe per occurrence: een vriend die zowel saved als 'going' is, telt
+  // één keer. Set per occurrence-id over user-ids.
+  const seenByOcc = new Map<string, Set<string>>();
+  const addRow = (r: {
+    occurrenceId: string;
+    id: string;
+    name: string;
+    handle: string | null;
+    avatarUrl: string | null;
+    savesVisibility: 'friends' | 'favorites' | 'private';
+  }) => {
+    if (r.savesVisibility === 'favorites' && !favoritedMe.has(r.id)) return;
+    const seen = seenByOcc.get(r.occurrenceId) ?? new Set<string>();
+    if (seen.has(r.id)) return;
+    seen.add(r.id);
+    seenByOcc.set(r.occurrenceId, seen);
     const entry = map.get(r.occurrenceId) ?? { friends: [], count: 0 };
     entry.count += 1;
     if (entry.friends.length < FRIEND_PILL_LIMIT) {
@@ -159,7 +203,9 @@ export async function buildFriendsByOccurrence(
       });
     }
     map.set(r.occurrenceId, entry);
-  }
+  };
+  for (const r of savedRows) addRow(r);
+  for (const r of goingRows) addRow(r);
   for (const entry of map.values()) {
     entry.friends.sort((a, b) => a.name.localeCompare(b.name));
   }

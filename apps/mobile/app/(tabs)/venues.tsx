@@ -45,7 +45,6 @@ import { useLocale, useT, type Locale } from '@/lib/i18n';
 import { useVenues, useVenueSubtypes } from '@/lib/queries';
 import { useTabDoubleTap } from '@/lib/useTabDoubleTap';
 import { useMode, useRoles } from '@/store/mode';
-import { useResetFiltersOnTabBlur } from '@/lib/useResetFiltersOnTabBlur';
 import { useVenuesFilters } from '@/store/venuesFilters';
 import {
   isSavedVenueSearchActive,
@@ -160,19 +159,12 @@ export default function Venues() {
   const setActiveScene = useVenuesFilters((s) => s.setActiveScene);
   const setActiveSubtypes = useVenuesFilters((s) => s.setActiveSubtypes);
   const setOnlyVolgend = useVenuesFilters((s) => s.setOnlyVolgend);
-  const resetFilters = useVenuesFilters((s) => s.reset);
 
-  // Stack-persistent filter-state: reset bij tab-wissel, behoud bij
-  // tap op een venue → terug. markPush wordt aangeroepen vóór elke
-  // navigatie naar de venue-detail.
-  const markPush = useResetFiltersOnTabBlur(resetFilters);
-  const onVenueTap = useCallback(
-    (slug: string) => {
-      markPush();
-      router.push(`/venue/${slug}` as never);
-    },
-    [markPush]
-  );
+  // Filter-state blijft staan binnen de app-session — geen reset op
+  // tab-blur. Cold launch reset vanzelf (geen AsyncStorage-persist).
+  const onVenueTap = useCallback((slug: string) => {
+    router.push(`/venue/${slug}` as never);
+  }, []);
 
   const [debouncedQ, setDebouncedQ] = useState(q.trim());
   useEffect(() => {
@@ -497,10 +489,10 @@ function FollowBadge({
       : palette.red
     : roles.fgPlaceholder;
   return (
-    <View style={[styles.followBadge, { borderColor: `${tone}80` }]}>
+    <View style={styles.followBadge}>
       <Ionicons
-        name={isVolgen ? 'heart' : 'ban-outline'}
-        size={12}
+        name={isVolgen ? 'bookmark' : 'ban-outline'}
+        size={18}
         color={tone}
       />
     </View>
@@ -541,41 +533,13 @@ function ChipRow({
   const isNacht = mode === 'nacht';
   const t = useT();
   const locale = useLocale();
-  const [focused, setFocused] = useState(false);
   const [filterOpen, setFilterOpen] = useState(false);
-  const inputRef = useRef<TextInput>(null);
   const saved = useSavedVenueSearches();
   const removeSaved = useRemoveSavedVenueSearch();
-  // Dubbele tap op de Venues-tab = zoekveld leegmaken + focussen.
-  useTabDoubleTap(() => {
-    onQuery('');
-    inputRef.current?.focus();
-  });
-  // Blur bij scherm-blur zodat het keyboard niet open blijft staan
-  // wanneer je naar een andere tab of detail-pagina wisselt.
-  useFocusEffect(
-    useCallback(() => {
-      return () => inputRef.current?.blur();
-    }, [])
-  );
-
-  const open = focused || query.length > 0;
-  const COLLAPSED_W = 44;
-  const MIN_OPEN_W = 130;
-  const MAX_OPEN_W = 260;
-  const textWidthEstimate = 44 + query.length * 8 + 18;
-  const width = !open
-    ? COLLAPSED_W
-    : Math.min(MAX_OPEN_W, Math.max(MIN_OPEN_W, textWidthEstimate));
-
-  const onIconPress = () => {
-    if (open) {
-      onQuery('');
-      inputRef.current?.blur();
-    } else {
-      inputRef.current?.focus();
-    }
-  };
+  // Text-search staat sinds de globale SearchOverlay op /avond niet
+  // meer in de chip-rij hier — zoeken op woord doe je daar. Filter-
+  // state houdt nog wel een `q`-veld voor backwards compat met oude
+  // saved-searches.
 
   // Volgen-toggle telt niet mee in de filter-count omdat 'ie nu een
   // quick-chip is buiten het filter-sheet (zelfde patroon als Vrienden/
@@ -674,47 +638,6 @@ function ChipRow({
         contentContainerStyle={styles.chipRow}
         keyboardShouldPersistTaps="handled"
       >
-        <View
-          style={[
-            styles.searchChip,
-            {
-              backgroundColor: isNacht ? palette.noir2 : palette.paper2,
-              borderColor: isNacht ? '#2a2a2d' : palette.paper,
-              width,
-              paddingHorizontal: open ? 14 : 0,
-              gap: open ? 8 : 0,
-              justifyContent: open ? 'flex-start' : 'center',
-            },
-          ]}
-        >
-          <Pressable onPress={onIconPress} hitSlop={6} style={styles.searchIcon}>
-            <Ionicons
-              name={open ? 'close' : 'search'}
-              size={18}
-              color={roles.fgMuted}
-            />
-          </Pressable>
-          <TextInput
-            ref={inputRef}
-            value={query}
-            onChangeText={onQuery}
-            onFocus={() => setFocused(true)}
-            onBlur={() => setFocused(false)}
-            placeholder={open ? t('ZOEK', 'SEARCH') : ''}
-            placeholderTextColor={roles.fgPlaceholder}
-            autoCapitalize="characters"
-            autoCorrect={false}
-            returnKeyType="search"
-            style={[
-              styles.searchInput,
-              {
-                color: roles.fg,
-                flex: open ? 1 : 0,
-                width: open ? undefined : 0,
-              },
-            ]}
-          />
-        </View>
         <Pressable
           onPress={() => {
             softTap();
@@ -724,12 +647,12 @@ function ChipRow({
             styles.catChip,
             {
               borderColor: filterActive
-                ? roles.fg
+                ? roles.accent
                 : isNacht
                   ? '#2a2a2d'
                   : palette.paper,
               backgroundColor: filterActive
-                ? roles.fg
+                ? `${isNacht ? palette.acid : palette.red}1f`
                 : isNacht
                   ? palette.noir2
                   : palette.paper2,
@@ -741,12 +664,12 @@ function ChipRow({
           <Ionicons
             name="options-outline"
             size={16}
-            color={filterActive ? roles.bg : roles.fgMuted}
+            color={filterActive ? roles.accent : roles.fgMuted}
           />
           <Text
             style={[
               styles.catChipText,
-              { color: filterActive ? roles.bg : roles.fgMuted },
+              { color: filterActive ? roles.accent : roles.fgMuted },
             ]}
           >
             {filterLabel}
@@ -767,12 +690,12 @@ function ChipRow({
               styles.volgendToggle,
               {
                 borderColor: onlyVolgend
-                  ? roles.fg
+                  ? roles.accent
                   : isNacht
                     ? '#2a2a2d'
                     : palette.paper,
                 backgroundColor: onlyVolgend
-                  ? roles.fg
+                  ? `${isNacht ? palette.acid : palette.red}1f`
                   : isNacht
                     ? palette.noir2
                     : palette.paper2,
@@ -780,9 +703,9 @@ function ChipRow({
             ]}
           >
             <Ionicons
-              name={onlyVolgend ? 'heart' : 'heart-outline'}
+              name={onlyVolgend ? 'bookmark' : 'bookmark-outline'}
               size={14}
-              color={onlyVolgend ? roles.bg : roles.fgMuted}
+              color={onlyVolgend ? roles.accent : roles.fgMuted}
             />
           </Pressable>
         )}
@@ -815,11 +738,6 @@ function ChipRow({
                 },
               ]}
             >
-              <Ionicons
-                name="bookmark"
-                size={11}
-                color={active ? roles.accent : roles.fgMuted}
-              />
               <Text
                 style={[
                   styles.catChipText,
@@ -1283,14 +1201,16 @@ function FilterSheet({
             }}
             disabled={filterCount === 0}
             style={[
-              styles.sheetIconBtn,
+              styles.sheetSaveBtn,
               {
                 borderColor: roles.bgChip,
                 opacity: filterCount === 0 ? 0.4 : 1,
               },
             ]}
           >
-            <Ionicons name="bookmark-outline" size={18} color={roles.accent} />
+            <Text style={[styles.sheetSaveText, { color: roles.accent }]}>
+              {t('Opslaan', 'Save')}
+            </Text>
           </Pressable>
           <Pressable
             accessibilityLabel={t('Sluit filter', 'Close filter')}
@@ -1523,8 +1443,6 @@ const styles = StyleSheet.create({
   followBadge: {
     width: 26,
     height: 26,
-    borderRadius: 999,
-    borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 4,
@@ -1664,6 +1582,21 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  // Save-knop in de filter-sheet — pill met tekst-label "Opslaan"
+  // i.p.v. een icoon.
+  sheetSaveBtn: {
+    height: 48,
+    paddingHorizontal: 18,
+    borderRadius: 999,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sheetSaveText: {
+    fontFamily: fontFamily.medium,
+    fontSize: 14,
+    letterSpacing: -0.14,
   },
   sheetClearText: {
     fontFamily: fontFamily.medium,

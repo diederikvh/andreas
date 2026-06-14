@@ -1,5 +1,7 @@
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
+import MaskedView from '@react-native-masked-view/masked-view';
 import { BlurView } from 'expo-blur';
+import { LinearGradient } from 'expo-linear-gradient';
 import type { ComponentType } from 'react';
 import { useEffect } from 'react';
 import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
@@ -131,14 +133,56 @@ export function TabBar({ state, navigation }: BottomTabBarProps) {
   // /kaart navigeert.
   if (onHiddenRoute) return null;
 
+  // Verloop-blur áchter de pill — start vlak onder de pill-top en
+  // loopt verder naar beneden tot het schermrand. Vangt taps op zodat
+  // je niet per ongeluk op content tikt die zomaar onder de pill ligt.
+  // Vroegere variant zat ver boven de pill en gaf 'n zware bovenrand;
+  // nu compact zodat content erboven helder blijft.
+  const fadeHeight = insets.bottom + 65;
+  const tintNacht = 'rgba(10,10,11,0.8)';
+  const tintDag = 'rgba(245,241,232,0.88)';
+  const fadeTint = mode === 'nacht' ? tintNacht : tintDag;
+
   return (
-    <View style={[styles.bar, { bottom, borderColor: border }]}>
-      <BlurView
-        intensity={40}
-        tint={mode === 'nacht' ? 'dark' : 'light'}
-        style={StyleSheet.absoluteFill}
-      />
-      <View style={[StyleSheet.absoluteFill, { backgroundColor: tint }]} />
+    <>
+      <View
+        style={[styles.fade, { height: fadeHeight }]}
+        pointerEvents="auto"
+      >
+        {Platform.OS === 'android' ? (
+          <LinearGradient
+            colors={['transparent', fadeTint, fadeTint]}
+            locations={[0, 0.6, 1]}
+            style={StyleSheet.absoluteFill}
+            pointerEvents="none"
+          />
+        ) : (
+          <MaskedView
+            style={StyleSheet.absoluteFill}
+            pointerEvents="none"
+            maskElement={
+              <LinearGradient
+                colors={['transparent', '#000', '#000']}
+                locations={[0, 0.6, 1]}
+                style={StyleSheet.absoluteFill}
+              />
+            }
+          >
+            <BlurView
+              intensity={32}
+              tint={mode === 'nacht' ? 'dark' : 'light'}
+              style={StyleSheet.absoluteFill}
+            />
+          </MaskedView>
+        )}
+      </View>
+      <View style={[styles.bar, { bottom, borderColor: border }]}>
+        <BlurView
+          intensity={40}
+          tint={mode === 'nacht' ? 'dark' : 'light'}
+          style={StyleSheet.absoluteFill}
+        />
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: tint }]} />
       <Animated.View
         pointerEvents="none"
         style={[styles.blob, blobStyle, { backgroundColor: roles.accent }]}
@@ -192,11 +236,21 @@ export function TabBar({ state, navigation }: BottomTabBarProps) {
           </Pressable>
         );
       })}
-    </View>
+      </View>
+    </>
   );
 }
 
 const styles = StyleSheet.create({
+  // Verloop-vlak áchter de pill — absoluut onderaan over de volle
+  // breedte, fade van transparent (boven) naar getinte blur (onder).
+  fade: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    overflow: 'hidden',
+  },
   bar: {
     position: 'absolute',
     left: 20,

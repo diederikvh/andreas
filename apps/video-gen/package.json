@@ -1,0 +1,25 @@
+{
+  "name": "@andreas/video-gen",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "studio": "remotion studio src/index.ts",
+    "render": "remotion render src/index.ts DailyFilms5 out/films.mp4 --props=./src/data/sample.json",
+    "render:live": "remotion render src/index.ts DailyFilms5 out/films.mp4 --props=./src/data/today.json",
+    "render:justin": "remotion render src/index.ts JustIn out/justin.mp4 --props=./src/data/sample-justin.json",
+    "render:justin:live": "remotion render src/index.ts JustIn out/justin.mp4 --props=./src/data/justin-today.json",
+    "render:still": "remotion still src/index.ts DailyFilms5 out/preview.png --props=./src/data/sample.json --frame=24"
+  },
+  "dependencies": {
+    "@remotion/cli": "4.0.273",
+    "@remotion/renderer": "4.0.273",
+    "react": "19.1.0",
+    "react-dom": "19.1.0",
+    "remotion": "4.0.273"
+  },
+  "devDependencies": {
+    "@types/react": "19.1.0",
+    "typescript": "5.6.3"
+  }
+}

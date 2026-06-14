@@ -14,6 +14,7 @@
 import { eq } from 'drizzle-orm';
 
 import { db, schema } from '../db/index.js';
+import { parseAmsterdamLocal } from './_amsterdam-tz.js';
 import { fetchTextWithTimeout } from './_fetch.js';
 import {
   findOrCreateFilmEvent,
@@ -193,10 +194,14 @@ function resolveDate(
 ): Date {
   const now = new Date(nowMs);
   let year = now.getFullYear();
-  let d = new Date(year, monthIdx, day, hour, minute);
+  // Bouw Amsterdam-local Date — `new Date(y,m,d,h,mi)` gebruikt
+  // host-TZ, wat in een UTC-container een +2u shift veroorzaakt.
+  const iso = (y: number) =>
+    `${y}-${String(monthIdx + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}T${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}:00`;
+  let d = parseAmsterdamLocal(iso(year));
   if (d.getTime() < nowMs - 6 * 3600 * 1000) {
     year += 1;
-    d = new Date(year, monthIdx, day, hour, minute);
+    d = parseAmsterdamLocal(iso(year));
   }
   return d;
 }

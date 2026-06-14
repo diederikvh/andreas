@@ -111,24 +111,34 @@ function stripTags(s: string): string {
   return s.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
-/** Fetch Hipsy.nl event-page en pluk de `.description-content` tekst.
- *  Hipsy is een Livewire-app met de description statisch ge-render'd
- *  in een div met die class. Skipt de eerste "Over dit evenement"-header. */
-async function fetchHipsyDescription(eventUrl: string): Promise<string | null> {
+/** Fetch Hipsy.nl event-page → description + start-tijd. Hipsy
+ *  zet de tijd als "HH:MM tot HH:MM" in een `<div class="text-sm">`.
+ *  Zonder dit valt de scraper terug op default 19:00 — fout voor
+ *  events die om 18:00 of 20:00 starten. */
+async function fetchHipsyDetail(eventUrl: string): Promise<{
+  description: string | null;
+  startTime: { hour: number; minute: number } | null;
+}> {
   try {
     const r = await fetch(eventUrl, { headers: { 'user-agent': UA } });
-    if (!r.ok) return null;
+    if (!r.ok) return { description: null, startTime: null };
     const html = await r.text();
     const m = html.match(/<div class="description-content[^"]*">([\s\S]*?)<div class="mt-4/);
-    if (!m) return null;
-    // Strip de "Over dit evenement" header-paragraaf
-    const inner = m[1]
-      .replace(/<p[^>]+>Over dit evenement<\/p>/i, '')
-      .replace(/<br\s*\/?>/g, '\n');
-    const text = decodeEntities(stripTags(inner));
-    return text.slice(0, 800) || null;
+    let description: string | null = null;
+    if (m) {
+      const inner = m[1]
+        .replace(/<p[^>]+>Over dit evenement<\/p>/i, '')
+        .replace(/<br\s*\/?>/g, '\n');
+      const text = decodeEntities(stripTags(inner));
+      description = text.slice(0, 800) || null;
+    }
+    const timeM = html.match(/(\d{1,2}):(\d{2})\s+tot\s+\d{1,2}:\d{2}/);
+    const startTime = timeM
+      ? { hour: parseInt(timeM[1], 10), minute: parseInt(timeM[2], 10) }
+      : null;
+    return { description, startTime };
   } catch {
-    return null;
+    return { description: null, startTime: null };
   }
 }
 
@@ -212,12 +222,32 @@ export async function scrapeOdessa(_options?: {
 
       let enriched: Awaited<ReturnType<typeof enrichEvent>> | null = null;
 
+      // Hipsy event-detail altijd ophalen voor de echte start-tijd.
+      // Listing/card geeft alleen de datum (default 19:00) terwijl
+      // detail-page "HH:MM tot HH:MM" toont — voor Cacao-events
+      // bv. 18:00, voor late-night sessions 21:00.
+      const detail = await fetchHipsyDetail(card.ticketUrl);
+      let startsAt = card.startsAt;
+      if (detail.startTime) {
+        const parts = new Intl.DateTimeFormat('en-GB', {
+          timeZone: 'Europe/Amsterdam',
+          year: 'numeric', month: '2-digit', day: '2-digit',
+        }).formatToParts(card.startsAt);
+        const get = (t: string) => parts.find((p) => p.type === t)!.value;
+        const mo = parseInt(get('month'), 10);
+        const dst = mo >= 3 && mo <= 10;
+        const off = dst ? '+02:00' : '+01:00';
+        const hh = String(detail.startTime.hour).padStart(2, '0');
+        const mm = String(detail.startTime.minute).padStart(2, '0');
+        startsAt = new Date(`${get('year')}-${get('month')}-${get('day')}T${hh}:${mm}:00${off}`);
+      }
+
       if (!existing) {
         let imageUrl: string | null = null;
         if (card.imageUrl) {
           imageUrl = (await mirrorImage(card.imageUrl, card.hipsyId)) ?? card.imageUrl;
         }
-        const description = await fetchHipsyDescription(card.ticketUrl);
+        const description = detail.description;
 
         try {
           enriched = await enrichEvent({
@@ -231,7 +261,7 @@ export async function scrapeOdessa(_options?: {
         }
 
         const eventKind = refineKindByDuration(
-          enriched?.kind ?? 'show', card.startsAt, null,
+          enriched?.kind ?? 'show', startsAt, null,
         );
 
         try {
@@ -260,7 +290,7 @@ export async function scrapeOdessa(_options?: {
           .values({
             id: occurrenceId,
             eventId,
-            startsAt: card.startsAt,
+            startsAt,
             endsAt: null,
             priceCents: null,
             priceNote: existing ? null : (enriched?.priceNote ?? null),
@@ -271,7 +301,7 @@ export async function scrapeOdessa(_options?: {
           })
           .onConflictDoUpdate({
             target: schema.occurrences.id,
-            set: { startsAt: card.startsAt, ticketUrl: card.ticketUrl },
+            set: { startsAt, ticketUrl: card.ticketUrl },
           });
         result.occurrencesUpserted++;
       } catch (e) {

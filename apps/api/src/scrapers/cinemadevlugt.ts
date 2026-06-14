@@ -13,6 +13,7 @@
 import { eq } from 'drizzle-orm';
 
 import { db, schema } from '../db/index.js';
+import { parseAmsterdamLocal } from './_amsterdam-tz.js';
 import { fetchTextWithTimeout } from './_fetch.js';
 import {
   findOrCreateFilmEvent,
@@ -187,7 +188,9 @@ function parseShows(html: string, nowMs: number): Show[] {
     const year = parseInt(dmMatch[3], 10);
     const hour = parseInt(timeMatch[1], 10);
     const minute = parseInt(timeMatch[2], 10);
-    const startsAt = new Date(year, month, day, hour, minute);
+    // Amsterdam-local Date — host-TZ in Fly UTC zou +2u verschuiven.
+    const iso = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}T${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}:00`;
+    const startsAt = parseAmsterdamLocal(iso);
     if (startsAt.getTime() < nowMs - 6 * 3600 * 1000) continue;
     shows.push({
       id: showId,

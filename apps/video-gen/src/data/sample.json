@@ -1,0 +1,58 @@
+{
+  "themeKicker": "Film",
+  "themeTitle": "Donderdag 12 september",
+  "hook": "Films die je echt moet zien dit weekend in Amsterdam",
+  "overviewTitle": "Top 6 films deze week",
+  "hookUnits": [
+    { "role": "eyebrow", "text": "FILM" },
+    { "role": "countLead", "text": "TOP" },
+    { "role": "count", "text": "6" },
+    { "role": "headline", "text": "films in de filmhuizen" },
+    { "role": "meta", "text": "Amsterdam\n12–14 jun" }
+  ],
+  "audio": "audio/daily.mp3",
+  "picks": [
+    {
+      "imageUrl": "https://picsum.photos/seed/film1/1080/1350",
+      "title": "Past Lives",
+      "venueName": "Eye Filmmuseum",
+      "dateLabel": "do 12 sep",
+      "timeLabel": "21:15"
+    },
+    {
+      "imageUrl": "https://picsum.photos/seed/film2/1080/1350",
+      "title": "Anatomy of a Fall",
+      "venueName": "Kriterion",
+      "dateLabel": "do 12 sep",
+      "timeLabel": "20:00"
+    },
+    {
+      "imageUrl": "https://picsum.photos/seed/film3/1080/1350",
+      "title": "How to Have Sex",
+      "venueName": "De Uitkijk",
+      "dateLabel": "do 12 sep",
+      "timeLabel": "21:30"
+    },
+    {
+      "imageUrl": "https://picsum.photos/seed/film4/1080/1350",
+      "title": "Fallen Leaves",
+      "venueName": "Filmtheater Studio K",
+      "dateLabel": "do 12 sep",
+      "timeLabel": "19:45"
+    },
+    {
+      "imageUrl": "https://picsum.photos/seed/film5/1080/1350",
+      "title": "Killers of the Flower Moon",
+      "venueName": "Lab111",
+      "dateLabel": "do 12 sep",
+      "timeLabel": "20:30"
+    },
+    {
+      "imageUrl": "https://picsum.photos/seed/film6/1080/1350",
+      "title": "Perfect Days",
+      "venueName": "FC Hyena",
+      "dateLabel": "do 12 sep",
+      "timeLabel": "22:00"
+    }
+  ]
+}

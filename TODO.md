@@ -263,6 +263,92 @@ Geschat: ~150 regels backend, ~80 regels mobile, ~2-3u.
 
 ---
 
+## App-snapshot (2026-05-30)
+
+Quick recall van wat er in de app zit. Check dit eerst bij elke "kunnen we X toevoegen"-vraag — kans is groot dat het er al is.
+
+### Tabs (5 zichtbaar)
+1. **Avond** (homepage) — shortcut-row + content rails (For-You, Net binnen, Films, Clubs, Live, Theater, Kunst, vrienden-plannen, Op kaart).
+2. **Agenda** — full per-dag event-listing met filters.
+3. **Venues** — venue-directory met search + categorie-chips + follow-state per venue. Bovenaan een featured-Series-strook.
+4. **Social** — friends, requests, invitations, groups.
+5. **Kaart** — bereikbaar via `KaartBanner`-shortcut (niet als tab-bar item).
+
+### Shortcuts op Avond (8 stuks, horizontaal scrollable)
+- **Net binnen** → `/new` (recent-added events met badge-count voor unseen)
+- **Films** → `/films`
+- **Clubs** → `/clubs`
+- **Live concerten** → `/live`
+- **Op de planken** → `/theater`
+- **Hier en nu in beeld** → `/kaart`
+- **Vrienden plannen** → `/going` (combineert eigen saves + social feed)
+- **Wat is je mood** → `/op-gevoel` (Tinder-stijl swipe op events)
+
+### Deep routes
+- `/event/[id]` — detail met parallax hero + sticky title + CTA-dock + invite-modal
+- `/event/[id]/invite` — vrienden uitnodigen (checklist + share-link)
+- `/artist/[slug]` — bio + upcoming + streaming-links (Spotify/Apple/Bandcamp/YouTube)
+- `/venue/[slug]` — programma + follow-state + route-knop
+- `/series/[slug]` — festival/cyclus detail met hero + programma
+- `/friend/[id]` — vrienden-profiel met diens toekomstige saves
+- `/u/[handle]` — publiek profiel
+- `/group/[id]` + `/group/new` — group-planning (chat + gedeelde events)
+- `/invitation/[id]` — uitnodiging accept/decline
+- `/add-friend` — handle-search + QR-scanner
+- `/jij` — login + profiel-edit + **Smaak-Spiegel** + venue-follows
+- `/i/[token]` — invite-claim landing voor first-time users
+- `/e/[id]`, `/v/[slug]` — public share-pages (web)
+- `/going`, `/new`, `/clubs`, `/live`, `/theater`, `/films`, `/op-gevoel`, `/clubs`
+
+### Belangrijke features die er al ZIJN
+- **Recommendations** — `useForYouEvents` engine (scoring op saves+follows, niet ML), zichtbaar op Avond.
+- **Social feed** — `useSocialFeed` toont saves van vrienden, gebruikt in /going + Avond-rail.
+- **Smaak-spiegel** — `/jij` heeft een Letterboxd/Wrapped-stijl identity-mirror: top venues, top genres, weekday-distributie, monthly timeline, identity-zin gegenereerd uit aggregates. Server: [mirror.ts](apps/api/src/routes/mirror.ts).
+- **Mood-swiper** — `/op-gevoel` is een card-swiper (links=dismiss, rechts=save).
+- **Op-gevoel dismisses** — left-swipe verbergt event permanent; dismisses tellen mee in spiegel.
+- **Push** — `PushManager` + `expoPushTokens` tabel. Pushes worden gestuurd voor: friend-requests, invitations, group-events, share-invite-claims. ([push.ts](apps/api/src/push.ts))
+- **Inbox / in-app notificaties** — `InboxNotifier` + `InboxToast` componenten.
+- **Series/festivals** — Schema + UI staat (events_in_series M:N, /series/[slug] page, featured-toggle, auto-expiry op `endsAt`). Nu gevuld met ADE 2026 + Lenteballet 2026.
+- **Artist-data** — MusicBrainz enrichment + Spotify/Apple/Bandcamp/YouTube links. Lineup-items linken aan artist-records via fuzzy match (`_artists-enrich.ts`).
+- **Venue-follow** — `venue_follows.state` enum (volgen/blokken). Geblokte venues verdwijnen uit feeds.
+- **Mode + locale** — Nacht/Dag bewust-kiesbaar via DnSwitch. NL/EN via `useT()`.
+- **Share-invites met OG** — Andreas-X kruis + avatar in OG-image, lang-aware NL/EN, App Store + Play Store split per platform.
+
+### Wat er NIET in zit (audit-stand 30-05)
+- Artist-**follow** (alleen venue-follow bestaat).
+- "Geweest"-marker — onderscheid intentie (save) ↔ daadwerkelijk aanwezig.
+- Persoonlijke chronologische **timeline** ("waar je geweest bent").
+- **Mini-reviews / posts** onder events.
+- **Lists / curated collections** (Letterboxd-stijl).
+- **Donderdag-digest push** (push fires nu alleen op interacties, niet op tijdblok).
+- **Onboarding scene-pick** voor first-sessie pre-bootstrap.
+
+---
+
+## Feature-ideeën (uit audit 2026-05-30)
+
+Niet allemaal akkoord, niet allemaal nu — vóór bouw eerst beslissen. Geordend op verhouding impact/inspanning.
+
+### Hoge impact, kleine bouw
+1. **Artist-follow + "op tour"-push** — `artist_follows` tabel + knop op `/artist/[slug]`. Push wanneer een gevolgde artist een nieuwe occurrence krijgt (via scrape). Sluit Spotify-loopje: save show → vanzelf artist gevolgd → push 6 maanden later. Schat: 0.5 dag.
+2. **"Geweest"-marker** — na event-datum lichte prompt "ben je geweest?" → 1-tap toggle. Powert echte timeline + verrijkt spiegel (intentie ↔ aanwezigheid) + maakt social-feed signaal sterker ("Roos GING" > "Roos saved"). Schat: 1 dag (schema-kolom + UI-prompt + mirror-aanpassing).
+3. **Donderdag-digest push** — scheduler: donderdag 17:00 voor users met ≥1 save in komend weekend. "Vanavond + dit weekend: X, Y, Z in jouw saves/gevolgde venues". Habit-former, geen nieuwe data nodig. Schat: 0.5 dag.
+
+### Medium impact
+4. **Timeline / persoonlijke geschiedenis** — `/jij/timeline` (of `/jij/geschiedenis`) met chronologische "geweest"-events: venue, datum, lineup, save-bron. Mini-Letterboxd diary. Hangt af van #2. Schat: 1 dag (na #2).
+5. **Mini-reviews** — optionele ⭐+1-regeltje na event-bezoek. Vrienden zien dit in /going-feed. Maakt social-feed kwalitatief (nu puur kwantitatief). Schat: 1 dag.
+6. **Lists / curated collections** — user-curated bundles, Letterboxd-stijl ("Hidden gems van mij" / "Must-see jazz 2026"). Sociale + deelbaar. Schat: 2 dagen (CRUD + sharing).
+
+### Lager / optioneel
+7. **Onboarding scene-pick** — eerste-sessie vraag "wat is je scene?" (techno/jazz/klassiek/theater/queer/improv) → preselect-follows + bootstrap recommendations. Lost koud-start-probleem op nieuwe users op. Schat: 0.5 dag.
+8. **Curated editorial / "tip van Diederik"** — wekelijks één highlighted card op Avond, met curator-voice. Schat: trivial UI, maar vereist content-discipline.
+9. **Push voor "vanavond in jouw saves"** — dag-van push als saved event vandaag plaatsvindt. Aanvullend op #3. Schat: 0.5 dag.
+
+### Aanbevolen volgorde als je iets bouwt
+1+2 versterken elkaar (geweest-marker + artist-follow). #3 is een aparte hefboom op retention zonder feature-werk. De rest is bonus.
+
+---
+
 ## Niet meegenomen / opzettelijk gesloopt
 
 - **Custom Andreas-iconen** — Ionicons doet het werk, custom set is design-iteratie.

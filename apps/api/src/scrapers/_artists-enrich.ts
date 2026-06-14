@@ -261,12 +261,48 @@ export async function enrichLineupArtists(
     allArtists.map((a) => [a.name.toLowerCase(), a])
   );
 
-  // Worklist: per unieke naam → existing record OR need MB-lookup.
+  // Worklist:
+  //  - Bestaande namen worden ALTIJD in `resolved` gezet (geen MB-call
+  //    nodig) zodat hun lineup-items in nieuwe events gepatched worden.
+  //  - Voor nieuwe + stale namen geldt de cron-limit. Sorteer op
+  //    aantal callsites zodat festival-headliners met 3 shows vóór
+  //    een eenmalige opener komen — onder een limit dekken we zo de
+  //    meeste app-pageviews. Tie-break alfabetisch (stabiel).
   const entries = [...nameToCallsites.values()];
-  const todo = limit ? entries.slice(0, limit) : entries;
+  const todo = entries
+    .filter((e) => {
+      const ex = existingByLower.get(e.lower);
+      if (!ex) return true; // nieuw
+      const stale =
+        !ex.enrichedAt ||
+        ex.enrichedAt.getTime() < Date.now() - RETRY_AFTER_DAYS * 86_400_000;
+      return stale;
+    })
+    .sort((a, b) => {
+      if (b.sites.length !== a.sites.length) return b.sites.length - a.sites.length;
+      return a.lower.localeCompare(b.lower);
+    })
+    .slice(0, limit ?? Number.MAX_SAFE_INTEGER);
 
   // Resolved namen → artistId (voor de lineup-patch-stap).
   const resolved = new Map<string, string>(); // lower → artistId
+
+  // Pre-resolve: alle bestaande artists die we deze run NIET bij MB
+  // gaan re-enrichen (te vers) tóch in resolved zetten, zodat hun
+  // lineup-items in nieuwe events alsnog een artistId krijgen.
+  // Zonder dit zou een Spotify-gelinkte "Trentemøller" niet aan een
+  // net-gescrapete-Paradiso-show gekoppeld worden enkel omdat 'ie
+  // buiten de cron-limit valt.
+  for (const entry of entries) {
+    const ex = existingByLower.get(entry.lower);
+    if (!ex) continue;
+    const stale =
+      !ex.enrichedAt ||
+      ex.enrichedAt.getTime() < Date.now() - RETRY_AFTER_DAYS * 86_400_000;
+    if (stale) continue; // wordt in main loop afgehandeld
+    resolved.set(entry.lower, ex.id);
+    result.alreadyEnriched += 1;
+  }
 
   for (let i = 0; i < todo.length; i += 1) {
     const entry = todo[i];
@@ -292,20 +328,39 @@ export async function enrichLineupArtists(
         break;
       }
       if (data.mbid) result.mbHit += 1;
-      await db
-        .update(schema.artists)
-        .set({
-          mbid: data.mbid,
-          description: data.description ?? null,
-          spotifyUrl: data.spotifyUrl,
-          appleMusicUrl: data.appleMusicUrl,
-          bandcampUrl: data.bandcampUrl,
-          youtubeUrl: data.youtubeUrl,
-          officialUrl: data.officialUrl,
-          genres: data.genres,
-          enrichedAt: new Date(),
-        })
-        .where(eq(schema.artists.id, existing.id));
+      try {
+        await db
+          .update(schema.artists)
+          .set({
+            mbid: data.mbid,
+            description: data.description ?? null,
+            spotifyUrl: data.spotifyUrl,
+            appleMusicUrl: data.appleMusicUrl,
+            bandcampUrl: data.bandcampUrl,
+            youtubeUrl: data.youtubeUrl,
+            officialUrl: data.officialUrl,
+            genres: data.genres,
+            enrichedAt: new Date(),
+          })
+          .where(eq(schema.artists.id, existing.id));
+      } catch {
+        // Unique-violation op mbid: deze MB-record hangt al aan een
+        // andere artist-row (bv. NL/EN-spelling van dezelfde act).
+        // Update zonder mbid zodat de overige enrich-data wel landt.
+        await db
+          .update(schema.artists)
+          .set({
+            description: data.description ?? null,
+            spotifyUrl: data.spotifyUrl,
+            appleMusicUrl: data.appleMusicUrl,
+            bandcampUrl: data.bandcampUrl,
+            youtubeUrl: data.youtubeUrl,
+            officialUrl: data.officialUrl,
+            genres: data.genres,
+            enrichedAt: new Date(),
+          })
+          .where(eq(schema.artists.id, existing.id));
+      }
       result.artistsUpdated += 1;
       resolved.set(entry.lower, existing.id);
     } else {

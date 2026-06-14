@@ -54,7 +54,6 @@ import {
   useAgendaDays,
   useFriends,
 } from '@/lib/queries';
-import { useResetFiltersOnTabBlur } from '@/lib/useResetFiltersOnTabBlur';
 import { useTabDoubleTap } from '@/lib/useTabDoubleTap';
 import { useAgendaFilters } from '@/store/agendaFilters';
 import { useMode, useModeStore, useRoles } from '@/store/mode';
@@ -188,18 +187,14 @@ export default function Agenda() {
   const setActiveBlocks = useAgendaFilters((s) => s.setActiveBlocks);
   const setActiveCats = useAgendaFilters((s) => s.setActiveCats);
   const setActiveTypes = useAgendaFilters((s) => s.setActiveTypes);
-  const resetFilters = useAgendaFilters((s) => s.reset);
 
-  // Stack-persistent filter-state: reset bij tab-wissel, behoud bij
-  // tap-naar-detail-en-terug.
-  const markPush = useResetFiltersOnTabBlur(resetFilters);
-  const onRowTap = useCallback(
-    (path: string) => {
-      markPush();
-      router.push(path as never);
-    },
-    [markPush]
-  );
+  // Filter-state blijft staan voor de duur van de app-session — geen
+  // reset op tab-blur. Accent-styling op chip-row maakt zichtbaar wat
+  // actief is; cold launch reset vanzelf omdat de Zustand store niet
+  // gepersist is naar AsyncStorage.
+  const onRowTap = useCallback((path: string) => {
+    router.push(path as never);
+  }, []);
 
   // Deeplink-merge: Vandaag's "Meer →"-knop pusht naar /agenda?cat=X,
   // genre-chips op een vriend-profiel pushen naar /agenda?q=techno.
@@ -567,42 +562,13 @@ function ChipRow({
   const isNacht = mode === 'nacht';
   const t = useT();
   const locale = useLocale();
-  const [focused, setFocused] = useState(false);
   const [filterOpen, setFilterOpen] = useState(false);
-  const inputRef = useRef<TextInput>(null);
   const saved = useSavedSearches();
   const removeSaved = useRemoveSavedSearch();
-  // Dubbele tap op de Agenda-tab = zoekveld leegmaken + focussen.
-  useTabDoubleTap(() => {
-    onQuery('');
-    inputRef.current?.focus();
-  });
-  // Blur bij scherm-blur zodat het keyboard niet open blijft staan
-  // wanneer je naar een andere tab of detail-pagina wisselt.
-  useFocusEffect(
-    useCallback(() => {
-      return () => inputRef.current?.blur();
-    }, [])
-  );
-
-  // Het zoekveld is "open" zodra het focus heeft of als er tekst staat.
-  const open = focused || query.length > 0;
-  const COLLAPSED_W = 44;
-  const MIN_OPEN_W = 130;
-  const MAX_OPEN_W = 260;
-  const textWidthEstimate = 44 + query.length * 8 + 18;
-  const width = !open
-    ? COLLAPSED_W
-    : Math.min(MAX_OPEN_W, Math.max(MIN_OPEN_W, textWidthEstimate));
-
-  const onIconPress = () => {
-    if (open) {
-      onQuery('');
-      inputRef.current?.blur();
-    } else {
-      inputRef.current?.focus();
-    }
-  };
+  // Text-search staat sinds de globale SearchOverlay op /avond niet
+  // meer in de chip-rij hier — zoeken op woord doe je daar. De
+  // filter-state houdt nog wel een `q`-veld voor backwards compat met
+  // oude saved-searches.
 
   const filterCount =
     activeCats.length + activeBlocks.length + activeTypes.length;
@@ -694,47 +660,6 @@ function ChipRow({
         contentContainerStyle={styles.chipRow}
         keyboardShouldPersistTaps="handled"
       >
-        <View
-          style={[
-            styles.searchChip,
-            {
-              backgroundColor: isNacht ? palette.noir2 : palette.paper2,
-              borderColor: isNacht ? '#2a2a2d' : palette.paper,
-              width,
-              paddingHorizontal: open ? 14 : 0,
-              gap: open ? 8 : 0,
-              justifyContent: open ? 'flex-start' : 'center',
-            },
-          ]}
-        >
-          <Pressable onPress={onIconPress} hitSlop={6} style={styles.searchIcon}>
-            <Ionicons
-              name={open ? 'close' : 'search'}
-              size={18}
-              color={roles.fgMuted}
-            />
-          </Pressable>
-          <TextInput
-            ref={inputRef}
-            value={query}
-            onChangeText={onQuery}
-            onFocus={() => setFocused(true)}
-            onBlur={() => setFocused(false)}
-            placeholder={open ? t('ZOEK', 'SEARCH') : ''}
-            placeholderTextColor={roles.fgPlaceholder}
-            autoCapitalize="characters"
-            autoCorrect={false}
-            returnKeyType="search"
-            style={[
-              styles.searchInput,
-              {
-                color: roles.fg,
-                flex: open ? 1 : 0,
-                width: open ? undefined : 0,
-              },
-            ]}
-          />
-        </View>
         <Pressable
           onPress={() => {
             softTap();
@@ -747,12 +672,12 @@ function ChipRow({
             styles.catChip,
             {
               borderColor: filterActive
-                ? roles.fg
+                ? roles.accent
                 : isNacht
                   ? '#2a2a2d'
                   : palette.paper,
               backgroundColor: filterActive
-                ? roles.fg
+                ? `${isNacht ? palette.acid : palette.red}1f`
                 : isNacht
                   ? palette.noir2
                   : palette.paper2,
@@ -764,56 +689,25 @@ function ChipRow({
           <Ionicons
             name="options-outline"
             size={16}
-            color={filterActive ? roles.bg : roles.fgMuted}
+            color={filterActive ? roles.accent : roles.fgMuted}
           />
           <Text
             style={[
               styles.catChipText,
-              { color: filterActive ? roles.bg : roles.fgMuted },
+              { color: filterActive ? roles.accent : roles.fgMuted },
             ]}
           >
             {filterLabel}
           </Text>
         </Pressable>
-        {showFriendsChip && (
-          <Pressable
-            accessibilityLabel={
-              onlyFriends
-                ? t('Toon alle events', 'Show all events')
-                : t('Alleen events met vrienden', 'Only events with friends')
-            }
-            onPress={onToggleFriends}
-            style={[
-              styles.friendsToggle,
-              {
-                borderColor: onlyFriends
-                  ? roles.fg
-                  : isNacht
-                    ? '#2a2a2d'
-                    : palette.paper,
-                backgroundColor: onlyFriends
-                  ? roles.fg
-                  : isNacht
-                    ? palette.noir2
-                    : palette.paper2,
-              },
-            ]}
-          >
-            <Ionicons
-              name="people"
-              size={14}
-              color={onlyFriends ? roles.bg : roles.fgMuted}
-            />
-          </Pressable>
-        )}
         {showFavoritesChip && (
           <Pressable
             accessibilityLabel={
               onlyFavorites
                 ? t('Toon alle events', 'Show all events')
                 : t(
-                    'Alleen events bij favoriete venues',
-                    'Only events at favourite venues'
+                    'Alleen events bij venues die ik volg',
+                    'Only events at venues I follow'
                   )
             }
             onPress={onToggleFavorites}
@@ -821,12 +715,12 @@ function ChipRow({
               styles.friendsToggle,
               {
                 borderColor: onlyFavorites
-                  ? roles.fg
+                  ? roles.accent
                   : isNacht
                     ? '#2a2a2d'
                     : palette.paper,
                 backgroundColor: onlyFavorites
-                  ? roles.fg
+                  ? `${isNacht ? palette.acid : palette.red}1f`
                   : isNacht
                     ? palette.noir2
                     : palette.paper2,
@@ -834,9 +728,9 @@ function ChipRow({
             ]}
           >
             <Ionicons
-              name={onlyFavorites ? 'heart' : 'heart-outline'}
+              name={onlyFavorites ? 'bookmark' : 'bookmark-outline'}
               size={14}
-              color={onlyFavorites ? roles.bg : roles.fgMuted}
+              color={onlyFavorites ? roles.accent : roles.fgMuted}
             />
           </Pressable>
         )}
@@ -869,11 +763,6 @@ function ChipRow({
                 },
               ]}
             >
-              <Ionicons
-                name="bookmark"
-                size={11}
-                color={active ? roles.accent : roles.fgMuted}
-              />
               <Text
                 style={[
                   styles.catChipText,
@@ -1185,18 +1074,16 @@ function FilterSheet({
             }}
             disabled={filterCount === 0}
             style={[
-              styles.sheetIconBtn,
+              styles.sheetSaveBtn,
               {
                 borderColor: roles.bgChip,
                 opacity: filterCount === 0 ? 0.4 : 1,
               },
             ]}
           >
-            <Ionicons
-              name="bookmark-outline"
-              size={18}
-              color={roles.accent}
-            />
+            <Text style={[styles.sheetSaveText, { color: roles.accent }]}>
+              {t('Opslaan', 'Save')}
+            </Text>
           </Pressable>
           <Pressable
             accessibilityLabel={t('Sluit filter', 'Close filter')}
@@ -1865,6 +1752,22 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  // Save-knop in de filter-sheet — pill met tekst-label "Opslaan"
+  // i.p.v. een icoon. Iconografie is gereserveerd voor andere acties
+  // (bookmark = venue volgen, hartje = event saven).
+  sheetSaveBtn: {
+    height: 48,
+    paddingHorizontal: 18,
+    borderRadius: 999,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sheetSaveText: {
+    fontFamily: fontFamily.medium,
+    fontSize: 14,
+    letterSpacing: -0.14,
   },
   sheetClearText: {
     fontFamily: fontFamily.medium,

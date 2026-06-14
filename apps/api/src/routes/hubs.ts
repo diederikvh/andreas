@@ -719,16 +719,22 @@ for (const hub of HUBS) {
           ? asc(schema.occurrences.endsAt)
           : asc(schema.occurrences.startsAt)
       )
-      .limit(200);
+      .limit(hub.kind === 'today' || hub.kind === 'weekend' ? 800 : 200);
 
+    // Tijd-hubs (vandaag/dit-weekend) groeperen straks per categorie
+    // (muziek-op-podia, muziek-in-clubs, theater, film, …). Films
+    // hebben veel meer events per dag dan clubs en vullen anders de
+    // 50-cap helemaal op vóór bucketing — clubs verdwijnen dan uit
+    // beeld. Daarom geen outer-slice voor tijd-hubs; de query-limit
+    // van 800 is genoeg om de hele dag/het hele weekend te dekken.
     const seenEvents = new Set<string>();
-    const events: EventRow[] = rows
-      .filter((r) => {
-        if (seenEvents.has(r.eventId)) return false;
-        seenEvents.add(r.eventId);
-        return true;
-      })
-      .slice(0, 50);
+    const isTimeHub = hub.kind === 'today' || hub.kind === 'weekend';
+    const deduped = rows.filter((r) => {
+      if (seenEvents.has(r.eventId)) return false;
+      seenEvents.add(r.eventId);
+      return true;
+    });
+    const events: EventRow[] = isTimeHub ? deduped : deduped.slice(0, 50);
 
     // Venue-lijst per hub-type:
     //   • venue-type hubs (/clubs, /musea, …): ALLE venues van dat type uit

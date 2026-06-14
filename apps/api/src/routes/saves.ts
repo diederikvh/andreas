@@ -53,6 +53,12 @@ savesRoute.get('/', async (c) => {
         address: schema.venues.address,
         lat: schema.venues.lat,
         lng: schema.venues.lng,
+        // `type` en `wijk` zijn nodig voor de venue-pill (gekleurd op
+        // venue-type) op /going en de Gered-lijst. Zonder deze velden
+        // valt EventListRow terug op de plain mono-subline en mist de
+        // rotated-tick rechts z'n showTimeRight-gate.
+        type: schema.venues.type,
+        wijk: schema.venues.wijk,
         imageUrl: schema.venues.imageUrl,
         priceNote: schema.venues.priceNote,
       },

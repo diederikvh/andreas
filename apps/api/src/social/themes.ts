@@ -1,17 +1,16 @@
 /**
  * Day-themed social posts: één post per dag met een herkenbaar
- * concept dat de weekstructuur leesbaar maakt voor de IG-volger
- * ("op maandag is het theater-tips").
+ * concept dat de weekstructuur leesbaar maakt voor de IG-volger.
+ * Alle thema's tonen "Top X in Amsterdam voor de komende 7 dagen".
  *
- *   ma  theater         · komende 7 dagen
- *   di  live muziek     · komende 7 dagen (excl. clubs)
- *   wo  film            · deze week
- *   do  weekend kickoff · komend weekend  (clubs)
- *   vr  galleries       · dit weekend     (alleen galeries, geen musea)
- *   za  vanavond        · zaterdagavond   (mixed)
- *   zo  deze week       · komende 7 dagen (mixed preview)
+ *   ma  theater       · komende 7 dagen (alleen Theater)
+ *   di  live muziek   · komende 7 dagen (Muziek excl. club-venues)
+ *   wo  film          · komende 7 dagen (alleen Film)
+ *   do  clubs         · komende 7 dagen (alleen club-venues)
+ *   vr  galleries     · komende 7 dagen (alleen galerie-venues)
+ *   za/zo: geen vast thema — admin kan handmatig kiezen.
  *
- * Window-expansie zit in selectPicksForTheme: heeft een dag te weinig
+ * Window-expansie zit in selectPicksForTheme: heeft een week te weinig
  * candidates, dan groeit het venster (windowDays → +7 tot maxWindowDays)
  * tot er genoeg events zijn — i.p.v. de theme te wisselen.
  */
@@ -25,10 +24,8 @@ export type ThemeKey =
   | 'theater'
   | 'live-music'
   | 'film'
-  | 'weekend-kickoff'
-  | 'galleries'
-  | 'tonight'
-  | 'week-preview';
+  | 'clubs'
+  | 'galleries';
 
 export interface Theme {
   key: ThemeKey;
@@ -49,6 +46,12 @@ export interface Theme {
   venueTypes?: VenueType[];
   /** Blacklist venue-types — past ná de whitelist. */
   excludeVenueTypes?: VenueType[];
+  /** Per-venuetype minimum-uur (Amsterdam-tz) waarop het event moet
+      starten. Events vóór dit uur worden uit de selectie gefilterd.
+      Cross-midnight wordt afgehandeld: events tussen 00:00 en 06:00
+      blijven toegestaan (horen bij de avond ervoor). Voor clubs:
+      `{ club: 20, podium: 23 }` zodat dagprogrammering wordt gefilterd. */
+  minStartHourByVenueType?: Partial<Record<VenueType, number>>;
 }
 
 export const THEMES: readonly Theme[] = [
@@ -75,45 +78,33 @@ export const THEMES: readonly Theme[] = [
     key: 'film',
     weekday: 3,
     label: { nl: 'Film', en: 'Film' },
-    windowLabel: { nl: 'Deze week', en: 'This week' },
+    windowLabel: { nl: 'Komende 7 dagen', en: 'Next 7 days' },
     windowDays: 7,
     maxWindowDays: 14,
     categories: ['Film'],
   },
   {
-    key: 'weekend-kickoff',
+    key: 'clubs',
     weekday: 4,
-    label: { nl: 'Weekend kickoff', en: 'Weekend kickoff' },
-    windowLabel: { nl: 'Komend weekend', en: 'This weekend' },
-    windowDays: 4,
-    maxWindowDays: 11,
-    venueTypes: ['club'],
+    label: { nl: 'Clubs', en: 'Clubs' },
+    windowLabel: { nl: 'Komende 7 dagen', en: 'Next 7 days' },
+    windowDays: 7,
+    maxWindowDays: 14,
+    // Clubs + podia (late-night). Per venue-type een eigen
+    // start-uur-filter — club-events starten na 20:00, podium-events
+    // na 23:00 (alleen echte nachtprogrammering).
+    venueTypes: ['club', 'podium'],
+    minStartHourByVenueType: { club: 20, podium: 23 },
   },
   {
     key: 'galleries',
     weekday: 5,
     label: { nl: 'Galleries', en: 'Galleries' },
-    windowLabel: { nl: 'Dit weekend', en: 'This weekend' },
-    windowDays: 3,
-    maxWindowDays: 14,
-    categories: ['Kunst'],
-    venueTypes: ['galerie'],
-  },
-  {
-    key: 'tonight',
-    weekday: 6,
-    label: { nl: 'Vanavond', en: 'Tonight' },
-    windowLabel: { nl: 'Zaterdagavond', en: 'Saturday night' },
-    windowDays: 1,
-    maxWindowDays: 7,
-  },
-  {
-    key: 'week-preview',
-    weekday: 0,
-    label: { nl: 'Deze week', en: 'This week' },
     windowLabel: { nl: 'Komende 7 dagen', en: 'Next 7 days' },
     windowDays: 7,
-    maxWindowDays: 14,
+    maxWindowDays: 28,
+    categories: ['Kunst'],
+    venueTypes: ['galerie'],
   },
 ];
 
@@ -131,11 +122,9 @@ export function amsterdamWeekday(at: Date): number {
 }
 
 /** Geef de theme voor de Amsterdam-dag waarop `at` valt. */
-export function getThemeForDate(at: Date): Theme {
+export function getThemeForDate(at: Date): Theme | null {
   const wd = amsterdamWeekday(at);
-  const found = THEMES.find((t) => t.weekday === wd);
-  if (!found) throw new Error(`geen theme voor weekday=${wd}`);
-  return found;
+  return THEMES.find((t) => t.weekday === wd) ?? null;
 }
 
 export function getThemeByKey(key: string): Theme | null {

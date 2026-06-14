@@ -2,6 +2,7 @@ import { and, asc, desc, eq, not, or, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 
 import { db, schema } from '../db/index.js';
+import { renderEventOg, renderInviteOg } from '../social/inviteOg.js';
 import {
   APP_STORE_URL,
   HEADER_STYLES,
@@ -65,6 +66,19 @@ const APPLE_TEAM_ID = process.env.APPLE_TEAM_ID ?? '';
 const APPLE_BUNDLE_ID = process.env.APPLE_BUNDLE_ID ?? 'amsterdam.andreas.app';
 const APPLE_APP_ID = process.env.APPLE_APP_ID ?? '000000000';
 
+/**
+ * Server-side platform-detect voor de store-fallback. Android-bezoekers
+ * krijgen anders een Apple-App-Store-link voorgeschoteld. Onbekend +
+ * iOS-achtig vallen terug op de App Store; alleen UA met "Android"
+ * mapt naar Play Store.
+ */
+function pickStore(ua: string): { url: string; label: string } {
+  if (/Android/i.test(ua)) {
+    return { url: PLAY_STORE_URL, label: 'Google Play' };
+  }
+  return { url: APP_STORE_URL, label: 'App Store' };
+}
+
 shareRoute.get('/.well-known/apple-app-site-association', (c) => {
   const aasa = {
     applinks: {
@@ -97,6 +111,7 @@ shareRoute.get('/e/:id', async (c) => {
   const id = c.req.param('id');
   const ref = c.req.query('ref') ?? '';
   const isShareContext = ref.length > 0;
+  const lang: 'nl' | 'en' = c.req.query('lang') === 'en' ? 'en' : 'nl';
 
   // Eén query voor het hoofd-record. Onder de aanname dat de meeste
   // requests een geldige event-ID hebben — niet-bestaande IDs vallen
@@ -137,7 +152,7 @@ shareRoute.get('/e/:id', async (c) => {
   // Share-context → minimal redirect-pagina (legacy). Voorkomt dat een
   // iMessage-tap eerst een SEO-pagina laat zien.
   if (isShareContext) {
-    return c.body(renderShareRedirectEvent(id, ref, row), 200, {
+    return c.body(renderShareRedirectEvent(id, ref, row, c.req.header('user-agent') ?? '', lang), 200, {
       'Content-Type': 'text/html; charset=utf-8',
       'Cache-Control': 'public, max-age=300',
     });
@@ -331,7 +346,7 @@ shareRoute.get('/v/:slug', async (c) => {
   const appLink = `andreas://venue/${encodeURIComponent(slug)}${refQs}`;
 
   if (isShareContext) {
-    return c.body(renderShareRedirectVenue(slug, ref, row), 200, {
+    return c.body(renderShareRedirectVenue(slug, ref, row, c.req.header('user-agent') ?? ''), 200, {
       'Content-Type': 'text/html; charset=utf-8',
       'Cache-Control': 'public, max-age=300',
     });
@@ -2656,13 +2671,20 @@ function renderShareRedirectEvent(
         kind: 'show' | 'exhibition';
         venue: { name: string } | null;
       }
-    | undefined
+    | undefined,
+  ua: string,
+  lang: 'nl' | 'en' = 'nl'
 ): string {
   const eventTitle = row?.title ?? 'ANDREAS';
   const eventImage = row?.imageUrl ?? '';
   const refQs = ref ? `?ref=${encodeURIComponent(ref)}` : '';
   const appLink = `andreas://event/${encodeURIComponent(id)}${refQs}`;
   const universalLink = `${PUBLIC_BASE_URL}/e/${encodeURIComponent(id)}${refQs}`;
+  // OG-image URL krijgt ?lang=… mee zodat messaging-apps de juiste
+  // taalversie van de composite-image fetchen. Zonder dit fallback'te
+  // 't naar NL omdat WhatsApp/iMessage geen Accept-Language sturen.
+  const ogImageUrl = `${PUBLIC_BASE_URL}/e/${encodeURIComponent(id)}/og.png${lang === 'en' ? '?lang=en' : ''}`;
+  const { url: storeUrl, label: storeLabel } = pickStore(ua);
 
   return `<!doctype html>
 <html lang="nl">
@@ -2674,10 +2696,13 @@ function renderShareRedirectEvent(
   <meta property="og:description" content="${escapeHtml(
     [row?.venue?.name].filter(Boolean).join(' · ') || ''
   )}" />
-  ${eventImage ? `<meta property="og:image" content="${escapeHtml(eventImage)}" />` : ''}
+  <meta property="og:image" content="${escapeHtml(ogImageUrl)}" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
   <meta property="og:url" content="${escapeHtml(universalLink)}" />
   <meta property="og:type" content="website" />
   <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:image" content="${escapeHtml(ogImageUrl)}" />
   <meta name="apple-itunes-app" content="app-id=${APPLE_APP_ID}, app-argument=${escapeHtml(appLink)}" />
   <meta name="robots" content="noindex" />
   <style>
@@ -2699,12 +2724,12 @@ function renderShareRedirectEvent(
     <h1>${escapeHtml(eventTitle)}</h1>
     <p>${escapeHtml([row?.venue?.name].filter(Boolean).join(' · '))}</p>
     <a class="cta" href="${escapeHtml(appLink)}" id="open">Open in ANDREAS</a>
-    <a class="fallback" href="${escapeHtml(APP_STORE_URL)}">Nog geen ANDREAS? Download in de App Store</a>
+    <a class="fallback" href="${escapeHtml(storeUrl)}">Nog geen ANDREAS? Download in ${escapeHtml(storeLabel)}</a>
   </main>
   <script>
     (function () {
       var app = ${JSON.stringify(appLink)};
-      var store = ${JSON.stringify(APP_STORE_URL)};
+      var store = ${JSON.stringify(storeUrl)};
       var t = setTimeout(function () { window.location.href = store; }, 1200);
       window.addEventListener('pagehide', function () { clearTimeout(t); });
       window.location.href = app;
@@ -2717,13 +2742,15 @@ function renderShareRedirectEvent(
 function renderShareRedirectVenue(
   slug: string,
   ref: string,
-  row: VenueRow | undefined
+  row: VenueRow | undefined,
+  ua: string
 ): string {
   const venueName = row?.name ?? 'ANDREAS';
   const venueImage = row?.imageUrl ?? '';
   const refQs = ref ? `?ref=${encodeURIComponent(ref)}` : '';
   const appLink = `andreas://venue/${encodeURIComponent(slug)}${refQs}`;
   const universalLink = `${PUBLIC_BASE_URL}/v/${encodeURIComponent(slug)}${refQs}`;
+  const { url: storeUrl, label: storeLabel } = pickStore(ua);
 
   return `<!doctype html>
 <html lang="nl">
@@ -2758,12 +2785,12 @@ function renderShareRedirectVenue(
     <h1>${escapeHtml(venueName)}</h1>
     <p>${escapeHtml(row?.address ?? '')}</p>
     <a class="cta" href="${escapeHtml(appLink)}" id="open">Open in ANDREAS</a>
-    <a class="fallback" href="${escapeHtml(APP_STORE_URL)}">Nog geen ANDREAS? Download in de App Store</a>
+    <a class="fallback" href="${escapeHtml(storeUrl)}">Nog geen ANDREAS? Download in ${escapeHtml(storeLabel)}</a>
   </main>
   <script>
     (function () {
       var app = ${JSON.stringify(appLink)};
-      var store = ${JSON.stringify(APP_STORE_URL)};
+      var store = ${JSON.stringify(storeUrl)};
       var t = setTimeout(function () { window.location.href = store; }, 1200);
       window.addEventListener('pagehide', function () { clearTimeout(t); });
       window.location.href = app;
@@ -2810,6 +2837,9 @@ function renderNotFound(label: string): string {
 shareRoute.get('/u/:handle', async (c) => {
   const rawHandle = c.req.param('handle');
   const handle = rawHandle.toLowerCase().replace(/[^a-z0-9_]/g, '');
+  const { url: storeUrl, label: storeLabel } = pickStore(
+    c.req.header('user-agent') ?? ''
+  );
 
   const [row] = await db
     .select({
@@ -2859,12 +2889,12 @@ shareRoute.get('/u/:handle', async (c) => {
     <h1>${escapeHtml(displayName || `@${handleLabel}`)}</h1>
     <p class="handle">@${escapeHtml(handleLabel)}</p>
     <a class="cta" href="${escapeHtml(appLink)}" id="open">Voeg toe in ANDREAS</a>
-    <a class="fallback" href="${escapeHtml(APP_STORE_URL)}">Nog geen ANDREAS? Download in de App Store</a>
+    <a class="fallback" href="${escapeHtml(storeUrl)}">Nog geen ANDREAS? Download in ${escapeHtml(storeLabel)}</a>
   </main>
   <script>
     (function () {
       var app = ${JSON.stringify(appLink)};
-      var store = ${JSON.stringify(APP_STORE_URL)};
+      var store = ${JSON.stringify(storeUrl)};
       var t = setTimeout(function () { window.location.href = store; }, 1200);
       window.addEventListener('pagehide', function () { clearTimeout(t); });
       window.location.href = app;
@@ -2885,9 +2915,106 @@ shareRoute.get('/u/:handle', async (c) => {
  *               zodra de user ingelogd is.
  * ====================================================================== */
 
+/**
+ * OG-image voor share-invite — avatar + app-icon composite. 1200×630.
+ * Caching long: per-token zelfde input → zelfde output, en messaging-
+ * apps gretig op caching.
+ */
+shareRoute.get('/i/:token/og.png', async (c) => {
+  const token = c.req.param('token');
+  const safeToken = token.replace(/[^A-Za-z0-9_-]/g, '').slice(0, 64);
+  const [row] = await db
+    .select({
+      name: schema.users.name,
+      handle: schema.users.handle,
+      avatarUrl: schema.users.avatarUrl,
+    })
+    .from(schema.shareInvites)
+    .innerJoin(
+      schema.users,
+      eq(schema.users.id, schema.shareInvites.fromUserId)
+    )
+    .where(eq(schema.shareInvites.token, safeToken))
+    .limit(1);
+  const displayName =
+    row && row.name && !row.name.startsWith('+') ? row.name : '';
+  const inviterName =
+    displayName || (row?.handle ? `@${row.handle}` : 'Iemand');
+  // Taal-detectie: ?lang=en overschrijft alles; anders Accept-Language
+  // van de browser (eerste taal-tag). Default NL. Messaging-apps die
+  // de OG-preview ophalen sturen vaak géén Accept-Language — die
+  // krijgen NL.
+  const langParam = c.req.query('lang');
+  const acceptLang = c.req.header('accept-language') ?? '';
+  const locale: 'nl' | 'en' =
+    langParam === 'en' || /^\s*en\b/i.test(acceptLang) ? 'en' : 'nl';
+  const png = await renderInviteOg({
+    avatarUrl: row?.avatarUrl ?? null,
+    inviterName,
+    locale,
+  });
+  // Buffer→ArrayBuffer copy: Hono wil 'n strict Uint8Array<ArrayBuffer>;
+  // Node's Buffer kan SharedArrayBuffer-backed zijn. Een nieuwe
+  // ArrayBuffer-allocatie via .slice() lost het op.
+  const ab = png.buffer.slice(png.byteOffset, png.byteOffset + png.byteLength);
+  const bytes = new Uint8Array(ab as ArrayBuffer);
+  return c.body(bytes, 200, {
+    'Content-Type': 'image/png',
+    'Cache-Control': 'public, max-age=86400, immutable',
+  });
+});
+
+/**
+ * OG-image voor event-share — event-poster in rounded square + Andreas
+ * app-badge bottom-right. 1200×630. Locale via ?lang=… of Accept-
+ * Language; default NL.
+ */
+shareRoute.get('/e/:id/og.png', async (c) => {
+  const id = c.req.param('id').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 80);
+  const [row] = await db
+    .select({
+      title: schema.events.title,
+      imageUrl: schema.events.imageUrl,
+      venueName: schema.venues.name,
+    })
+    .from(schema.events)
+    .innerJoin(schema.venues, eq(schema.venues.id, schema.events.venueId))
+    .where(eq(schema.events.id, id))
+    .limit(1);
+  if (!row) return c.body('not found', 404);
+  const langParam = c.req.query('lang');
+  const acceptLang = c.req.header('accept-language') ?? '';
+  const locale: 'nl' | 'en' =
+    langParam === 'en' || /^\s*en\b/i.test(acceptLang) ? 'en' : 'nl';
+  const png = await renderEventOg({
+    eventImageUrl: row.imageUrl,
+    eventTitle: row.title,
+    venueName: row.venueName,
+    locale,
+  });
+  const ab = png.buffer.slice(png.byteOffset, png.byteOffset + png.byteLength);
+  const bytes = new Uint8Array(ab as ArrayBuffer);
+  return c.body(bytes, 200, {
+    'Content-Type': 'image/png',
+    'Cache-Control': 'public, max-age=86400, immutable',
+  });
+});
+
 shareRoute.get('/i/:token', async (c) => {
   const token = c.req.param('token');
   const safeToken = token.replace(/[^A-Za-z0-9_-]/g, '').slice(0, 64);
+  // Platform-detect via UA — anders krijgen Android-bezoekers de
+  // App-Store-link voorgeschoteld. iOS = default fallback (universal
+  // link slaagt sowieso meestal); Android stuurt naar Play Store.
+  const ua = c.req.header('user-agent') ?? '';
+  const isAndroid = /Android/i.test(ua);
+  const storeUrl = isAndroid ? PLAY_STORE_URL : APP_STORE_URL;
+  const storeLabel = isAndroid ? 'Google Play' : 'App Store';
+  // ?lang= bubbelt door naar de og:image-URL zodat messaging-apps de
+  // EN-versie van de composite-image fetchen wanneer de share-link
+  // met ?lang=en gegenereerd is.
+  const lang: 'nl' | 'en' = c.req.query('lang') === 'en' ? 'en' : 'nl';
+  const ogLangQs = lang === 'en' ? '?lang=en' : '';
 
   // Toon de uitnodiger op de fallback-pagina (avatar + naam). We
   // lookuppen via de share_invites + users join. Verlopen of niet-
@@ -2932,7 +3059,11 @@ shareRoute.get('/i/:token', async (c) => {
   <title>${escapeHtml(title)}</title>
   <meta property="og:title" content="${escapeHtml(title)}" />
   <meta property="og:description" content="${escapeHtml(subTitle)}" />
-  ${row?.avatarUrl ? `<meta property="og:image" content="${escapeHtml(row.avatarUrl)}" />` : ''}
+  <meta property="og:image" content="${escapeHtml(PUBLIC_BASE_URL)}/i/${escapeHtml(safeToken)}/og.png${ogLangQs}" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:image" content="${escapeHtml(PUBLIC_BASE_URL)}/i/${escapeHtml(safeToken)}/og.png${ogLangQs}" />
   <meta property="og:url" content="${escapeHtml(universalLink)}" />
   <meta property="og:type" content="website" />
   <meta name="apple-itunes-app" content="app-id=${APPLE_APP_ID}, app-argument=${escapeHtml(appLink)}" />
@@ -2958,12 +3089,12 @@ shareRoute.get('/i/:token', async (c) => {
     <p>${escapeHtml(subTitle)}</p>
     ${expired ? `<p class="expired">Deze uitnodiging is verlopen — je kunt de app wel downloaden en daarna alsnog vrienden worden.</p>` : ''}
     <a class="cta" href="${escapeHtml(appLink)}" id="open">Open in ANDREAS</a>
-    <a class="fallback" href="${escapeHtml(APP_STORE_URL)}">Nog geen ANDREAS? Download in de App Store</a>
+    <a class="fallback" href="${escapeHtml(storeUrl)}">Nog geen ANDREAS? Download in ${escapeHtml(storeLabel)}</a>
   </main>
   <script>
     (function () {
       var app = ${JSON.stringify(appLink)};
-      var store = ${JSON.stringify(APP_STORE_URL)};
+      var store = ${JSON.stringify(storeUrl)};
       var t = setTimeout(function () { window.location.href = store; }, 1200);
       window.addEventListener('pagehide', function () { clearTimeout(t); });
       window.location.href = app;

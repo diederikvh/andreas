@@ -2,10 +2,13 @@ import {
   Children,
   cloneElement,
   isValidElement,
+  useEffect,
+  useRef,
   type ReactElement,
   type ReactNode,
 } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
 
 import { tinyTap } from '@/lib/haptics';
 import { useMode, useRoles } from '@/store/mode';
@@ -28,6 +31,7 @@ export function Rail({
   onMore,
   children,
   emptyText,
+  cardWidth = RAIL_CARD_WIDTH,
 }: {
   /** Korte uppercase titel links boven de scroller. */
   kicker: string;
@@ -49,8 +53,26 @@ export function Rail({
   /** Optionele plaintext fallback wanneer de caller niets te tonen
       heeft. Als gezet en geen children, render een rustige lege-rail. */
   emptyText?: string;
+  /** Breedte van één kaart in deze rail — bepaalt de snap-interval
+      zodat een swipe netjes terug-snapt naar een links-uitgelijnde
+      kaart (à la Apple Podcasts). Default = RAIL_CARD_WIDTH (220). Film-
+      en venue-square-rails geven hun eigen breedte mee. */
+  cardWidth?: number;
 }) {
   const roles = useRoles();
+  // Re-tap op de tab-bar (= page-scroll-to-top) → ook deze rail terug
+  // naar z'n beginpositie zodat de hele Vandaag-pagina opgeruimd staat.
+  // Op niet-tab-schermen wordt 'tabPress' nooit geëmit → no-op.
+  const scrollRef = useRef<ScrollView>(null);
+  const navigation = useNavigation();
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('tabPress' as never, () => {
+      if (navigation.isFocused()) {
+        scrollRef.current?.scrollTo({ x: 0, animated: true });
+      }
+    });
+    return unsubscribe;
+  }, [navigation]);
   // Telt alleen daadwerkelijke React-elements (filtert false/null/undefined
   // die conditioneel-renderende callers in een array stoppen). Bepaalt
   // single-item state — bij precies één kaart renderen we vol-breed
@@ -103,9 +125,16 @@ export function Rail({
           </View>
         ) : (
           <ScrollView
+            ref={scrollRef}
             horizontal
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.scroller}
+            // Snap-to-card: omdat de leading-pad (22) constant is en de
+            // interval exact kaart+gap, landt elke kaart met dezelfde
+            // gutter links — geen halve kaart die blijft hangen.
+            snapToInterval={cardWidth + RAIL_GAP}
+            snapToAlignment="start"
+            decelerationRate="fast"
           >
             {children}
           </ScrollView>
@@ -120,6 +149,10 @@ export function Rail({
     </View>
   );
 }
+
+/** Horizontale ruimte tussen kaarten in de scroller. Gedeeld met de
+ *  snap-interval-berekening hierboven zodat ze niet uit sync lopen. */
+const RAIL_GAP = 10;
 
 const styles = StyleSheet.create({
   section: { paddingTop: 14, paddingBottom: 4 },
@@ -151,7 +184,7 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
   },
   scroller: {
-    gap: 10,
+    gap: RAIL_GAP,
     paddingHorizontal: 22,
     paddingBottom: 8,
   },

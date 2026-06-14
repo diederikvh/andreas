@@ -73,6 +73,12 @@ type Props = {
       Vervangt de mono-uppercase subline boven de tags. Gebruikt op de
       venue-pagina waar volgorde datum → titel → labels gewenst is. */
   dateAbove?: boolean;
+  /** Optioneel: dag-deel boven de titel (bv. "Fr 29 may"). Wordt
+      gecombineerd met `time` als de regel boven de titel: "Fr 29 may
+      · 20:00". Zonder deze prop blijft de oude `[time, duration]`-
+      compositie gelden. De rechter rotated-tick gebruikt 'm nooit —
+      die bevat alleen `time` zodat 'ie smal en leesbaar blijft. */
+  dateLabel?: string;
   onPress?: () => void;
 };
 
@@ -99,6 +105,7 @@ export function EventListRow({
   tick,
   thumbSize,
   dateAbove = false,
+  dateLabel,
   onPress,
 }: Props) {
   const mode = useMode();
@@ -110,7 +117,7 @@ export function EventListRow({
   // duration als die meekomt). Anders: oude subline-layout.
   const showTimeRight = venueAsPill && Boolean(time);
   const dateAboveText = dateAbove
-    ? [time, duration].filter(Boolean).join(' · ')
+    ? [dateLabel, time, duration].filter(Boolean).join(' · ')
     : '';
   // Subline-content hangt af van de combinatie van dateAbove en
   // venueAsPill. Belangrijk: wanneer venueAsPill aanstaat staat venue

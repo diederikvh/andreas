@@ -17,6 +17,7 @@ import {
   Pressable,
   RefreshControl,
   ScrollView,
+  SectionList,
   StyleSheet,
   Text,
   View,
@@ -24,16 +25,24 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppHeader, HEADER_HEIGHT } from '@/components/AppHeader';
+import { BannerTitleOverlay } from '@/components/BannerTitleOverlay';
+import { EventActions } from '@/components/EventActions';
+import { FollowVenueButton } from '@/components/FollowVenueButton';
+import { FriendsOnImage } from '@/components/FriendsOnImage';
+import { PinchableImage } from '@/components/PinchableImage';
 import { RefreshBanner } from '@/components/RefreshBanner';
 import type { ApiEvent, ApiOccurrence } from '@/lib/api';
 import {
   dowMixed,
   eventImageUrl,
+  formatWijk,
   monthShort,
   rowTimeLabel,
+  translateVenueType,
 } from '@/lib/eventDisplay';
 import { useLocale, useT, type Locale } from '@/lib/i18n';
 import { useEvents } from '@/lib/queries';
+import { useImageAspect } from '@/lib/useImageAspect';
 import { useMode, useRoles } from '@/store/mode';
 import { fontFamily, palette } from '@/theme/tokens';
 
@@ -101,10 +110,12 @@ export default function Live() {
   // Scroll-naar-top bij chip-switch — nieuwe filter, nieuwe lijst,
   // anders blijf je midden in de oude scroll-positie staan en mis je
   // items bovenaan de selectie.
-  const scrollRef = useRef<ScrollView>(null);
+  const listRef = useRef<SectionList<LiveShow>>(null);
   const selectChip = useCallback((b: GenreBucket | 'all') => {
     setSelected(b);
-    scrollRef.current?.scrollTo({ y: 0, animated: true });
+    listRef.current
+      ?.getScrollResponder()
+      ?.scrollTo({ y: 0, animated: true });
   }, []);
 
   // Vandaag t/m eerstvolgende zondag (zelfde patroon als /clubs).
@@ -197,7 +208,7 @@ export default function Live() {
 
   // Groeperen per kalenderdag (geen 06:00-shift zoals clubs — Live-
   // events lopen niet typisch over middernacht).
-  const grouped = useMemo(() => {
+  const sections = useMemo(() => {
     const buckets = new Map<string, LiveShow[]>();
     for (const s of filtered) {
       const d = new Date(s.occurrence.startsAt);
@@ -206,8 +217,16 @@ export default function Live() {
       if (list) list.push(s);
       else buckets.set(key, [s]);
     }
-    return [...buckets.entries()].sort((a, b) => a[0].localeCompare(b[0]));
-  }, [filtered]);
+    const ordered = [...buckets.entries()].sort((a, b) =>
+      a[0].localeCompare(b[0])
+    );
+    return ordered.map(([key, items], idx) => ({
+      key,
+      isFirst: idx === 0,
+      title: dateHeader(items[0].occurrence.startsAt, locale, idx === 0),
+      data: items,
+    }));
+  }, [filtered, locale]);
 
   return (
     <View style={[styles.root, { backgroundColor: roles.bg }]}>
@@ -220,15 +239,49 @@ export default function Live() {
           8
         }
       />
-      <ScrollView
-        ref={scrollRef}
+      <SectionList
+        ref={listRef}
+        sections={sections}
+        keyExtractor={(item) => item.id}
+        renderItem={({ item, section }) => (
+          <LiveShowCard
+            show={item}
+            locale={locale}
+            t={t}
+            isToday={section.isFirst}
+          />
+        )}
+        renderSectionHeader={() => null}
+        stickySectionHeadersEnabled={false}
         contentContainerStyle={{
           paddingTop:
             insets.top +
             HEADER_HEIGHT +
-            (visibleChips.length > 0 ? CHIPROW_HEIGHT : 0),
+            (visibleChips.length > 0 ? CHIPROW_HEIGHT : 0) +
+            16,
           paddingBottom: insets.bottom + 24,
         }}
+        ListEmptyComponent={
+          isLoading ? (
+            <View style={styles.centerWrap}>
+              <Text style={[styles.dim, { color: roles.fgMuted }]}>
+                {t('Laden…', 'Loading…')}
+              </Text>
+            </View>
+          ) : error ? (
+            <View style={styles.centerWrap}>
+              <Text style={[styles.dim, { color: roles.fgMuted }]}>
+                {t('Kon live niet laden.', "Couldn't load live.")}
+              </Text>
+            </View>
+          ) : (
+            <View style={styles.centerWrap}>
+              <Text style={[styles.dim, { color: roles.fgMuted }]}>
+                {t('Geen concerten deze week.', 'No live shows this week.')}
+              </Text>
+            </View>
+          )
+        }
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -249,56 +302,17 @@ export default function Live() {
             }
           />
         }
-      >
-        {isLoading && (
-          <View style={styles.centerWrap}>
-            <Text style={[styles.dim, { color: roles.fgMuted }]}>
-              {t('Laden…', 'Loading…')}
-            </Text>
-          </View>
-        )}
-        {error && (
-          <View style={styles.centerWrap}>
-            <Text style={[styles.dim, { color: roles.fgMuted }]}>
-              {t('Kon live niet laden.', 'Couldn’t load live.')}
-            </Text>
-          </View>
-        )}
-        {shows.length === 0 && !isLoading && !error && (
-          <View style={styles.centerWrap}>
-            <Text style={[styles.dim, { color: roles.fgMuted }]}>
-              {t('Geen concerten deze week.', 'No live shows this week.')}
-            </Text>
-          </View>
-        )}
-        {grouped.map(([key, items], idx) => (
-          <View key={key}>
-            {idx > 0 && (
-              <View style={[styles.dayDivider, { backgroundColor: roles.accent }]} />
-            )}
-            <Text
-              style={[
-                styles.dateHeader,
-                {
-                  color: idx === 0 ? roles.accent : roles.fg,
-                  paddingTop: idx === 0 ? 4 : 20,
-                },
-              ]}
-            >
-              {dateHeader(items[0].occurrence.startsAt, locale, idx === 0)}
-            </Text>
-            {items.map((s) => (
-              <LiveShowCard
-                key={s.id}
-                show={s}
-                locale={locale}
-                t={t}
-                isToday={idx === 0}
-              />
-            ))}
-          </View>
-        ))}
-      </ScrollView>
+        windowSize={9}
+        initialNumToRender={6}
+        maxToRenderPerBatch={6}
+        // scrollToLocation kan op een net-geremounte SectionList te
+        // vroeg vuren — fallback: globale scrollTo(0).
+        onScrollToIndexFailed={() => {
+          listRef.current
+            ?.getScrollResponder()
+            ?.scrollTo({ y: 0, animated: true });
+        }}
+      />
 
       <AppHeader
         title={t('Live', 'Live')}
@@ -400,6 +414,8 @@ function LiveShowCard({
   const roles = useRoles();
   const { event, occurrence } = show;
   const banner = eventImageUrl(event);
+  const { aspect: bannerAspect, onLoad: onBannerLoad } = useImageAspect(banner);
+  const isFallbackImage = !event.imageUrl && Boolean(event.venue.imageUrl);
   const time = rowTimeLabel(occurrence.startsAt, occurrence.endsAt, locale);
   const lineup = occurrence.lineup ?? [];
   const genres = event.genres ?? [];
@@ -413,81 +429,165 @@ function LiveShowCard({
     return `${dow} ${d.getDate()} ${month}`;
   })();
 
+  const venue = event.venue;
+  const followState = event.venueFollowed ? 'volgen' : 'normaal';
   return (
-    <Pressable
-      onPress={() =>
-        router.push(
-          `/event/${event.id}?o=${occurrence.id}&source=live` as never
-        )
-      }
-      style={styles.card}
-    >
-      <View style={[styles.banner, { backgroundColor: roles.bgLift }]}>
-        {banner ? (
-          <Image
-            source={{ uri: banner }}
-            style={styles.bannerImg}
-            contentFit="cover"
-          />
-        ) : null}
-        {genres.length > 0 && (
-          <View style={styles.genresOnBanner}>
-            {genres.slice(0, 3).map((g, i) => (
-              <View
-                key={g}
+    <View style={styles.card}>
+      <View style={styles.venueHeader}>
+        <Pressable
+          onPress={() => router.push(`/venue/${venue.slug}` as never)}
+          style={styles.venueHeaderLeft}
+        >
+          <View
+            style={[styles.venueAvatar, { backgroundColor: roles.bgLift }]}
+          >
+            {venue.imageUrl ? (
+              <Image
+                source={{ uri: venue.imageUrl }}
+                style={styles.venueAvatarImg}
+                contentFit="cover"
+              />
+            ) : (
+              <Text
+                style={[styles.venueAvatarFallback, { color: roles.fgMuted }]}
+              >
+                {venue.name.slice(0, 1).toUpperCase()}
+              </Text>
+            )}
+          </View>
+          <View style={styles.venueHeaderText}>
+            <Text
+              numberOfLines={1}
+              style={[styles.venueHeaderName, { color: roles.fg }]}
+            >
+              {venue.name}
+            </Text>
+            {(venue.type || venue.wijk) && (
+              <Text
+                numberOfLines={1}
+                style={[styles.venueHeaderType, { color: roles.fgMuted }]}
+              >
+                {[
+                  venue.type ? translateVenueType(venue.type, locale) : null,
+                  venue.wijk ? formatWijk(venue.wijk) : null,
+                ]
+                  .filter(Boolean)
+                  .join(' · ')}
+              </Text>
+            )}
+          </View>
+        </Pressable>
+        <FollowVenueButton
+          venueId={venue.id}
+          name={venue.name}
+          state={followState}
+          size={36}
+        />
+      </View>
+      {(() => {
+        const goDetail = () =>
+          router.push(
+            `/event/${event.id}?o=${occurrence.id}&source=live` as never
+          );
+        const bannerStyle = [
+          styles.banner,
+          { backgroundColor: roles.bgLift, aspectRatio: bannerAspect },
+        ];
+        const overlays = (
+          <>
+            {genres.length > 0 && (
+              <View style={styles.genresOnBanner}>
+                {genres.slice(0, 3).map((g, i) => (
+                  <View
+                    key={g}
+                    style={[
+                      styles.genreChip,
+                      { backgroundColor: i === 0 ? roles.accent : roles.fg },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.genreText,
+                        { color: i === 0 ? roles.onAccent : roles.bg },
+                      ]}
+                    >
+                      {g}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            )}
+            {isFallbackImage && <BannerTitleOverlay title={event.title} />}
+            <FriendsOnImage
+              friends={
+                occurrence.friendsSaved ?? event.friendsSaved ?? []
+              }
+              totalCount={
+                occurrence.friendsSavedCount ?? event.friendsSavedCount
+              }
+            />
+          </>
+        );
+        return banner ? (
+          <PinchableImage
+            uri={banner}
+            onLoad={onBannerLoad}
+            onPress={goDetail}
+            style={bannerStyle}
+          >
+            {overlays}
+          </PinchableImage>
+        ) : (
+          <Pressable onPress={goDetail}>
+            <View style={bannerStyle}>{overlays}</View>
+          </Pressable>
+        );
+      })()}
+      <EventActions
+        eventId={event.id}
+        eventTitle={event.title}
+        occurrenceId={occurrence.id}
+        ticketUrl={occurrence.ticketUrl ?? event.ticketUrl ?? null}
+        invitedCount={event.myInvitesCount ?? 0}
+      />
+      <Pressable
+        onPress={() =>
+          router.push(
+            `/event/${event.id}?o=${occurrence.id}&source=live` as never
+          )
+        }
+        style={styles.body}
+      >
+          <Text style={[styles.title, { color: roles.fg }]} numberOfLines={2}>
+            {event.title}
+          </Text>
+          <Text style={styles.metaLine}>
+            {dayLabel && (
+              <Text
                 style={[
-                  styles.genreChip,
-                  { backgroundColor: i === 0 ? roles.accent : roles.fg },
+                  styles.dayChip,
+                  { color: isToday ? roles.accent : roles.fg },
                 ]}
               >
-                <Text
-                  style={[
-                    styles.genreText,
-                    { color: i === 0 ? roles.onAccent : roles.bg },
-                  ]}
-                >
-                  {g}
-                </Text>
-              </View>
-            ))}
-          </View>
-        )}
-      </View>
-      <View style={styles.body}>
-        <View style={styles.metaRow}>
-          {dayLabel && (
-            <Text
-              style={[
-                styles.dayChip,
-                { color: isToday ? roles.accent : roles.fg },
-              ]}
-            >
-              {dayLabel}
-            </Text>
-          )}
-          <Text style={[styles.time, { color: roles.accent }]}>{time}</Text>
-          <Text
-            style={[styles.venue, { color: roles.fgMuted }]}
-            numberOfLines={1}
-          >
-            {event.venue.name}
+                {dayLabel}{' '}
+              </Text>
+            )}
+            <Text style={[styles.time, { color: roles.accent }]}>{time}</Text>
+            {lineup.length > 0 && (
+              <Text style={[styles.lineup, { color: roles.fgRead }]}>
+                {' · '}
+                {lineup.map((l) => l.name).join(' · ')}
+              </Text>
+            )}
+            {isSoldOut && (
+              <Text style={[styles.soldOut, { color: roles.fgMuted }]}>
+                {' · '}
+                {t('uitverkocht', 'sold out')}
+              </Text>
+            )}
           </Text>
-          {isSoldOut && (
-            <Text style={[styles.soldOut, { color: roles.fgMuted }]}>
-              {t('uitverkocht', 'sold out')}
-            </Text>
-          )}
-        </View>
-        <Text style={[styles.title, { color: roles.fg }]} numberOfLines={2}>
-          {event.title}
-        </Text>
-        {lineup.length > 0 && (
-          <Text style={[styles.lineup, { color: roles.fgRead }]}>
-            {lineup.map((l) => l.name).join(' · ')}
-          </Text>
-        )}
-      </View>
-    </Pressable>
+      </Pressable>
+    </View>
   );
 }
 
@@ -529,28 +629,69 @@ const styles = StyleSheet.create({
     fontSize: 12,
     letterSpacing: 0.8,
   },
-  dateHeader: {
+  // Volle-breedte accent-balk met dag-label gecentreerd erin.
+  dayBar: {
+    width: '100%',
+    paddingVertical: 10,
+    marginTop: 14,
+    marginBottom: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dayBarText: {
     fontFamily: fontFamily.displayBold,
-    fontSize: 18,
-    lineHeight: 22,
-    letterSpacing: -0.36,
+    fontSize: 16,
+    lineHeight: 20,
+    letterSpacing: -0.32,
+  },
+  card: {
+    marginBottom: 36,
+  },
+  venueHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
     paddingHorizontal: HORIZONTAL_PADDING,
     paddingBottom: 10,
   },
-  dayDivider: {
-    height: 4,
-    marginTop: 14,
-    width: '100%',
+  venueHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    flex: 1,
+    minWidth: 0,
   },
-  card: {
-    paddingHorizontal: HORIZONTAL_PADDING,
-    marginBottom: 22,
+  venueAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 999,
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  venueAvatarImg: { width: '100%', height: '100%' },
+  venueAvatarFallback: {
+    fontFamily: fontFamily.bold,
+    fontSize: 16,
+    letterSpacing: -0.2,
+  },
+  venueHeaderText: { flex: 1, minWidth: 0 },
+  venueHeaderName: {
+    fontFamily: fontFamily.bold,
+    fontSize: 15,
+    letterSpacing: -0.22,
+    lineHeight: 18,
+  },
+  venueHeaderType: {
+    fontFamily: fontFamily.mono,
+    fontSize: 10,
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+    marginTop: 2,
   },
   banner: {
     width: '100%',
     aspectRatio: 1,
-    borderRadius: 10,
-    overflow: 'hidden',
     marginBottom: 10,
   },
   bannerImg: { width: '100%', height: '100%' },
@@ -563,12 +704,15 @@ const styles = StyleSheet.create({
     gap: 4,
     maxWidth: '70%',
   },
-  body: { gap: 0 },
-  metaRow: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    gap: 8,
-    marginBottom: 2,
+  body: {
+    paddingHorizontal: HORIZONTAL_PADDING,
+    gap: 0,
+  },
+  // Eén Text-block dat dag + tijd + lineup achter elkaar zet — wraps
+  // netjes als één continue regel ipv lineup op een aparte regel.
+  metaLine: {
+    lineHeight: 18,
+    marginTop: 2,
   },
   dayChip: {
     fontFamily: fontFamily.bold,

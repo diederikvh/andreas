@@ -1,10 +1,29 @@
 import { randomBytes } from 'node:crypto';
-import { and, asc, desc, eq, gte, inArray, isNotNull, lt, lte, notInArray, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, inArray, lt, lte, notInArray, sql, type SQL } from 'drizzle-orm';
 import { Hono } from 'hono';
 
 import { db, schema } from '../../db/index.js';
 import { generateCaption } from '../../social/caption.js';
-import { ensureFreshToken, publishCarousel } from '../../social/publisher.js';
+import { ensureFreshToken, publishCarousel, publishReel } from '../../social/publisher.js';
+import { renderVideo } from '../../social/render-video.js';
+import {
+  buildAuthorizeUrl as tiktokAuthorizeUrl,
+  completeOAuth as tiktokCompleteOAuth,
+  generatePkce as tiktokGeneratePkce,
+  getTikTokConnection,
+  publishTikTokInbox,
+} from '../../social/tiktok.js';
+import {
+  HOOKS as VIDEO_HOOKS,
+  HOOK_UNITS,
+  KICKERS as THEME_KICKERS,
+  OVERVIEW_TITLES,
+  formatWindowRange,
+  withDynamicCount,
+  withDynamicDate,
+  type HookUnit,
+} from '../../social/dailyfilms5-data.js';
+import { fetchJustInCarouselData } from '../../social/justin-data.js';
 import { renderCarousel, type CarouselPick } from '../../social/render.js';
 import {
   THEMES,
@@ -60,24 +79,40 @@ function shortId(): string {
   return randomBytes(6).toString('hex');
 }
 /**
- * Scene-weight: lichte voorkeur voor alt-scenes in slots 1+, mainstream
- * komt al via de pin op slide 0. Bewust gecomprimeerd t.o.v. de oude
- * range (0.6→1.0) zodat saves- en featured-boost meer doorslag krijgen
- * en één scene (m.n. underground = OT301/OCCII) niet structureel kaapt.
+ * Scene-weight: MAINSTREAM EERST. Een carousel is reclame voor wat er
+ * speelt in Amsterdam — herkenning triggert engagement. We gaan voor
+ * grote namen (Paradiso/Melkweg/Concertgebouw/Stedelijk) bovenaan en
+ * vullen aan met alternatief/underground/fringe als de mainstream-
+ * picks op zijn. Eerdere balans (mainstream=0.7, underground=0.85)
+ * was juist omgekeerd — dat maakte de carousel te obscuur.
  */
 const SCENE_WEIGHT: Record<string, number> = {
-  mainstream: 0.7,
-  alternatief: 0.8,
-  underground: 0.85,
-  fringe: 0.75,
+  mainstream: 1.0,
+  alternatief: 0.55,
+  fringe: 0.45,
+  underground: 0.35,
+};
+
+/**
+ * Capacity-weight: grotere zalen = meer reclame-waarde voor de carousel.
+ * Schaalt mee met scene maar als onafhankelijk signaal (sommige
+ * alternatieve venues zijn groot — bv. Melkweg Max — en horen op de
+ * eerste slide).
+ */
+const CAPACITY_WEIGHT: Record<string, number> = {
+  xl: 1.0,
+  groot: 0.85,
+  middel: 0.55,
+  klein: 0.3,
 };
 
 /** Bouwt de WHERE-clauses die uit een Theme volgen: categories +
-    venueTypes-whitelist + exclude-list. Returns een array van Drizzle
-    SQL-expressies die met `and(...)` in de hoofdquery gecombineerd
-    worden. Leeg als de theme geen filter heeft (mixed). */
+    venueTypes-whitelist + exclude-list + per-venuetype start-uur-filter.
+    Returns een array van Drizzle SQL-expressies die met `and(...)` in
+    de hoofdquery gecombineerd worden. Leeg als de theme geen filter
+    heeft (mixed). */
 function whereClausesForTheme(theme: Theme) {
-  const cls: ReturnType<typeof inArray>[] = [];
+  const cls: Array<ReturnType<typeof inArray> | SQL> = [];
   if (theme.categories && theme.categories.length > 0) {
     cls.push(
       inArray(schema.events.category, [...theme.categories])
@@ -88,6 +123,35 @@ function whereClausesForTheme(theme: Theme) {
   }
   if (theme.excludeVenueTypes && theme.excludeVenueTypes.length > 0) {
     cls.push(notInArray(schema.venues.type, [...theme.excludeVenueTypes]));
+  }
+  if (theme.minStartHourByVenueType) {
+    // Voor elk venue-type met een min-uur: vereis dat startsAt's
+    // Amsterdam-tz uur >= min OF < 6 (cross-midnight). Venue-types
+    // zonder min-uur entry passen niet door clubs-theme (omdat
+    // venueTypes-whitelist al filtert), maar voor de zekerheid
+    // accepteren we ze.
+    const branches: SQL[] = [];
+    for (const [vt, minH] of Object.entries(theme.minStartHourByVenueType)) {
+      branches.push(sql`(
+        ${schema.venues.type} = ${vt}
+        AND (
+          EXTRACT(HOUR FROM (${schema.occurrences.startsAt} AT TIME ZONE 'Europe/Amsterdam'))::int >= ${minH}
+          OR EXTRACT(HOUR FROM (${schema.occurrences.startsAt} AT TIME ZONE 'Europe/Amsterdam'))::int < 6
+        )
+      )`);
+    }
+    const allTypesWithMin = Object.keys(theme.minStartHourByVenueType);
+    // Andere venue-types (mochten ze meekomen via venueTypes-whitelist)
+    // blijven onaangetast.
+    branches.push(
+      sql`${schema.venues.type} NOT IN (${sql.join(
+        allTypesWithMin.map((t) => sql`${t}`),
+        sql.raw(', '),
+      )})`,
+    );
+    cls.push(
+      sql`(${sql.join(branches, sql.raw(' OR '))})`,
+    );
   }
   return cls;
 }
@@ -160,6 +224,7 @@ interface Candidate {
   venueName: string;
   venueScene: string | null;
   venueType: string | null;
+  venueCapacity: string | null;
   venueInstagram: string | null;
   savesCount: number;
 }
@@ -175,18 +240,26 @@ function scoreCandidate(
 ): ScoredCandidate {
   const featuredBoost = c.featured ? 0.4 : 0;
   const sceneWeight = c.venueScene ? (SCENE_WEIGHT[c.venueScene] ?? 0.5) : 0.5;
-  const sceneScore = 0.3 * sceneWeight;
+  // Scene-multiplier verhoogd 0.3→0.6 zodat mainstream echt domineert.
+  // Carousel = reclame; herkenning moet boven exotiek staan.
+  const sceneScore = 0.6 * sceneWeight;
+  const capacityWeight = c.venueCapacity
+    ? (CAPACITY_WEIGHT[c.venueCapacity] ?? 0.5)
+    : 0.5;
+  const capacityScore = 0.4 * capacityWeight;
   const savesScore = 0.2 * Math.min(c.savesCount / 10, 1);
   const cooldownPenalty = opts.venueCooldownSet.has(c.venueId)
     ? VENUE_COOLDOWN_PENALTY
     : 0;
-  const score = featuredBoost + sceneScore + savesScore + cooldownPenalty;
+  const score =
+    featuredBoost + sceneScore + capacityScore + savesScore + cooldownPenalty;
   return {
     ...c,
     score,
     breakdown: {
       featured: featuredBoost,
       scene: sceneScore,
+      capacity: capacityScore,
       saves: savesScore,
       cooldown: cooldownPenalty,
     },
@@ -194,41 +267,52 @@ function scoreCandidate(
 }
 
 /**
- * Slide 0 = mainstream-hook: het bekendere event dat herkenning triggert
- * bij scrollers (Paradiso/Melkweg/Concertgebouw/Stedelijk). Slides 1..N
- * gaan ruimer — alternatief/underground/fringe als verdieping na de hook.
+ * Mainstream-eerst pick-strategie met spreiding over de week.
  *
  * Volgorde:
- *  1. Pin: hoogst-scorende mainstream event (al gerouleerd door cooldown).
- *  2. Spread: top-score, 1 per venue, 1 per category.
- *  3. Fallback 1: venue-uniek maar cat-dupes toegestaan.
- *  4. Fallback 2: alles toegestaan (last resort, bij erg dun aanbod).
+ *  1. Hook-pin: hoogst-scorende mainstream event (herkenning triggert
+ *     engagement bij scrollers).
+ *  2. Spread strict: top-score met venue-uniek EN dag-uniek (Y-M-D in
+ *     Amsterdam-tz) — zorgt dat de carousel mooi over de week loopt.
+ *  3. Fallback A: venue-uniek (dag-dup toegestaan).
+ *  4. Fallback B: alles toegestaan (last resort bij erg dun aanbod).
  *
- * Geen mainstream beschikbaar? Dan begint stap 2 meteen en is de eerste
- * pick een alt-scene event — niet ideaal maar beter dan een lege post.
+ * Output is gesorteerd op startsAt zodat de slides chronologisch lopen.
+ * Geen mainstream beschikbaar? Stap 2 begint meteen — niet ideaal maar
+ * beter dan een lege post.
  */
 function pickWithSpread(scored: ScoredCandidate[], limit: number): ScoredCandidate[] {
   const sorted = [...scored].sort((a, b) => b.score - a.score);
   const picked: ScoredCandidate[] = [];
-  const seenCats = new Set<string>();
   const seenVenues = new Set<string>();
+  const seenDays = new Set<string>();
 
+  /** Amsterdam-Y-M-D dagsleutel voor spread-detection. */
+  const dayKey = (c: ScoredCandidate): string => {
+    const ymd = amsterdamYMD(c.startsAt);
+    return `${ymd.year}-${ymd.month}-${ymd.day}`;
+  };
+
+  // 1. Hook-pin
   const hook = sorted.find((c) => c.venueScene === 'mainstream');
   if (hook) {
     picked.push(hook);
-    seenCats.add(hook.category);
     seenVenues.add(hook.venueId);
+    seenDays.add(dayKey(hook));
   }
 
+  // 2. Strict spread: venue-uniek EN dag-uniek
   for (const c of sorted) {
     if (picked.length >= limit) break;
     if (picked.some((p) => p.occurrenceId === c.occurrenceId)) continue;
-    if (seenCats.has(c.category) || seenVenues.has(c.venueId)) continue;
+    if (seenVenues.has(c.venueId)) continue;
+    if (seenDays.has(dayKey(c))) continue;
     picked.push(c);
-    seenCats.add(c.category);
     seenVenues.add(c.venueId);
+    seenDays.add(dayKey(c));
   }
 
+  // 3. Fallback A: venue-uniek (dag-dup OK)
   if (picked.length < limit) {
     for (const c of sorted) {
       if (picked.length >= limit) break;
@@ -239,6 +323,7 @@ function pickWithSpread(scored: ScoredCandidate[], limit: number): ScoredCandida
     }
   }
 
+  // 4. Fallback B: alles toegestaan
   if (picked.length < limit) {
     for (const c of sorted) {
       if (picked.length >= limit) break;
@@ -246,6 +331,9 @@ function pickWithSpread(scored: ScoredCandidate[], limit: number): ScoredCandida
       picked.push(c);
     }
   }
+
+  // Chronologisch sorteren zodat de slides door de week heen lopen.
+  picked.sort((a, b) => a.startsAt.getTime() - b.startsAt.getTime());
   return picked;
 }
 
@@ -280,7 +368,7 @@ interface SelectResult {
  *     theme's maxWindowDays bereikt is.
  *  4. Scoren + pick-with-spread (mainstream-hook + venue-dedup).
  */
-async function selectPicksForTheme(
+export async function selectPicksForTheme(
   theme: Theme,
   options: { limit: number; skipIds: Set<string>; now: Date }
 ): Promise<SelectResult> {
@@ -329,13 +417,14 @@ async function selectPicksForTheme(
         eventId: schema.events.id,
         title: schema.events.title,
         description: schema.events.description,
-        imageUrl: schema.events.imageUrl,
+        imageUrl: sql<string | null>`COALESCE(${schema.events.imageUrl}, ${schema.venues.imageUrl})`.as('image_url'),
         category: schema.events.category,
         featured: schema.events.featured,
         venueId: schema.venues.id,
         venueName: schema.venues.name,
         venueScene: schema.venues.scene,
         venueType: schema.venues.type,
+        venueCapacity: schema.venues.capacity,
         venueInstagram: schema.venues.instagram,
         savesCount: sql<number>`(SELECT COUNT(*)::int FROM saves WHERE saves.occurrence_id = ${schema.occurrences.id})`.as('saves_count'),
       })
@@ -346,7 +435,9 @@ async function selectPicksForTheme(
         and(
           eq(schema.events.published, true),
           eq(schema.venues.published, true),
-          isNotNull(schema.events.imageUrl),
+          // Tenminste één foto-bron (event of venue) moet bestaan.
+          // Coalesced in de SELECT zodat downstream gewoon imageUrl ziet.
+          sql`COALESCE(${schema.events.imageUrl}, ${schema.venues.imageUrl}) IS NOT NULL`,
           eq(schema.occurrences.status, 'scheduled'),
           gte(schema.occurrences.startsAt, window.start),
           lt(schema.occurrences.startsAt, window.end),
@@ -434,6 +525,239 @@ adminSocial.get('/picks', async (c) => {
     })),
     ...(debug ? { dedupExcluded } : {}),
   });
+});
+
+// ─── Video-props ─────────────────────────────────────────────────────────
+// Levert JSON in DailyFilms5-shape voor de Remotion-renderer in
+// apps/video-gen. Lokale flow:
+//   pnpm --filter @andreas/video-gen render -- \
+//     --props=https://api.andreas.amsterdam/admin/api/social/video-props?theme=films
+// Endpoint hergebruikt dezelfde pick-selector als de carousel-generator,
+// dus de video toont exact dezelfde events als een carousel zou doen.
+
+function videoKickerForTheme(theme: Theme): string {
+  return theme.label.nl;
+}
+
+function videoHookForTheme(theme: Theme): string {
+  // Hook voor de intro-slide — pakkende, concrete zin per thema.
+  // Default = themeLabel; specifieke overrides hieronder.
+  const hooks: Partial<Record<ThemeKey, string>> = {
+    'theater': 'De voorstellingen waar Amsterdam over praat',
+    'live-music': 'De concerten die je deze week niet wil missen',
+    'film': 'Films die je deze week wil zien',
+    'clubs': 'De clubnachten waar Amsterdam naartoe gaat',
+    'galleries': 'De tentoonstellingen waar Amsterdam naartoe gaat',
+  };
+  return hooks[theme.key] ?? theme.label.nl;
+}
+
+function formatDateLabel(d: Date): string {
+  const days = ['zo', 'ma', 'di', 'wo', 'do', 'vr', 'za'];
+  const months = [
+    'jan', 'feb', 'mrt', 'apr', 'mei', 'jun',
+    'jul', 'aug', 'sep', 'okt', 'nov', 'dec',
+  ];
+  return `${days[d.getDay()]} ${d.getDate()} ${months[d.getMonth()]}`;
+}
+
+function formatTimeLabel(d: Date): string {
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
+adminSocial.get('/video-props', async (c) => {
+  const theme = resolveTheme(c.req.query('theme'));
+  if (!theme) {
+    return c.json({ error: 'invalid theme', validKeys: THEME_KEYS }, 400);
+  }
+  const limit = Math.max(3, Math.min(6, Number(c.req.query('limit') ?? '6')));
+  const now = new Date();
+  const { picks } = await selectPicksForTheme(theme, {
+    limit,
+    skipIds: new Set(),
+    now,
+  });
+  if (picks.length === 0) {
+    return c.json({ error: 'geen picks gevonden voor dit thema' }, 404);
+  }
+
+  // Voor films: gebruik liever de still (frame uit de trailer/film) dan
+  // de poster, dan pas de generieke imageUrl. Andere thema's hebben
+  // geen stills/posters dus daar blijft 't gewoon imageUrl.
+  const useFilmImages = theme.key === 'film';
+  const heroByEventId = new Map<string, string>();
+  if (useFilmImages && picks.length > 0) {
+    const rows = await db
+      .select({
+        id: schema.events.id,
+        stillUrl: schema.events.stillUrl,
+        posterUrl: schema.events.posterUrl,
+        imageUrl: schema.events.imageUrl,
+      })
+      .from(schema.events)
+      .where(inArray(schema.events.id, picks.map((p) => p.eventId)));
+    for (const r of rows) {
+      const url = r.stillUrl ?? r.posterUrl ?? r.imageUrl ?? null;
+      if (url) heroByEventId.set(r.id, url);
+    }
+  }
+
+  return c.json({
+    themeKicker: videoKickerForTheme(theme),
+    hook: videoHookForTheme(theme),
+    picks: picks.map((p) => ({
+      imageUrl: heroByEventId.get(p.eventId) ?? p.imageUrl,
+      title: p.title,
+      venueName: p.venueName,
+      dateLabel: formatDateLabel(new Date(p.startsAt)),
+      timeLabel: formatTimeLabel(new Date(p.startsAt)),
+    })),
+  });
+});
+
+// JustIn video-props — events die binnen de laatste 7 dagen zijn aan-
+// gemaakt, sorteert op nieuwste eerst, returnt 5. Aparte logica dan
+// `selectPicksForTheme` omdat we hier niet op categorie filteren maar
+// op tijd.
+adminSocial.get('/video-props/just-in', async (c) => {
+  try {
+    const { fetchJustInPropsForUi } = await import('../../social/justin-data.js');
+    return c.json(await fetchJustInPropsForUi());
+  } catch (e) {
+    return c.json({ error: (e as Error).message }, 404);
+  }
+});
+
+// ─── Volautomatische render + post pipeline ──────────────────────────────
+//
+// `POST /admin/api/social/run-video` → één call, alle stappen:
+//   1. Data ophalen (zelfde logica als /video-props)
+//   2. Render lokaal via Remotion (subprocess in apps/video-gen)
+//   3. MP4 uploaden naar Bunny
+//   4. Posten als Reel (met onze 4/2207051-workaround)
+//   5. socialPosts-rij wegschrijven
+//
+// Vereist dat de API LOKAAL draait — render gebruikt headless Chromium
+// dat niet op Fly geïnstalleerd is. Voor wekelijkse runs: laat een
+// macOS launchd / cron-job deze endpoint aanroepen via curl op je
+// dev-machine.
+
+const DEFAULT_CAPTIONS: Record<string, string> = {
+  'JustIn':
+    'De 6 events die net zijn aangekondigd in Amsterdam. Bewaar voor later op andreas.amsterdam',
+};
+
+adminSocial.post('/run-video', async (c) => {
+  const body = (await c.req.json().catch(() => ({}))) as {
+    composition?: string;
+    caption?: string;
+  };
+  const composition = body.composition ?? 'JustIn';
+  const caption = body.caption ?? DEFAULT_CAPTIONS[composition] ?? '';
+  if (!caption.trim()) {
+    return c.json({ error: 'caption is verplicht' }, 400);
+  }
+
+  let props: unknown;
+  if (composition === 'JustIn') {
+    const { fetchJustInPropsForUi } = await import('../../social/justin-data.js');
+    props = await fetchJustInPropsForUi();
+  } else {
+    return c.json({ error: `onbekende compositie: ${composition}` }, 400);
+  }
+
+  console.log(`[run-video] rendering ${composition}…`);
+  const mp4 = await renderVideo({ compositionId: composition, props });
+
+  const ymd = new Date().toISOString().slice(0, 10);
+  const id = randomBytes(6).toString('hex');
+  const path = `social-videos/${ymd}-${composition.toLowerCase()}-${id}.mp4`;
+  const videoUrl = await uploadToBunny(path, mp4, 'video/mp4');
+  console.log(`[run-video] uploaded → ${videoUrl}`);
+
+  const { igMediaId, permalink } = await publishReel({
+    videoUrl,
+    caption,
+    shareToFeed: true,
+  });
+
+  const postId = `sp-${randomBytes(6).toString('hex')}`;
+  await db.insert(schema.socialPosts).values({
+    id: postId,
+    slot: 'evening',
+    status: 'posted',
+    caption,
+    imageUrls: [videoUrl],
+    eventIds: [],
+    scheduledFor: new Date(),
+    postedAt: new Date(),
+    igMediaId,
+    meta: {
+      ...(permalink ? { permalink } : {}),
+      themeKey: composition,
+    },
+  });
+
+  return c.json({ ok: true, igMediaId, permalink, videoUrl });
+});
+
+// ─── Video upload + post als Reel ────────────────────────────────────────
+// Workflow:
+//   1. Lokaal: `pnpm --filter @andreas/video-gen render`
+//      → out/films.mp4
+//   2. Upload via admin/social/video (multipart-form) → Bunny CDN
+//   3. Reel-container + media_publish via publishReel()
+//   4. Genereer caption (gebruiker tikt of regenereert; default = thema-label)
+//   5. socialPosts-rij met status='posted' voor tracking
+
+adminSocial.post('/post-video', async (c) => {
+  const form = await c.req.parseBody();
+  const file = form.video;
+  const caption = typeof form.caption === 'string' ? form.caption : '';
+  const themeKey = typeof form.theme === 'string' ? form.theme : null;
+
+  if (!file || !(file instanceof File)) {
+    return c.json({ error: 'video-bestand ontbreekt' }, 400);
+  }
+  if (!caption.trim()) {
+    return c.json({ error: 'caption is verplicht' }, 400);
+  }
+
+  // Upload naar Bunny onder een unique pad zodat IG het niet uit cache
+  // pakt (Meta cachet video-URLs aggressief).
+  const ymd = new Date().toISOString().slice(0, 10);
+  const id = randomBytes(6).toString('hex');
+  const path = `social-videos/${ymd}-${themeKey ?? 'video'}-${id}.mp4`;
+  const buf = await file.arrayBuffer();
+  const videoUrl = await uploadToBunny(path, buf, 'video/mp4');
+
+  try {
+    const { igMediaId, permalink } = await publishReel({
+      videoUrl,
+      caption,
+      shareToFeed: true,
+    });
+    // Track in socialPosts zodat dedup + admin-overzicht 'm zien.
+    const postId = `sp-${randomBytes(6).toString('hex')}`;
+    await db.insert(schema.socialPosts).values({
+      id: postId,
+      slot: 'evening',
+      status: 'posted',
+      caption,
+      imageUrls: [videoUrl], // tracking: video-URL ipv slide-URLs
+      eventIds: [],
+      scheduledFor: new Date(),
+      postedAt: new Date(),
+      igMediaId,
+      meta: {
+        ...(permalink ? { permalink } : {}),
+        ...(themeKey ? { themeKey } : {}),
+      },
+    });
+    return c.json({ ok: true, igMediaId, permalink, videoUrl });
+  } catch (e) {
+    return c.json({ ok: false, error: (e as Error).message, videoUrl }, 500);
+  }
 });
 
 // ─── Caption ─────────────────────────────────────────────────────────────
@@ -537,7 +861,7 @@ adminSocial.post('/render', async (c) => {
   const prefix = (body.uploadPrefix ?? 'carousel').replace(/[^a-z0-9-]/gi, '');
   const urls = await Promise.all(
     slides.map((buf, i) =>
-      uploadToBunny(`media/social/${ymd}/${prefix}-${i}.png`, buf, 'image/png')
+      uploadToBunny(`media/social/${ymd}/${prefix}-${i}.jpg`, buf, 'image/jpeg')
     )
   );
 
@@ -563,7 +887,7 @@ adminSocial.get('/preview', async (c) => {
   const skipIds = parseSkipParam(c.req.query('skip'));
   const now = new Date();
   const { picks, window, windowDays } = await selectPicksForTheme(theme, {
-    limit: 4,
+    limit: 6,
     skipIds,
     now,
   });
@@ -586,7 +910,8 @@ adminSocial.get('/preview', async (c) => {
       })),
       {
         date: now,
-        themeLabel: theme.label.nl,
+        themeLabel: THEME_KICKERS[theme.key] ?? theme.label.nl,
+        hook: VIDEO_HOOKS[theme.key],
         windowLabel: theme.windowLabel.nl,
       }
     ),
@@ -708,7 +1033,7 @@ export async function runGenerate(
   const warnings: string[] = [];
   const now = new Date();
   const { picks, windowDays } = await selectPicksForTheme(theme, {
-    limit: 4,
+    limit: 6,
     skipIds: options.skipIds ?? new Set(),
     now,
   });
@@ -716,39 +1041,79 @@ export async function runGenerate(
     throw new Error(`geen picks voor theme=${theme.key} in huidig window`);
   }
 
-  // 1. Render slides (theme + window-label als kicker op elke slide)
-  const slides = await renderCarousel(
-    picks.map((p) => ({
-      imageUrl: p.imageUrl,
-      title: p.title,
-      venueName: p.venueName,
-      category: p.category,
-      venueType: p.venueType,
-      startsAt: p.startsAt,
-      endsAt: p.endsAt,
-    })),
-    {
-      date: now,
-      themeLabel: theme.label.nl,
-      windowLabel: theme.windowLabel.nl,
-    }
+  // 1. Bouw structuur-data voor de intro + overview (matched de video).
+  const baseUnits: HookUnit[] = HOOK_UNITS[theme.key] ?? [
+    { role: 'eyebrow', text: theme.label.nl.toUpperCase() },
+    { role: 'count', text: String(picks.length) },
+    { role: 'headline', text: 'highlights' },
+    { role: 'meta', text: 'Amsterdam\n{date}' },
+  ];
+  const dateRange = formatWindowRange(theme.windowDays, now);
+  const hookUnits = withDynamicDate(
+    withDynamicCount(baseUnits, picks.length),
+    dateRange,
+  );
+  const overviewTitleTemplate =
+    OVERVIEW_TITLES[theme.key] ?? `Top ${picks.length} ${theme.label.nl}`;
+  const overviewTitle = overviewTitleTemplate.replace(
+    '{count}',
+    String(picks.length),
   );
 
-  // 2. Upload elke slide naar Bunny — pad bevat een generatie-marker (epoch in base36)
-  //    zodat regenerates verse URLs opleveren en de browser-cache niet de
-  //    oude PNG blijft tonen. Pad: media/social/YYYY-MM-DD/<id>-<gen>-<n>.png
+  // 2. Render slides in TWEE formaten:
+  //    - 'ig'     → 1080×1350 (4:5) — Instagram-feed-carousel maximum
+  //    - 'tiktok' → 1080×1920 (9:16) — TikTok photo-carousel beeldvullend
+  //    Beide worden parallel gerenderd. IG-set blijft `imageUrls` (zodat
+  //    bestaande IG-publish + UI ongewijzigd werken); TikTok-set wordt
+  //    opgeslagen in `meta.tiktokImageUrls`.
+  const renderOpts = {
+    date: now,
+    themeLabel: THEME_KICKERS[theme.key] ?? theme.label.nl,
+    windowLabel: theme.windowLabel.nl,
+    hook: VIDEO_HOOKS[theme.key],
+    hookUnits,
+    overviewTitle,
+  };
+  const carouselPicks = picks.map((p) => ({
+    imageUrl: p.imageUrl,
+    title: p.title,
+    venueName: p.venueName,
+    category: p.category,
+    venueType: p.venueType,
+    startsAt: p.startsAt,
+    endsAt: p.endsAt,
+  }));
+  const [slidesIg, slidesTt] = await Promise.all([
+    renderCarousel(carouselPicks, { ...renderOpts, format: 'ig' }),
+    renderCarousel(carouselPicks, { ...renderOpts, format: 'tiktok' }),
+  ]);
+
+  // 2. Upload beide sets parallel — `media/social/YYYY-MM-DD/<id>-<gen>-{ig|tt}-{n}.jpg`.
+  //    Pad bevat een generatie-marker (epoch in base36) zodat regenerates
+  //    verse URLs opleveren en de browser-cache niet de oude versie blijft tonen.
   const ymd = now.toISOString().slice(0, 10);
   const postId = options.existingId ?? `sp-${shortId()}`;
   const generation = now.getTime().toString(36);
-  const imageUrls = await Promise.all(
-    slides.map((buf, i) =>
-      uploadToBunny(
-        `media/social/${ymd}/${postId}-${generation}-${i}.png`,
-        buf,
-        'image/png'
-      )
-    )
-  );
+  const [imageUrls, tiktokImageUrls] = await Promise.all([
+    Promise.all(
+      slidesIg.map((buf, i) =>
+        uploadToBunny(
+          `media/social/${ymd}/${postId}-${generation}-ig-${i}.jpg`,
+          buf,
+          'image/jpeg',
+        ),
+      ),
+    ),
+    Promise.all(
+      slidesTt.map((buf, i) =>
+        uploadToBunny(
+          `media/social/${ymd}/${postId}-${generation}-tt-${i}.jpg`,
+          buf,
+          'image/jpeg',
+        ),
+      ),
+    ),
+  ]);
 
   // 3. Caption parallel ophalen
   const captionResult = await generateCaption({
@@ -788,10 +1153,11 @@ export async function runGenerate(
         slot: theme.key,
         meta: {
           occurrenceIds: picks.map((p) => p.occurrenceId),
-          templateVersion: '2',
+          templateVersion: '3',
           skippedEventIds,
           themeKey: theme.key,
           windowDays,
+          tiktokImageUrls,
         },
         updatedAt: now,
       })
@@ -807,10 +1173,11 @@ export async function runGenerate(
       status: 'draft',
       meta: {
         occurrenceIds: picks.map((p) => p.occurrenceId),
-        templateVersion: '2',
+        templateVersion: '3',
         skippedEventIds,
         themeKey: theme.key,
         windowDays,
+        tiktokImageUrls,
       },
       createdAt: now,
       updatedAt: now,
@@ -827,6 +1194,150 @@ export async function runGenerate(
     warnings,
   };
 }
+
+/**
+ * Genereer een JustIn-carousel (news-ticker stijl, 6 picks, [JUST IN][2D]
+ * label per slide). Eigen flow naast runGenerate omdat:
+ *  - de pick-source anders is (recente events, niet pick-spread)
+ *  - per-pick label dynamisch is (daysAgo)
+ *  - meta.kind = 'just-in' zodat de UI ze later van DailyFilms onderscheidt
+ */
+export async function runJustInCarouselGenerate(
+  options: { existingId?: string } = {},
+): Promise<{ post: PersistedPost; warnings: string[] }> {
+  const warnings: string[] = [];
+  const now = new Date();
+  const data = await fetchJustInCarouselData();
+
+  const carouselPicks: CarouselPick[] = data.picks.map((p) => ({
+    imageUrl: p.imageUrl,
+    title: p.title,
+    venueName: p.venueName,
+    category: p.category,
+    venueType: p.venueType,
+    startsAt: p.startsAt,
+    endsAt: p.endsAt,
+  }));
+
+  // Per-pick label: [JUST IN][VANDAAG] of [JUST IN][2D GELEDEN].
+  const perPickLabel = (_pick: CarouselPick, i: number) => {
+    const d = data.picks[i].daysAgo;
+    return {
+      left: 'JUST IN',
+      right: d === 0 ? 'VANDAAG' : `${d}D GELEDEN`,
+    };
+  };
+
+  const renderOpts = {
+    date: now,
+    hookUnits: data.hookUnits,
+    overviewTitle: data.overviewTitle,
+    perPickLabel,
+  };
+  const [slidesIg, slidesTt] = await Promise.all([
+    renderCarousel(carouselPicks, { ...renderOpts, format: 'ig' }),
+    renderCarousel(carouselPicks, { ...renderOpts, format: 'tiktok' }),
+  ]);
+
+  const ymd = now.toISOString().slice(0, 10);
+  const postId = options.existingId ?? `sp-${shortId()}`;
+  const generation = now.getTime().toString(36);
+  const [imageUrls, tiktokImageUrls] = await Promise.all([
+    Promise.all(
+      slidesIg.map((buf, i) =>
+        uploadToBunny(
+          `media/social/${ymd}/${postId}-${generation}-ig-${i}.jpg`,
+          buf,
+          'image/jpeg',
+        ),
+      ),
+    ),
+    Promise.all(
+      slidesTt.map((buf, i) =>
+        uploadToBunny(
+          `media/social/${ymd}/${postId}-${generation}-tt-${i}.jpg`,
+          buf,
+          'image/jpeg',
+        ),
+      ),
+    ),
+  ]);
+
+  const captionResult = await generateCaption({
+    date: now,
+    picks: data.picks.map((p) => ({
+      title: p.title,
+      venueName: p.venueName,
+      venueType: p.venueType,
+      venueInstagram: null,
+      category: p.category,
+      startsAt: p.startsAt,
+      endsAt: p.endsAt,
+    })),
+  });
+  if (captionResult.source === 'fallback') {
+    warnings.push('caption gebruikt fallback-template (Claude niet bereikt)');
+  }
+
+  const scheduledFor = computeScheduledFor(now);
+  const eventIds = data.picks.map((p) => p.eventId);
+
+  if (options.existingId) {
+    await db
+      .update(schema.socialPosts)
+      .set({
+        eventIds,
+        imageUrls,
+        caption: captionResult.caption,
+        scheduledFor,
+        status: 'draft',
+        error: null,
+        slot: 'just-in',
+        meta: {
+          templateVersion: '3',
+          kind: 'just-in',
+          tiktokImageUrls,
+        },
+        updatedAt: now,
+      })
+      .where(eq(schema.socialPosts.id, options.existingId));
+  } else {
+    await db.insert(schema.socialPosts).values({
+      id: postId,
+      slot: 'just-in',
+      eventIds,
+      imageUrls,
+      caption: captionResult.caption,
+      scheduledFor,
+      status: 'draft',
+      meta: {
+        templateVersion: '3',
+        kind: 'just-in',
+        tiktokImageUrls,
+      },
+      createdAt: now,
+      updatedAt: now,
+    });
+  }
+
+  const [persisted] = await db
+    .select()
+    .from(schema.socialPosts)
+    .where(eq(schema.socialPosts.id, postId));
+
+  return { post: persisted as PersistedPost, warnings };
+}
+
+/** Genereer een JustIn-carousel post. Geen theme-param nodig — pakt
+    altijd de 6 meest-recent toegevoegde events van de laatste 7 dagen. */
+adminSocial.post('/generate-just-in', async (c) => {
+  try {
+    const { post, warnings } = await runJustInCarouselGenerate();
+    return c.json({ post, warnings });
+  } catch (e) {
+    return c.json({ error: (e as Error).message }, 500);
+  }
+});
 
 /** Genereer een nieuw concept-post voor een theme. Default: vandaag's
     theme (auto-gekozen via Amsterdam-weekday). `?theme=<key>` overschrijft
@@ -902,10 +1413,19 @@ export async function runPublish(
   if (post.imageUrls.length === 0) throw new Error('post heeft geen slides');
 
   try {
-    const { igMediaId, permalink } = await publishCarousel({
-      imageUrls: post.imageUrls,
-      caption: post.caption,
-    });
+    // Reel-posts (meta.kind='reel') worden anders behandeld: 1 video-URL
+    // i.p.v. een carousel met N stills. Voor de rest is de flow identiek.
+    const isReel = (post.meta as { kind?: string } | null)?.kind === 'reel';
+    const { igMediaId, permalink } = isReel
+      ? await publishReel({
+          videoUrl: post.imageUrls[0],
+          caption: post.caption,
+          shareToFeed: true,
+        })
+      : await publishCarousel({
+          imageUrls: post.imageUrls,
+          caption: post.caption,
+        });
     const now = new Date();
     const mergedMeta = {
       ...(post.meta ?? {}),
@@ -942,6 +1462,143 @@ export async function runPublish(
  * Wordt aangeroepen door de GitHub Actions cron als veiligheidsnet —
  * de publisher zelf doet ook al lazy refresh-on-use.
  */
+/**
+ * Diagnostic — toont in één response de IG-token-scopes, app-id,
+ * IG-user-id en de huidige `content_publishing_limit`. Gebruikt om bij
+ * 4/2207051-fouten meteen te zien of het token de juiste scopes heeft
+ * én of het quota op is.
+ */
+adminSocial.get('/debug', async (c) => {
+  try {
+    const { accessToken } = await ensureFreshToken();
+    const userId = process.env.IG_USER_ID;
+    const base = 'https://graph.instagram.com/v23.0';
+
+    // 1. Token-debug op graph.facebook.com (graph.instagram.com heeft geen
+    //    debug_token, fallback op de FB-variant — werkt voor IG Business
+    //    Login tokens.)
+    const debugRes = await fetch(
+      `https://graph.facebook.com/debug_token?input_token=${encodeURIComponent(
+        accessToken,
+      )}&access_token=${encodeURIComponent(accessToken)}`,
+    );
+    const debugJson = (await debugRes.json()) as unknown;
+
+    // 2. /me met fields user_id,username
+    const meRes = await fetch(
+      `${base}/me?fields=user_id,username,account_type&access_token=${encodeURIComponent(
+        accessToken,
+      )}`,
+    );
+    const meJson = (await meRes.json()) as unknown;
+
+    // 2b. Scopes die ACTIEF in het token zitten — niet de app-config maar
+    //     het token zelf. Mismatch hier verklaart 4/2207051 wanneer je
+    //     een permission toevoegt na token-generatie.
+    const permsRes = await fetch(
+      `${base}/me/permissions?access_token=${encodeURIComponent(accessToken)}`,
+    );
+    const permsJson = (await permsRes.json()) as unknown;
+
+    // 3. Content publishing limit
+    let publishingLimit: unknown = null;
+    if (userId) {
+      const limitRes = await fetch(
+        `${base}/${userId}/content_publishing_limit?fields=config,quota_usage&access_token=${encodeURIComponent(
+          accessToken,
+        )}`,
+      );
+      publishingLimit = await limitRes.json();
+    }
+
+    return c.json({
+      env: {
+        IG_USER_ID: userId ?? null,
+      },
+      debugToken: debugJson,
+      me: meJson,
+      tokenPermissions: permsJson,
+      contentPublishingLimit: publishingLimit,
+    });
+  } catch (e) {
+    return c.json({ error: (e as Error).message }, 500);
+  }
+});
+
+// ─── TikTok OAuth + Inbox-publish ────────────────────────────────────────
+
+adminSocial.get('/tiktok/connect', (c) => {
+  // CSRF-state + PKCE-verifier — beide in cookie, verifieren we bij callback.
+  const state = randomBytes(16).toString('hex');
+  const { codeVerifier, codeChallenge } = tiktokGeneratePkce();
+  // Twee cookies — beide HttpOnly, 10 min levenstijd.
+  c.header(
+    'Set-Cookie',
+    `tt_oauth_state=${state}; Path=/admin; HttpOnly; SameSite=Lax; Max-Age=600`,
+    { append: true },
+  );
+  c.header(
+    'Set-Cookie',
+    `tt_oauth_verifier=${codeVerifier}; Path=/admin; HttpOnly; SameSite=Lax; Max-Age=600`,
+    { append: true },
+  );
+  return c.redirect(tiktokAuthorizeUrl(state, codeChallenge));
+});
+
+adminSocial.get('/tiktok/callback', async (c) => {
+  const code = c.req.query('code');
+  const state = c.req.query('state');
+  const cookieHeader = c.req.header('cookie') ?? '';
+  const expectedState = /tt_oauth_state=([a-f0-9]+)/.exec(cookieHeader)?.[1];
+  const verifier = /tt_oauth_verifier=([A-Za-z0-9_-]+)/.exec(cookieHeader)?.[1];
+  if (!code) return c.text('Missing code', 400);
+  if (!state || state !== expectedState) return c.text('Invalid state', 400);
+  if (!verifier) return c.text('Missing PKCE verifier (cookie expired?)', 400);
+
+  try {
+    await tiktokCompleteOAuth(code, verifier);
+  } catch (e) {
+    return c.text(`OAuth-fout: ${(e as Error).message}`, 500);
+  }
+  return c.redirect(
+    '/admin/social?flash=' + encodeURIComponent('TikTok verbonden'),
+  );
+});
+
+adminSocial.get('/tiktok/status', async (c) => {
+  return c.json(await getTikTokConnection());
+});
+
+adminSocial.post('/tiktok/disconnect', async (c) => {
+  await db.delete(schema.tiktokTokens).where(eq(schema.tiktokTokens.id, 'main'));
+  return c.json({ ok: true });
+});
+
+/**
+ * Plaats een Reel-post (status=approved/draft/posted maakt niet uit —
+ * we hergebruiken de video-URL) als draft in TikTok-app.
+ */
+adminSocial.post('/posts/:id/tiktok-draft', async (c) => {
+  const id = c.req.param('id');
+  const [post] = await db
+    .select()
+    .from(schema.socialPosts)
+    .where(eq(schema.socialPosts.id, id));
+  if (!post) return c.json({ error: 'post niet gevonden' }, 404);
+  if (post.imageUrls.length === 0) {
+    return c.json({ error: 'post heeft geen video-URL' }, 400);
+  }
+  try {
+    const result = await publishTikTokInbox({
+      videoUrl: post.imageUrls[0],
+      caption: post.caption ?? undefined,
+    });
+    return c.json({ ok: true, publishId: result.publishId });
+  } catch (e) {
+    return c.json({ ok: false, error: (e as Error).message }, 500);
+  }
+});
+
 adminSocial.post('/refresh-token', async (c) => {
   const force = c.req.query('force') === '1';
   try {
@@ -1036,7 +1693,8 @@ adminSocial.post('/posts/:id/regenerate', async (c) => {
   }
   const themeKey =
     (existing.meta?.themeKey as string | undefined) ?? existing.slot;
-  const theme = getThemeByKey(themeKey) ?? getThemeForDate(new Date());
+  const theme =
+    getThemeByKey(themeKey) ?? getThemeForDate(new Date()) ?? THEMES[0];
   try {
     const { post, warnings } = await runGenerate(theme, {
       skipIds,

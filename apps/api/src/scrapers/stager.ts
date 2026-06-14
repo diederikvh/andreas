@@ -4,6 +4,7 @@ import { eq } from 'drizzle-orm';
 
 import { db, schema } from '../db/index.js';
 import { uploadToBunny } from '../storage/bunny.js';
+import { parseAmsterdamLocal } from './_amsterdam-tz.js';
 import { enrichEvent, refineKindByDuration } from './enrich.js';
 import {
   fetchMediamaticContent,
@@ -240,7 +241,7 @@ async function scrapeOneVenue(
   // middernacht door en moeten op hun avond nog zichtbaar zijn.
   const cutoff = Date.now() - 6 * 60 * 60 * 1000;
   const upcoming = events.filter(
-    (e) => new Date(e.endsOn ?? e.startsOn).getTime() > cutoff
+    (e) => parseAmsterdamLocal(e.endsOn ?? e.startsOn).getTime() > cutoff
   );
 
   // Mediamatic-enrich: hun Stager-publicity is leeg — content + image
@@ -281,7 +282,7 @@ async function scrapeOneVenue(
   for (const [groupKey, instances] of groups) {
     instances.sort(
       (a, b) =>
-        new Date(a.startsOn).getTime() - new Date(b.startsOn).getTime()
+        parseAmsterdamLocal(a.startsOn).getTime() - parseAmsterdamLocal(b.startsOn).getTime()
     );
     const first = instances[0];
 
@@ -324,8 +325,8 @@ async function scrapeOneVenue(
             .values({
               id: occurrenceId,
               eventId,
-              startsAt: new Date(inst.startsOn),
-              endsAt: new Date(inst.endsOn),
+              startsAt: parseAmsterdamLocal(inst.startsOn),
+              endsAt: parseAmsterdamLocal(inst.endsOn),
               priceCents: cents,
               priceNote: null,
               ticketUrl: instTicketUrl,
@@ -336,8 +337,8 @@ async function scrapeOneVenue(
             .onConflictDoUpdate({
               target: schema.occurrences.id,
               set: {
-                startsAt: new Date(inst.startsOn),
-                endsAt: new Date(inst.endsOn),
+                startsAt: parseAmsterdamLocal(inst.startsOn),
+                endsAt: parseAmsterdamLocal(inst.endsOn),
                 priceCents: cents,
                 ticketUrl: instTicketUrl,
                 status: instStatus,
@@ -383,8 +384,8 @@ async function scrapeOneVenue(
           )) ?? sourceImageUrl;
       }
 
-      const firstStart = new Date(first.startsOn);
-      const firstEnd = first.endsOn ? new Date(first.endsOn) : null;
+      const firstStart = parseAmsterdamLocal(first.startsOn);
+      const firstEnd = first.endsOn ? parseAmsterdamLocal(first.endsOn) : null;
       const refinedKind = refineKindByDuration(enriched.kind, firstStart, firstEnd);
 
       await db.transaction(async (tx) => {
@@ -426,8 +427,8 @@ async function scrapeOneVenue(
             .values({
               id: occurrenceId,
               eventId,
-              startsAt: new Date(inst.startsOn),
-              endsAt: new Date(inst.endsOn),
+              startsAt: parseAmsterdamLocal(inst.startsOn),
+              endsAt: parseAmsterdamLocal(inst.endsOn),
               priceCents: cents,
               priceNote: enriched.priceNote,
               ticketUrl: instTicketUrl,
@@ -438,8 +439,8 @@ async function scrapeOneVenue(
             .onConflictDoUpdate({
               target: schema.occurrences.id,
               set: {
-                startsAt: new Date(inst.startsOn),
-                endsAt: new Date(inst.endsOn),
+                startsAt: parseAmsterdamLocal(inst.startsOn),
+                endsAt: parseAmsterdamLocal(inst.endsOn),
                 priceCents: cents,
                 priceNote: enriched.priceNote,
                 ticketUrl: instTicketUrl,

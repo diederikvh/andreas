@@ -26,10 +26,15 @@ import { AppHeader, HEADER_HEIGHT } from '@/components/AppHeader';
 import { ContentSwitchHint } from '@/components/ContentSwitchHint';
 import { Cross } from '@/components/Cross';
 import { Rail, useRailCardStyles } from '@/components/Rail';
-import { FilmRailCard } from '@/components/FilmRailCard';
+import { FilmRailCard, FILM_CARD_WIDTH } from '@/components/FilmRailCard';
 import { RailEventCard } from '@/components/RailEventCard';
-import { VenueSquareRailCard } from '@/components/VenueSquareRailCard';
+import {
+  VenueSquareRailCard,
+  SQUARE_CARD_WIDTH,
+} from '@/components/VenueSquareRailCard';
 import { RefreshBanner } from '@/components/RefreshBanner';
+import { SearchOverlay } from '@/components/SearchOverlay';
+import { SearchPill } from '@/components/SearchPill';
 import { RunningStrip } from '@/components/RunningStrip';
 import { SpinningCross } from '@/components/SpinningCross';
 import type { ApiEvent, ApiFeedEvent, SavedApiEvent, VenueType } from '@/lib/api';
@@ -64,6 +69,7 @@ import {
   useForYouEvents,
   useMe,
   useMySaves,
+  useNewArrivalsSince,
   useSocialFeed,
   useVenues,
   useSeriesList,
@@ -72,6 +78,7 @@ import { useSession } from '@/lib/authClient';
 import { useContentMode } from '@/store/contentMode';
 import { useMode, useRoles } from '@/store/mode';
 import { useAddSavedVandaagSearch } from '@/store/savedVandaagSearches';
+import { useNewBadgeSince } from '@/store/sessionTimestamps';
 import { useVandaagFilters } from '@/store/vandaagFilters';
 import { fontFamily, palette } from '@/theme/tokens';
 
@@ -146,6 +153,19 @@ export default function Avond() {
   const cmode = useContentMode();
   const scrollRef = useRef<ScrollView>(null);
   useScrollToTop(scrollRef);
+  const [searchOpen, setSearchOpen] = useState(false);
+
+  // Elke tap op de tab-bar (ook re-tap op /avond zelf) sluit de
+  // search-overlay. Anders zou je vanuit een andere tab terugkomen op
+  // /avond met de overlay nog open — onverwacht, want de tab-bar-tap
+  // signaleert "ik wil naar dit hoofdscherm".
+  const navigation = useNavigation();
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('tabPress' as never, () => {
+      setSearchOpen(false);
+    });
+    return unsubscribe;
+  }, [navigation]);
 
   // Twee tijd-tikkers met verschillende doelen:
   //
@@ -202,8 +222,11 @@ export default function Avond() {
     lean: true,
   });
   // "Voor jou" — gepersonaliseerde aanbevelingen op basis van je save-
-  // historie. Lege array voor uitgelogde users of users zonder saves.
-  const { data: forYouEvents } = useForYouEvents();
+  // historie + gevolgde venues + vrienden-saves. Rail toont alleen
+  // komende 7 dagen; de "more"-knop leidt naar `/voor-jou` met de
+  // volle chronologische feed (infinite scroll). Lege array voor
+  // uitgelogde users of users zonder profiel-input.
+  const { data: forYouEvents } = useForYouEvents({ weekOnly: true });
   // Series + exhibitions delen één "Loopt nu"-strook bovenaan. Alleen
   // relevant in cmode='uit' (avond/nacht-modus); in 'expo' tonen we
   // 'm niet, dus skippen we de query helemaal.
@@ -836,33 +859,34 @@ export default function Avond() {
           </View>
         )}
 
+        {/* IMDB-stijl globale zoek: tikt → in-place SearchOverlay met
+            fade+slide animatie. Eén entrypoint dat venues + events
+            cross-zoekt; filters blijven op /agenda en /venues. */}
+        <View style={{ marginTop: 14, marginBottom: 14 }}>
+          <SearchPill onPress={() => setSearchOpen(true)} />
+        </View>
+
         {/* Shortcut-CTAs in een horizontale scroller: 2 vol in beeld,
-            3e (Films) peekt aan de rechterkant zodat je 'm ontdekt. */}
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.shortcutScroller}
-        >
-          <FilmsBanner />
-          <ClubsBanner />
-          <LiveBanner />
-          <TheaterBanner />
-          <KaartBanner />
-          <OpGevoelBanner />
-        </ScrollView>
+            3e (Films) peekt aan de rechterkant zodat je 'm ontdekt.
+            NewBanner zit normaal achteraan, maar zodra er nieuwe items
+            sinds vorige sessie zijn schuift 'ie naar voren — getriggerd
+            worden om te klikken werkt alleen als de kaart in beeld
+            valt. */}
+        <ShortcutsRow />
+        {/* zie ShortcutsRow definitie onder voor de bestaande set */}
 
         {/* "Voor jou" — score-gesorteerde aanbevelingen op basis van je
-            save-historie + gevolgde venues. Boven de datum-divider zodat
-            persoonlijke matches eerst in beeld vallen, omdat ze niet
-            beperkt zijn tot vandaag (horizon: 21 dagen). Verbergt zichzelf
-            bij lege data (Rail-component handelt dat af). */}
+            save-historie + gevolgde venues + vrienden-saves. Boven de
+            datum-divider zodat persoonlijke matches eerst in beeld
+            vallen. Rail is gelimiteerd tot komende 7 dagen; de
+            "more"-knop opent /voor-jou met de volle chronologische
+            feed (infinite scroll). Verbergt zichzelf bij lege data. */}
         {!isLoading && !error && railForYou.length > 0 && (
           <View style={{ marginTop: -12 }}>
           <Rail
-            kicker={t(
-              'Voor jou · komende 3 weken',
-              'For you · next 3 weeks'
-            )}
+            kicker={t('Voor jou · deze week', 'For you · this week')}
+            moreLabel={t('Meer →', 'More →')}
+            onMore={() => router.push('/voor-jou' as never)}
           >
             {railForYou.map((r) => (
               <RailEventCard
@@ -979,6 +1003,7 @@ export default function Avond() {
               kicker={t('Film vanavond', 'Film tonight')}
               moreLabel={t('Meer →', 'More →')}
               onMore={() => router.push('/films' as never)}
+              cardWidth={FILM_CARD_WIDTH}
             >
               {railFilm.map((r) => (
                 <FilmRailCard
@@ -1042,6 +1067,7 @@ export default function Avond() {
               kicker={t('Matinees', 'Matinees')}
               moreLabel={t('Meer →', 'More →')}
               onMore={() => router.push('/films' as never)}
+              cardWidth={FILM_CARD_WIDTH}
             >
               {railFilmOverdag.map((r) => (
                 <FilmRailCard
@@ -1167,7 +1193,7 @@ export default function Avond() {
           <Rail
             kicker={t('Jij en je vrienden', 'You and friends')}
             moreLabel={t('Alles →', 'See all →')}
-            onMore={() => router.push('/social' as never)}
+            onMore={() => router.push('/going' as never)}
           >
             {planningRail.map((m) => (
               <PlanningRailCard key={m.occurrenceId} entry={m} />
@@ -1180,6 +1206,7 @@ export default function Avond() {
             kicker={t('Jouw favoriete venues', 'Your favourite venues')}
             moreLabel={t('Alle venues →', 'All venues →')}
             onMore={() => router.push('/venues' as never)}
+            cardWidth={SQUARE_CARD_WIDTH}
           >
             {followedVenues.map((v) => (
               <VenueSquareRailCard
@@ -1194,6 +1221,10 @@ export default function Avond() {
       </ScrollView>
       <AppHeader title={t('Vandaag', 'Today')} showContentMode />
       <ContentSwitchHint />
+      <SearchOverlay
+        visible={searchOpen}
+        onClose={() => setSearchOpen(false)}
+      />
     </View>
   );
 }
@@ -1716,6 +1747,135 @@ function FeaturedCard({
   );
 }
 
+function ShortcutsRow() {
+  // NewBanner staat altijd vooraan zodat 'ie z'n positie houdt — links
+  // → rechts springen op basis van hasNew zou de gebruiker verwarren
+  // ("waar was die ook alweer"). Items zijn er meestal wel iets, dus
+  // de eerste positie is sowieso de logische plek.
+  const scrollRef = useRef<ScrollView>(null);
+  const navigation = useNavigation();
+  // Re-tap op de Vandaag-tab → shortcuts terug naar begin, mee met de
+  // page-scroll-to-top zodat alles opgeruimd staat.
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('tabPress' as never, () => {
+      if (navigation.isFocused()) {
+        scrollRef.current?.scrollTo({ x: 0, animated: true });
+      }
+    });
+    return unsubscribe;
+  }, [navigation]);
+  return (
+    <ScrollView
+      ref={scrollRef}
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      contentContainerStyle={styles.shortcutScroller}
+      // Snap-to-card — 112 (kaart) + 10 (gap). Leading-pad 22 constant,
+      // dus elke knop landt links netjes uitgelijnd.
+      snapToInterval={122}
+      snapToAlignment="start"
+      decelerationRate="fast"
+    >
+      <VoorJouBanner />
+      <NewBanner />
+      <FilmsBanner />
+      <ClubsBanner />
+      <LiveBanner />
+      <TheaterBanner />
+      <KaartBanner />
+      <FriendsBanner />
+      <OpGevoelBanner />
+    </ScrollView>
+  );
+}
+
+function VoorJouBanner() {
+  const roles = useRoles();
+  const t = useT();
+  return (
+    <Pressable
+      onPress={() => router.push('/voor-jou' as never)}
+      style={[styles.shortcutBtn, { backgroundColor: roles.bgLift }]}
+    >
+      <Ionicons name="sparkles-outline" size={30} color={roles.accent} />
+      <Text style={[styles.shortcutKicker, { color: roles.fgMuted }]}>
+        {t('Voor jou', 'For you')}
+      </Text>
+      <Text style={[styles.shortcutTitle, { color: roles.fg }]}>
+        {t('Aanbevolen', 'Recommended')}
+      </Text>
+    </Pressable>
+  );
+}
+
+function NewBanner() {
+  const roles = useRoles();
+  const t = useT();
+  const since = useNewBadgeSince();
+  const { data: events } = useNewArrivalsSince(since);
+  // Badge telt events nieuwer dan je laatste /new-bezoek → zakt naar 0
+  // zodra je de pagina hebt gezien, loopt pas weer op bij nieuwe
+  // aanwinsten. Bij since=null (eerste sessie) staat de query op pauze
+  // → 0, geen badge.
+  const count = events?.length ?? 0;
+  return (
+    <Pressable
+      onPress={() => router.push('/new' as never)}
+      style={[
+        styles.shortcutBtn,
+        { backgroundColor: roles.bgLift },
+      ]}
+    >
+      <View style={styles.shortcutIconRow}>
+        <Ionicons name="flash-outline" size={30} color={roles.accent} />
+        {count > 0 ? (
+          <View
+            style={[
+              styles.shortcutInlineBadge,
+              { backgroundColor: roles.accent },
+            ]}
+          >
+            <Text
+              style={[styles.shortcutBadgeText, { color: roles.onAccent }]}
+              numberOfLines={1}
+            >
+              {count > 99 ? '99+' : count}
+            </Text>
+          </View>
+        ) : null}
+      </View>
+      <Text style={[styles.shortcutKicker, { color: roles.fgMuted }]}>
+        {t('Net binnen', 'Just in')}
+      </Text>
+      <Text style={[styles.shortcutTitle, { color: roles.fg }]}>
+        {t('Nieuwste aanwinsten', 'Latest additions')}
+      </Text>
+    </Pressable>
+  );
+}
+
+function FriendsBanner() {
+  const roles = useRoles();
+  const t = useT();
+  return (
+    <Pressable
+      onPress={() => router.push('/going' as never)}
+      style={[
+        styles.shortcutBtn,
+        { backgroundColor: roles.bgLift },
+      ]}
+    >
+      <Ionicons name="people-outline" size={30} color={roles.accent} />
+      <Text style={[styles.shortcutKicker, { color: roles.fgMuted }]}>
+        {t('Friends', 'Friends')}
+      </Text>
+      <Text style={[styles.shortcutTitle, { color: roles.fg }]}>
+        {t('Vrienden plannen', 'Friends planning')}
+      </Text>
+    </Pressable>
+  );
+}
+
 function OpGevoelBanner() {
   const roles = useRoles();
   const t = useT();
@@ -1729,14 +1889,14 @@ function OpGevoelBanner() {
     >
       <MaterialCommunityIcons
         name="cards-outline"
-        size={36}
+        size={30}
         color={roles.accent}
       />
       <Text style={[styles.shortcutKicker, { color: roles.fgMuted }]}>
         {t('Vibes', 'Vibes')}
       </Text>
       <Text style={[styles.shortcutTitle, { color: roles.fg }]}>
-        {t('Wat is je mood.', "What's your mood.")}
+        {t('Wat is je mood', "What's your mood")}
       </Text>
     </Pressable>
   );
@@ -1755,17 +1915,14 @@ function TheaterBanner() {
     >
       <MaterialCommunityIcons
         name="drama-masks"
-        size={36}
+        size={30}
         color={roles.accent}
       />
       <Text style={[styles.shortcutKicker, { color: roles.fgMuted }]}>
         {t('Theater', 'Theatre')}
       </Text>
       <Text style={[styles.shortcutTitle, { color: roles.fg }]}>
-        {t(
-          'Nu en volgende week op de planken.',
-          'On stage now and next week.'
-        )}
+        {t('Op de planken', 'On stage')}
       </Text>
     </Pressable>
   );
@@ -1782,15 +1939,12 @@ function ClubsBanner() {
         { backgroundColor: roles.bgLift },
       ]}
     >
-      <Ionicons name="disc-outline" size={36} color={roles.accent} />
+      <Ionicons name="disc-outline" size={30} color={roles.accent} />
       <Text style={[styles.shortcutKicker, { color: roles.fgMuted }]}>
         {t('Clubs', 'Clubs')}
       </Text>
       <Text style={[styles.shortcutTitle, { color: roles.fg }]}>
-        {t(
-          'Wie staan er achter de draaitafels.',
-          "Who's on the decks."
-        )}
+        {t('Wie er draait', 'On the decks')}
       </Text>
     </Pressable>
   );
@@ -1807,12 +1961,12 @@ function FilmsBanner() {
         { backgroundColor: roles.bgLift },
       ]}
     >
-      <Ionicons name="film-outline" size={36} color={roles.accent} />
+      <Ionicons name="film-outline" size={30} color={roles.accent} />
       <Text style={[styles.shortcutKicker, { color: roles.fgMuted }]}>
         {t('Films', 'Films')}
       </Text>
       <Text style={[styles.shortcutTitle, { color: roles.fg }]}>
-        {t('Wat draait er deze week?', "What's showing this week?")}
+        {t('Wat er draait', "What's showing")}
       </Text>
     </Pressable>
   );
@@ -1829,12 +1983,12 @@ function LiveBanner() {
         { backgroundColor: roles.bgLift },
       ]}
     >
-      <Ionicons name="musical-notes-outline" size={36} color={roles.accent} />
+      <Ionicons name="musical-notes-outline" size={30} color={roles.accent} />
       <Text style={[styles.shortcutKicker, { color: roles.fgMuted }]}>
         {t('Live', 'Live')}
       </Text>
       <Text style={[styles.shortcutTitle, { color: roles.fg }]}>
-        {t('Waar live muziek te vinden is.', 'Where to catch live music.')}
+        {t('Live concerten', 'Live concerts')}
       </Text>
     </Pressable>
   );
@@ -1851,12 +2005,12 @@ function KaartBanner() {
         { backgroundColor: roles.bgLift },
       ]}
     >
-      <Ionicons name="map-outline" size={36} color={roles.accent} />
+      <Ionicons name="map-outline" size={30} color={roles.accent} />
       <Text style={[styles.shortcutKicker, { color: roles.fgMuted }]}>
         {t('Kaart', 'Map')}
       </Text>
       <Text style={[styles.shortcutTitle, { color: roles.fg }]}>
-        {t('Hier en nu in beeld.', 'Right here, right now.')}
+        {t('Hier en nu in beeld', 'Right here, right now')}
       </Text>
     </Pressable>
   );
@@ -2593,13 +2747,14 @@ const styles = StyleSheet.create({
     marginBottom: 18,
   },
   shortcutBtn: {
-    // Fixed-width zodat ~2 kaarten vol in beeld passen op een 390px
-    // iPhone en de 3e ~70px peekt — zelfde "ontdek door te swipen"-
-    // gevoel als de event-rails eronder.
-    width: 155,
+    // Fixed-width zodat ~3 kaarten vol in beeld passen op een 390px
+    // iPhone, met de 4e als peek-hint dat er nog meer is. Eerder
+    // hadden we 155 (2 vol) maar dan moest je veel swipen om alles
+    // te zien.
+    width: 112,
     alignItems: 'flex-start',
-    gap: 10,
-    padding: 14,
+    gap: 8,
+    padding: 12,
     borderRadius: 14,
   },
   shortcutBody: { gap: 2 },
@@ -2615,5 +2770,26 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     letterSpacing: -0.14,
   },
-
+  // Count-badge naast het shortcut-icoon — alleen voor de "Nieuw"-
+  // kaart wanneer er items zijn binnen gekomen sinds vorige sessie.
+  // Pill-rond, accent-bg, cap op "99+".
+  shortcutIconRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  shortcutInlineBadge: {
+    minWidth: 24,
+    height: 22,
+    paddingHorizontal: 7,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  shortcutBadgeText: {
+    fontFamily: fontFamily.displayBold,
+    fontSize: 12,
+    letterSpacing: -0.1,
+    lineHeight: 14,
+  },
 });
