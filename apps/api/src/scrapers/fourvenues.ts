@@ -124,12 +124,14 @@ async function fetchTilesForMonth(browser: Browser, slug: string, monthYear: str
 
     const tiles: Tile[] = [];
     for (const r of raw) {
-      // Tekst: "Madam by Night invites: Guerrilla Sat, May 9Sat, May 909:00 PM03:00 AM Madam More info"
+      // Tekst: "Madam by Night invites: MONARK Thu, June 18Thu, June 18 21:00 03:00 AM Madam"
       // De date-rij staat 2× herhaald — match dat met optionele tweede groep.
-      const m = r.text.match(/^(.+?)\s+(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun),\s+(\w{3})\s+(\d{1,2})(?:(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun),\s+\w{3}\s+\d{1,2})?\s*(\d{1,2}:\d{2}\s*(?:AM|PM))\s*(\d{1,2}:\d{2}\s*(?:AM|PM))/);
+      // Maandnaam is variabele lengte (3-9 chars: May, June, August, September) —
+      // we matchen `\w{3,9}` en truncaten in code naar 3-letter ENGLISH_MONTHS-key.
+      const m = r.text.match(/^(.+?)\s+(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun),\s+(\w{3,9})\s+(\d{1,2})(?:(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun),\s+\w{3,9}\s+\d{1,2})?\s*(\d{1,2}:\d{2}\s*(?:AM|PM))\s*(\d{1,2}:\d{2}\s*(?:AM|PM))/);
       if (!m) continue;
       const title = m[1].trim();
-      const month = ENGLISH_MONTHS[m[2]];
+      const month = ENGLISH_MONTHS[m[2].slice(0, 3)];
       const day = parseInt(m[3], 10);
       const start24 = to24h(m[4]);
       const end24 = to24h(m[5]);
