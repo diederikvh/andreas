@@ -27,13 +27,13 @@ import { db, schema } from '../db/index.js';
 import { isLineupPlaceholderName } from './enrich.js';
 
 const UA = 'Andreas/1.0 ( diederik@wend.nl )';
-// 2500ms — MB's officiele limiet is 1/sec, maar bij 1500ms hebben we
-// na ~600 artists een 503-flag gekregen. 2500ms (24/min) geeft genoeg
-// marge voor netwerkjitter zonder dat een batch van 400 events te lang
-// duurt (~33 min — net binnen de 30-min cron-timeout zou krap zijn,
-// maar we hebben de timeout daar op 30 min staan; werkt door --limit
-// te respecteren).
-const MB_THROTTLE_MS = 2500;
+// MB's anonymous rate-limit is 1200 requests per uur per IP (zie
+// x-ratelimit-limit response-header). Per request gemiddeld 3000ms.
+// Wij draaien op een shared Fly-IP dus krijgen mogelijk maar een
+// deel van dat venster — daarom 3500ms (= 1029/uur, ruim onder cap).
+// Eerder stond hier 2500ms (1440/uur) wat structureel boven de cap
+// zat → na ~20 calls al 503.
+const MB_THROTTLE_MS = 3500;
 const RETRY_AFTER_DAYS = 7;
 
 interface MBSearchArtist {
@@ -65,7 +65,19 @@ async function mbFetch<T>(url: string): Promise<FetchOutcome<T>> {
       headers: { 'User-Agent': UA, Accept: 'application/json' },
       signal: AbortSignal.timeout(15000),
     });
-    if (r.status === 503) return { ok: false, fatal: true };
+    if (r.status === 503) {
+      // Log MB's rate-limit-headers zodat we bij een onverwachte 503
+      // weten of we boven de cap zaten of dat MB iets anders deed.
+      const limit = r.headers.get('x-ratelimit-limit');
+      const remaining = r.headers.get('x-ratelimit-remaining');
+      const reset = r.headers.get('x-ratelimit-reset');
+      const retryAfter = r.headers.get('retry-after');
+      console.warn(
+        '[mb] 503 fatal — rate-limit=%s remaining=%s reset=%s retry-after=%s',
+        limit ?? '?', remaining ?? '?', reset ?? '?', retryAfter ?? '?',
+      );
+      return { ok: false, fatal: true };
+    }
     if (!r.ok) return { ok: false, fatal: false };
     return { ok: true, data: (await r.json()) as T };
   } catch {
@@ -279,7 +291,16 @@ export async function enrichLineupArtists(
       return stale;
     })
     .sort((a, b) => {
+      // 1. Nieuwe namen (geen artist-record) eerst — daar voegt MB-
+      //    enrich daadwerkelijk nieuwe data toe. Stale-rechecks van
+      //    bestaande artists hebben al data; vullen alleen aan.
+      const aNew = !existingByLower.has(a.lower);
+      const bNew = !existingByLower.has(b.lower);
+      if (aNew !== bNew) return aNew ? -1 : 1;
+      // 2. Binnen elke groep: meeste callsites eerst (festival-
+      //    headliners vóór eenmalige supports).
       if (b.sites.length !== a.sites.length) return b.sites.length - a.sites.length;
+      // 3. Stabiele tie-break.
       return a.lower.localeCompare(b.lower);
     })
     .slice(0, limit ?? Number.MAX_SAFE_INTEGER);
