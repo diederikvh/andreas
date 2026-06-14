@@ -328,20 +328,39 @@ export async function enrichLineupArtists(
         break;
       }
       if (data.mbid) result.mbHit += 1;
-      await db
-        .update(schema.artists)
-        .set({
-          mbid: data.mbid,
-          description: data.description ?? null,
-          spotifyUrl: data.spotifyUrl,
-          appleMusicUrl: data.appleMusicUrl,
-          bandcampUrl: data.bandcampUrl,
-          youtubeUrl: data.youtubeUrl,
-          officialUrl: data.officialUrl,
-          genres: data.genres,
-          enrichedAt: new Date(),
-        })
-        .where(eq(schema.artists.id, existing.id));
+      try {
+        await db
+          .update(schema.artists)
+          .set({
+            mbid: data.mbid,
+            description: data.description ?? null,
+            spotifyUrl: data.spotifyUrl,
+            appleMusicUrl: data.appleMusicUrl,
+            bandcampUrl: data.bandcampUrl,
+            youtubeUrl: data.youtubeUrl,
+            officialUrl: data.officialUrl,
+            genres: data.genres,
+            enrichedAt: new Date(),
+          })
+          .where(eq(schema.artists.id, existing.id));
+      } catch {
+        // Unique-violation op mbid: deze MB-record hangt al aan een
+        // andere artist-row (bv. NL/EN-spelling van dezelfde act).
+        // Update zonder mbid zodat de overige enrich-data wel landt.
+        await db
+          .update(schema.artists)
+          .set({
+            description: data.description ?? null,
+            spotifyUrl: data.spotifyUrl,
+            appleMusicUrl: data.appleMusicUrl,
+            bandcampUrl: data.bandcampUrl,
+            youtubeUrl: data.youtubeUrl,
+            officialUrl: data.officialUrl,
+            genres: data.genres,
+            enrichedAt: new Date(),
+          })
+          .where(eq(schema.artists.id, existing.id));
+      }
       result.artistsUpdated += 1;
       resolved.set(entry.lower, existing.id);
     } else {
