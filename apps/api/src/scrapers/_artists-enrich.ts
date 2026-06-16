@@ -288,43 +288,56 @@ export async function enrichLineupArtists(
   const entries = [...nameToCallsites.values()];
   const resolved = new Map<string, string>(); // lower → artistId
 
+  // Bestaande artists meteen in resolved zetten.
+  const toInsert: Array<{ id: string; name: string; lower: string }> = [];
   for (const entry of entries) {
     const ex = existingByLower.get(entry.lower);
     if (ex) {
       resolved.set(entry.lower, ex.id);
       continue;
     }
-    const id = `${slugify(entry.original)}-${Math.random().toString(36).slice(2, 6)}`;
-    try {
-      await db.insert(schema.artists).values({
-        id,
-        name: entry.original,
-        enrichedAt: null, // signal: nog niet bij MB gezocht
-      });
-      existingByLower.set(entry.lower, {
-        id,
-        name: entry.original,
-        enrichedAt: null,
-      });
-      resolved.set(entry.lower, id);
-      result.artistsInserted += 1;
-    } catch {
-      // Race: parallelle insert won. Re-select case-insensitive.
-      const [now] = await db
-        .select({
-          id: schema.artists.id,
-          name: schema.artists.name,
-          enrichedAt: schema.artists.enrichedAt,
-        })
-        .from(schema.artists)
-        .where(sql`LOWER(${schema.artists.name}) = ${entry.lower}`)
-        .limit(1);
-      if (now) {
-        existingByLower.set(entry.lower, now);
-        resolved.set(entry.lower, now.id);
-      }
+    toInsert.push({
+      id: `${slugify(entry.original)}-${Math.random().toString(36).slice(2, 6)}`,
+      name: entry.original,
+      lower: entry.lower,
+    });
+  }
+
+  // Bulk-insert in chunks van 200 (Neon-vriendelijke batch-size).
+  // onConflictDoNothing op de pk-id; voor case-insensitive name-conflicts
+  // (race met andere worker) re-selecten we per chunk.
+  const CHUNK = 200;
+  for (let i = 0; i < toInsert.length; i += CHUNK) {
+    const chunk = toInsert.slice(i, i + CHUNK);
+    await db
+      .insert(schema.artists)
+      .values(
+        chunk.map((c) => ({
+          id: c.id,
+          name: c.name,
+          enrichedAt: null,
+        })),
+      )
+      .onConflictDoNothing();
+    // Re-select case-insensitive om óók race-conflicts (zelfde lower,
+    // andere id) op te pikken — zonder dit zou resolved leeg blijven
+    // voor artists die parallel zijn aangemaakt.
+    const lowers = chunk.map((c) => c.lower);
+    const rows = await db
+      .select({
+        id: schema.artists.id,
+        name: schema.artists.name,
+        enrichedAt: schema.artists.enrichedAt,
+      })
+      .from(schema.artists)
+      .where(sql`LOWER(${schema.artists.name}) = ANY(${lowers}::text[])`);
+    for (const r of rows) {
+      const lower = r.name.toLowerCase();
+      existingByLower.set(lower, r);
+      resolved.set(lower, r.id);
     }
   }
+  result.artistsInserted = toInsert.length;
 
   // ─── STAP B: MB-enrich ────────────────────────────────────────────
   // Pak artists waar enrichedAt IS NULL (nooit gezocht) OF stale.

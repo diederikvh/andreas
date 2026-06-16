@@ -92,22 +92,25 @@ jobs:
           python3 -m json.tool < response.json 2>/dev/null || cat response.json
           [ "$HTTP" -ge 400 ] && exit 1 || exit 0
 
-  # Artists-enrichment via MusicBrainz — link lineup-items aan
-  # canonical artist-records met Spotify/Apple Music/Bandcamp/YouTube/
-  # official links. Vult ook bio + genre-tags uit MB. Chunk-limit van
-  # 400 per run om binnen de 30-min job-timeout te blijven (1.5s
-  # throttle × 2 calls per artist = ~20 min voor 400). Incremental
-  # gedrag: nieuwe artists eerst, stale (>7d) als ruimte over is.
+  # Artists-enrichment — twee staps (zie _artists-enrich.ts):
+  #   A) ensure-rows: alle lineup-namen krijgen een artist-record (snel,
+  #      bulk-insert, geen MB-call). Doel: app kan altijd naar artist
+  #      linken, ook voor long-tail-acts.
+  #   B) MB-enrich: pak artists met enrichedAt:null OF stale, MB-search
+  #      voor Spotify/Apple Music/Bandcamp/YouTube/official + bio +
+  #      genre-tags. Limit cap'd door MB's 1200/uur rate-limit (3.5s
+  #      throttle × 2 calls per artist = ~23 min voor 200).
+  # Cron-window: 35 min job, curl wacht max 32 min op response.
   enrich-artists:
     needs: scrape
     if: always()
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 35
     steps:
       - name: POST /admin/api/enrich-artists
         run: |
-          HTTP=$(curl --silent --show-error --max-time 1500 \
-            -X POST "https://api.andreas.amsterdam/admin/api/enrich-artists?limit=400" \
+          HTTP=$(curl --silent --show-error --max-time 1900 \
+            -X POST "https://api.andreas.amsterdam/admin/api/enrich-artists?limit=200" \
             -H "Authorization: Bearer ${{ secrets.ANDREAS_ADMIN_API_KEY }}" \
             -H "Content-Type: application/json" \
             -o response.json \
