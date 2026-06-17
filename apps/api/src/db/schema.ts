@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm';
 import {
+  bigint,
   boolean,
   doublePrecision,
   index,
@@ -1145,3 +1146,20 @@ export const verification = pgTable('verification', {
     .notNull()
     .default(sql`now()`),
 });
+
+/**
+ * better-auth rate-limit store (storage: 'database'). Gedeeld over alle
+ * Fly-machines, i.p.v. memory-per-machine — zodat de OTP/SMS-rate-limit ook
+ * bij autoscale (>1 machine) klopt. Model `rateLimit` met velden key/count/
+ * lastRequest (better-auth-contract). lastRequest = ms-since-epoch (bigint).
+ */
+export const rateLimit = pgTable(
+  'rate_limit',
+  {
+    id: text().primaryKey(),
+    key: text(),
+    count: integer(),
+    lastRequest: bigint({ mode: 'number' }),
+  },
+  (t) => [index('rate_limit_key_idx').on(t.key)]
+);
