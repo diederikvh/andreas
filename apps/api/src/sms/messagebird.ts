@@ -30,7 +30,7 @@ export async function sendSms(opts: { to: string; body: string }) {
 
   if (!key || !workspaceId || !channelId) {
     console.warn(
-      `[sms:fallback] ontbrekende Bird-config (key=${!!key} ws=${!!workspaceId} ch=${!!channelId}) → ${opts.to}: ${opts.body}`
+      `[sms:fallback] ontbrekende Bird-config (key=${!!key} ws=${!!workspaceId} ch=${!!channelId}) → SMS niet verstuurd naar ${opts.to}`
     );
     return;
   }

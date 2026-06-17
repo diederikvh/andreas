@@ -100,7 +100,9 @@ app.use(
   '*',
   cors({
     origin: (origin) => {
-      if (!origin) return origin ?? '*';
+      // Geen Origin-header (server-to-server / same-origin navigatie) → geen
+      // CORS nodig, dus géén ACAO-header (nooit '*' samen met credentials).
+      if (!origin) return null;
       if (!isProd) return origin;
       if (PROD_ORIGINS.has(origin)) return origin;
       // Expo Go / dev-client tijdens TestFlight-test (andreas:// scheme

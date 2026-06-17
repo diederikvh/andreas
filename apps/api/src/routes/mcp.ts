@@ -9,6 +9,8 @@
  * Auth: `Authorization: Bearer <MCP_API_KEY>`. Is de secret niet gezet, dan is
  * het endpoint in productie uit (503) en lokaal open (dev).
  */
+import { timingSafeEqual } from 'node:crypto';
+
 import { RESPONSE_ALREADY_SENT } from '@hono/node-server/utils/response';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { Hono } from 'hono';
@@ -21,6 +23,15 @@ import { buildMcpServer } from '../mcp/server.js';
 export const mcpRoute = new Hono();
 
 const BASE_URL = process.env.BETTER_AUTH_URL ?? 'http://localhost:8787';
+
+/** Timing-safe string-vergelijk voor de service-key (geen byte-voor-byte
+    timing-leak zoals `===`). */
+function safeEqual(a: string, b: string): boolean {
+  const aBuf = Buffer.from(a);
+  const bBuf = Buffer.from(b);
+  if (aBuf.length !== bBuf.length) return false;
+  return timingSafeEqual(aBuf, bBuf);
+}
 
 // MCP JSON-RPC-bodies zijn klein; cap tegen geheugen-/parse-DoS.
 mcpRoute.use('*', bodyLimit({ maxSize: 64 * 1024 }));
@@ -67,7 +78,10 @@ mcpRoute.all('/', async (c) => {
   //  2. Service-key (server-to-server / testen) via MCP_API_KEY.
   const serviceKey = process.env.MCP_API_KEY;
   const authz = c.req.header('authorization');
-  const viaServiceKey = Boolean(serviceKey && authz === `Bearer ${serviceKey}`);
+  const presented = authz?.startsWith('Bearer ') ? authz.slice(7) : '';
+  const viaServiceKey = Boolean(
+    serviceKey && presented && safeEqual(presented, serviceKey)
+  );
   const userId = viaServiceKey ? null : await oauthUserId(c.req.raw.headers);
 
   if (!viaServiceKey && !userId) {

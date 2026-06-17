@@ -63,7 +63,10 @@ eventsRoute.get('/', async (c) => {
   // events (~2k op dit moment), niet alleen de eerstvolgende 50. Voor
   // Vandaag/Kaart die met `from + to` een dag-window opvragen blijven
   // de queries klein. Server-payload bij ~2k events is rond ~500KB JSON.
-  const limit = Math.min(Number(c.req.query('limit') ?? 200), 5000);
+  // Cap op 2000 — gelijk aan wat de drukste category-pagina's (clubs/live/
+  // theater) legitiem opvragen. Voorkomt de eerdere 5000-over-fetch als
+  // DoS-headroom op een 512MB-machine.
+  const limit = Math.min(Number(c.req.query('limit') ?? 200), 2000);
 
   const featured = c.req.query('featured');
   const from = c.req.query('from');
