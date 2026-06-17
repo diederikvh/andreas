@@ -66,9 +66,20 @@ function fmtPrice(cents: number | null): string | null {
   return Number.isInteger(euro) ? `€${euro}` : `€${euro.toFixed(2).replace('.', ',')}`;
 }
 
+/** Veilig voor een CSS `url('...')`-context: alleen http(s), en geen tekens
+    die uit de string/declaratie kunnen breken (quotes, haakjes, backslash,
+    whitespace). HTML-escapen volstaat hier niet — de browser decodeert dat
+    vóór de CSS-parser. Faalt 't, dan geen background (placeholder). */
+function safeCssImageUrl(url: string | null): string | null {
+  if (!url) return null;
+  if (!/^https:\/\/[^\s'"()\\<>]+$/i.test(url)) return null;
+  return url;
+}
+
 function cardHtml(e: McpEvent): string {
-  const img = e.imageUrl
-    ? `<div class="thumb" style="background-image:url('${esc(e.imageUrl)}')"></div>`
+  const safeImg = safeCssImageUrl(e.imageUrl);
+  const img = safeImg
+    ? `<div class="thumb" style="background-image:url('${safeImg}')"></div>`
     : `<div class="thumb thumb--empty">✕</div>`;
   const wijk = e.wijk ? ` · ${esc(e.wijk)}` : '';
   const price = fmtPrice(e.priceCents);

@@ -20,6 +20,7 @@ import {
   PUBLIC_BASE_URL,
   breadcrumbJsonLd,
   escapeHtml,
+  safeExternalUrl,
   eventSchemaType,
   faqJsonLd,
   formatDateLong,
@@ -760,7 +761,7 @@ function renderEventSeoPage(opts: {
     faqEntries.push({
       question: `Waar koop ik tickets voor ${event.title}?`,
       answer: `Tickets voor ${event.title} zijn verkrijgbaar via ${ticketHost} (${primaryOcc.ticketUrl}).`,
-      answerHtml: `Tickets voor ${escapeHtml(event.title)} zijn verkrijgbaar via <a href="${escapeHtml(primaryOcc.ticketUrl)}" target="_blank" rel="noopener">${escapeHtml(ticketHost)} ↗</a>.`,
+      answerHtml: `Tickets voor ${escapeHtml(event.title)} zijn verkrijgbaar via <a href="${escapeHtml(safeExternalUrl(primaryOcc.ticketUrl))}" target="_blank" rel="noopener">${escapeHtml(ticketHost)} ↗</a>.`,
     });
   }
   // AI-connector — ook event-contextueel, zodat ChatGPT/Perplexity bij een
@@ -830,7 +831,7 @@ function renderEventSeoPage(opts: {
     const ticketHost = ticketDomain(primaryOcc.ticketUrl);
     facts.push([
       'Tickets',
-      `<a href="${escapeHtml(primaryOcc.ticketUrl)}" target="_blank" rel="noopener">${escapeHtml(ticketHost)} ↗</a>`,
+      `<a href="${escapeHtml(safeExternalUrl(primaryOcc.ticketUrl))}" target="_blank" rel="noopener">${escapeHtml(ticketHost)} ↗</a>`,
     ]);
   }
   facts.push(['Soort', escapeHtml(event.category)]);
@@ -1257,7 +1258,7 @@ function renderVenueSeoPage(opts: {
   if (venue.website)
     facts.push([
       'Website',
-      `<a href="${escapeHtml(venue.website)}" rel="noopener" target="_blank">${escapeHtml(venue.website.replace(/^https?:\/\//, '').replace(/\/$/, ''))}</a>`,
+      `<a href="${escapeHtml(safeExternalUrl(venue.website))}" rel="noopener" target="_blank">${escapeHtml(venue.website.replace(/^https?:\/\//, '').replace(/\/$/, ''))}</a>`,
     ]);
   if (venue.instagram)
     facts.push([
@@ -2268,7 +2269,7 @@ function renderArtistSeoPage(opts: {
     ? `<div class="streaming-btns">${links
         .map(
           (l) =>
-            `<a class="streaming-btn" href="${escapeHtml(l.url)}" target="_blank" rel="noopener"><span class="streaming-icon">${streamingIconSvg(l.platform)}</span><span class="streaming-label">${escapeHtml(l.label)}</span></a>`
+            `<a class="streaming-btn" href="${escapeHtml(safeExternalUrl(l.url))}" target="_blank" rel="noopener"><span class="streaming-icon">${streamingIconSvg(l.platform)}</span><span class="streaming-label">${escapeHtml(l.label)}</span></a>`
         )
         .join('')}</div>`
     : '';

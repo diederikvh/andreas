@@ -58,7 +58,10 @@ function toE164(raw: string): string {
 
 export const auth = betterAuth({
   logger: {
-    level: 'debug',
+    // In prod alleen errors: better-auth's debug/info-logs bevatten
+    // request/verification-context (o.a. telefoonnummers) — niet in de
+    // Fly-logs willen. Lokaal volledige verbosity voor debugging.
+    level: process.env.NODE_ENV === 'production' ? 'error' : 'debug',
     log: (level, msg, ...rest) => {
       // eslint-disable-next-line no-console
       console.log(`[auth:${level}] ${msg}`, ...rest);
