@@ -77,6 +77,7 @@ export const auth = betterAuth({
       oauthApplication: schema.oauthApplication,
       oauthAccessToken: schema.oauthAccessToken,
       oauthConsent: schema.oauthConsent,
+      rateLimit: schema.rateLimit,
     },
   }),
   secret: process.env.BETTER_AUTH_SECRET,
@@ -116,18 +117,23 @@ export const auth = betterAuth({
     defaultCookieAttributes: {
       maxAge: 60 * 60 * 24 * 180,
     },
+    // Client-IP uit Fly's vertrouwde `Fly-Client-IP` (door de Fly-edge
+    // gezet/overschreven → niet spoofbaar), niet de leftmost X-Forwarded-
+    // For (wél client-spoofbaar → rate-limit-bypass). Fallback op XFF voor
+    // lokaal/dev.
+    ipAddress: {
+      ipAddressHeaders: ['fly-client-ip', 'x-forwarded-for'],
+    },
   },
   // Per-IP rate limit op de OTP-paden om SMS-bombing en Bird-credit-
   // brand te voorkomen. Better-auth's default (100 req / 60s) blijft
   // gelden voor alle andere auth-routes. enabled blijft undefined → aan
   // in productie, uit in dev (better-auth-default).
   //
-  // Storage 'memory' is per-Fly-machine; met 1-2 machines is dat ruim
-  // genoeg voor abuse-protectie. IP-rotatie tegen één telefoonnummer
-  // valt buiten scope — voeg per-phone middleware toe als dat zich
-  // voordoet.
+  // Storage 'database' (gedeelde rate_limit-tabel) i.p.v. 'memory': zo telt
+  // de limiet over álle Fly-machines samen, ook bij autoscale (>1 machine).
   rateLimit: {
-    storage: 'memory',
+    storage: 'database',
     customRules: {
       // Max 3 SMS-verzoeken per 5 min per IP. Een legit user klikt
       // hooguit 2-3x op "verstuur opnieuw"; daarna eerst even wachten.
