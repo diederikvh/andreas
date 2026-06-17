@@ -1455,7 +1455,7 @@ function GidsBanner({ onPress }: { onPress: () => void }) {
         {t('Gids', 'Guide')}
       </Text>
       <Text style={[styles.shortcutTitle, { color: roles.fg }]}>
-        {t('Vraag de gids', 'Ask the guide')}
+        {t('Vraag Andreas', 'Ask Andreas')}
       </Text>
     </Pressable>
   );
@@ -2614,11 +2614,12 @@ const styles = StyleSheet.create({
     marginTop: 14,
     marginBottom: 10,
   },
-  // Tweede rij — compacte icoon+kicker-knopjes, onder de feature.
+  // Tweede rij — compacte icoon+kicker-knopjes, dicht onder de feature
+  // (kleine marginTop; bij één hero-image is er anders te veel lucht).
   shortcutScrollerSmall: {
     paddingHorizontal: 22,
     gap: 8,
-    marginTop: 12,
+    marginTop: 2,
     marginBottom: 18,
   },
   // Compacte pill: icoon + label naast elkaar.
