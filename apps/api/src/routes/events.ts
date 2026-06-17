@@ -1162,10 +1162,16 @@ eventsRoute.get('/for-you', async (c) => {
   const eventById = new Map(scored.map((s) => [s.id, s]));
   const ordered = page
     .map((p) => ({
-      event: eventById.get(p.id)!,
-      occ: occRange.byEvent.get(p.id)!,
+      event: eventById.get(p.id),
+      occ: occRange.byEvent.get(p.id),
     }))
-    .filter((x) => x.event);
+    // Events zonder (nog niet voorbije) occurrence vallen weg: de gedeelde
+    // findEventsWithOccurrencesInRange past de categorie-bewuste cutoff al
+    // toe (Muziek 4u, overig 1u grace zonder eindtijd), dus een al-afgelopen
+    // 18:10-film zit niet meer in occRange en verschijnt niet in de feed.
+    .filter((x): x is { event: NonNullable<typeof x.event>; occ: NonNullable<typeof x.occ> } =>
+      Boolean(x.event && x.occ)
+    );
 
   // Standaard friend-pills + series + denormalisatie, gelijk aan GET /events.
   const eventIds = ordered.map((x) => x.event.id);
@@ -1177,30 +1183,11 @@ eventsRoute.get('/for-you', async (c) => {
   const friendsByOcc = await buildFriendsByOccurrence(me, allOccurrenceIds);
   const seriesMap = await buildSeriesByEvent(eventIds);
 
-  // Genuanceerde "al voorbij"-cutoff voor de feed: een 18:10-film zónder
-  // eindtijd is om 21:48 voorbij en hoort niet meer in "Voor jou". endsAt is
-  // de waarheid; zonder endsAt geldt 60 min grace (nachtleven — club of
-  // categorie Muziek — krijgt 4u want mensen komen laat). De gedeelde
-  // findEventsWithOccurrencesInRange gebruikt nog de ruime 4u-default; deze
-  // pass scherpt dat aan, spiegelt effectiveEndsAtMs in de app.
-  const occStillRelevant = (
-    o: { startsAt: Date; endsAt: Date | null },
-    nightlife: boolean
-  ): boolean => {
-    const endMs = o.endsAt
-      ? new Date(o.endsAt).getTime()
-      : new Date(o.startsAt).getTime() + (nightlife ? 4 * 3600_000 : 60 * 60_000);
-    return endMs >= nowMs;
-  };
-
   const events = ordered
     .map(({ event, occ }) => {
       const isExhibition = event.kind === 'exhibition';
-      const nightlife =
-        event.venue.type === 'club' || event.category === 'Muziek';
       const occurrencesInRange = occ.all
         .filter((o) => !dismissedOccIds.has(o.id))
-        .filter((o) => isExhibition || occStillRelevant(o, nightlife))
         .map((o) => {
           const f = friendsByOcc.get(o.id);
           return {

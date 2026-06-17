@@ -31,6 +31,7 @@ import { RefreshBanner } from '@/components/RefreshBanner';
 import type { ApiEvent } from '@/lib/api';
 import {
   dowMixed,
+  effectiveEndsAtMs,
   eventImageUrl,
   formatWijk,
   isMultiDay,
@@ -353,14 +354,15 @@ function ShowCard({ show, locale }: { show: ApiEvent; locale: Locale }) {
   // de juiste occurrenceId + ticketUrl.
   const upcomingOccs = useMemo(() => {
     const occs = show.occurrencesInRange ?? [];
-    const startOfToday = new Date();
-    startOfToday.setHours(0, 0, 0, 0);
-    const minMs = startOfToday.getTime();
+    const now = Date.now();
     const byKey = new Map<string, (typeof occs)[number]>();
     for (const o of occs) {
       if (isMultiDay(o.startsAt, o.endsAt)) continue;
       const d = new Date(o.startsAt);
-      if (d.getTime() < minMs) continue;
+      // Genuanceerde cutoff: een voorbije voorstelling (eindtijd, of zonder
+      // eindtijd 1u na start voor theater) valt weg — geen 18:10-show meer
+      // om 21:48.
+      if (effectiveEndsAtMs(o, show) < now) continue;
       const key = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}-${d.getHours()}-${d.getMinutes()}`;
       if (!byKey.has(key)) byKey.set(key, o);
     }

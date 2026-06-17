@@ -33,6 +33,7 @@ import { RefreshBanner } from '@/components/RefreshBanner';
 import type { ApiEvent, ApiOccurrence } from '@/lib/api';
 import {
   dowMixed,
+  effectiveEndsAtMs,
   eventImageUrl,
   formatWijk,
   monthShort,
@@ -167,7 +168,9 @@ export default function Clubs() {
       const isClubVenue = e.venue.type === 'club';
       for (const o of e.occurrencesInRange ?? []) {
         const ts = new Date(o.startsAt).getTime();
-        if (ts < now - 4 * 3600 * 1000) continue;
+        // Genuanceerde cutoff (effectiveEndsAtMs): respecteert een eindtijd;
+        // clubs/Muziek houden anders de ruime nachtleven-staart.
+        if (effectiveEndsAtMs(o, e) < now) continue;
         if (!isClubVenue) {
           if (e.category !== 'Muziek') continue;
           const hour = new Date(o.startsAt).getHours();

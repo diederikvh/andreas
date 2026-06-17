@@ -496,11 +496,13 @@ export async function findEventsWithOccurrencesInRange(
   const to = options.to;
 
   const conditions = [
-    // Filter op effectieve eindtijd: endsAt als gezet, anders startsAt
-    // + 4u als default duur (films/concerten/clubs vallen daarbinnen).
-    // Exhibitions hebben endsAt altijd gezet (de loopduur), dus die
-    // worden hier vanzelf goed afgehandeld.
-    sql`COALESCE(${schema.occurrences.endsAt}, ${schema.occurrences.startsAt} + INTERVAL '4 hours') >= ${from}`,
+    // Filter op effectieve eindtijd: endsAt als gezet, anders een default-
+    // duur ná de start. Categorie-bewust (spiegelt effectiveEndsAtMs in de
+    // app): live muziek (concerten/clubs) krijgt 4u want mensen komen laat;
+    // film/theater/kunst/lezing 1u grace, zodat een 18:10-film om 21:48 niet
+    // meer in de feeds (Voor jou, /theater, /film, …) blijft hangen.
+    // Exhibitions hebben endsAt altijd gezet, dus die vallen hier vanzelf goed.
+    sql`COALESCE(${schema.occurrences.endsAt}, ${schema.occurrences.startsAt} + CASE WHEN ${schema.events.category} = 'Muziek' THEN INTERVAL '4 hours' ELSE INTERVAL '1 hour' END) >= ${from}`,
     sql`${schema.occurrences.status} <> 'cancelled'`,
   ];
   if (to) conditions.push(lte(schema.occurrences.startsAt, to));
