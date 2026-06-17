@@ -397,7 +397,10 @@ async function getFriendIdsFor(meId: string): Promise<string[]> {
  *   - unpublished events / venues
  *   - kind='exhibition' (museums tonen via Vandaag-rails, niet per dag)
  *   - cancelled occurrences
- *   - long-running occurrences (>7d) — meestal audio tours / installaties
+ *   - all-day / doorlopende occurrences (span ≥ 23u) — een agenda gaat
+ *     over "wat speelt er wánneer"; een doorlopend all-day-blok (WK-
+ *     viewing, weekmarkt, audio tour) hoort daar niet als kaart tussen.
+ *     Blijven vindbaar via de venue-pagina en zoek.
  *   - geblokkeerde venues van de huidige gebruiker
  *
  * Plus de actieve filter-chips (cat/venueType/q/onlyFollowed/onlyFriends).
@@ -415,9 +418,11 @@ function buildAgendaWhere(opts: {
     eq(schema.venues.published, true),
     sql`${schema.events.kind} <> 'exhibition'`,
     sql`${schema.occurrences.status} <> 'cancelled'`,
-    // Long-running: alleen filteren als endsAt gezet is. Null endsAt =
-    // default 4u, dus per definitie niet long-running.
-    sql`(${schema.occurrences.endsAt} IS NULL OR ${schema.occurrences.endsAt} - ${schema.occurrences.startsAt} <= INTERVAL '7 days')`,
+    // All-day / doorlopend: filter occurrences met een span ≥ 23u
+    // (zelfde grens als isAllDayRange in de app — dekt 00:00→23:59,
+    // meerdaagse blokken én weken-lange audio tours). Alleen filteren
+    // als endsAt gezet is; null endsAt = default 4u, dus getimed.
+    sql`(${schema.occurrences.endsAt} IS NULL OR ${schema.occurrences.endsAt} - ${schema.occurrences.startsAt} < INTERVAL '23 hours')`,
     // Effectieve eindtijd ≥ windowStart (event nog niet voorbij)
     sql`COALESCE(${schema.occurrences.endsAt}, ${schema.occurrences.startsAt} + INTERVAL '4 hours') >= ${opts.windowStart}`,
     // Start < windowEnd (event nog binnen window)
