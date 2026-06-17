@@ -816,9 +816,16 @@ export default function Avond() {
           />
         }
       >
-        {/* Hoofd-artikelen: alle featured events uit vandaag-events.
-            Lichte negative marginTop zodat de top van de hero onder
-            de fade-to-transparent header doorloopt. */}
+        {/* Rij 1 — grote banners (Gids · Voor jou · Net binnen · Zoek)
+            bóven de feature, zodat de feature rust geeft tussen deze en
+            de kleine categorie-knopjes eronder. */}
+        <ShortcutsRow
+          variant="big"
+          onOpenGuide={openGuide}
+          onOpenSearch={() => setSearchOpen(true)}
+        />
+
+        {/* Hoofd-artikelen: alle featured events uit vandaag-events. */}
         {leads.length > 0 && (
           <View style={{ marginTop: 8 }}>
             <FeaturedCarousel
@@ -829,11 +836,9 @@ export default function Avond() {
           </View>
         )}
 
-        {/* Twee rijen shortcuts. Rij 1 (groot): Gids · Voor jou · Net
-            binnen · Zoek (de globale cross-zoek opent de SearchOverlay —
-            geen los zoekveld meer). Rij 2 (klein, icoon + kicker): de
-            categorie/ingang-banners. */}
+        {/* Rij 2 — compacte categorie/ingang-knopjes onder de feature. */}
         <ShortcutsRow
+          variant="small"
           onOpenGuide={openGuide}
           onOpenSearch={() => setSearchOpen(true)}
         />
@@ -1705,9 +1710,14 @@ function FeaturedCard({
 }
 
 function ShortcutsRow({
+  variant,
   onOpenGuide,
   onOpenSearch,
 }: {
+  /** 'big' = de vier grote banners (boven de feature); 'small' = de
+      compacte categorie-knopjes (onder de feature). De feature ertussen
+      geeft rust tussen de twee knop-groepen. */
+  variant: 'big' | 'small';
   onOpenGuide: () => void;
   onOpenSearch: () => void;
 }) {
@@ -1718,7 +1728,7 @@ function ShortcutsRow({
   const roles = useRoles();
   const scrollRef = useRef<ScrollView>(null);
   const navigation = useNavigation();
-  // Re-tap op de Vandaag-tab → grote rij terug naar begin.
+  // Re-tap op de Vandaag-tab → rij terug naar begin.
   useEffect(() => {
     const unsubscribe = navigation.addListener('tabPress' as never, () => {
       if (navigation.isFocused()) {
@@ -1728,25 +1738,8 @@ function ShortcutsRow({
     return unsubscribe;
   }, [navigation]);
 
-  // Tweede rij — categorie/ingang-banners, compact (icoon + kicker).
-  const small: Array<{
-    key: string;
-    icon: ReactNode;
-    label: string;
-    onPress: () => void;
-  }> = [
-    { key: 'films', icon: <Ionicons name="film-outline" size={22} color={roles.accent} />, label: t('Films', 'Films'), onPress: () => router.push('/films' as never) },
-    { key: 'clubs', icon: <Ionicons name="disc-outline" size={22} color={roles.accent} />, label: t('Clubs', 'Clubs'), onPress: () => router.push('/clubs' as never) },
-    { key: 'live', icon: <Ionicons name="musical-notes-outline" size={22} color={roles.accent} />, label: t('Live', 'Live'), onPress: () => router.push('/live' as never) },
-    { key: 'theater', icon: <MaterialCommunityIcons name="drama-masks" size={22} color={roles.accent} />, label: t('Theater', 'Theatre'), onPress: () => router.push('/theater' as never) },
-    { key: 'kaart', icon: <Ionicons name="map-outline" size={22} color={roles.accent} />, label: t('Kaart', 'Map'), onPress: () => router.push('/kaart' as never) },
-    { key: 'friends', icon: <Ionicons name="people-outline" size={22} color={roles.accent} />, label: t('Friends', 'Friends'), onPress: () => router.push('/going' as never) },
-    { key: 'vibes', icon: <MaterialCommunityIcons name="cards-outline" size={22} color={roles.accent} />, label: t('Vibes', 'Vibes'), onPress: () => router.push('/op-gevoel' as never) },
-  ];
-
-  return (
-    <View>
-      {/* Rij 1 — grote banners (4): Gids · Voor jou · Net binnen · Zoek */}
+  if (variant === 'big') {
+    return (
       <ScrollView
         ref={scrollRef}
         horizontal
@@ -1761,17 +1754,36 @@ function ShortcutsRow({
         <NewBanner />
         <SearchBanner onPress={onOpenSearch} />
       </ScrollView>
-      {/* Rij 2 — kleine banners (icoon + kicker) */}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.shortcutScrollerSmall}
-      >
-        {small.map((s) => (
-          <SmallShortcut key={s.key} icon={s.icon} label={s.label} onPress={s.onPress} />
-        ))}
-      </ScrollView>
-    </View>
+    );
+  }
+
+  // Compacte categorie/ingang-knopjes (icoon boven label).
+  const small: Array<{
+    key: string;
+    icon: ReactNode;
+    label: string;
+    onPress: () => void;
+  }> = [
+    { key: 'films', icon: <Ionicons name="film-outline" size={20} color={roles.accent} />, label: t('Films', 'Films'), onPress: () => router.push('/films' as never) },
+    { key: 'clubs', icon: <Ionicons name="disc-outline" size={20} color={roles.accent} />, label: t('Clubs', 'Clubs'), onPress: () => router.push('/clubs' as never) },
+    { key: 'live', icon: <Ionicons name="musical-notes-outline" size={20} color={roles.accent} />, label: t('Live', 'Live'), onPress: () => router.push('/live' as never) },
+    { key: 'theater', icon: <MaterialCommunityIcons name="drama-masks" size={20} color={roles.accent} />, label: t('Theater', 'Theatre'), onPress: () => router.push('/theater' as never) },
+    { key: 'kaart', icon: <Ionicons name="map-outline" size={20} color={roles.accent} />, label: t('Kaart', 'Map'), onPress: () => router.push('/kaart' as never) },
+    { key: 'friends', icon: <Ionicons name="people-outline" size={20} color={roles.accent} />, label: t('Friends', 'Friends'), onPress: () => router.push('/going' as never) },
+    { key: 'vibes', icon: <MaterialCommunityIcons name="cards-outline" size={20} color={roles.accent} />, label: t('Vibes', 'Vibes'), onPress: () => router.push('/op-gevoel' as never) },
+  ];
+  void onOpenSearch;
+  return (
+    <ScrollView
+      ref={scrollRef}
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      contentContainerStyle={styles.shortcutScrollerSmall}
+    >
+      {small.map((s) => (
+        <SmallShortcut key={s.key} icon={s.icon} label={s.label} onPress={s.onPress} />
+      ))}
+    </ScrollView>
   );
 }
 
@@ -1878,7 +1890,7 @@ function SmallShortcut({
       style={[styles.shortcutBtnSmall, { backgroundColor: roles.bgLift }]}
     >
       {icon}
-      <Text style={[styles.shortcutSmallLabel, { color: roles.fg }]} numberOfLines={1}>
+      <Text style={[styles.shortcutKicker, { color: roles.fg }]} numberOfLines={1}>
         {label}
       </Text>
     </Pressable>
@@ -2602,27 +2614,21 @@ const styles = StyleSheet.create({
     marginTop: 14,
     marginBottom: 10,
   },
-  // Tweede rij — compacte icoon+kicker-pills.
+  // Tweede rij — compacte icoon+kicker-knopjes, onder de feature.
   shortcutScrollerSmall: {
     paddingHorizontal: 22,
     gap: 8,
+    marginTop: 12,
     marginBottom: 18,
   },
-  // Vierkante knopjes: icoon bóven de tekst, gecentreerd — meer passen er
-  // naast elkaar en ze zijn lekker aantikbaar.
+  // Compacte pill: icoon + label naast elkaar.
   shortcutBtnSmall: {
-    width: 72,
-    height: 72,
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    borderRadius: 14,
-  },
-  shortcutSmallLabel: {
-    fontFamily: fontFamily.medium,
-    fontSize: 11,
-    letterSpacing: 0.1,
-    textAlign: 'center',
+    gap: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 999,
   },
   shortcutBtn: {
     // Fixed-width zodat ~3 kaarten vol in beeld passen op een 390px
