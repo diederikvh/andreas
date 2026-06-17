@@ -1177,35 +1177,57 @@ eventsRoute.get('/for-you', async (c) => {
   const friendsByOcc = await buildFriendsByOccurrence(me, allOccurrenceIds);
   const seriesMap = await buildSeriesByEvent(eventIds);
 
-  const events = ordered.map(({ event, occ }) => {
-    const isExhibition = event.kind === 'exhibition';
-    const occurrencesInRange = occ.all
-      .filter((o) => !dismissedOccIds.has(o.id))
-      .map((o) => {
-        const f = friendsByOcc.get(o.id);
-        return {
-          ...o,
-          startsAt: isExhibition
-            ? normalizeExhibitionTime(o.startsAt as unknown as string, 'start')!
-            : o.startsAt,
-          endsAt: isExhibition
-            ? normalizeExhibitionTime(o.endsAt as unknown as string | null, 'end')
-            : o.endsAt,
-          friendsSaved: f?.friends ?? [],
-          friendsSavedCount: f?.count ?? 0,
-        };
-      });
-    const headOcc = occurrencesInRange[0] ?? null;
-    const headFriends = headOcc ? friendsByOcc.get(headOcc.id) : undefined;
+  // Genuanceerde "al voorbij"-cutoff voor de feed: een 18:10-film zónder
+  // eindtijd is om 21:48 voorbij en hoort niet meer in "Voor jou". endsAt is
+  // de waarheid; zonder endsAt geldt 60 min grace (nachtleven — club of
+  // categorie Muziek — krijgt 4u want mensen komen laat). De gedeelde
+  // findEventsWithOccurrencesInRange gebruikt nog de ruime 4u-default; deze
+  // pass scherpt dat aan, spiegelt effectiveEndsAtMs in de app.
+  const occStillRelevant = (
+    o: { startsAt: Date; endsAt: Date | null },
+    nightlife: boolean
+  ): boolean => {
+    const endMs = o.endsAt
+      ? new Date(o.endsAt).getTime()
+      : new Date(o.startsAt).getTime() + (nightlife ? 4 * 3600_000 : 60 * 60_000);
+    return endMs >= nowMs;
+  };
+
+  const events = ordered
+    .map(({ event, occ }) => {
+      const isExhibition = event.kind === 'exhibition';
+      const nightlife =
+        event.venue.type === 'club' || event.category === 'Muziek';
+      const occurrencesInRange = occ.all
+        .filter((o) => !dismissedOccIds.has(o.id))
+        .filter((o) => isExhibition || occStillRelevant(o, nightlife))
+        .map((o) => {
+          const f = friendsByOcc.get(o.id);
+          return {
+            ...o,
+            startsAt: isExhibition
+              ? normalizeExhibitionTime(o.startsAt as unknown as string, 'start')!
+              : o.startsAt,
+            endsAt: isExhibition
+              ? normalizeExhibitionTime(o.endsAt as unknown as string | null, 'end')
+              : o.endsAt,
+            friendsSaved: f?.friends ?? [],
+            friendsSavedCount: f?.count ?? 0,
+          };
+        });
+    // Geen relevante (nog niet voorbije) occurrence meer → niet tonen.
+    const headOcc = occurrencesInRange[0];
+    if (!headOcc) return null;
+    const headFriends = friendsByOcc.get(headOcc.id);
     return {
       ...event,
-      startsAt: headOcc?.startsAt ?? null,
-      endsAt: headOcc?.endsAt ?? null,
-      priceCents: headOcc?.priceCents ?? null,
-      priceNote: headOcc?.priceNote ?? null,
-      ticketUrl: headOcc?.ticketUrl ?? null,
+      startsAt: headOcc.startsAt,
+      endsAt: headOcc.endsAt,
+      priceCents: headOcc.priceCents,
+      priceNote: headOcc.priceNote,
+      ticketUrl: headOcc.ticketUrl,
       occurrenceCount: occurrencesInRange.length,
-      nextOccurrenceVenue: headOcc?.venue ?? null,
+      nextOccurrenceVenue: headOcc.venue ?? null,
       occurrencesInRange,
       friendsSaved: headFriends?.friends ?? [],
       friendsSavedCount: headFriends?.count ?? 0,
@@ -1214,7 +1236,8 @@ eventsRoute.get('/for-you', async (c) => {
       // Uitlegbare aanbeveling: waarom staat dit in "Voor jou"?
       reason: event.reason,
     };
-  });
+    })
+    .filter((e): e is NonNullable<typeof e> => e !== null);
 
   return c.json({ events, nextCursor });
 });
