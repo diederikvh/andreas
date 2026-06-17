@@ -12,6 +12,7 @@
  *
  * Admin reviewt + accepteert, daarna pas DB-insert.
  */
+import { lookup } from 'node:dns/promises';
 
 const MODEL = 'claude-sonnet-4-6';
 const ANTHROPIC_VERSION = '2023-06-01';
@@ -106,10 +107,65 @@ function stripHtml(html: string): string {
     .trim();
 }
 
+/** True als een IP-adres privé/loopback/link-local is (SSRF-doelen). */
+function isPrivateIp(ip: string): boolean {
+  const v4 = ip.match(/^(\d+)\.(\d+)\.(\d+)\.(\d+)$/);
+  if (v4) {
+    const [a, b] = [Number(v4[1]), Number(v4[2])];
+    return (
+      a === 0 ||
+      a === 10 ||
+      a === 127 ||
+      (a === 169 && b === 254) || // link-local incl. cloud-metadata 169.254.169.254
+      (a === 172 && b >= 16 && b <= 31) ||
+      (a === 192 && b === 168) ||
+      (a === 100 && b >= 64 && b <= 127) // CGNAT
+    );
+  }
+  const ip6 = ip.toLowerCase();
+  if (ip6 === '::1' || ip6 === '::') return true;
+  if (ip6.startsWith('::ffff:')) return isPrivateIp(ip6.slice(7)); // v4-mapped
+  return ip6.startsWith('fe80') || ip6.startsWith('fc') || ip6.startsWith('fd');
+}
+
+/**
+ * SSRF-guard: alleen publieke http(s)-URL's. Blokkeert interne hostnames
+ * (localhost/.internal/.flycast/.local) en hosts die naar privé/loopback/
+ * link-local IP's resolven (Fly-private-network, cloud-metadata). Admin-only
+ * endpoint, maar voorkomt dat een admin/automatisering de server interne
+ * targets laat fetchen.
+ */
+async function assertPublicHttpUrl(raw: string): Promise<void> {
+  let u: URL;
+  try {
+    u = new URL(raw);
+  } catch {
+    throw new Error('Ongeldige URL');
+  }
+  if (u.protocol !== 'http:' && u.protocol !== 'https:') {
+    throw new Error('Alleen http(s)-URLs toegestaan');
+  }
+  const host = u.hostname.toLowerCase().replace(/^\[|\]$/g, '');
+  if (
+    host === 'localhost' ||
+    host.endsWith('.internal') ||
+    host.endsWith('.flycast') ||
+    host.endsWith('.local')
+  ) {
+    throw new Error('Interne host geblokkeerd');
+  }
+  if (isPrivateIp(host)) throw new Error('Privé-IP geblokkeerd');
+  const resolved = await lookup(host, { all: true });
+  if (resolved.some((r) => isPrivateIp(r.address))) {
+    throw new Error('Host resolvet naar een privé/intern IP — geblokkeerd');
+  }
+}
+
 /** Fetch met fallback naar Playwright voor SPA-sites. */
 async function fetchPage(
   url: string,
 ): Promise<{ html: string; method: 'http' | 'playwright' }> {
+  await assertPublicHttpUrl(url);
   // HTTP eerst — snel + goedkoop.
   try {
     const r = await fetch(url, { headers: { 'user-agent': UA } });

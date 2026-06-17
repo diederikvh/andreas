@@ -19,6 +19,7 @@ import { randomUUID } from 'node:crypto';
 
 import { and, count, eq, gte, inArray } from 'drizzle-orm';
 import { Hono } from 'hono';
+import { bodyLimit } from 'hono/body-limit';
 
 import { auth } from '../auth.js';
 import { db, displayGenres, schema } from '../db/index.js';
@@ -34,8 +35,16 @@ export const zoekRoute = new Hono();
 
 const MAX_MESSAGE_LEN = 500;
 const MAX_HISTORY = 20;
+/** Harde body-cap: 20 history-turns × 500 tekens + profiel past ruim in
+    32KB. Voorkomt dat een grote body de LLM-input (en kosten) opblaast of
+    het geheugen belast vóór validatie. */
+const MAX_BODY_BYTES = 32 * 1024;
+zoekRoute.use('*', bodyLimit({ maxSize: MAX_BODY_BYTES }));
 /** Globale dag-cap (kill-switch). ~1,5 cent/vraag → 330 ≈ €5/dag. */
 const DAILY_MAX = Number(process.env.ZOEK_DAILY_MAX_REQUESTS ?? 330);
+/** Per-user dag-cap: ruim voor normaal gebruik, blokkeert één account dat de
+    globale cap probeert leeg te trekken of kosten op te stapelen. */
+const PER_USER_DAILY_MAX = Number(process.env.ZOEK_PER_USER_DAILY_MAX ?? 60);
 
 zoekRoute.post('/', async (c) => {
   // ── Auth + toegang ────────────────────────────────────────────────────
@@ -68,14 +77,24 @@ zoekRoute.post('/', async (c) => {
   const history = sanitizeHistory(body.history);
   const now = new Date();
 
-  // ── Dag-kill-switch ─────────────────────────────────────────────────────
-  // Tel de vragen van de afgelopen 24u; daarboven geen LLM-call meer.
+  // ── Kill-switches: globaal + per-user ────────────────────────────────────
+  // Globaal beschermt het budget; per-user voorkomt dat één gebruiker (of een
+  // gelekte sessie) in z'n eentje de globale cap leegtrekt en de gids voor
+  // iedereen platlegt — én begrenst de kosten die één account kan maken.
   const since = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-  const [usage] = await db
-    .select({ n: count() })
-    .from(schema.zoekLogs)
-    .where(gte(schema.zoekLogs.createdAt, since));
-  if ((usage?.n ?? 0) >= DAILY_MAX) {
+  const [[usage], [mine]] = await Promise.all([
+    db.select({ n: count() }).from(schema.zoekLogs).where(gte(schema.zoekLogs.createdAt, since)),
+    db
+      .select({ n: count() })
+      .from(schema.zoekLogs)
+      .where(
+        and(
+          gte(schema.zoekLogs.createdAt, since),
+          eq(schema.zoekLogs.userId, session.user.id)
+        )
+      ),
+  ]);
+  if ((usage?.n ?? 0) >= DAILY_MAX || (mine?.n ?? 0) >= PER_USER_DAILY_MAX) {
     return c.json({
       reply:
         'De gids heeft z’n dagelijkse limiet bereikt en is even niet beschikbaar. Probeer het later opnieuw.',
@@ -173,7 +192,11 @@ function sanitizeHistory(raw: unknown): ZoekChatTurn[] {
         (t.role === 'user' || t.role === 'assistant') &&
         typeof t.content === 'string'
     )
-    .slice(-MAX_HISTORY);
+    .slice(-MAX_HISTORY)
+    // Cap óók de lengte per turn: het aantal turns was al begrensd, maar
+    // zonder content-cap kon een client 20 enorme strings sturen → ongeb0nde
+    // LLM-input-tokens (en kosten) per request.
+    .map((t) => ({ role: t.role, content: t.content.slice(0, MAX_MESSAGE_LEN) }));
 }
 
 /**

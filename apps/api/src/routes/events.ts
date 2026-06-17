@@ -63,7 +63,10 @@ eventsRoute.get('/', async (c) => {
   // events (~2k op dit moment), niet alleen de eerstvolgende 50. Voor
   // Vandaag/Kaart die met `from + to` een dag-window opvragen blijven
   // de queries klein. Server-payload bij ~2k events is rond ~500KB JSON.
-  const limit = Math.min(Number(c.req.query('limit') ?? 200), 5000);
+  // Cap op 2000 — gelijk aan wat de drukste category-pagina's (clubs/live/
+  // theater) legitiem opvragen. Voorkomt de eerdere 5000-over-fetch als
+  // DoS-headroom op een 512MB-machine.
+  const limit = Math.min(Number(c.req.query('limit') ?? 200), 2000);
 
   const featured = c.req.query('featured');
   const from = c.req.query('from');
@@ -898,10 +901,12 @@ eventsRoute.get('/for-you', async (c) => {
     .where(eq(schema.dismisses.userId, me));
   const dismissedOccIds = new Set(dismissRows.map((r) => r.occurrenceId));
 
-  // Friend-save counts per event — voor scoring (vriend-signaal). Hier
-  // tellen we ruw alle saves van vrienden, ongeacht hun privacy-toggle.
-  // De zichtbare friend-pills in de response blijven door
-  // `buildFriendsByOccurrence` heen lopen, dat respecteert privacy.
+  // Friend-save counts per event — voor scoring (vriend-signaal). Respecteer
+  // savesVisibility: alleen vrienden met 'friends' of 'favorites' tellen mee.
+  // Anders duwt een 'private' saver een event omhoog terwijl de (privacy-
+  // correcte) friend-pill leeg blijft → uit de ranking afleidbaar wie 't
+  // saved (side-channel). Gelijk aan wat buildFriendsByOccurrence voor de
+  // pills hanteert.
   const friendSaveCountByEvent = new Map<string, number>();
   if (friendIds.length > 0) {
     const rows = await db
@@ -914,7 +919,13 @@ eventsRoute.get('/for-you', async (c) => {
         schema.occurrences,
         eq(schema.saves.occurrenceId, schema.occurrences.id)
       )
-      .where(inArray(schema.saves.userId, friendIds))
+      .innerJoin(schema.users, eq(schema.saves.userId, schema.users.id))
+      .where(
+        and(
+          inArray(schema.saves.userId, friendIds),
+          inArray(schema.users.savesVisibility, ['friends', 'favorites'])
+        )
+      )
       .groupBy(schema.occurrences.eventId);
     for (const r of rows) friendSaveCountByEvent.set(r.eventId, r.n);
   }

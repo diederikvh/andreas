@@ -44,6 +44,24 @@ export function escapeHtml(input: string | null | undefined): string {
 }
 
 /**
+ * Alleen http(s)-URL's toelaten in een `href`/`src`. `escapeHtml` voorkomt
+ * attribuut-breakout maar NIET een gevaarlijk schema — een scraper-gestuurde
+ * `javascript:`/`data:`-URL zou anders stored-XSS opleveren bij een klik.
+ * Geeft de URL terug als 'ie http/https is, anders een lege string (inerte
+ * link). Het resultaat moet nog steeds door escapeHtml.
+ */
+export function safeExternalUrl(input: string | null | undefined): string {
+  if (input == null) return '';
+  const trimmed = String(input).trim();
+  try {
+    const u = new URL(trimmed);
+    return u.protocol === 'http:' || u.protocol === 'https:' ? trimmed : '';
+  } catch {
+    return '';
+  }
+}
+
+/**
  * JSON-LD payload veilig inbedden in een <script>-tag. Backslashes en
  * `</` worden geëscaped om early-termination en XSS te voorkomen wanneer
  * een titel of description een sluit-script-tag zou bevatten.
