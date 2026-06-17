@@ -2709,12 +2709,18 @@ adminUi.get('/insights', async (c) => {
   type Edge = { a: string; b: string };
   const friendEdges: Edge[] = [];
   if (allSavers.size > 0) {
+    // Parameter-gebonden i.p.v. sql.raw met string-concat — id's kunnen dan
+    // nooit als SQL geïnterpreteerd worden (robuust, ook al zijn 't DB-id's).
+    const saversArray = sql`ARRAY[${sql.join(
+      [...allSavers].map((id) => sql`${id}`),
+      sql`, `
+    )}]::text[]`;
     const friendsRows = await db.execute(sql`
       SELECT from_user_id, to_user_id
       FROM friendships
       WHERE status = 'accepted'
-        AND from_user_id = ANY(${sql.raw(`ARRAY['${[...allSavers].join("','")}']::text[]`)})
-        AND to_user_id   = ANY(${sql.raw(`ARRAY['${[...allSavers].join("','")}']::text[]`)})
+        AND from_user_id = ANY(${saversArray})
+        AND to_user_id   = ANY(${saversArray})
     `);
     for (const f of friendsRows.rows as Array<{
       from_user_id: string;
