@@ -34,8 +34,10 @@ import { RefreshBanner } from '@/components/RefreshBanner';
 import type { ApiEvent, ApiOccurrence } from '@/lib/api';
 import {
   dowMixed,
+  effectiveEndsAtMs,
   eventImageUrl,
   formatWijk,
+  isAllDayRange,
   monthShort,
   rowTimeLabel,
   translateVenueType,
@@ -164,7 +166,11 @@ export default function Live() {
       if (e.venue.type !== 'podium') continue;
       for (const o of e.occurrencesInRange ?? []) {
         const ts = new Date(o.startsAt).getTime();
-        if (ts < now - 4 * 3600 * 1000) continue;
+        // Geen all-day / doorlopende blokken in de live-lijst.
+        if (isAllDayRange(o.startsAt, o.endsAt)) continue;
+        // Genuanceerde cutoff: respecteert eindtijd; live muziek houdt
+        // anders de ruime nachtleven-staart (mensen komen laat).
+        if (effectiveEndsAtMs(o, e) < now) continue;
         const hour = new Date(o.startsAt).getHours();
         // Late events (≥23:00) zijn club-nachten — die zien we op
         // /clubs. Live is voor de eerdere concert-shows.

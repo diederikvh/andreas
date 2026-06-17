@@ -1735,13 +1735,13 @@ function ShortcutsRow({
     label: string;
     onPress: () => void;
   }> = [
-    { key: 'films', icon: <Ionicons name="film-outline" size={20} color={roles.accent} />, label: t('Films', 'Films'), onPress: () => router.push('/films' as never) },
-    { key: 'clubs', icon: <Ionicons name="disc-outline" size={20} color={roles.accent} />, label: t('Clubs', 'Clubs'), onPress: () => router.push('/clubs' as never) },
-    { key: 'live', icon: <Ionicons name="musical-notes-outline" size={20} color={roles.accent} />, label: t('Live', 'Live'), onPress: () => router.push('/live' as never) },
-    { key: 'theater', icon: <MaterialCommunityIcons name="drama-masks" size={20} color={roles.accent} />, label: t('Theater', 'Theatre'), onPress: () => router.push('/theater' as never) },
-    { key: 'kaart', icon: <Ionicons name="map-outline" size={20} color={roles.accent} />, label: t('Kaart', 'Map'), onPress: () => router.push('/kaart' as never) },
-    { key: 'friends', icon: <Ionicons name="people-outline" size={20} color={roles.accent} />, label: t('Friends', 'Friends'), onPress: () => router.push('/going' as never) },
-    { key: 'vibes', icon: <MaterialCommunityIcons name="cards-outline" size={20} color={roles.accent} />, label: t('Vibes', 'Vibes'), onPress: () => router.push('/op-gevoel' as never) },
+    { key: 'films', icon: <Ionicons name="film-outline" size={22} color={roles.accent} />, label: t('Films', 'Films'), onPress: () => router.push('/films' as never) },
+    { key: 'clubs', icon: <Ionicons name="disc-outline" size={22} color={roles.accent} />, label: t('Clubs', 'Clubs'), onPress: () => router.push('/clubs' as never) },
+    { key: 'live', icon: <Ionicons name="musical-notes-outline" size={22} color={roles.accent} />, label: t('Live', 'Live'), onPress: () => router.push('/live' as never) },
+    { key: 'theater', icon: <MaterialCommunityIcons name="drama-masks" size={22} color={roles.accent} />, label: t('Theater', 'Theatre'), onPress: () => router.push('/theater' as never) },
+    { key: 'kaart', icon: <Ionicons name="map-outline" size={22} color={roles.accent} />, label: t('Kaart', 'Map'), onPress: () => router.push('/kaart' as never) },
+    { key: 'friends', icon: <Ionicons name="people-outline" size={22} color={roles.accent} />, label: t('Friends', 'Friends'), onPress: () => router.push('/going' as never) },
+    { key: 'vibes', icon: <MaterialCommunityIcons name="cards-outline" size={22} color={roles.accent} />, label: t('Vibes', 'Vibes'), onPress: () => router.push('/op-gevoel' as never) },
   ];
 
   return (
@@ -1878,7 +1878,7 @@ function SmallShortcut({
       style={[styles.shortcutBtnSmall, { backgroundColor: roles.bgLift }]}
     >
       {icon}
-      <Text style={[styles.shortcutKicker, { color: roles.fg }]} numberOfLines={1}>
+      <Text style={[styles.shortcutSmallLabel, { color: roles.fg }]} numberOfLines={1}>
         {label}
       </Text>
     </Pressable>
@@ -2608,13 +2608,21 @@ const styles = StyleSheet.create({
     gap: 8,
     marginBottom: 18,
   },
+  // Vierkante knopjes: icoon bóven de tekst, gecentreerd — meer passen er
+  // naast elkaar en ze zijn lekker aantikbaar.
   shortcutBtnSmall: {
-    flexDirection: 'row',
+    width: 72,
+    height: 72,
     alignItems: 'center',
-    gap: 8,
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    borderRadius: 999,
+    justifyContent: 'center',
+    gap: 6,
+    borderRadius: 14,
+  },
+  shortcutSmallLabel: {
+    fontFamily: fontFamily.medium,
+    fontSize: 11,
+    letterSpacing: 0.1,
+    textAlign: 'center',
   },
   shortcutBtn: {
     // Fixed-width zodat ~3 kaarten vol in beeld passen op een 390px

@@ -924,11 +924,11 @@ eventsRoute.get('/for-you', async (c) => {
   // feed). We pakken hier breed (geen featured-filter, alle categorieën)
   // omdat de score zelf het sorteert.
   //
-  // Sluit óók langlopende items uit: musea labelen exposities soms als
-  // kind='show' met een occurrence die weken/maanden loopt (span > 7d,
-  // zelfde grens als isLongRunning in de app). Die horen in de musea/
-  // galleries-lijsten, niet in een persoonlijke feed/rail. Recurring
-  // events (wekelijkse club) hebben kórte per-occurrence-spans en blijven.
+  // Sluit all-day / doorlopende items uit (span ≥ 23u, zelfde grens als
+  // isAllDayRange in de app + de agenda-filter): musea labelen exposities
+  // soms als kind='show', en een meerdaags all-day-blok ("WK bij Skatecafe,
+  // 14–20 jun, hele dag") hoort in een lijst, niet in een persoonlijke feed/
+  // rail. Getimede (festival-)occurrences hebben kórte spans en blijven.
   const eventConditions: SQL[] = [
     eq(schema.events.published, true),
     eq(schema.venues.published, true),
@@ -936,7 +936,7 @@ eventsRoute.get('/for-you', async (c) => {
     sql`NOT EXISTS (
       SELECT 1 FROM ${schema.occurrences} o
       WHERE o.event_id = ${schema.events.id}
-        AND COALESCE(o.ends_at, o.starts_at) - o.starts_at > INTERVAL '7 days'
+        AND COALESCE(o.ends_at, o.starts_at) - o.starts_at >= INTERVAL '23 hours'
     )`,
   ];
   if (savedEventIds.size > 0) {
@@ -1162,10 +1162,16 @@ eventsRoute.get('/for-you', async (c) => {
   const eventById = new Map(scored.map((s) => [s.id, s]));
   const ordered = page
     .map((p) => ({
-      event: eventById.get(p.id)!,
-      occ: occRange.byEvent.get(p.id)!,
+      event: eventById.get(p.id),
+      occ: occRange.byEvent.get(p.id),
     }))
-    .filter((x) => x.event);
+    // Events zonder (nog niet voorbije) occurrence vallen weg: de gedeelde
+    // findEventsWithOccurrencesInRange past de categorie-bewuste cutoff al
+    // toe (Muziek 4u, overig 1u grace zonder eindtijd), dus een al-afgelopen
+    // 18:10-film zit niet meer in occRange en verschijnt niet in de feed.
+    .filter((x): x is { event: NonNullable<typeof x.event>; occ: NonNullable<typeof x.occ> } =>
+      Boolean(x.event && x.occ)
+    );
 
   // Standaard friend-pills + series + denormalisatie, gelijk aan GET /events.
   const eventIds = ordered.map((x) => x.event.id);
@@ -1177,35 +1183,38 @@ eventsRoute.get('/for-you', async (c) => {
   const friendsByOcc = await buildFriendsByOccurrence(me, allOccurrenceIds);
   const seriesMap = await buildSeriesByEvent(eventIds);
 
-  const events = ordered.map(({ event, occ }) => {
-    const isExhibition = event.kind === 'exhibition';
-    const occurrencesInRange = occ.all
-      .filter((o) => !dismissedOccIds.has(o.id))
-      .map((o) => {
-        const f = friendsByOcc.get(o.id);
-        return {
-          ...o,
-          startsAt: isExhibition
-            ? normalizeExhibitionTime(o.startsAt as unknown as string, 'start')!
-            : o.startsAt,
-          endsAt: isExhibition
-            ? normalizeExhibitionTime(o.endsAt as unknown as string | null, 'end')
-            : o.endsAt,
-          friendsSaved: f?.friends ?? [],
-          friendsSavedCount: f?.count ?? 0,
-        };
-      });
-    const headOcc = occurrencesInRange[0] ?? null;
-    const headFriends = headOcc ? friendsByOcc.get(headOcc.id) : undefined;
+  const events = ordered
+    .map(({ event, occ }) => {
+      const isExhibition = event.kind === 'exhibition';
+      const occurrencesInRange = occ.all
+        .filter((o) => !dismissedOccIds.has(o.id))
+        .map((o) => {
+          const f = friendsByOcc.get(o.id);
+          return {
+            ...o,
+            startsAt: isExhibition
+              ? normalizeExhibitionTime(o.startsAt as unknown as string, 'start')!
+              : o.startsAt,
+            endsAt: isExhibition
+              ? normalizeExhibitionTime(o.endsAt as unknown as string | null, 'end')
+              : o.endsAt,
+            friendsSaved: f?.friends ?? [],
+            friendsSavedCount: f?.count ?? 0,
+          };
+        });
+    // Geen relevante (nog niet voorbije) occurrence meer → niet tonen.
+    const headOcc = occurrencesInRange[0];
+    if (!headOcc) return null;
+    const headFriends = friendsByOcc.get(headOcc.id);
     return {
       ...event,
-      startsAt: headOcc?.startsAt ?? null,
-      endsAt: headOcc?.endsAt ?? null,
-      priceCents: headOcc?.priceCents ?? null,
-      priceNote: headOcc?.priceNote ?? null,
-      ticketUrl: headOcc?.ticketUrl ?? null,
+      startsAt: headOcc.startsAt,
+      endsAt: headOcc.endsAt,
+      priceCents: headOcc.priceCents,
+      priceNote: headOcc.priceNote,
+      ticketUrl: headOcc.ticketUrl,
       occurrenceCount: occurrencesInRange.length,
-      nextOccurrenceVenue: headOcc?.venue ?? null,
+      nextOccurrenceVenue: headOcc.venue ?? null,
       occurrencesInRange,
       friendsSaved: headFriends?.friends ?? [],
       friendsSavedCount: headFriends?.count ?? 0,
@@ -1214,7 +1223,8 @@ eventsRoute.get('/for-you', async (c) => {
       // Uitlegbare aanbeveling: waarom staat dit in "Voor jou"?
       reason: event.reason,
     };
-  });
+    })
+    .filter((e): e is NonNullable<typeof e> => e !== null);
 
   return c.json({ events, nextCursor });
 });
