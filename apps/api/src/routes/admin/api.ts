@@ -9,6 +9,7 @@ import {
 } from '../../scrapers/_genre-enrich.js';
 import { enrichLineupArtists } from '../../scrapers/_artists-enrich.js';
 import { recomputeEffectiveGenres } from '../../scrapers/_effective-genres.js';
+import { recomputeCancellations } from '../../scrapers/_cancellations.js';
 import { enrichFilmsFromOmdb } from '../../scrapers/_omdb-enrich.js';
 import { enrichFilmsFromTmdb } from '../../scrapers/_tmdb-enrich.js';
 import { extractFromUrl } from '../../scrapers/extract-from-url.js';
@@ -1156,6 +1157,26 @@ adminApi.post('/recompute-effective-genres', async (c) => {
   const startedAt = Date.now();
   try {
     const result = await recomputeEffectiveGenres();
+    return c.json({ durationMs: Date.now() - startedAt, ...result });
+  } catch (e) {
+    return c.json(
+      { durationMs: Date.now() - startedAt, error: (e as Error).message },
+      500
+    );
+  }
+});
+
+// ─── Annuleringen: titel-marker → occurrence-status 'cancelled' ─────
+//
+// Zet occurrences op 'cancelled' zodra de event-titel "GEANNULEERD" /
+// "AFGELAST" / "CANCELLED" e.d. bevat. Vangt scrapers die de marker in
+// de titel laten staan zonder de status te zetten — anders glipt de
+// afgelaste voorstelling door alle publieke filters (status <> 'cancelled').
+// Idempotent. Draait in scrape-stager.yml als post-step.
+adminApi.post('/recompute-cancellations', async (c) => {
+  const startedAt = Date.now();
+  try {
+    const result = await recomputeCancellations();
     return c.json({ durationMs: Date.now() - startedAt, ...result });
   } catch (e) {
     return c.json(
