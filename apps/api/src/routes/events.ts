@@ -918,10 +918,21 @@ eventsRoute.get('/for-you', async (c) => {
   // gesaved, kind=show (exhibitions horen niet in een tijd-gebaseerde
   // feed). We pakken hier breed (geen featured-filter, alle categorieën)
   // omdat de score zelf het sorteert.
+  //
+  // Sluit óók langlopende items uit: musea labelen exposities soms als
+  // kind='show' met een occurrence die weken/maanden loopt (span > 7d,
+  // zelfde grens als isLongRunning in de app). Die horen in de musea/
+  // galleries-lijsten, niet in een persoonlijke feed/rail. Recurring
+  // events (wekelijkse club) hebben kórte per-occurrence-spans en blijven.
   const eventConditions: SQL[] = [
     eq(schema.events.published, true),
     eq(schema.venues.published, true),
     eq(schema.events.kind, 'show'),
+    sql`NOT EXISTS (
+      SELECT 1 FROM ${schema.occurrences} o
+      WHERE o.event_id = ${schema.events.id}
+        AND COALESCE(o.ends_at, o.starts_at) - o.starts_at > INTERVAL '7 days'
+    )`,
   ];
   if (savedEventIds.size > 0) {
     eventConditions.push(not(inArray(schema.events.id, [...savedEventIds])));

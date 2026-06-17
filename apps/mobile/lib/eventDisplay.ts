@@ -782,11 +782,13 @@ const DEFAULT_FALLBACK_MS = 60 * 60 * 1000;
 export function effectiveEndsAtMs(occ: ApiOccurrence, event?: ApiEvent): number {
   if (occ.endsAt) return new Date(occ.endsAt).getTime();
   const start = new Date(occ.startsAt).getTime();
-  // Per-occurrence venue eerst (films draaien in meerdere zalen), anders
-  // het event-venue. Alleen 'club' telt als nachtleven-staart.
+  // Nachtleven krijgt de ruime staart: clubs én live muziek (concerten
+  // lopen/starten laat, en veel podia leveren geen eindtijd aan — dan zou
+  // een 60-min grace een concert midden in de show wegfilteren). Film/
+  // theater/kunst/lezing houden de korte 60-min grace.
   const venueType = occ.venue?.type ?? event?.venue?.type;
-  const fallback =
-    venueType === 'club' ? NIGHTLIFE_FALLBACK_MS : DEFAULT_FALLBACK_MS;
+  const nightlife = venueType === 'club' || event?.category === 'Muziek';
+  const fallback = nightlife ? NIGHTLIFE_FALLBACK_MS : DEFAULT_FALLBACK_MS;
   return start + fallback;
 }
 

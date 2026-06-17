@@ -333,7 +333,17 @@ export async function runZoekTurn(args: RunTurnArgs): Promise<ZoekTurnResult | n
 
 // ─── Profiel-sanitisatie ─────────────────────────────────────────────────────
 
-const WHENS = new Set(['tonight', 'this_weekend', 'this_week', 'specific']);
+const WHENS = new Set([
+  'tonight',
+  'this_weekend',
+  'this_week',
+  'this_month',
+  'this_year',
+  'next_weekend',
+  'next_week',
+  'next_month',
+  'specific',
+]);
 
 /** Defensief mergen: neem geldige velden uit het LLM-profiel, val terug op
     het binnengekomen profiel zodat een half-leeg model-object niets wist. */
