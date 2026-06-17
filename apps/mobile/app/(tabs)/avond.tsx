@@ -816,15 +816,6 @@ export default function Avond() {
           />
         }
       >
-        {/* Rij 1 — grote banners (Gids · Voor jou · Net binnen · Zoek)
-            bóven de feature, zodat de feature rust geeft tussen deze en
-            de kleine categorie-knopjes eronder. */}
-        <ShortcutsRow
-          variant="big"
-          onOpenGuide={openGuide}
-          onOpenSearch={() => setSearchOpen(true)}
-        />
-
         {/* Hoofd-artikelen: alle featured events uit vandaag-events. */}
         {leads.length > 0 && (
           <View style={{ marginTop: 8 }}>
@@ -836,7 +827,15 @@ export default function Avond() {
           </View>
         )}
 
-        {/* Rij 2 — compacte categorie/ingang-knopjes onder de feature. */}
+        {/* Rij 1 — grote banners (Gids · Voor jou · Net binnen · Zoek)
+            onder de feature. */}
+        <ShortcutsRow
+          variant="big"
+          onOpenGuide={openGuide}
+          onOpenSearch={() => setSearchOpen(true)}
+        />
+
+        {/* Rij 2 — compacte categorie/ingang-knopjes. */}
         <ShortcutsRow
           variant="small"
           onOpenGuide={openGuide}
