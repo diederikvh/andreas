@@ -180,3 +180,26 @@ jobs:
           echo "── HTTP $HTTP ──"
           python3 -m json.tool < response.json 2>/dev/null || cat response.json
           [ "$HTTP" -ge 400 ] && exit 1 || exit 0
+
+  # Annuleringen — zet occurrences op 'cancelled' zodra de event-titel een
+  # marker bevat ("GEANNULEERD"/"AFGELAST"/"CANCELLED"). Scrapers laten die
+  # marker in de titel staan zonder de status te zetten; zonder deze sweep
+  # glippen afgelaste voorstellingen door alle publieke filters heen.
+  # Idempotent, hangt nergens van af (draait parallel aan de enrich-stappen).
+  recompute-cancellations:
+    needs: scrape
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: POST /admin/api/recompute-cancellations
+        run: |
+          HTTP=$(curl --silent --show-error --max-time 600 \
+            -X POST "https://api.andreas.amsterdam/admin/api/recompute-cancellations" \
+            -H "Authorization: Bearer ${{ secrets.ANDREAS_ADMIN_API_KEY }}" \
+            -H "Content-Type: application/json" \
+            -o response.json \
+            -w "%{http_code}")
+          echo "── HTTP $HTTP ──"
+          python3 -m json.tool < response.json 2>/dev/null || cat response.json
+          [ "$HTTP" -ge 400 ] && exit 1 || exit 0
