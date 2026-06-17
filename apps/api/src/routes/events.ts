@@ -924,11 +924,11 @@ eventsRoute.get('/for-you', async (c) => {
   // feed). We pakken hier breed (geen featured-filter, alle categorieën)
   // omdat de score zelf het sorteert.
   //
-  // Sluit óók langlopende items uit: musea labelen exposities soms als
-  // kind='show' met een occurrence die weken/maanden loopt (span > 7d,
-  // zelfde grens als isLongRunning in de app). Die horen in de musea/
-  // galleries-lijsten, niet in een persoonlijke feed/rail. Recurring
-  // events (wekelijkse club) hebben kórte per-occurrence-spans en blijven.
+  // Sluit all-day / doorlopende items uit (span ≥ 23u, zelfde grens als
+  // isAllDayRange in de app + de agenda-filter): musea labelen exposities
+  // soms als kind='show', en een meerdaags all-day-blok ("WK bij Skatecafe,
+  // 14–20 jun, hele dag") hoort in een lijst, niet in een persoonlijke feed/
+  // rail. Getimede (festival-)occurrences hebben kórte spans en blijven.
   const eventConditions: SQL[] = [
     eq(schema.events.published, true),
     eq(schema.venues.published, true),
@@ -936,7 +936,7 @@ eventsRoute.get('/for-you', async (c) => {
     sql`NOT EXISTS (
       SELECT 1 FROM ${schema.occurrences} o
       WHERE o.event_id = ${schema.events.id}
-        AND COALESCE(o.ends_at, o.starts_at) - o.starts_at > INTERVAL '7 days'
+        AND COALESCE(o.ends_at, o.starts_at) - o.starts_at >= INTERVAL '23 hours'
     )`,
   ];
   if (savedEventIds.size > 0) {
