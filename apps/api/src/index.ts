@@ -7,6 +7,7 @@ import { eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { logger } from 'hono/logger';
+import { secureHeaders } from 'hono/secure-headers';
 
 import { auth } from './auth.js';
 import { db, schema } from './db/index.js';
@@ -41,6 +42,27 @@ import { uploadToBunny } from './storage/bunny.js';
 const app = new Hono();
 
 app.use('*', logger());
+
+// Security-headers. Beschermt o.a. de publieke HTML-pagina's en de
+// telefoon-OTP-loginpagina (/mcp-login) tegen clickjacking (frame-ancestors
+// 'none' + X-Frame-Options DENY), MIME-sniffing (nosniff) en downgrade (HSTS).
+// CSP zet ALLEEN frame-ancestors — geen script/style-directives, zodat de
+// server-rendered pagina's met inline <style>/<script> blijven werken. De
+// cross-origin-* policies staan uit zodat OG-images/cards cross-origin
+// laadbaar blijven (social previews, MCP-UI).
+app.use(
+  '*',
+  secureHeaders({
+    contentSecurityPolicy: { frameAncestors: ["'none'"] },
+    xFrameOptions: 'DENY',
+    strictTransportSecurity: 'max-age=15552000; includeSubDomains',
+    xContentTypeOptions: 'nosniff',
+    referrerPolicy: 'strict-origin-when-cross-origin',
+    crossOriginResourcePolicy: false,
+    crossOriginEmbedderPolicy: false,
+    crossOriginOpenerPolicy: false,
+  })
+);
 
 // Sentry — vang thrown errors via Hono's onError-hook. Bind user-id
 // uit de better-auth session zodat we per-user kunnen zien wie een
