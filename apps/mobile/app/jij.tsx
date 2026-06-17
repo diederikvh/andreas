@@ -776,7 +776,6 @@ export default function Jij() {
                 }
                 useModeStore.setState({
                   hasOnboarded: false,
-                  hasSeenContentSwitchHint: false,
                   hasSeenFilterHint: false,
                 });
                 queryClient.removeQueries();

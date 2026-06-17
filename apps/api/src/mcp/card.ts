@@ -11,6 +11,7 @@
  * De tool blijft óók een tekst-samenvatting + structuredContent teruggeven, dus
  * hosts zónder UI-ondersteuning verliezen niks (progressive enhancement).
  */
+import { escapeHtml as esc } from '../routes/_seo.js';
 import type { McpEvent } from './events.js';
 
 /** MCP-UI embedded resource shape (== MCP EmbeddedResource met ui://-uri). */
@@ -40,15 +41,6 @@ const C = {
   inkMuted: '#5a4e3f',
   accent: '#c9453a',
 } as const;
-
-function esc(s: string): string {
-  return s
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
 
 /** "vr 20 jun · 20:00" in Amsterdamse tijd. */
 function fmtWhen(iso: string): string {

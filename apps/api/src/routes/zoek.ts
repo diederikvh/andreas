@@ -22,7 +22,10 @@ import { Hono } from 'hono';
 
 import { auth } from '../auth.js';
 import { db, displayGenres, schema } from '../db/index.js';
-import { findEventsWithOccurrencesInRange } from './_helpers.js';
+import {
+  findEventsWithOccurrencesInRange,
+  headOccurrenceInWindow,
+} from './_helpers.js';
 import { runProfileUpdate, runZoekTurn } from '../zoek/llm.js';
 import { detectWhenOverride, gatherCandidates } from '../zoek/retrieval.js';
 import { EMPTY_PROFILE, type PreferenceProfile, type ZoekChatTurn } from '../zoek/types.js';
@@ -226,10 +229,7 @@ async function hydrateEvents(ids: string[], window: { from: Date; to: Date }) {
     const event = eventById.get(id);
     const occ = byEvent.get(id);
     if (!event || !occ) continue;
-    const inWindow = occ.all.filter(
-      (o) => o.startsAt >= window.from && o.startsAt < window.to
-    );
-    const head = inWindow[0] ?? occ.next;
+    const { inWindow, head } = headOccurrenceInWindow(occ, window.from, window.to);
     if (!head) continue;
     out.push({
       ...event,

@@ -227,7 +227,7 @@ export default function Avond() {
   // logische avond/nacht, gepersonaliseerd).
   const { data: tonightEvents } = useForYouEvents({ tonight: true });
   // Series + exhibitions delen één "Loopt nu"-strook bovenaan.
-  const { data: seriesList } = useSeriesList({ enabled: true });
+  const { data: seriesList } = useSeriesList();
   // Alle venues die de gebruiker volgt — onafhankelijk van wat er
   // vandaag speelt. Voor de "Jouw favorieten"-rail onder de
   // agenda-banner. Backend filtert myFollowState per venue; wij

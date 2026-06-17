@@ -39,8 +39,6 @@ function row(over: Partial<CandidateRow> = {}): CandidateRow {
     scene: over.scene ?? null,
     subtype: over.subtype ?? [],
     lineup: over.lineup ?? [],
-    artistIds: over.artistIds ?? [],
-    artistGenres: over.artistGenres ?? [],
   };
 }
 
@@ -72,10 +70,10 @@ test('haversineKm: ~1.5km tussen centrum en Paradiso', () => {
 
 // ─── vibe ────────────────────────────────────────────────────────────────────
 
-test('vibeOf: scene + subtype + artiest-genres, ge-dedupe', () => {
+test('vibeOf: scene + subtype, ge-dedupe', () => {
   assert.deepEqual(
-    vibeOf({ scene: 'underground', subtype: ['techno', 'underground'], artistGenres: ['house', 'techno'] }),
-    ['underground', 'techno', 'house']
+    vibeOf({ scene: 'underground', subtype: ['techno', 'underground'] }),
+    ['underground', 'techno']
   );
 });
 
@@ -210,21 +208,20 @@ test('rankCandidates: trefwoord op line-up-naam haalt event boven (act niet in t
   assert.equal(candidates[0].id, 'lineup-hit');
 });
 
-test('rankCandidates: artiest-genre (line-up) druppelt naar event en matcht', () => {
+test('rankCandidates: genre-match (incl. doorgedruppelde artiest-genres) haalt event boven', () => {
+  // `genres` is op DB-niveau al effective_genres: eigen + line-up-artiest-
+  // genres. Hier simuleren we een clubavond die via de DJ 'techno' bevat.
   const rows = [
     row({ id: 'geen-techno', title: 'Akoestische avond', genres: ['folk'], start: new Date('2026-06-16T20:00:00Z') }),
     row({
       id: 'techno-via-dj',
       title: 'Madam by Night',
-      genres: [], // event zelf heeft geen techno-tag
-      artistGenres: ['techno', 'house'], // maar de DJ wél (uit artists-tabel)
+      genres: ['electronic', 'techno', 'house'],
       start: new Date('2026-06-18T22:00:00Z'),
     }),
   ];
   const { candidates } = rankCandidates(profile(), rows, ['Muziek'], ['techno']);
   assert.equal(candidates[0].id, 'techno-via-dj');
-  // En de artiest-genres zijn als sfeer-hint zichtbaar op de kandidaat.
-  assert.ok(candidates[0].vibe.includes('techno'));
 });
 
 test('inferCategories: popmuziek/livemuziek herkend als Muziek', () => {

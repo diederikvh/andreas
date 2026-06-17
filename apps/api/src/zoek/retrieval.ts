@@ -3,11 +3,11 @@
  * + end-to-end orchestratie. De pure filter/rank-logica staat in
  * retrieval-core.ts (los unit-getest, zonder DB-afhankelijkheid).
  */
-import { and, asc, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, eq, sql } from 'drizzle-orm';
 
 import type { PreferenceProfile, ZoekCandidate, ZoekWhen } from './types.js';
 
-import { db, schema } from '../db/index.js';
+import { db, displayGenres, schema } from '../db/index.js';
 import {
   candidateMatchesKeywords,
   entityKeywordsOf,
@@ -45,17 +45,23 @@ export async function fetchCandidateRows(
 ): Promise<CandidateRow[]> {
   const { from, to } = resolveWhenWindow(profile, now);
 
-  const rows = await db
+  // Stap 1 (subquery): één rij per event — de vroegste niet-cancelled
+  // occurrence binnen [from, to) via DISTINCT ON (vereist ORDER BY met de
+  // distinct-kolom eerst). Geen LIMIT hier; die komt op de outer query.
+  const perEvent = db
     .selectDistinctOn([schema.occurrences.eventId], {
-      eventId: schema.events.id,
+      // events.id én venues.id heten beide "id" — in een subquery botsen ze
+      // ("column id is ambiguous"), dus expliciet aliassen. Idem voor het
+      // rauwe displayGenres-veld.
+      eventId: sql<string>`${schema.events.id}`.as('event_id'),
       title: schema.events.title,
       category: schema.events.category,
-      genres: schema.events.genres,
+      genres: displayGenres.as('genres'),
       startsAt: schema.occurrences.startsAt,
       endsAt: schema.occurrences.endsAt,
       priceCents: schema.occurrences.priceCents,
       lineup: schema.occurrences.lineup,
-      venueId: schema.venues.id,
+      venueId: sql<string>`${schema.venues.id}`.as('venue_id'),
       venueName: schema.venues.name,
       lat: schema.venues.lat,
       lng: schema.venues.lng,
@@ -80,10 +86,16 @@ export async function fetchCandidateRows(
         sql`${schema.occurrences.startsAt} < ${to.toISOString()}`
       )
     )
-    // DISTINCT ON vereist dat de ORDER BY met de distinct-kolom begint; de
-    // tweede sleutel (startsAt asc) bepaalt dat we de vróégste occurrence per
-    // event houden.
     .orderBy(asc(schema.occurrences.eventId), asc(schema.occurrences.startsAt))
+    .as('per_event');
+
+  // Stap 2 (outer): sorteer op startsAt en cap — zo houdt de cap de
+  // EERSTVOLGENDE events (relevanter dan een willekeurige eventId-volgorde),
+  // en kan gatherCandidates één brede fetch in-JS per venster slicen.
+  const rows = await db
+    .select()
+    .from(perEvent)
+    .orderBy(asc(perEvent.startsAt))
     .limit(MAX_EVENT_ROWS);
 
   return rows.map(mapRow);
@@ -115,6 +127,9 @@ function mapRow(r: {
     start: r.startsAt,
     end: r.endsAt,
     category: r.category,
+    // `genres` = displayGenres (effective_genres met fallback naar eigen
+    // genres) — bevat dus al de doorgedruppelde line-up-artiest-genres,
+    // nachtelijk gematerialiseerd. Geen live artists-join meer nodig.
     genres: r.genres ?? [],
     priceCents: r.priceCents,
     lat: r.lat,
@@ -122,46 +137,7 @@ function mapRow(r: {
     scene: r.scene,
     subtype: r.subtype ?? [],
     lineup: lineup.map((l) => l.name).filter(Boolean),
-    artistIds: lineup.map((l) => l.artistId).filter((id): id is string => Boolean(id)),
-    artistGenres: [], // gevuld door enrichArtistGenres()
   };
-}
-
-/**
- * Vul `artistGenres` per rij: haal de genre-labels op van alle gelinkte
- * line-up-artiesten (één batch-query) en druppel ze naar het event als
- * sfeer-hint. Zo matcht een clubavond met techno-DJ's ook op "techno", ook
- * zonder eigen genre-tag. Mutatie in-place; no-op als er geen artistId's zijn.
- */
-async function enrichArtistGenres(rows: CandidateRow[]): Promise<void> {
-  const ids = new Set<string>();
-  for (const r of rows) for (const id of r.artistIds) ids.add(id);
-  if (ids.size === 0) return;
-
-  const arts = await db
-    .select({ id: schema.artists.id, genres: schema.artists.genres })
-    .from(schema.artists)
-    .where(inArray(schema.artists.id, [...ids]));
-  const byId = new Map(arts.map((a) => [a.id, a.genres ?? []]));
-
-  for (const r of rows) {
-    if (r.artistIds.length === 0) continue;
-    const set = new Set<string>();
-    for (const id of r.artistIds) for (const g of byId.get(id) ?? []) set.add(g);
-    r.artistGenres = [...set];
-  }
-}
-
-/** Verrijk de rijen met artiest-genres en rank ze daarna. Gedeeld door alle
-    takken van gatherCandidates zodat de doordruppel-stap nooit wordt vergeten. */
-async function rankEnriched(
-  profile: PreferenceProfile,
-  rows: CandidateRow[],
-  desiredCategories: string[],
-  keywords: string[]
-): Promise<RankResult> {
-  await enrichArtistGenres(rows);
-  return rankCandidates(profile, rows, desiredCategories, keywords);
 }
 
 /** Horizon voor een naam/entiteit-lookup: het hele komende jaar. Een vraag
@@ -204,7 +180,7 @@ export async function fetchEntityMatches(
       eventId: schema.events.id,
       title: schema.events.title,
       category: schema.events.category,
-      genres: schema.events.genres,
+      genres: displayGenres,
       startsAt: schema.occurrences.startsAt,
       endsAt: schema.occurrences.endsAt,
       priceCents: schema.occurrences.priceCents,
@@ -314,7 +290,7 @@ export async function gatherCandidates(
   // 1) Expliciete tijd → honoreer het venster.
   if (opts.hasExplicitTime) {
     const rows = dedupeByEvent(await fetchCandidateRows(profile, now));
-    const { candidates, sparse } = await rankEnriched(profile, rows, desiredCategories, keywords);
+    const { candidates, sparse } = rankCandidates(profile, rows, desiredCategories, keywords);
     return {
       candidates,
       sparse,
@@ -335,26 +311,27 @@ export async function gatherCandidates(
         await fetchCandidateRows({ ...profile, when: 'this_week' }, now)
       );
       const merged = dedupeByEvent(nearRows.concat(entityRows));
-      const { candidates, sparse } = await rankEnriched(profile, merged, desiredCategories, keywords);
+      const { candidates, sparse } = rankCandidates(profile, merged, desiredCategories, keywords);
       const to = new Date(now.getTime() + ENTITY_HORIZON_DAYS * 24 * 3600 * 1000);
       return { candidates, sparse, window: { from: now, to }, when: 'this_year', widened: true };
     }
   }
 
   // 3) Genre/sfeer-browse → progressief verbreden tot genoeg relevants.
+  // Eén brede fetch (this_year, soonest-gecapt) en daarna in-JS per venster
+  // slicen — i.p.v. per rung opnieuw de DB te bevragen (this_year is een
+  // superset van this_week/this_month, dus die fetches waren puur weggegooid).
+  const lastWhen = BROWSE_LADDER[BROWSE_LADDER.length - 1];
+  const yearRows = dedupeByEvent(
+    await fetchCandidateRows({ ...profile, when: lastWhen }, now)
+  );
   let result: GatherResult | null = null;
   for (const when of BROWSE_LADDER) {
-    const p = { ...profile, when };
-    const rows = dedupeByEvent(await fetchCandidateRows(p, now));
-    const { candidates, sparse } = await rankEnriched(profile, rows, desiredCategories, keywords);
+    const w = resolveWhenWindow({ ...profile, when }, now);
+    const rows = yearRows.filter((r) => r.start >= w.from && r.start < w.to);
+    const { candidates, sparse } = rankCandidates(profile, rows, desiredCategories, keywords);
     const relevant = candidates.filter((c) => candidateMatchesKeywords(c, keywords)).length;
-    result = {
-      candidates,
-      sparse,
-      window: resolveWhenWindow(p, now),
-      when,
-      widened: when !== BROWSE_LADDER[0],
-    };
+    result = { candidates, sparse, window: w, when, widened: when !== BROWSE_LADDER[0] };
     if (relevant >= BROWSE_TARGET) break;
   }
   return result as GatherResult;

@@ -35,13 +35,6 @@ export type CandidateRow = {
   /** Namen uit de occurrence-lineup (DJ's, support, cast). Laat een act die
       wél in de line-up maar níét in de titel staat tóch matchen op naam. */
   lineup: string[];
-  /** artistId's uit de line-up (gevuld door `_artists-enrich.ts`). Bron voor
-      het ophalen van artiest-genres die naar het event doordruppelen. */
-  artistIds: string[];
-  /** Genre-labels van de gelinkte line-up-artiesten (techno/house/…), uit de
-      `artists`-tabel. Druppelen door als sfeer-hint zodat een clubavond met
-      techno-DJ's ook op "techno" matcht, ook zonder eigen genre-tag. */
-  artistGenres: string[];
 };
 
 // ─── Tijd-window ────────────────────────────────────────────────────────────
@@ -290,16 +283,13 @@ export function haversineKm(
 
 // ─── Pure rank/filter ────────────────────────────────────────────────────────
 
-/** Sfeer-hints voor het LLM + matching: venue.scene + subtype + de genres van
-    de line-up-artiesten, ge-dedupe. Zo telt "techno" mee als de DJ techno
-    draait, ook al heeft het event zelf geen techno-tag. */
-export function vibeOf(
-  row: Pick<CandidateRow, 'scene' | 'subtype' | 'artistGenres'>
-): string[] {
+/** Sfeer-hints voor het LLM + matching: venue.scene + subtype, ge-dedupe.
+    (Artiest-genres zitten al in `genres` via displayGenres/effective_genres,
+    dus die hoeven hier niet apart bij.) */
+export function vibeOf(row: Pick<CandidateRow, 'scene' | 'subtype'>): string[] {
   const out = new Set<string>();
   if (row.scene) out.add(row.scene);
   for (const s of row.subtype) out.add(s);
-  for (const g of row.artistGenres) out.add(g);
   return [...out];
 }
 

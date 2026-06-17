@@ -12,7 +12,10 @@ import { randomUUID } from 'node:crypto';
 import { and, eq, inArray } from 'drizzle-orm';
 
 import { db, schema } from '../db/index.js';
-import { findEventsWithOccurrencesInRange } from '../routes/_helpers.js';
+import {
+  findEventsWithOccurrencesInRange,
+  headOccurrenceInWindow,
+} from '../routes/_helpers.js';
 import { gatherCandidates } from '../zoek/retrieval.js';
 import { EMPTY_PROFILE } from '../zoek/types.js';
 import type { PreferenceProfile, PriceTier, ZoekWhen } from '../zoek/types.js';
@@ -172,10 +175,7 @@ async function hydrate(
     const ev = byId.get(id);
     const occ = byEvent.get(id);
     if (!ev || !occ) continue;
-    const inWindow = occ.all.filter(
-      (o) => o.startsAt >= window.from && o.startsAt < window.to
-    );
-    const head = inWindow[0] ?? occ.next;
+    const { head } = headOccurrenceInWindow(occ, window.from, window.to);
     if (!head) continue;
     out.push({
       id: ev.id,
