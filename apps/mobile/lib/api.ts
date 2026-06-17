@@ -170,6 +170,9 @@ export type ApiEvent = {
       Alleen meegestuurd door endpoints die op nieuws-volgorde tonen
       (bv. `/events/new`). Voor reguliere list-endpoints null. */
   createdAt?: string;
+  /** Uitlegbare aanbevelings-reden ("Omdat je vaker techno redt"). Alleen
+      gevuld door `/events/for-you`. */
+  reason?: string | null;
 };
 
 /** Detail-respons: event met de volledige lijst occurrences. */
@@ -283,11 +286,18 @@ export async function getEvents(filter: EventsFilter = {}): Promise<ApiEvent[]> 
     horizon (of 7d met `weekOnly`), cap 30. Lege array voor uitgelogd
     of zonder profiel-input (geen saves én geen follows). */
 export async function getForYouEvents(
-  opts: { weekOnly?: boolean } = {},
+  opts: { weekOnly?: boolean; tonight?: boolean } = {},
 ): Promise<ApiEvent[]> {
-  const qs = opts.weekOnly ? '?week=1' : '';
+  const params = new URLSearchParams();
+  if (opts.tonight) {
+    params.set('window', 'tonight');
+    params.set('limit', '6');
+  } else if (opts.weekOnly) {
+    params.set('week', '1');
+  }
+  const qs = params.toString();
   const { events } = await authedRequest<{ events: ApiEvent[] }>(
-    `/events/for-you${qs}`,
+    `/events/for-you${qs ? `?${qs}` : ''}`,
   );
   return events;
 }
@@ -357,6 +367,84 @@ export async function search(
   const params = new URLSearchParams({ q });
   if (eventsOffset > 0) params.set('eventsOffset', String(eventsOffset));
   return authedRequest<SearchResponse>(`/search?${params.toString()}`);
+}
+
+// ─── Conversationele zoek ("Andreas-gids") ──────────────────────────────────
+// Stateless: client houdt profile + history vast (React/Zustand state) en
+// stuurt die elke beurt mee; server geeft het bijgewerkte profiel terug.
+// Backend: POST /zoek (apps/api/src/routes/zoek.ts). Types lokaal, net als
+// ApiEvent — packages/shared is niet in mobile gewired.
+
+export type PriceTier = 0 | 1 | 2 | 3;
+export type ZoekWhen =
+  | 'tonight'
+  | 'this_weekend'
+  | 'this_week'
+  | 'this_month'
+  | 'this_year'
+  | 'next_weekend'
+  | 'next_week'
+  | 'next_month'
+  | 'specific';
+
+export type PreferenceProfile = {
+  want: string[];
+  avoid: string[];
+  excludeVenueIds: string[];
+  excludeEventIds: string[];
+  maxDistanceKm: number | null;
+  priceMax: PriceTier | null;
+  when: ZoekWhen;
+  whenDate?: string;
+  origin?: { lat: number; lng: number };
+};
+
+export const EMPTY_PROFILE: PreferenceProfile = {
+  want: [],
+  avoid: [],
+  excludeVenueIds: [],
+  excludeEventIds: [],
+  maxDistanceKm: null,
+  priceMax: null,
+  when: 'tonight',
+};
+
+export type ZoekChatTurn = { role: 'user' | 'assistant'; content: string };
+
+export type ZoekRequest = {
+  message: string;
+  profile: PreferenceProfile;
+  history: ZoekChatTurn[];
+};
+
+export type ZoekResponse = {
+  reply: string;
+  /** Volledige DB-events in `ApiEvent`-shape — bron van waarheid voor de
+      UI. Render kaarten hieruit, nooit uit `reply`. */
+  events: ApiEvent[];
+  reasonByEventId: Record<string, string>;
+  updatedProfile: PreferenceProfile;
+  needsMoreInfo?: string;
+};
+
+/** Eén gespreksbeurt. Retry't bij netwerkfouten of 5xx (de API-machine kan
+    op Fly in slaap staan en koud opstarten → eerste poging faalt soms). Niet
+    bij 4xx (auth/validatie/limiet) — die lossen niet op met opnieuw proberen. */
+export async function postZoek(req: ZoekRequest): Promise<ZoekResponse> {
+  const body = JSON.stringify(req);
+  let lastErr: unknown;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      return await authedRequest<ZoekResponse>('/zoek', { method: 'POST', body });
+    } catch (e) {
+      lastErr = e;
+      const status = e instanceof ApiError ? e.status : 0;
+      const retryable = !(e instanceof ApiError) || status >= 500;
+      if (!retryable || attempt === 2) break;
+      await new Promise((r) => setTimeout(r, 1200 * (attempt + 1)));
+    }
+  }
+  throw lastErr;
 }
 
 /**
@@ -774,6 +862,9 @@ export type ApiMe = {
       venues/genres/wijken) zichtbaar is voor vrienden op u/[handle]. */
   mirrorVisibility: 'favorites' | 'friends' | 'private';
   discoverable: boolean;
+  /** Toegang tot de conversationele zoek ("Andreas-gids"). Opt-in per
+      gebruiker via admin; bepaalt of de "Vraag de gids"-banner verschijnt. */
+  guideEnabled: boolean;
   createdAt: string;
 };
 

@@ -34,6 +34,7 @@ export function RailEventCard({
   occurrenceVenueName,
   wide = false,
   showDate = false,
+  reason,
 }: {
   event: ApiEvent;
   /** Optionele specifieke occurrence — als gezet, geeft 'm mee als
@@ -54,6 +55,9 @@ export function RailEventCard({
       in rails die items over meerdere dagen spreiden (bv. "Voor jou").
       Voor "Vandaag"-rails niet nodig — die zijn impliciet vandaag. */
   showDate?: boolean;
+  /** Uitlegbare aanbevelings-reden ("Omdat je vaker techno redt"). Alleen
+      gevuld in de "Voor jou"-rail; rendert een subtiele regel onder de venue. */
+  reason?: string | null;
 }) {
   const roles = useRoles();
   const locale = useLocale();
@@ -132,6 +136,11 @@ export function RailEventCard({
             {occurrenceVenueName ?? event.venue.name}
           </Text>
         </View>
+        {reason ? (
+          <Text numberOfLines={1} style={[styles.cardReason, { color: roles.accent }]}>
+            {reason}
+          </Text>
+        ) : null}
       </View>
     </Pressable>
   );
@@ -186,5 +195,11 @@ const styles = StyleSheet.create({
     letterSpacing: 0.6,
     textTransform: 'uppercase',
     flexShrink: 1,
+  },
+  cardReason: {
+    fontFamily: fontFamily.body,
+    fontSize: 11,
+    lineHeight: 14,
+    marginTop: 2,
   },
 });

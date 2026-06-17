@@ -8,7 +8,6 @@ import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { ContentModeSwitch } from '@/components/ContentModeSwitch';
 import { Cross } from '@/components/Cross';
 import { ProfileAvatar } from '@/components/ProfileAvatar';
 import { tinyTap } from '@/lib/haptics';
@@ -38,13 +37,6 @@ type AppHeaderProps = {
    */
   title?: string;
   /**
-   * Toont de Uit/Expo content-mode-switch in de rechter-rij van de
-   * header (tussen DnSwitch's oude plek en de avatar). Alleen aan op
-   * Vandaag + Agenda — andere schermen zien 'm niet omdat de switch
-   * daar niets doet.
-   */
-  showContentMode?: boolean;
-  /**
    * Verbergt de avatar-knop rechtsboven. Default false. Aan zetten op
    * /jij zelf zodat 'r geen "avatar → /jij → zelfde avatar → /jij"-
    * loop ontstaat.
@@ -72,7 +64,6 @@ export function AppHeader({
   children,
   solid = false,
   title,
-  showContentMode = false,
   hideAvatar = false,
   rightSlot,
 }: AppHeaderProps = {}) {
@@ -198,14 +189,7 @@ export function AppHeader({
           )}
         </View>
         <View style={styles.headerRight}>
-          {rightSlot ? (
-            rightSlot
-          ) : (
-            <>
-              {showContentMode && <ContentModeSwitch />}
-              {!hideAvatar && <AvatarButton />}
-            </>
-          )}
+          {rightSlot ? rightSlot : !hideAvatar && <AvatarButton />}
         </View>
       </View>
       {children}

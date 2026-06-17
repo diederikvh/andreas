@@ -38,7 +38,6 @@ import {
   VENUE_TYPE_TICK,
   dowMixed,
   eventImageUrl,
-  isDaytimeOccurrence,
   isLongRunning,
   monthShort,
   rowTimeLabel,
@@ -53,7 +52,6 @@ import {
   useToggleDismiss,
   useToggleSave,
 } from '@/lib/queries';
-import { useContentMode } from '@/store/contentMode';
 import { useMode, useRoles } from '@/store/mode';
 import { fontFamily, palette } from '@/theme/tokens';
 
@@ -87,7 +85,6 @@ export default function OpGevoel() {
   const isNacht = mode === 'nacht';
   const { width: windowWidth } = useWindowDimensions();
 
-  const cmode = useContentMode();
   const { data: events } = useEvents({
     from: new Date(new Date().setHours(0, 0, 0, 0)).toISOString(),
     lean: true,
@@ -113,17 +110,13 @@ export default function OpGevoel() {
   //  - al-gesavede occurrences — niet opnieuw aanbieden
   //  - buiten 1-maand horizon — daarna niet meer actionable voor
   //    "op gevoel"; planning op die termijn doe je in Agenda
-  //  - cmode-mismatch: dag-mode pakt alleen daytime-occurrences, nacht
-  //    alleen niet-daytime
   //
-  // Synthetische memo-key: hangt af van "hebben we events" + cmode +
-  // refresh-key, NIET van de events-reference. Anders rebuilt React
-  // Query's refetch (die telkens een nieuwe array-ref teruggeeft, ook
-  // bij identieke content) de stack met een verse Fisher-Yates shuffle
-  // → cards remount in andere volgorde → zichtbare flits bij openen.
-  const stackKey = events
-    ? `have-${cmode}-${stackRefreshKey}`
-    : 'none';
+  // Synthetische memo-key: hangt af van "hebben we events" + refresh-key,
+  // NIET van de events-reference. Anders rebuilt React Query's refetch
+  // (die telkens een nieuwe array-ref teruggeeft, ook bij identieke
+  // content) de stack met een verse Fisher-Yates shuffle → cards
+  // remount in andere volgorde → zichtbare flits bij openen.
+  const stackKey = events ? `have-${stackRefreshKey}` : 'none';
   const stack = useMemo<StackEvent[]>(() => {
     if (!events) return [];
     const savedOccIds = new Set((saves ?? []).map((s) => s.occurrenceId));
@@ -142,9 +135,6 @@ export default function OpGevoel() {
       if (dismissedOccIds.has(occ.id)) continue;
       const startMs = new Date(occ.startsAt).getTime();
       if (startMs > horizonMs) continue;
-      const isDay = isDaytimeOccurrence(occ.startsAt, occ.endsAt);
-      if (cmode === 'expo' && !isDay) continue;
-      if (cmode === 'uit' && isDay) continue;
       pool.push({
         event: e,
         occurrenceId: occ.id,

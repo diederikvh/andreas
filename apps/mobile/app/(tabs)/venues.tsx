@@ -332,7 +332,7 @@ export default function Venues() {
           )
         }
       />
-      <AppHeader title={tx('Venues', 'Venues')} showContentMode>
+      <AppHeader title={tx('Venues', 'Venues')}>
         <ChipRow
           query={q}
           onQuery={setQ}

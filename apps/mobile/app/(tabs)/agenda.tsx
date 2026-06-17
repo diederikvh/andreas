@@ -494,7 +494,7 @@ export default function Agenda() {
         removeClippedSubviews
         initialNumToRender={12}
       />
-      <AppHeader title={t('Agenda', 'Agenda')} showContentMode>
+      <AppHeader title={t('Agenda', 'Agenda')}>
         <ChipRow
           activeCats={activeCats}
           query={query}

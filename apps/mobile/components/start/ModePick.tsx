@@ -4,7 +4,6 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useT } from '@/lib/i18n';
-import { useSetContentMode } from '@/store/contentMode';
 import { useMode, useModeStore, useRoles } from '@/store/mode';
 import { fontFamily, palette, type Mode } from '@/theme/tokens';
 
@@ -16,17 +15,13 @@ export function ModePick({ onPicked }: Props) {
   const roles = useRoles();
   const insets = useSafeAreaInsets();
   const setMode = useModeStore((s) => s.setMode);
-  const setContentMode = useSetContentMode();
   const t = useT();
 
   const pick = (mode: Mode) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    // Visuele én content-mode tegelijk flippen — anders zit de
-    // gebruiker straks in nacht-mode (donker) terwijl Vandaag nog
-    // expo-content (musea/literatuur) toont. Koppeling: nacht→uit,
-    // dag→expo. Zelfde mapping als de ContentModeSwitch in de header.
+    // Puur het visuele thema (nacht=donker, dag=licht). Content is niet
+    // meer modus-gebonden — Vandaag toont altijd het hele aanbod.
     setMode(mode);
-    setContentMode(mode === 'nacht' ? 'uit' : 'expo');
     onPicked(mode);
   };
 

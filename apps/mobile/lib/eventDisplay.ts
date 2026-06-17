@@ -767,15 +767,29 @@ export function useFocusedNow(): number {
 }
 
 /**
- * Effectieve eindtijd van een occurrence in ms-since-epoch. Voor
- * occurrences zonder endsAt nemen we startsAt + 4u als default — dezelfde
- * fallback die de server gebruikt in z'n filter, dus de UI valt
- * consistent met de lijst.
+ * Effectieve eindtijd van een occurrence in ms-since-epoch — bepaalt
+ * wanneer een event van "Vandaag" verdwijnt.
+ *
+ *  - Mét `endsAt`: dát is de waarheid — het event blijft staan zolang het
+ *    loopt en valt weg zodra het is afgelopen.
+ *  - Zónder `endsAt`: een fallback ná de start. Nachtleven (clubs) krijgt
+ *    een ruime staart (4u) want mensen komen laat; al het andere (film,
+ *    theater, lezingen, daytime) een korte grace van 60 min, zodat
+ *    al-begonnen voorstellingen niet blijven hangen.
  */
-const FOUR_HOURS_MS = 4 * 60 * 60 * 1000;
-export function effectiveEndsAtMs(occ: ApiOccurrence): number {
+const NIGHTLIFE_FALLBACK_MS = 4 * 60 * 60 * 1000;
+const DEFAULT_FALLBACK_MS = 60 * 60 * 1000;
+export function effectiveEndsAtMs(occ: ApiOccurrence, event?: ApiEvent): number {
   if (occ.endsAt) return new Date(occ.endsAt).getTime();
-  return new Date(occ.startsAt).getTime() + FOUR_HOURS_MS;
+  const start = new Date(occ.startsAt).getTime();
+  // Nachtleven krijgt de ruime staart: clubs én live muziek (concerten
+  // lopen/starten laat, en veel podia leveren geen eindtijd aan — dan zou
+  // een 60-min grace een concert midden in de show wegfilteren). Film/
+  // theater/kunst/lezing houden de korte 60-min grace.
+  const venueType = occ.venue?.type ?? event?.venue?.type;
+  const nightlife = venueType === 'club' || event?.category === 'Muziek';
+  const fallback = nightlife ? NIGHTLIFE_FALLBACK_MS : DEFAULT_FALLBACK_MS;
+  return start + fallback;
 }
 
 /**

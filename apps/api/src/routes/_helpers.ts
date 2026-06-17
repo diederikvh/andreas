@@ -309,6 +309,20 @@ export type EventOccurrenceData = {
   all: ApiOccurrenceShape[];
 };
 
+/**
+ * Kies de te tonen ("head") occurrence binnen een venster: de eerste die in
+ * [from, to) valt, anders de eerstvolgende (`next`). Gedeeld door de /zoek-
+ * en MCP-hydration zodat die keuze-regel niet uit elkaar loopt.
+ */
+export function headOccurrenceInWindow(
+  occ: EventOccurrenceData,
+  from: Date,
+  to: Date
+): { inWindow: ApiOccurrenceShape[]; head: ApiOccurrenceShape | null } {
+  const inWindow = occ.all.filter((o) => o.startsAt >= from && o.startsAt < to);
+  return { inWindow, head: inWindow[0] ?? occ.next };
+}
+
 type OccurrenceVenueLite = {
   id: string;
   slug: string;

@@ -1,7 +1,8 @@
 import { expo } from '@better-auth/expo';
 import { betterAuth } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
-import { bearer, phoneNumber } from 'better-auth/plugins';
+import { createAuthMiddleware } from 'better-auth/api';
+import { bearer, mcp, phoneNumber } from 'better-auth/plugins';
 import { eq } from 'drizzle-orm';
 
 import { db, schema } from './db/index.js';
@@ -37,6 +38,24 @@ const normalizePhone = (s: string) => s.replace(/[\s\-()]/g, '');
 const DEMO_PHONE = DEMO_PHONE_RAW ? normalizePhone(DEMO_PHONE_RAW) : null;
 const demoActive = Boolean(DEMO_PHONE && DEMO_CODE);
 
+/** Canonieke basis-URL van de API (= auth-host). In prod
+    https://api.andreas.amsterdam, lokaal http://localhost:8787. */
+const BASE_URL = process.env.BETTER_AUTH_URL ?? 'http://localhost:8787';
+
+/**
+ * Normaliseer een telefoonnummer naar E.164 zodat élke inlog-route (app,
+ * web-MCP-login, …) hetzelfde formaat opslaat — anders maakt better-auth
+ * dubbele users aan bij een format-verschil (+31639… vs 31639…). NL-default
+ * voor lokale 06-nummers; al-E.164 blijft ongemoeid.
+ */
+function toE164(raw: string): string {
+  const s = raw.replace(/[\s()-]/g, '');
+  if (s.startsWith('00')) return '+' + s.slice(2);
+  if (s.startsWith('+')) return s;
+  if (s.startsWith('0')) return '+31' + s.slice(1);
+  return '+' + s;
+}
+
 export const auth = betterAuth({
   logger: {
     level: 'debug',
@@ -52,10 +71,13 @@ export const auth = betterAuth({
       session: schema.session,
       account: schema.account,
       verification: schema.verification,
+      oauthApplication: schema.oauthApplication,
+      oauthAccessToken: schema.oauthAccessToken,
+      oauthConsent: schema.oauthConsent,
     },
   }),
   secret: process.env.BETTER_AUTH_SECRET,
-  baseURL: process.env.BETTER_AUTH_URL ?? 'http://localhost:8787',
+  baseURL: BASE_URL,
   trustedOrigins: [
     'andreas://',
     'https://andreas.amsterdam',
@@ -113,6 +135,19 @@ export const auth = betterAuth({
       '/phone-number/verify': { window: 5 * 60, max: 10 },
     },
   },
+  // Server-side normalisatie: herschrijf het telefoonnummer naar E.164 op
+  // elke phone-route, vóór de plugin 'm verwerkt. Zo is het formaat altijd
+  // consistent — ongeacht welke client/route 'm instuurt.
+  hooks: {
+    before: createAuthMiddleware(async (ctx) => {
+      if (!ctx.path.includes('phone-number')) return;
+      const body = ctx.body as { phoneNumber?: unknown } | undefined;
+      if (!body || typeof body.phoneNumber !== 'string') return;
+      const normalized = toE164(body.phoneNumber);
+      if (normalized === body.phoneNumber) return;
+      return { context: { ...ctx, body: { ...body, phoneNumber: normalized } } };
+    }),
+  },
   plugins: [
     expo(),
     // Mobile draagt sessie via Authorization: Bearer <token> i.p.v.
@@ -157,6 +192,14 @@ export const auth = betterAuth({
           `${phoneNumber.replace(/[^0-9]/g, '')}@phone.andreas.local`,
         getTempName: (phoneNumber) => phoneNumber,
       },
+    }),
+    // OAuth-provider voor MCP-clients (Claude/ChatGPT/eigen agents). Externe
+    // AI's loggen via deze flow in met de telefoon-OTP; de webpagina op
+    // `loginPage` doet de OTP en stuurt terug naar /authorize. `resource` is
+    // de canonieke MCP-endpoint-URL (RFC 8707 resource indicator).
+    mcp({
+      loginPage: `${BASE_URL}/mcp-login`,
+      resource: `${BASE_URL}/mcp`,
     }),
   ],
 });

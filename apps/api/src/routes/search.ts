@@ -19,7 +19,7 @@
 import { and, asc, eq, gt, ilike, inArray, or, sql, type SQL } from 'drizzle-orm';
 import { Hono } from 'hono';
 
-import { db, schema } from '../db/index.js';
+import { db, displayGenres, schema } from '../db/index.js';
 
 export const searchRoute = new Hono();
 
@@ -110,7 +110,7 @@ searchRoute.get('/', async (c) => {
       kind: schema.events.kind,
       category: schema.events.category,
       featured: schema.events.featured,
-      genres: schema.events.genres,
+      genres: displayGenres,
       imageUrl: schema.events.imageUrl,
       posterUrl: schema.events.posterUrl,
       stillUrl: schema.events.stillUrl,

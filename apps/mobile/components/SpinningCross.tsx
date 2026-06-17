@@ -24,14 +24,19 @@ export function SpinningCross({
   thickness,
   color,
   durationMs = 900,
+  pulse = false,
 }: {
   size?: number;
   thickness?: number;
   color: string;
   durationMs?: number;
+  /** Laat het kruis ook in-/uitfaden (opacity-pulse). Maakt 'm zichtbaar
+      op donkere achtergronden waar een statische muted-kleur wegvalt. */
+  pulse?: boolean;
 }) {
   const effectiveThickness = thickness ?? Math.round(size / 4);
   const rot = useSharedValue(0);
+  const op = useSharedValue(pulse ? 0.3 : 1);
 
   useEffect(() => {
     rot.value = withRepeat(
@@ -42,9 +47,18 @@ export function SpinningCross({
       -1,
       false
     );
-  }, [rot, durationMs]);
+    if (pulse) {
+      // Breathe tussen dim en vol — reverse-loop voor een soepele glow.
+      op.value = withRepeat(
+        withTiming(1, { duration: durationMs, easing: Easing.inOut(Easing.quad) }),
+        -1,
+        true
+      );
+    }
+  }, [rot, op, durationMs, pulse]);
 
   const style = useAnimatedStyle(() => ({
+    opacity: op.value,
     transform: [{ rotate: `${rot.value * 360}deg` }],
   }));
 

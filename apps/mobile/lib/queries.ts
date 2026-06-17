@@ -85,8 +85,12 @@ export const queryKeys = {
   agendaDay: (input: { date: string; filters: AgendaFilters }) =>
     ['agenda-day', input.date, input.filters] as const,
   mirror: () => ['mirror', 'me'] as const,
-  forYou: (opts: { weekOnly?: boolean } = {}) =>
-    ['events', 'for-you', opts.weekOnly ? 'week' : 'rail'] as const,
+  forYou: (opts: { weekOnly?: boolean; tonight?: boolean } = {}) =>
+    [
+      'events',
+      'for-you',
+      opts.tonight ? 'tonight' : opts.weekOnly ? 'week' : 'rail',
+    ] as const,
   forYouFeed: (categories?: string[]) =>
     [
       'events',
@@ -188,11 +192,12 @@ export function useRecentEvents(
 }
 
 export function useForYouEvents(
-  opts: { enabled?: boolean; weekOnly?: boolean } = {},
+  opts: { enabled?: boolean; weekOnly?: boolean; tonight?: boolean } = {},
 ) {
   return useQuery({
-    queryKey: queryKeys.forYou({ weekOnly: opts.weekOnly }),
-    queryFn: () => getForYouEvents({ weekOnly: opts.weekOnly }),
+    queryKey: queryKeys.forYou({ weekOnly: opts.weekOnly, tonight: opts.tonight }),
+    queryFn: () =>
+      getForYouEvents({ weekOnly: opts.weekOnly, tonight: opts.tonight }),
     enabled: opts.enabled ?? true,
     // Score-based aanbevelingen veranderen niet razendsnel; matchen
     // intern op saves+follows. Refresh op tab-focus zodat een nieuwe

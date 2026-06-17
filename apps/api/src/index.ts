@@ -24,8 +24,13 @@ import { shareInvitesRoute } from './routes/share-invites.js';
 import { pushRoute } from './routes/push.js';
 import { savesRoute } from './routes/saves.js';
 import { seoFeedsRoute } from './routes/seo-feeds.js';
+import { oAuthDiscoveryMetadata, oAuthProtectedResourceMetadata } from 'better-auth/plugins';
+import { mcpRoute } from './routes/mcp.js';
+import { mcpLoginRoute } from './routes/mcp-login.js';
 import { searchRoute } from './routes/search.js';
+import { zoekRoute } from './routes/zoek.js';
 import { seriesRoute } from './routes/series.js';
+import { aiConnectRoute } from './routes/ai-connect.js';
 import { getAppRoute } from './routes/get-app.js';
 import { shareRoute } from './routes/share.js';
 import { socialRoute } from './routes/social.js';
@@ -86,6 +91,18 @@ app.use(
 
 // better-auth catches its own routes under /api/auth/**
 app.on(['POST', 'GET'], '/api/auth/*', (c) => auth.handler(c.req.raw));
+
+// OAuth/MCP discovery op de root, zodat MCP-clients (Claude/ChatGPT) de
+// authorization-server + protected-resource automatisch vinden. De
+// better-auth mcp-plugin levert de inhoud; we exposen 'm hier.
+app.get('/.well-known/oauth-authorization-server', (c) =>
+  oAuthDiscoveryMetadata(auth)(c.req.raw)
+);
+app.get('/.well-known/oauth-protected-resource', (c) =>
+  oAuthProtectedResourceMetadata(auth)(c.req.raw)
+);
+// Web-login voor de OAuth-flow (telefoon-OTP in de browser).
+app.route('/mcp-login', mcpLoginRoute);
 
 app.get('/health', (c) => c.json({ ok: true }));
 
@@ -275,6 +292,8 @@ app.route('/events', eventsRoute);
 app.route('/artists', artistsRoute);
 app.route('/venues', venuesRoute);
 app.route('/search', searchRoute);
+app.route('/zoek', zoekRoute);
+app.route('/mcp', mcpRoute);
 app.route('/series', seriesRoute);
 app.route('/saves', savesRoute);
 app.route('/mirror', mirrorRoute);
@@ -300,6 +319,9 @@ app.route('/', seoFeedsRoute);
 // shareRoute zodat de specifieke slugs voorrang krijgen op de
 // catchall-routes (geen die nu bestaan, maar future-safe).
 app.route('/', hubsRoute);
+// AI-connector-pagina (`/ai`) — mount vóór shareRoute zodat de slug
+// niet als event/venue wordt opgevat.
+app.route('/', aiConnectRoute);
 // Install-link voor IG-bio / CTA's — `/get` doet UA-detect en
 // stuurt door naar App Store / Play Store / web-landing.
 app.route('/get', getAppRoute);

@@ -11,15 +11,11 @@ type ModeState = {
   hasHydrated: boolean;
   /** True once the user has finished the start-screen flow (mode-keuze + welkom). */
   hasOnboarded: boolean;
-  /** True once de gebruiker de eerste-bezoek hint over de Uit/Expo
-      content-switch heeft weggeklikt. */
-  hasSeenContentSwitchHint: boolean;
   /** True once de hint bij de filter-knop op Agenda is weggeklikt. */
   hasSeenFilterHint: boolean;
   setMode: (mode: Mode) => void;
   toggle: () => void;
   completeOnboarding: () => void;
-  dismissContentSwitchHint: () => void;
   dismissFilterHint: () => void;
 };
 
@@ -29,14 +25,11 @@ export const useModeStore = create<ModeState>()(
       mode: 'nacht',
       hasHydrated: false,
       hasOnboarded: false,
-      hasSeenContentSwitchHint: false,
       hasSeenFilterHint: false,
       setMode: (mode) => set({ mode }),
       toggle: () =>
         set((s) => ({ mode: s.mode === 'nacht' ? 'dag' : 'nacht' })),
       completeOnboarding: () => set({ hasOnboarded: true }),
-      dismissContentSwitchHint: () =>
-        set({ hasSeenContentSwitchHint: true }),
       dismissFilterHint: () => set({ hasSeenFilterHint: true }),
     }),
     {
@@ -45,7 +38,6 @@ export const useModeStore = create<ModeState>()(
       partialize: (s) => ({
         mode: s.mode,
         hasOnboarded: s.hasOnboarded,
-        hasSeenContentSwitchHint: s.hasSeenContentSwitchHint,
         hasSeenFilterHint: s.hasSeenFilterHint,
       }),
     }
@@ -64,10 +56,6 @@ export const useMode = () => useModeStore((s) => s.mode);
 export const useRoles = () => roles[useModeStore((s) => s.mode)];
 export const useHasHydrated = () => useModeStore((s) => s.hasHydrated);
 export const useHasOnboarded = () => useModeStore((s) => s.hasOnboarded);
-export const useHasSeenContentSwitchHint = () =>
-  useModeStore((s) => s.hasSeenContentSwitchHint);
-export const useDismissContentSwitchHint = () =>
-  useModeStore((s) => s.dismissContentSwitchHint);
 export const useHasSeenFilterHint = () =>
   useModeStore((s) => s.hasSeenFilterHint);
 export const useDismissFilterHint = () =>
