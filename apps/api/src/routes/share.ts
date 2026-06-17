@@ -1,8 +1,15 @@
 import { and, asc, desc, eq, not, or, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 
-import { db, schema } from '../db/index.js';
+import { db, displayGenres, schema } from '../db/index.js';
 import { renderEventOg, renderInviteOg } from '../social/inviteOg.js';
+import {
+  AI_CONNECT_FAQ,
+  AI_CONNECT_STYLES,
+  COPY_SCRIPT,
+  MCP_PUBLIC_URL,
+  renderAiPromo,
+} from './ai-connect.js';
 import {
   APP_STORE_URL,
   HEADER_STYLES,
@@ -124,7 +131,7 @@ shareRoute.get('/e/:id', async (c) => {
       kind: schema.events.kind,
       imageUrl: schema.events.imageUrl,
       category: schema.events.category,
-      genres: schema.events.genres,
+      genres: displayGenres,
       published: schema.events.published,
       venue: {
         id: schema.venues.id,
@@ -267,7 +274,7 @@ shareRoute.get('/e/:id', async (c) => {
       title: schema.events.title,
       kind: schema.events.kind,
       category: schema.events.category,
-      genres: schema.events.genres,
+      genres: displayGenres,
       imageUrl: schema.events.imageUrl,
       startsAt: schema.occurrences.startsAt,
       endsAt: schema.occurrences.endsAt,
@@ -368,7 +375,7 @@ shareRoute.get('/v/:slug', async (c) => {
       kind: schema.events.kind,
       category: schema.events.category,
       imageUrl: schema.events.imageUrl,
-      genres: schema.events.genres,
+      genres: displayGenres,
       startsAt: schema.occurrences.startsAt,
       endsAt: schema.occurrences.endsAt,
     })
@@ -756,6 +763,13 @@ function renderEventSeoPage(opts: {
       answerHtml: `Tickets voor ${escapeHtml(event.title)} zijn verkrijgbaar via <a href="${escapeHtml(primaryOcc.ticketUrl)}" target="_blank" rel="noopener">${escapeHtml(ticketHost)} ↗</a>.`,
     });
   }
+  // AI-connector — ook event-contextueel, zodat ChatGPT/Perplexity bij een
+  // vraag over dit event direct weten dat ANDREAS via MCP te koppelen is.
+  faqEntries.push({
+    question: `Kan ik ${event.title} via ChatGPT of Claude vinden?`,
+    answer: `Ja. Koppel ANDREAS aan ChatGPT, Claude of je eigen AI via de Model Context Protocol-connector op ${MCP_PUBLIC_URL} en zoek het Amsterdamse aanbod rechtstreeks vanuit je AI.`,
+    answerHtml: `Ja. Koppel ANDREAS aan ChatGPT, Claude of je eigen AI via de <a href="/ai">MCP-connector</a> en zoek het Amsterdamse aanbod rechtstreeks vanuit je AI.`,
+  });
 
   // ---------- head ----------
 
@@ -1197,6 +1211,10 @@ function renderVenueSeoPage(opts: {
       answer: `De officiële website van ${venue.name} is ${venue.website}.`,
     });
   }
+  faqEntries.push({
+    question: `Kan ik ${venue.name} via ChatGPT of Claude vinden?`,
+    answer: `Ja. Koppel ANDREAS aan ChatGPT, Claude of je eigen AI via de Model Context Protocol-connector op ${MCP_PUBLIC_URL} (zie ${PUBLIC_BASE_URL}/ai) en zoek het aanbod van ${venue.name} rechtstreeks vanuit je AI.`,
+  });
 
   // ---------- head ----------
 
@@ -3137,7 +3155,7 @@ shareRoute.get('/', async (c) => {
         eventId: schema.events.id,
         title: schema.events.title,
         category: schema.events.category,
-        genres: schema.events.genres,
+        genres: displayGenres,
         imageUrl: schema.events.imageUrl,
         startsAt: schema.occurrences.startsAt,
         endsAt: schema.occurrences.endsAt,
@@ -3171,7 +3189,7 @@ shareRoute.get('/', async (c) => {
       .select({
         eventId: schema.events.id,
         title: schema.events.title,
-        genres: schema.events.genres,
+        genres: displayGenres,
         imageUrl: schema.events.imageUrl,
         startsAt: schema.occurrences.startsAt,
         endsAt: schema.occurrences.endsAt,
@@ -3302,6 +3320,10 @@ shareRoute.get('/', async (c) => {
       question: 'Werkt ANDREAS in andere steden?',
       answer:
         'Op dit moment alleen in Amsterdam. ANDREAS is gemaakt voor Amsterdam en houdt zich daar voorlopig bij. Suggesties voor andere steden zijn welkom via wij@andreas.amsterdam.',
+    },
+    {
+      question: AI_CONNECT_FAQ[0].question,
+      answer: AI_CONNECT_FAQ[0].answer,
     },
   ];
   const homeFaqLd = faqJsonLd(homeFaq);
@@ -3855,6 +3877,7 @@ shareRoute.get('/', async (c) => {
         padding-bottom: calc(96px + env(safe-area-inset-bottom));
       }
     }
+    ${AI_CONNECT_STYLES}
   </style>
 </head>
 <body class="has-sticky-cta">
@@ -3904,6 +3927,8 @@ shareRoute.get('/', async (c) => {
             </div>
           </div>
         </div>
+
+        ${renderAiPromo()}
       </aside>
 
       <div class="home-feed">
@@ -3978,6 +4003,7 @@ shareRoute.get('/', async (c) => {
     </footer>
   </main>
   ${renderSiteScripts()}
+  <script>${COPY_SCRIPT}</script>
 </body>
 </html>`;
 

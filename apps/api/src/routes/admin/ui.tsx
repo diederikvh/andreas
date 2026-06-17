@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { and, asc, count, desc, eq, gte, inArray, sql } from 'drizzle-orm';
+import { and, asc, count, desc, eq, gte, ilike, inArray, or, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 
 import { db, schema } from '../../db/index.js';
@@ -2768,6 +2768,92 @@ adminUi.get('/insights', async (c) => {
     })
     .slice(0, 20);
 
+  // ─── 7. Zoekvraag & gaten in 't aanbod (zoek_logs: gids + MCP) ────
+  // Wat mensen zochten (want-termen) en welke zoekopdrachten niets
+  // opleverden (shownEventIds leeg) — dat laatste wijst op gaten in 't
+  // aanbod die we via scraping kunnen dichten (brief §10).
+  const zoekSince = new Date(Date.now() - 30 * 24 * 3600 * 1000);
+  const zoekRows = await db
+    .select({
+      profile: schema.zoekLogs.profile,
+      shownEventIds: schema.zoekLogs.shownEventIds,
+    })
+    .from(schema.zoekLogs)
+    .where(gte(schema.zoekLogs.createdAt, zoekSince))
+    .orderBy(desc(schema.zoekLogs.createdAt))
+    .limit(2000);
+  const termTotal = new Map<string, number>();
+  const termZero = new Map<string, number>();
+  let zoekTotal = 0;
+  let zoekZero = 0;
+  for (const r of zoekRows) {
+    zoekTotal += 1;
+    const noResults = (r.shownEventIds?.length ?? 0) === 0;
+    if (noResults) zoekZero += 1;
+    const want = (r.profile as { want?: string[] } | null)?.want ?? [];
+    const seen = new Set<string>();
+    for (const term of want) {
+      const key = term.trim().toLowerCase();
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      termTotal.set(key, (termTotal.get(key) ?? 0) + 1);
+      if (noResults) termZero.set(key, (termZero.get(key) ?? 0) + 1);
+    }
+  }
+  const topTerms = [...termTotal.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 15);
+  const zoekZeroPct = zoekTotal > 0 ? Math.round((100 * zoekZero) / zoekTotal) : 0;
+
+  // Echte gaten ≠ tijds-toeval. Een term is pas een gat als 'ie (a) ≥2× leeg
+  // terugkwam (geen eenmalige misser) én (b) er geen aanbod voor bestaat in
+  // de komende catalogus. We checken (b) tegen alle toekomstige events
+  // (genre-element of titel bevat de term), zodat "drum n bass deze week was
+  // toevallig leeg" niet als gat telt, maar "micha" (niet in aanbod) wel.
+  const MIN_EMPTY = 2;
+  const gapCandidates = [...termZero.entries()]
+    .filter(([, n]) => n >= MIN_EMPTY)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 30);
+  let gapTerms: [string, number][] = [];
+  if (gapCandidates.length > 0) {
+    const upcoming = await db
+      .selectDistinct({
+        title: schema.events.title,
+        genres: schema.events.genres,
+      })
+      .from(schema.events)
+      .innerJoin(
+        schema.occurrences,
+        eq(schema.occurrences.eventId, schema.events.id)
+      )
+      .where(
+        and(
+          eq(schema.events.published, true),
+          gte(schema.occurrences.startsAt, new Date())
+        )
+      )
+      .limit(5000);
+    const supplyIdx = upcoming.map((u) => ({
+      title: (u.title ?? '').toLowerCase(),
+      genres: (u.genres ?? []).map((g) => g.toLowerCase()),
+    }));
+    // Consistent met hoe de zoek matcht: trefwoord-substring op titel/genre
+    // (niet exact element). Zo telt "drum n bass" als aanbod zodra er een
+    // "drum & bass"-event is — dat was timing, geen gat.
+    const hasSupply = (term: string): boolean => {
+      const tokens = term.split(/[^a-z0-9à-ÿ]+/).filter((t) => t.length >= 3);
+      return supplyIdx.some(
+        (u) =>
+          u.title.includes(term) ||
+          tokens.some(
+            (tok) => u.title.includes(tok) || u.genres.some((g) => g.includes(tok))
+          )
+      );
+    };
+    gapTerms = gapCandidates.filter(([term]) => !hasSupply(term)).slice(0, 15);
+  }
+
   return c.html(
     <Layout title="Insights" active="insights">
       <h2>Insights</h2>
@@ -2775,6 +2861,76 @@ adminUi.get('/insights', async (c) => {
         Snapshot van vandaag. Aggregaten over alle users — geen persoonlijke
         identifiers.
       </p>
+
+      {/* ── Zoekvraag & gaten in 't aanbod ── */}
+      <section style="margin-top:1.5rem;">
+        <h3>Zoekvraag &amp; gaten in &lsquo;t aanbod</h3>
+        <p style="opacity:0.7;font-size:13px;">
+          Wat mensen via de gids &amp; MCP zochten (laatste 30 dagen). &ldquo;Gaten&rdquo;
+          = termen die ≥2× niets opleverden én waar géén aanbod voor is in de
+          komende catalogus (dus geen tijds-toeval) — kandidaten om aanbod
+          voor te scrapen.
+        </p>
+        <div class="grid-3">
+          <div class="stat">
+            <small>Zoekopdrachten · 30d</small>
+            <strong>{zoekTotal}</strong>
+          </div>
+          <div class="stat">
+            <small>Zonder resultaat</small>
+            <strong>{zoekZero}</strong>
+            <span style="font-size:12px;opacity:0.7;">{zoekZeroPct}% van de zoekopdrachten</span>
+          </div>
+        </div>
+        <div class="grid-2" style="margin-top:1rem;">
+          <div>
+            <h4 style="margin-bottom:0.5rem;">Meest gezocht</h4>
+            {topTerms.length === 0 ? (
+              <p style="opacity:0.6;font-size:13px;">Nog geen zoekdata.</p>
+            ) : (
+              <table>
+                <thead>
+                  <tr>
+                    <th>Term</th>
+                    <th style="text-align:right;">Aantal</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {topTerms.map(([term, n]) => (
+                    <tr>
+                      <td>{term}</td>
+                      <td style="text-align:right;">{n}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+          <div>
+            <h4 style="margin-bottom:0.5rem;">Echte gaten in 't aanbod</h4>
+            {gapTerms.length === 0 ? (
+              <p style="opacity:0.6;font-size:13px;">Geen echte gaten — herhaalde zoekopdrachten hebben aanbod 🎉</p>
+            ) : (
+              <table>
+                <thead>
+                  <tr>
+                    <th>Term</th>
+                    <th style="text-align:right;">Leeg</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {gapTerms.map(([term, n]) => (
+                    <tr>
+                      <td>{term}</td>
+                      <td style="text-align:right;">{n}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </div>
+      </section>
 
       {/* ── Growth ── */}
       <section style="margin-top:1.5rem;">
@@ -3212,6 +3368,155 @@ interface SocialPostRow {
     permalink?: string;
   } | null;
 }
+
+// ─── Gebruikers ─────────────────────────────────────────────────────────
+// Beheer van de gids-toegang (per-user opt-in) + zicht op het dagelijkse
+// gids-gebruik t.o.v. de kill-switch-drempel.
+
+const GUIDE_DAILY_MAX = Number(process.env.ZOEK_DAILY_MAX_REQUESTS ?? 330);
+
+adminUi.get('/users', async (c) => {
+  const q = (c.req.query('q') ?? '').trim();
+  const needle = `%${q}%`;
+
+  const rows = await db
+    .select({
+      id: schema.users.id,
+      handle: schema.users.handle,
+      name: schema.users.name,
+      phoneNumber: schema.users.phoneNumber,
+      guideEnabled: schema.users.guideEnabled,
+      createdAt: schema.users.createdAt,
+    })
+    .from(schema.users)
+    .where(
+      q.length > 0
+        ? or(
+            ilike(schema.users.handle, needle),
+            ilike(schema.users.name, needle),
+            ilike(schema.users.phoneNumber, needle)
+          )
+        : undefined
+    )
+    .orderBy(desc(schema.users.guideEnabled), desc(schema.users.createdAt))
+    .limit(100);
+
+  const [enabledCount] = await db
+    .select({ n: count() })
+    .from(schema.users)
+    .where(eq(schema.users.guideEnabled, true));
+
+  // Gids-gebruik laatste 24u t.o.v. de kill-switch-drempel.
+  const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const [usage] = await db
+    .select({ n: count() })
+    .from(schema.zoekLogs)
+    .where(gte(schema.zoekLogs.createdAt, since));
+  const used = usage?.n ?? 0;
+
+  return c.html(
+    <Layout title="Gebruikers" active="users">
+      <div class="toolbar">
+        <h2>Gebruikers</h2>
+        <a href="/admin/insights" role="button" class="outline">Insights →</a>
+      </div>
+
+      <div class="grid-3">
+        <div class="stat">
+          <small>Gids-toegang</small>
+          <strong>{enabledCount?.n ?? 0}</strong>
+          <span style="font-size:12px;opacity:0.7;">gebruikers met toegang</span>
+        </div>
+        <div class="stat">
+          <small>Gids vandaag</small>
+          <strong>
+            {used}/{GUIDE_DAILY_MAX}
+          </strong>
+          <span style="font-size:12px;opacity:0.7;">
+            vragen (24u) · {used >= GUIDE_DAILY_MAX ? 'limiet bereikt' : 'binnen limiet'}
+          </span>
+        </div>
+        <div class="stat">
+          <small>Dag-budget</small>
+          <strong>≈ €{(GUIDE_DAILY_MAX * 0.015).toFixed(0)}</strong>
+          <span style="font-size:12px;opacity:0.7;">bovengrens (~1,5 ct/vraag)</span>
+        </div>
+      </div>
+
+      <form method="get" action="/admin/users" style="margin:1.5rem 0 1rem;">
+        <input
+          type="search"
+          name="q"
+          value={q}
+          placeholder="Zoek op handle, naam of telefoonnummer…"
+          aria-label="Zoek gebruikers"
+        />
+      </form>
+
+      <table>
+        <thead>
+          <tr>
+            <th>Gebruiker</th>
+            <th>Telefoon</th>
+            <th>Gids</th>
+            <th>Actie</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((u) => (
+            <tr>
+              <td>
+                <strong>{u.handle ? `@${u.handle}` : u.name || '—'}</strong>
+                {u.handle && u.name ? (
+                  <span style="opacity:0.6;"> · {u.name}</span>
+                ) : null}
+              </td>
+              <td>{u.phoneNumber}</td>
+              <td>
+                <span class={`pill ${u.guideEnabled ? 'pill-pub' : 'pill-unpub'}`}>
+                  {u.guideEnabled ? 'aan' : 'uit'}
+                </span>
+              </td>
+              <td class="actions">
+                <form
+                  method="post"
+                  action={`/admin/users/${encodeURIComponent(u.id)}/toggle-guide`}
+                >
+                  <button type="submit" class={u.guideEnabled ? 'secondary outline' : ''}>
+                    {u.guideEnabled ? 'Toegang intrekken' : 'Toegang geven'}
+                  </button>
+                </form>
+              </td>
+            </tr>
+          ))}
+          {rows.length === 0 ? (
+            <tr>
+              <td colspan={4} style="opacity:0.6;">
+                Geen gebruikers gevonden{q ? ` voor “${q}”` : ''}.
+              </td>
+            </tr>
+          ) : null}
+        </tbody>
+      </table>
+    </Layout>
+  );
+});
+
+adminUi.post('/users/:id/toggle-guide', async (c) => {
+  const id = c.req.param('id');
+  const [u] = await db
+    .select({ guideEnabled: schema.users.guideEnabled })
+    .from(schema.users)
+    .where(eq(schema.users.id, id))
+    .limit(1);
+  if (u) {
+    await db
+      .update(schema.users)
+      .set({ guideEnabled: !u.guideEnabled, updatedAt: new Date() })
+      .where(eq(schema.users.id, id));
+  }
+  return c.redirect(c.req.header('referer') ?? '/admin/users');
+});
 
 adminUi.get('/social', async (c) => {
   const flash = c.req.query('flash');

@@ -1,7 +1,7 @@
 import { and, asc, eq, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 
-import { db, schema } from '../db/index.js';
+import { db, displayGenres, schema } from '../db/index.js';
 import {
   LIST_STYLES,
   OG_IMAGE_URL,
@@ -697,7 +697,7 @@ for (const hub of HUBS) {
         title: schema.events.title,
         kind: schema.events.kind,
         category: schema.events.category,
-        genres: schema.events.genres,
+        genres: displayGenres,
         imageUrl: schema.events.imageUrl,
         startsAt: schema.occurrences.startsAt,
         endsAt: schema.occurrences.endsAt,

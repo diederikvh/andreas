@@ -158,6 +158,12 @@ export const users = pgTable(
         kennen? Default `true`. Bestaande vrienden + verzoek-flow blijven
         werken ongeacht deze flag. */
     discoverable: boolean().notNull().default(true),
+    /** Toegang tot de conversationele zoek ("Andreas-gids"). Default
+        `false` — opt-in per gebruiker via het admin-paneel, zodat de
+        LLM-kosten beheersbaar blijven tijdens uitrol. De `/zoek`-endpoint
+        weigert (403) zonder deze vlag; de mobile-app verbergt de
+        "Vraag de gids"-banner. */
+    guideEnabled: boolean().notNull().default(false),
     createdAt: timestamp({ withTimezone: true })
       .notNull()
       .default(sql`now()`),
@@ -379,6 +385,15 @@ export const events = pgTable(
         theater: drama/dans/cabaret; etc. Filter-sheet groepeert
         clientside per category. */
     genres: text()
+      .array()
+      .notNull()
+      .default(sql`ARRAY[]::text[]`),
+    /** Afgeleide labels = eigen `genres` + genres van de gelinkte line-up-
+        artiesten (techno/house/…), eigen eerst, gecapt. Bijgewerkt door
+        `recomputeEffectiveGenres()` in de daily job. Puur afgeleid — de
+        genre-enrich-pipeline bezit `genres`, deze kolom interfereert daar niet
+        mee. Publieke endpoints tonen deze set als labels. */
+    effectiveGenres: text('effective_genres')
       .array()
       .notNull()
       .default(sql`ARRAY[]::text[]`),
@@ -903,6 +918,51 @@ export const account = pgTable('account', {
     .default(sql`now()`),
 });
 
+// ─── OAuth/OIDC (better-auth mcp-plugin) ────────────────────────────────────
+// Tabellen die de better-auth `mcp`-plugin (OAuth-provider voor MCP-clients)
+// verwacht. Velden 1-op-1 uit het oidc-provider-schema; kolomnamen volgen de
+// snake_case-casing van de drizzle-adapter. Gemapt in auth.ts.
+
+export const oauthApplication = pgTable('oauth_application', {
+  id: text().primaryKey(),
+  name: text().notNull(),
+  icon: text(),
+  metadata: text(),
+  clientId: text().notNull().unique(),
+  clientSecret: text(),
+  redirectUrls: text().notNull(),
+  type: text().notNull(),
+  disabled: boolean().notNull().default(false),
+  userId: text().references(() => users.id, { onDelete: 'cascade' }),
+  createdAt: timestamp({ withTimezone: true }).notNull().default(sql`now()`),
+  updatedAt: timestamp({ withTimezone: true }).notNull().default(sql`now()`),
+});
+
+export const oauthAccessToken = pgTable('oauth_access_token', {
+  id: text().primaryKey(),
+  accessToken: text().notNull().unique(),
+  refreshToken: text().notNull().unique(),
+  accessTokenExpiresAt: timestamp({ withTimezone: true }).notNull(),
+  refreshTokenExpiresAt: timestamp({ withTimezone: true }).notNull(),
+  clientId: text().notNull(),
+  userId: text().references(() => users.id, { onDelete: 'cascade' }),
+  scopes: text().notNull(),
+  createdAt: timestamp({ withTimezone: true }).notNull().default(sql`now()`),
+  updatedAt: timestamp({ withTimezone: true }).notNull().default(sql`now()`),
+});
+
+export const oauthConsent = pgTable('oauth_consent', {
+  id: text().primaryKey(),
+  clientId: text().notNull(),
+  userId: text()
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  scopes: text().notNull(),
+  consentGiven: boolean().notNull().default(false),
+  createdAt: timestamp({ withTimezone: true }).notNull().default(sql`now()`),
+  updatedAt: timestamp({ withTimezone: true }).notNull().default(sql`now()`),
+});
+
 /**
  * Expo Push tokens per device — een user kan meerdere devices hebben
  * (iPhone + iPad bv.) dus geen unique op (userId), wel op (token).
@@ -1040,6 +1100,38 @@ export const tiktokTokens = pgTable('tiktok_tokens', {
     .notNull()
     .default(sql`now()`),
 });
+
+/**
+ * Log per gids-vraag (conversationele zoek). Dient twee doelen:
+ *  1. Kostenrem — de `/zoek`-endpoint telt de rijen van de afgelopen 24u
+ *     en weigert boven een dagelijkse drempel (kill-switch).
+ *  2. Productinzicht (brief §10) — welke avonden zoeken mensen, en dekt
+ *     het aanbod dat? `userId` mag null zijn als de user intussen is
+ *     verwijderd (set null), zodat de telling/historie blijft staan.
+ */
+export const zoekLogs = pgTable(
+  'zoek_logs',
+  {
+    id: text().primaryKey(),
+    userId: text().references(() => users.id, { onDelete: 'set null' }),
+    /** De zoekzin van de gebruiker. */
+    message: text().notNull(),
+    /** Profiel ná de beurt-update — voedt v2-personalisatie. */
+    profile: jsonb(),
+    /** Getoonde event-ids (de gevalideerde keuze van het LLM). */
+    shownEventIds: text()
+      .array()
+      .notNull()
+      .default(sql`ARRAY[]::text[]`),
+    createdAt: timestamp({ withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+  },
+  (t) => [
+    index('zoek_logs_created_at_idx').on(t.createdAt),
+    index('zoek_logs_user_idx').on(t.userId),
+  ]
+);
 
 export const verification = pgTable('verification', {
   id: text().primaryKey(),

@@ -142,7 +142,7 @@ export default function Social() {
           busyReq={acceptReq.isPending || declineReq.isPending}
         />
       </ScrollView>
-      <AppHeader title={t('Friends', 'Friends')} showContentMode />
+      <AppHeader title={t('Friends', 'Friends')} />
     </View>
   );
 }

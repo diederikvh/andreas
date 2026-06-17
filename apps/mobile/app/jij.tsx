@@ -43,7 +43,7 @@ import {
   registerForPushNotificationsAsync,
 } from '@/lib/push';
 import { useMode, useModeStore, useRoles } from '@/store/mode';
-import { fontFamily, palette } from '@/theme/tokens';
+import { fontFamily, palette, type Mode } from '@/theme/tokens';
 
 type Stage = 'phone' | 'code' | 'profile' | 'authed';
 
@@ -575,6 +575,7 @@ export default function Jij() {
             eigen padding weer klopt. */}
         {isEditingExisting && me && (
           <View style={{ marginHorizontal: -22, marginTop: 24 }}>
+            <AppearanceSection />
             <NotificationsSection />
             <PrivacySection me={me} onUpdated={refetchMe} />
             <LanguageSection />
@@ -1278,6 +1279,41 @@ function MirrorBlock({
       </Text>
       {children}
     </View>
+  );
+}
+
+/** Dag/nacht-weergave als duidelijke tekst-toggle — verhuisd van de
+    header-switch naar het profiel (eens-per-dag-keuze, geen vluchtige
+    interactie). Puur het visuele thema: licht of donker. */
+function AppearanceSection() {
+  const roles = useRoles();
+  const t = useT();
+  const mode = useMode();
+  const setMode = useModeStore((s) => s.setMode);
+
+  const options: { value: Mode; label: string }[] = [
+    { value: 'nacht', label: t('Nacht', 'Night') },
+    { value: 'dag', label: t('Dag', 'Day') },
+  ];
+
+  return (
+    <>
+      <SectionHead label={t('Weergave', 'Appearance')} />
+      <View style={styles.privacyWrap}>
+        <View style={styles.privacyBlock}>
+          <Text style={[styles.privacyLabel, { color: roles.fg }]}>
+            {t('Dag of nacht', 'Day or night')}
+          </Text>
+          <Text style={[styles.privacySub, { color: roles.fgMuted }]}>
+            {t(
+              'Het visuele thema van de app: nacht is donker (acid-geel), dag is licht (cream, karmijn). Puur smaak — het aanbod blijft hetzelfde.',
+              'The app’s visual theme: night is dark (acid yellow), day is light (cream, crimson). Purely taste — the content stays the same.'
+            )}
+          </Text>
+          <SegmentPicker value={mode} options={options} onChange={setMode} />
+        </View>
+      </View>
+    </>
   );
 }
 

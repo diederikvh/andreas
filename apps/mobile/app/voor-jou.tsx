@@ -604,6 +604,11 @@ function FeedCard({
             </Text>
           )}
         </Text>
+        {event.reason ? (
+          <Text style={[styles.reason, { color: roles.accent }]} numberOfLines={1}>
+            {event.reason}
+          </Text>
+        ) : null}
       </Pressable>
     </View>
   );
@@ -722,6 +727,12 @@ const styles = StyleSheet.create({
   metaLine: {
     lineHeight: 18,
     marginTop: 2,
+  },
+  reason: {
+    fontFamily: fontFamily.body,
+    fontSize: 12,
+    lineHeight: 16,
+    marginTop: 3,
   },
   dayChip: {
     fontFamily: fontFamily.bold,

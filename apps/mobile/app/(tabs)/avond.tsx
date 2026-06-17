@@ -3,7 +3,7 @@ import { useNavigation, useScrollToTop } from '@react-navigation/native';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   KeyboardAvoidingView,
   type NativeScrollEvent,
@@ -23,7 +23,6 @@ import Animated, { FadeIn } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppHeader, HEADER_HEIGHT } from '@/components/AppHeader';
-import { ContentSwitchHint } from '@/components/ContentSwitchHint';
 import { Cross } from '@/components/Cross';
 import { Rail, useRailCardStyles } from '@/components/Rail';
 import { FilmRailCard, FILM_CARD_WIDTH } from '@/components/FilmRailCard';
@@ -34,7 +33,6 @@ import {
 } from '@/components/VenueSquareRailCard';
 import { RefreshBanner } from '@/components/RefreshBanner';
 import { SearchOverlay } from '@/components/SearchOverlay';
-import { SearchPill } from '@/components/SearchPill';
 import { RunningStrip } from '@/components/RunningStrip';
 import { SpinningCross } from '@/components/SpinningCross';
 import type { ApiEvent, ApiFeedEvent, SavedApiEvent, VenueType } from '@/lib/api';
@@ -44,7 +42,6 @@ import {
   eventBelongsToMode,
   isDaytimeOccurrence,
   getVenueTypeChips,
-  dowFull,
   dowMixed,
   dowUpper,
   monthShort,
@@ -54,7 +51,6 @@ import {
   rowTimeLabel,
   freeLabel,
   getTimeBlock,
-  monthFull,
   translateCategory,
   type OccurrenceRow,
   type TimeBlock,
@@ -75,11 +71,11 @@ import {
   useSeriesList,
 } from '@/lib/queries';
 import { useSession } from '@/lib/authClient';
-import { useContentMode } from '@/store/contentMode';
 import { useMode, useRoles } from '@/store/mode';
 import { useAddSavedVandaagSearch } from '@/store/savedVandaagSearches';
 import { useNewBadgeSince } from '@/store/sessionTimestamps';
 import { useVandaagFilters } from '@/store/vandaagFilters';
+import { useZoekStore } from '@/store/zoek';
 import { fontFamily, palette } from '@/theme/tokens';
 
 function formatMetaForRow(row: OccurrenceRow, locale: Locale): string {
@@ -150,10 +146,10 @@ export default function Avond() {
   const insets = useSafeAreaInsets();
   const t = useT();
   const locale = useLocale();
-  const cmode = useContentMode();
   const scrollRef = useRef<ScrollView>(null);
   useScrollToTop(scrollRef);
   const [searchOpen, setSearchOpen] = useState(false);
+  const openGuide = useZoekStore((s) => s.openGuide);
 
   // Elke tap op de tab-bar (ook re-tap op /avond zelf) sluit de
   // search-overlay. Anders zou je vanuit een andere tab terugkomen op
@@ -227,10 +223,11 @@ export default function Avond() {
   // volle chronologische feed (infinite scroll). Lege array voor
   // uitgelogde users of users zonder profiel-input.
   const { data: forYouEvents } = useForYouEvents({ weekOnly: true });
-  // Series + exhibitions delen één "Loopt nu"-strook bovenaan. Alleen
-  // relevant in cmode='uit' (avond/nacht-modus); in 'expo' tonen we
-  // 'm niet, dus skippen we de query helemaal.
-  const { data: seriesList } = useSeriesList({ enabled: cmode === 'uit' });
+  // Proactieve "Jouw avond vanavond"-curatie (alleen events binnen de
+  // logische avond/nacht, gepersonaliseerd).
+  const { data: tonightEvents } = useForYouEvents({ tonight: true });
+  // Series + exhibitions delen één "Loopt nu"-strook bovenaan.
+  const { data: seriesList } = useSeriesList({ enabled: true });
   // Alle venues die de gebruiker volgt — onafhankelijk van wat er
   // vandaag speelt. Voor de "Jouw favorieten"-rail onder de
   // agenda-banner. Backend filtert myFollowState per venue; wij
@@ -391,7 +388,7 @@ export default function Avond() {
       // single-day-achtig en hun per-dag occurrence-rows tonen op de
       // juiste dag.
       if (isLongRunning(e.startsAt, e.endsAt)) return false;
-      if (effectiveEndsAtMs(row.occurrence) < now) return false;
+      if (effectiveEndsAtMs(row.occurrence, row.event) < now) return false;
       // Cliënt-side vandaag-filter: alleen occurrences waarvan
       // startsAt vandaag valt (= < morgen 00:00).
       if (
@@ -458,15 +455,7 @@ export default function Avond() {
     return allRows
       .filter((row) => {
         if (row.event.kind === 'exhibition') return false;
-        if (effectiveEndsAtMs(row.occurrence) < now) return false;
-        // Tijd-coupling per mode: dag-mode hero toont alleen daytime,
-        // nacht-mode alleen niet-daytime — geen cat-coupling meer.
-        const isDay = isDaytimeOccurrence(
-          row.occurrence.startsAt,
-          row.occurrence.endsAt
-        );
-        if (cmode === 'expo' && !isDay) return false;
-        if (cmode === 'uit' && isDay) return false;
+        if (effectiveEndsAtMs(row.occurrence, row.event) < now) return false;
         return true;
       })
       .sort(
@@ -474,7 +463,7 @@ export default function Avond() {
           new Date(a.occurrence.startsAt).getTime() -
           new Date(b.occurrence.startsAt).getTime()
       );
-  }, [events, allRows, now, cmode]);
+  }, [events, allRows, now]);
 
   // Bredere pool voor de Featured-fallback — bevat óók exhibitions
   // (anders zou de hero in expo-mode alleen single-day events kunnen
@@ -483,20 +472,7 @@ export default function Avond() {
     if (!events) return [];
     return allRows
       .filter((row) => {
-        if (effectiveEndsAtMs(row.occurrence) < now) return false;
-        // Exhibitions / long-running zijn doorlopend en passen bij
-        // dag-mode (musea/galleries). Voor nacht skippen we ze.
-        const lr =
-          row.event.kind === 'exhibition' ||
-          isLongRunning(row.event.startsAt, row.event.endsAt);
-        if (lr) return cmode === 'expo';
-        // Single-day events: tijd-coupling per cmode.
-        const isDay = isDaytimeOccurrence(
-          row.occurrence.startsAt,
-          row.occurrence.endsAt
-        );
-        if (cmode === 'expo' && !isDay) return false;
-        if (cmode === 'uit' && isDay) return false;
+        if (effectiveEndsAtMs(row.occurrence, row.event) < now) return false;
         return true;
       })
       .sort(
@@ -504,7 +480,7 @@ export default function Avond() {
           new Date(a.occurrence.startsAt).getTime() -
           new Date(b.occurrence.startsAt).getTime()
       );
-  }, [events, allRows, now, cmode]);
+  }, [events, allRows, now]);
 
   // Featured leads: probeer eerst vandaag's featured-events. Geen
   // featured vandaag? Pak een RANDOM item uit de rails-pool (rotert
@@ -556,16 +532,6 @@ export default function Avond() {
     featuredSeed,
   ]);
 
-  // Hero-tekst: "{dag} {datum} op de agenda" met de datum in
-  // accent-kleur. Niet filter-afhankelijk.
-  const heroParts = useMemo(() => {
-    const d = todayWindow.refDate;
-    return {
-      day: dowFull(d.getDay(), locale).toLowerCase(),
-      date: `${d.getDate()} ${monthFull(d.getMonth(), locale)}`,
-    };
-  }, [todayWindow.refDate, locale]);
-
   // Voor 'expo'-rails: events-pool die exhibitions wél meeneemt.
   // Filtering: mode-mapping (cat ∈ expo), overrule via expliciete cats,
   // plus de generieke search/friends/favorites filters die ook in
@@ -614,6 +580,22 @@ export default function Avond() {
     return rows;
   }, [forYouEvents]);
 
+  const tonightRows = useMemo<OccurrenceRow[]>(() => {
+    if (!tonightEvents || tonightEvents.length === 0) return [];
+    const rows: OccurrenceRow[] = [];
+    for (const event of tonightEvents) {
+      const occ = event.occurrencesInRange?.[0];
+      if (!occ) continue;
+      rows.push({ id: `${event.id}::${occ.id}`, event, occurrence: occ });
+    }
+    return rows;
+  }, [tonightEvents]);
+
+  // Eén gepersonaliseerde rail: "Jouw avond vanavond" zodra er ≥3 picks
+  // voor vanavond zijn, anders de bredere "Voor jou · deze week".
+  const showTonight = tonightRows.length >= 3;
+  const personalRows = showTonight ? tonightRows : railForYou;
+
   const railClubs = useMemo(
     () => filtered.filter((r) => r.event.venue.type === 'club'),
     [filtered]
@@ -648,18 +630,6 @@ export default function Avond() {
       ),
     [filtered]
   );
-  // Matinees: films met daytime-occurrence vandaag. Eye is voorlopig de
-  // enige film-scraper, dus dit zijn in praktijk Eye-screenings; zodra
-  // Kriterion/Het Ketelhuis erbij komen vult de rail vanzelf aan.
-  const railFilmOverdag = useMemo(
-    () =>
-      filtered.filter(
-        (r) =>
-          r.event.category === 'Film' &&
-          isDaytimeOccurrence(r.occurrence.startsAt, r.occurrence.endsAt)
-      ),
-    [filtered]
-  );
   // "Vandaag te bezoeken" in expo-mode: alleen Kunst + Literatuur
   // single-day items (openingen, lezingen) — geen tijd-cutoff, want
   // een 19:00 art-opening hoort ook hier. Tweede mental model dan
@@ -684,7 +654,7 @@ export default function Avond() {
       const e = row.event;
       if (e.kind === 'exhibition') return false;
       if (isLongRunning(e.startsAt, e.endsAt)) return false;
-      if (effectiveEndsAtMs(row.occurrence) < now) return false;
+      if (effectiveEndsAtMs(row.occurrence, row.event) < now) return false;
       const startMs = new Date(row.occurrence.startsAt).getTime();
       if (startMs < tomorrowWindow.fromMs || startMs >= tomorrowWindow.toMs) {
         return false;
@@ -859,36 +829,31 @@ export default function Avond() {
           </View>
         )}
 
-        {/* IMDB-stijl globale zoek: tikt → in-place SearchOverlay met
-            fade+slide animatie. Eén entrypoint dat venues + events
-            cross-zoekt; filters blijven op /agenda en /venues. */}
-        <View style={{ marginTop: 14, marginBottom: 14 }}>
-          <SearchPill onPress={() => setSearchOpen(true)} />
-        </View>
+        {/* Twee rijen shortcuts. Rij 1 (groot): Gids · Voor jou · Net
+            binnen · Zoek (de globale cross-zoek opent de SearchOverlay —
+            geen los zoekveld meer). Rij 2 (klein, icoon + kicker): de
+            categorie/ingang-banners. */}
+        <ShortcutsRow
+          onOpenGuide={openGuide}
+          onOpenSearch={() => setSearchOpen(true)}
+        />
 
-        {/* Shortcut-CTAs in een horizontale scroller: 2 vol in beeld,
-            3e (Films) peekt aan de rechterkant zodat je 'm ontdekt.
-            NewBanner zit normaal achteraan, maar zodra er nieuwe items
-            sinds vorige sessie zijn schuift 'ie naar voren — getriggerd
-            worden om te klikken werkt alleen als de kaart in beeld
-            valt. */}
-        <ShortcutsRow />
-        {/* zie ShortcutsRow definitie onder voor de bestaande set */}
-
-        {/* "Voor jou" — score-gesorteerde aanbevelingen op basis van je
-            save-historie + gevolgde venues + vrienden-saves. Boven de
-            datum-divider zodat persoonlijke matches eerst in beeld
-            vallen. Rail is gelimiteerd tot komende 7 dagen; de
-            "more"-knop opent /voor-jou met de volle chronologische
-            feed (infinite scroll). Verbergt zichzelf bij lege data. */}
-        {!isLoading && !error && railForYou.length > 0 && (
+        {/* Eén gepersonaliseerde rail: "Jouw avond · vanavond" (uit-modus,
+            ≥3 picks) óf de bredere "Voor jou · deze week". "Meer →" opent
+            /voor-jou met de volle chronologische feed. Verbergt zich bij
+            lege data. */}
+        {!isLoading && !error && personalRows.length > 0 && (
           <View style={{ marginTop: -12 }}>
           <Rail
-            kicker={t('Voor jou · deze week', 'For you · this week')}
+            kicker={
+              showTonight
+                ? t('Jouw avond · vanavond', 'Your night · tonight')
+                : t('Voor jou · deze week', 'For you · this week')
+            }
             moreLabel={t('Meer →', 'More →')}
             onMore={() => router.push('/voor-jou' as never)}
           >
-            {railForYou.map((r) => (
+            {personalRows.map((r) => (
               <RailEventCard
                 key={r.id}
                 event={r.event}
@@ -900,33 +865,39 @@ export default function Avond() {
                 occurrenceStartsAt={r.occurrence.startsAt}
                 occurrenceEndsAt={r.occurrence.endsAt}
                 occurrenceVenueName={r.occurrence.venue?.name ?? null}
-                showDate
+                showDate={!showTonight}
+                reason={r.event.reason}
               />
             ))}
           </Rail>
           </View>
         )}
 
-        {/* Hero — divider + "{dag} {datum}" met datum in accent. */}
-        <View style={[styles.heroDivider, { backgroundColor: roles.bgChip }]} />
-        <View style={styles.hero}>
-          <Text
-            numberOfLines={1}
-            style={[styles.heroLine, { color: roles.fg }]}
+        {/* Jouw favoriete venues — direct onder de Voor jou-rail zodat je
+            volg-lijst snel bereikbaar is (was voorheen onderaan Vandaag). */}
+        {followedVenues.length > 0 && (
+          <Rail
+            kicker={t('Jouw favoriete venues', 'Your favourite venues')}
+            moreLabel={t('Alle venues →', 'All venues →')}
+            onMore={() => router.push('/venues' as never)}
+            cardWidth={SQUARE_CARD_WIDTH}
           >
-            {heroParts.day}{' '}
-            <Text style={{ color: roles.accent }}>{heroParts.date}</Text>
-          </Text>
-        </View>
+            {followedVenues.map((v) => (
+              <VenueSquareRailCard
+                key={v.id}
+                slug={v.slug}
+                name={v.name}
+                imageUrl={v.imageUrl}
+              />
+            ))}
+          </Rail>
+        )}
 
         {/* Festivals/series in 'uit', doorlopende tentoonstellingen in
             'expo'. Tussen Hero en cat-rails. Geen kop-label —
             visueel onderscheidt de strook zich genoeg door image-format
             en datum-range subline. */}
-        <RunningStrip
-          series={cmode === 'uit' ? (seriesList ?? []) : []}
-          exhibitionEvents={[]}
-        />
+        <RunningStrip series={seriesList ?? []} exhibitionEvents={[]} />
 
         {isLoading && (
           <View style={styles.loadingWrap}>
@@ -940,10 +911,10 @@ export default function Avond() {
           />
         )}
 
-        {/* Rails — afhankelijk van content-mode. Lege rails worden door
-            de Rail-component zelf weggelaten. Cards mappen op
-            occurrence-rij ('uit') of event ('expo' — exhibitions). */}
-        {!isLoading && !error && cmode === 'uit' && (
+        {/* Alle rails op één pagina. Lege rails worden door de Rail-
+            component zelf weggelaten. Eerst de avond-rails (clubs/live/
+            theater/film), daarna overdag + cultuur. */}
+        {!isLoading && !error && (
           <>
             <Rail
               kicker={t('Vannacht in de clubs', 'Tonight in the clubs')}
@@ -1021,10 +992,10 @@ export default function Avond() {
           </>
         )}
 
-        {!isLoading && !error && cmode === 'expo' && (
+        {!isLoading && !error && (
           <>
-            {/* Morgen-rail: alleen na 20:00 in dag-mode — voor wie op
-                de bank al wil checken wat morgen kan. */}
+            {/* Morgen-rail: alleen 's avonds laat — voor wie op de bank
+                al wil checken wat morgen kan. */}
             {isLateEvening && (
               <Rail
                 kicker={t('Morgen', 'Tomorrow')}
@@ -1052,25 +1023,6 @@ export default function Avond() {
             >
               {railOverdag.map((r) => (
                 <RailEventCard
-                  key={r.id}
-                  event={r.event}
-                  occurrenceId={
-                    r.occurrence.id.endsWith('::next') ? undefined : r.occurrence.id
-                  }
-                  occurrenceStartsAt={r.occurrence.startsAt}
-                  occurrenceEndsAt={r.occurrence.endsAt}
-                  occurrenceVenueName={r.occurrence.venue?.name ?? null}
-                />
-              ))}
-            </Rail>
-            <Rail
-              kicker={t('Matinees', 'Matinees')}
-              moreLabel={t('Meer →', 'More →')}
-              onMore={() => router.push('/films' as never)}
-              cardWidth={FILM_CARD_WIDTH}
-            >
-              {railFilmOverdag.map((r) => (
-                <FilmRailCard
                   key={r.id}
                   event={r.event}
                   occurrenceId={
@@ -1163,16 +1115,14 @@ export default function Avond() {
           </>
         )}
 
-        {/* Empty-state alleen in 'uit'-modus — daar is "vandaag" het
-            uitgangspunt en zegt geen-events-vandaag iets. In 'expo'-
-            modus draaien de rails op expoEvents (geen vandaag-filter)
-            dus filtered=0 betekent niets — de rails kunnen alsnog vol
-            staan met exhibitions/lit-events. Een "vandaag niets op de
-            agenda"-melding zou dan tegenstrijdig zijn. */}
-        {cmode === 'uit' &&
-          !isLoading &&
+        {/* Empty-state alleen als er écht niets is: geen single-day
+            events vandaag (filtered) én geen lopende cultuur (musea/
+            galleries/literatuur). Anders kan een rail alsnog vol staan
+            en zou de melding tegenstrijdig zijn. */}
+        {!isLoading &&
           !error &&
           filtered.length === 0 &&
+          expoEventsToday.length === 0 &&
           events && (
             <Animated.View entering={FadeIn.duration(220)}>
               <EmptyResults hasFilter={hasFilterActive} minHeight={240} />
@@ -1201,26 +1151,8 @@ export default function Avond() {
           </Rail>
         )}
 
-        {followedVenues.length > 0 && (
-          <Rail
-            kicker={t('Jouw favoriete venues', 'Your favourite venues')}
-            moreLabel={t('Alle venues →', 'All venues →')}
-            onMore={() => router.push('/venues' as never)}
-            cardWidth={SQUARE_CARD_WIDTH}
-          >
-            {followedVenues.map((v) => (
-              <VenueSquareRailCard
-                key={v.id}
-                slug={v.slug}
-                name={v.name}
-                imageUrl={v.imageUrl}
-              />
-            ))}
-          </Rail>
-        )}
       </ScrollView>
-      <AppHeader title={t('Vandaag', 'Today')} showContentMode />
-      <ContentSwitchHint />
+      <AppHeader title={t('Vandaag', 'Today')} />
       <SearchOverlay
         visible={searchOpen}
         onClose={() => setSearchOpen(false)}
@@ -1499,6 +1431,31 @@ const planningCardStyles = StyleSheet.create({
   },
 });
 
+/** Eerste shortcut-banner: ingang naar de conversationele gids. Zelfde
+    bgLift-vlak als de rest, maar met een accent-border zodat 'ie subtiel
+    vooraan opvalt zonder de hele rij te domineren. */
+function GidsBanner({ onPress }: { onPress: () => void }) {
+  const roles = useRoles();
+  const t = useT();
+  return (
+    <Pressable
+      onPress={onPress}
+      style={[
+        styles.shortcutBtn,
+        { backgroundColor: roles.bgLift, borderWidth: 1.5, borderColor: roles.accent },
+      ]}
+    >
+      <Ionicons name="sparkles" size={30} color={roles.accent} />
+      <Text style={[styles.shortcutKicker, { color: roles.fgMuted }]}>
+        {t('Gids', 'Guide')}
+      </Text>
+      <Text style={[styles.shortcutTitle, { color: roles.fg }]}>
+        {t('Vraag de gids', 'Ask the guide')}
+      </Text>
+    </Pressable>
+  );
+}
+
 function EmptyResults({
   hasFilter,
   minHeight,
@@ -1747,15 +1704,21 @@ function FeaturedCard({
   );
 }
 
-function ShortcutsRow() {
-  // NewBanner staat altijd vooraan zodat 'ie z'n positie houdt — links
-  // → rechts springen op basis van hasNew zou de gebruiker verwarren
-  // ("waar was die ook alweer"). Items zijn er meestal wel iets, dus
-  // de eerste positie is sowieso de logische plek.
+function ShortcutsRow({
+  onOpenGuide,
+  onOpenSearch,
+}: {
+  onOpenGuide: () => void;
+  onOpenSearch: () => void;
+}) {
+  // Gids-banner alleen tonen aan gebruikers met toegang (opt-in via admin).
+  const { data: me } = useMe();
+  const guideEnabled = me?.guideEnabled ?? false;
+  const t = useT();
+  const roles = useRoles();
   const scrollRef = useRef<ScrollView>(null);
   const navigation = useNavigation();
-  // Re-tap op de Vandaag-tab → shortcuts terug naar begin, mee met de
-  // page-scroll-to-top zodat alles opgeruimd staat.
+  // Re-tap op de Vandaag-tab → grote rij terug naar begin.
   useEffect(() => {
     const unsubscribe = navigation.addListener('tabPress' as never, () => {
       if (navigation.isFocused()) {
@@ -1764,28 +1727,51 @@ function ShortcutsRow() {
     });
     return unsubscribe;
   }, [navigation]);
+
+  // Tweede rij — categorie/ingang-banners, compact (icoon + kicker).
+  const small: Array<{
+    key: string;
+    icon: ReactNode;
+    label: string;
+    onPress: () => void;
+  }> = [
+    { key: 'films', icon: <Ionicons name="film-outline" size={20} color={roles.accent} />, label: t('Films', 'Films'), onPress: () => router.push('/films' as never) },
+    { key: 'clubs', icon: <Ionicons name="disc-outline" size={20} color={roles.accent} />, label: t('Clubs', 'Clubs'), onPress: () => router.push('/clubs' as never) },
+    { key: 'live', icon: <Ionicons name="musical-notes-outline" size={20} color={roles.accent} />, label: t('Live', 'Live'), onPress: () => router.push('/live' as never) },
+    { key: 'theater', icon: <MaterialCommunityIcons name="drama-masks" size={20} color={roles.accent} />, label: t('Theater', 'Theatre'), onPress: () => router.push('/theater' as never) },
+    { key: 'kaart', icon: <Ionicons name="map-outline" size={20} color={roles.accent} />, label: t('Kaart', 'Map'), onPress: () => router.push('/kaart' as never) },
+    { key: 'friends', icon: <Ionicons name="people-outline" size={20} color={roles.accent} />, label: t('Friends', 'Friends'), onPress: () => router.push('/going' as never) },
+    { key: 'vibes', icon: <MaterialCommunityIcons name="cards-outline" size={20} color={roles.accent} />, label: t('Vibes', 'Vibes'), onPress: () => router.push('/op-gevoel' as never) },
+  ];
+
   return (
-    <ScrollView
-      ref={scrollRef}
-      horizontal
-      showsHorizontalScrollIndicator={false}
-      contentContainerStyle={styles.shortcutScroller}
-      // Snap-to-card — 112 (kaart) + 10 (gap). Leading-pad 22 constant,
-      // dus elke knop landt links netjes uitgelijnd.
-      snapToInterval={122}
-      snapToAlignment="start"
-      decelerationRate="fast"
-    >
-      <VoorJouBanner />
-      <NewBanner />
-      <FilmsBanner />
-      <ClubsBanner />
-      <LiveBanner />
-      <TheaterBanner />
-      <KaartBanner />
-      <FriendsBanner />
-      <OpGevoelBanner />
-    </ScrollView>
+    <View>
+      {/* Rij 1 — grote banners (4): Gids · Voor jou · Net binnen · Zoek */}
+      <ScrollView
+        ref={scrollRef}
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.shortcutScroller}
+        snapToInterval={122}
+        snapToAlignment="start"
+        decelerationRate="fast"
+      >
+        {guideEnabled ? <GidsBanner onPress={onOpenGuide} /> : null}
+        <VoorJouBanner />
+        <NewBanner />
+        <SearchBanner onPress={onOpenSearch} />
+      </ScrollView>
+      {/* Rij 2 — kleine banners (icoon + kicker) */}
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.shortcutScrollerSmall}
+      >
+        {small.map((s) => (
+          <SmallShortcut key={s.key} icon={s.icon} label={s.label} onPress={s.onPress} />
+        ))}
+      </ScrollView>
+    </View>
   );
 }
 
@@ -1797,7 +1783,7 @@ function VoorJouBanner() {
       onPress={() => router.push('/voor-jou' as never)}
       style={[styles.shortcutBtn, { backgroundColor: roles.bgLift }]}
     >
-      <Ionicons name="sparkles-outline" size={30} color={roles.accent} />
+      <Ionicons name="heart-outline" size={30} color={roles.accent} />
       <Text style={[styles.shortcutKicker, { color: roles.fgMuted }]}>
         {t('Voor jou', 'For you')}
       </Text>
@@ -1854,163 +1840,46 @@ function NewBanner() {
   );
 }
 
-function FriendsBanner() {
+/** Grote zoek-banner — vervangt het losse zoekveld; opent de SearchOverlay
+    (globale cross-zoek over venues + events). */
+function SearchBanner({ onPress }: { onPress: () => void }) {
   const roles = useRoles();
   const t = useT();
   return (
     <Pressable
-      onPress={() => router.push('/going' as never)}
-      style={[
-        styles.shortcutBtn,
-        { backgroundColor: roles.bgLift },
-      ]}
+      onPress={onPress}
+      style={[styles.shortcutBtn, { backgroundColor: roles.bgLift }]}
     >
-      <Ionicons name="people-outline" size={30} color={roles.accent} />
+      <Ionicons name="search-outline" size={30} color={roles.accent} />
       <Text style={[styles.shortcutKicker, { color: roles.fgMuted }]}>
-        {t('Friends', 'Friends')}
+        {t('Zoek', 'Search')}
       </Text>
       <Text style={[styles.shortcutTitle, { color: roles.fg }]}>
-        {t('Vrienden plannen', 'Friends planning')}
+        {t('Venues & events', 'Venues & events')}
       </Text>
     </Pressable>
   );
 }
 
-function OpGevoelBanner() {
+/** Compacte tweede-rij-banner: alleen icoon + kicker, pill-vorm. */
+function SmallShortcut({
+  icon,
+  label,
+  onPress,
+}: {
+  icon: ReactNode;
+  label: string;
+  onPress: () => void;
+}) {
   const roles = useRoles();
-  const t = useT();
   return (
     <Pressable
-      onPress={() => router.push('/op-gevoel' as never)}
-      style={[
-        styles.shortcutBtn,
-        { backgroundColor: roles.bgLift },
-      ]}
+      onPress={onPress}
+      style={[styles.shortcutBtnSmall, { backgroundColor: roles.bgLift }]}
     >
-      <MaterialCommunityIcons
-        name="cards-outline"
-        size={30}
-        color={roles.accent}
-      />
-      <Text style={[styles.shortcutKicker, { color: roles.fgMuted }]}>
-        {t('Vibes', 'Vibes')}
-      </Text>
-      <Text style={[styles.shortcutTitle, { color: roles.fg }]}>
-        {t('Wat is je mood', "What's your mood")}
-      </Text>
-    </Pressable>
-  );
-}
-
-function TheaterBanner() {
-  const roles = useRoles();
-  const t = useT();
-  return (
-    <Pressable
-      onPress={() => router.push('/theater' as never)}
-      style={[
-        styles.shortcutBtn,
-        { backgroundColor: roles.bgLift },
-      ]}
-    >
-      <MaterialCommunityIcons
-        name="drama-masks"
-        size={30}
-        color={roles.accent}
-      />
-      <Text style={[styles.shortcutKicker, { color: roles.fgMuted }]}>
-        {t('Theater', 'Theatre')}
-      </Text>
-      <Text style={[styles.shortcutTitle, { color: roles.fg }]}>
-        {t('Op de planken', 'On stage')}
-      </Text>
-    </Pressable>
-  );
-}
-
-function ClubsBanner() {
-  const roles = useRoles();
-  const t = useT();
-  return (
-    <Pressable
-      onPress={() => router.push('/clubs' as never)}
-      style={[
-        styles.shortcutBtn,
-        { backgroundColor: roles.bgLift },
-      ]}
-    >
-      <Ionicons name="disc-outline" size={30} color={roles.accent} />
-      <Text style={[styles.shortcutKicker, { color: roles.fgMuted }]}>
-        {t('Clubs', 'Clubs')}
-      </Text>
-      <Text style={[styles.shortcutTitle, { color: roles.fg }]}>
-        {t('Wie er draait', 'On the decks')}
-      </Text>
-    </Pressable>
-  );
-}
-
-function FilmsBanner() {
-  const roles = useRoles();
-  const t = useT();
-  return (
-    <Pressable
-      onPress={() => router.push('/films' as never)}
-      style={[
-        styles.shortcutBtn,
-        { backgroundColor: roles.bgLift },
-      ]}
-    >
-      <Ionicons name="film-outline" size={30} color={roles.accent} />
-      <Text style={[styles.shortcutKicker, { color: roles.fgMuted }]}>
-        {t('Films', 'Films')}
-      </Text>
-      <Text style={[styles.shortcutTitle, { color: roles.fg }]}>
-        {t('Wat er draait', "What's showing")}
-      </Text>
-    </Pressable>
-  );
-}
-
-function LiveBanner() {
-  const roles = useRoles();
-  const t = useT();
-  return (
-    <Pressable
-      onPress={() => router.push('/live' as never)}
-      style={[
-        styles.shortcutBtn,
-        { backgroundColor: roles.bgLift },
-      ]}
-    >
-      <Ionicons name="musical-notes-outline" size={30} color={roles.accent} />
-      <Text style={[styles.shortcutKicker, { color: roles.fgMuted }]}>
-        {t('Live', 'Live')}
-      </Text>
-      <Text style={[styles.shortcutTitle, { color: roles.fg }]}>
-        {t('Live concerten', 'Live concerts')}
-      </Text>
-    </Pressable>
-  );
-}
-
-function KaartBanner() {
-  const roles = useRoles();
-  const t = useT();
-  return (
-    <Pressable
-      onPress={() => router.push('/kaart' as never)}
-      style={[
-        styles.shortcutBtn,
-        { backgroundColor: roles.bgLift },
-      ]}
-    >
-      <Ionicons name="map-outline" size={30} color={roles.accent} />
-      <Text style={[styles.shortcutKicker, { color: roles.fgMuted }]}>
-        {t('Kaart', 'Map')}
-      </Text>
-      <Text style={[styles.shortcutTitle, { color: roles.fg }]}>
-        {t('Hier en nu in beeld', 'Right here, right now')}
+      {icon}
+      <Text style={[styles.shortcutKicker, { color: roles.fg }]} numberOfLines={1}>
+        {label}
       </Text>
     </Pressable>
   );
@@ -2401,20 +2270,6 @@ const styles = StyleSheet.create({
   // Hero — divider + "{dag} {datum} op de agenda" in display-font,
   // datum in accent. Geen mono-kicker meer. Strak op de
   // exhibitions-strook erboven.
-  heroDivider: {
-    marginHorizontal: 22,
-    marginTop: 0,
-    marginBottom: 22,
-    height: StyleSheet.hairlineWidth,
-  },
-  hero: { paddingHorizontal: 22, paddingBottom: 0 },
-  heroLine: {
-    fontFamily: fontFamily.display,
-    fontSize: 26,
-    lineHeight: 26 * 1.05,
-    letterSpacing: -0.8,
-  },
-
   // Featured — same horizontal inset as the rest of the feed
   featuredWrap: {
     paddingHorizontal: 18,
@@ -2744,7 +2599,22 @@ const styles = StyleSheet.create({
   shortcutScroller: {
     paddingHorizontal: 22,
     gap: 10,
+    marginTop: 14,
+    marginBottom: 10,
+  },
+  // Tweede rij — compacte icoon+kicker-pills.
+  shortcutScrollerSmall: {
+    paddingHorizontal: 22,
+    gap: 8,
     marginBottom: 18,
+  },
+  shortcutBtnSmall: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 999,
   },
   shortcutBtn: {
     // Fixed-width zodat ~3 kaarten vol in beeld passen op een 390px

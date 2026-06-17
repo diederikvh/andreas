@@ -17,7 +17,7 @@ import {
 import { Hono } from 'hono';
 
 import { auth } from '../auth.js';
-import { db, schema } from '../db/index.js';
+import { db, displayGenres, schema } from '../db/index.js';
 import {
   buildFriendsByOccurrence,
   buildSeriesByEvent,
@@ -251,7 +251,7 @@ venuesRoute.get('/:slug', async (c) => {
       imageUrl: schema.events.imageUrl,
       category: schema.events.category,
       featured: schema.events.featured,
-      genres: schema.events.genres,
+      genres: displayGenres,
     })
     .from(schema.events)
     .innerJoin(

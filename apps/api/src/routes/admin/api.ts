@@ -8,6 +8,7 @@ import {
   enrichGenresFromKeywords,
 } from '../../scrapers/_genre-enrich.js';
 import { enrichLineupArtists } from '../../scrapers/_artists-enrich.js';
+import { recomputeEffectiveGenres } from '../../scrapers/_effective-genres.js';
 import { enrichFilmsFromOmdb } from '../../scrapers/_omdb-enrich.js';
 import { enrichFilmsFromTmdb } from '../../scrapers/_tmdb-enrich.js';
 import { extractFromUrl } from '../../scrapers/extract-from-url.js';
@@ -1142,6 +1143,23 @@ adminApi.post('/enrich-artists', async (c) => {
         durationMs: Date.now() - startedAt,
         error: (e as Error).message,
       },
+      500
+    );
+  }
+});
+
+// ─── Effective genres: artiest-genres doordruppelen naar het event ──
+//
+// Herberekent events.effective_genres = eigen genres + line-up-artiest-
+// genres. Draait in scrape-stager.yml ná artist- én genre-enrichment.
+adminApi.post('/recompute-effective-genres', async (c) => {
+  const startedAt = Date.now();
+  try {
+    const result = await recomputeEffectiveGenres();
+    return c.json({ durationMs: Date.now() - startedAt, ...result });
+  } catch (e) {
+    return c.json(
+      { durationMs: Date.now() - startedAt, error: (e as Error).message },
       500
     );
   }

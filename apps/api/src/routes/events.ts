@@ -1,7 +1,7 @@
-import { aliasedTable, and, asc, count, desc, eq, gt, ilike, inArray, isNull, ne, not, or, sql, type SQL } from 'drizzle-orm';
+import { aliasedTable, and, asc, count, desc, eq, gt, gte, ilike, inArray, isNull, ne, not, or, sql, type SQL } from 'drizzle-orm';
 import { Hono, type Context } from 'hono';
 
-import { db, schema } from '../db/index.js';
+import { db, displayGenres, schema } from '../db/index.js';
 import {
   buildFriendsByOccurrence,
   buildOccurrencesByEvent,
@@ -13,6 +13,8 @@ import {
   getBlockedVenueIds,
   getFollowedVenueIds,
 } from './venue-follows.js';
+import { resolveWhenWindow } from '../zoek/retrieval.js';
+import type { PreferenceProfile } from '../zoek/types.js';
 
 type EventCategory = 'Muziek' | 'Theater' | 'Literatuur' | 'Film' | 'Kunst' | 'Lezing';
 const VALID_CATEGORIES = new Set(['Muziek', 'Theater', 'Literatuur', 'Film', 'Kunst', 'Lezing']);
@@ -109,8 +111,12 @@ eventsRoute.get('/', async (c) => {
     if (combined) eventConditions.push(combined);
   }
   if (genres.length > 0) {
+    // Filter op de getoonde (verrijkte) set zodat een via-line-up-artiest
+    // doorgedruppeld genre ook gevonden wordt — consistent met de labels en
+    // meer kans op de juiste treffer. Fallback naar eigen genres voor events
+    // die nog niet herberekend zijn (zie displayGenres).
     eventConditions.push(
-      sql`${schema.events.genres} && ARRAY[${sql.join(
+      sql`${displayGenres} && ARRAY[${sql.join(
         genres.map((g) => sql`${g}`),
         sql`, `
       )}]::text[]`
@@ -140,7 +146,7 @@ eventsRoute.get('/', async (c) => {
           stillUrl: schema.events.stillUrl,
           category: schema.events.category,
           featured: schema.events.featured,
-          genres: schema.events.genres,
+          genres: displayGenres,
           venue: {
             id: schema.venues.id,
             slug: schema.venues.slug,
@@ -172,7 +178,7 @@ eventsRoute.get('/', async (c) => {
           trailerUrl: schema.events.trailerUrl,
           category: schema.events.category,
           featured: schema.events.featured,
-          genres: schema.events.genres,
+          genres: displayGenres,
           venue: {
             id: schema.venues.id,
             slug: schema.venues.slug,
@@ -620,7 +626,7 @@ eventsRoute.get('/agenda', async (c) => {
       kind: schema.events.kind,
       imageUrl: schema.events.imageUrl,
       posterUrl: schema.events.posterUrl,
-      genres: schema.events.genres,
+      genres: displayGenres,
       eventVenueId: schema.venues.id,
       eventVenueName: schema.venues.name,
       eventVenueType: schema.venues.type,
@@ -765,11 +771,17 @@ eventsRoute.get('/for-you', async (c) => {
         )
     : [];
 
-  // Stap 1 — bouw genre-count + venue-count uit gebruikers-historie.
+  // Stap 1 — bouw smaak-signaal uit de save-historie. Per save wegen we op
+  // recentheid (decay) en bron (actieve saves zwaarder), en tellen genre,
+  // venue, scene en wijk.
   const historyRows = await db
     .select({
-      genres: schema.events.genres,
+      genres: displayGenres,
       venueId: schema.events.venueId,
+      scene: schema.venues.scene,
+      wijk: schema.venues.wijk,
+      source: schema.saves.source,
+      savedAt: schema.saves.createdAt,
     })
     .from(schema.saves)
     .innerJoin(
@@ -777,6 +789,7 @@ eventsRoute.get('/for-you', async (c) => {
       eq(schema.saves.occurrenceId, schema.occurrences.id)
     )
     .innerJoin(schema.events, eq(schema.occurrences.eventId, schema.events.id))
+    .innerJoin(schema.venues, eq(schema.events.venueId, schema.venues.id))
     .where(eq(schema.saves.userId, me));
 
   const [followedRaw, blockedRaw, friendIds] = await Promise.all([
@@ -787,20 +800,78 @@ eventsRoute.get('/for-you', async (c) => {
   const followedVenueIds = new Set(followedRaw);
   const blockedSet = new Set(blockedRaw);
 
-  // Gebruiker zonder enig profiel-signaal (geen saves, geen follows)
-  // krijgt een lege response — niets om op te scoren.
-  if (historyRows.length === 0 && followedRaw.length === 0) {
+  // Zoek-signaal — wat de gebruiker recent via de gids/MCP zocht. `want`-
+  // termen (genres/sferen) zijn expliciete intentie en voeden "Voor jou";
+  // `avoid`-termen drukken matches. Laatste 90 dagen, recentheids-gewogen.
+  const SEARCH_HALF_LIFE_MS = 45 * 24 * 3600 * 1000;
+  const searchSince = new Date(Date.now() - 90 * 24 * 3600 * 1000);
+  const searchRows = await db
+    .select({
+      profile: schema.zoekLogs.profile,
+      createdAt: schema.zoekLogs.createdAt,
+    })
+    .from(schema.zoekLogs)
+    .where(
+      and(
+        eq(schema.zoekLogs.userId, me),
+        gte(schema.zoekLogs.createdAt, searchSince)
+      )
+    )
+    .orderBy(desc(schema.zoekLogs.createdAt))
+    .limit(100);
+
+  const searchedGenre = new Map<string, number>();
+  const avoidSet = new Set<string>();
+  for (const r of searchRows) {
+    const ageMs = Math.max(0, Date.now() - new Date(r.createdAt).getTime());
+    const w = Math.pow(0.5, ageMs / SEARCH_HALF_LIFE_MS);
+    const p = (r.profile ?? {}) as { want?: string[]; avoid?: string[] };
+    for (const term of p.want ?? []) {
+      const key = term.trim().toLowerCase();
+      if (key) searchedGenre.set(key, (searchedGenre.get(key) ?? 0) + w);
+    }
+    for (const term of p.avoid ?? []) {
+      const key = term.trim().toLowerCase();
+      if (key) avoidSet.add(key);
+    }
+  }
+
+  // Gebruiker zonder enig profiel-signaal (geen saves, geen follows, geen
+  // zoekgeschiedenis) krijgt een lege response — niets om op te scoren.
+  if (
+    historyRows.length === 0 &&
+    followedRaw.length === 0 &&
+    searchedGenre.size === 0
+  ) {
     return c.json({ events: [], nextCursor: null });
   }
 
+  // Recentheids-decay (halveert ~elke 60 dagen) × bron-gewicht: een save
+  // via een actieve intentie (op-gevoel-swipe, zoek) telt zwaarder dan een
+  // passieve. Zo weegt "wat je nu leuk vindt" mee, niet alleen het verleden.
+  const HALF_LIFE_MS = 60 * 24 * 3600 * 1000;
+  const ACTIVE_SOURCES = new Set(['op-gevoel', 'search', 'gered']);
+  const nowMs = Date.now();
+  const saveWeight = (r: (typeof historyRows)[number]): number => {
+    const ageMs = Math.max(0, nowMs - new Date(r.savedAt).getTime());
+    const recency = Math.pow(0.5, ageMs / HALF_LIFE_MS);
+    const src = r.source && ACTIVE_SOURCES.has(r.source) ? 1.3 : 1.0;
+    return recency * src;
+  };
+
   const genreCount = new Map<string, number>();
   const venueCount = new Map<string, number>();
+  const sceneCount = new Map<string, number>();
+  const wijkCount = new Map<string, number>();
   for (const r of historyRows) {
+    const w = saveWeight(r);
     for (const g of r.genres ?? []) {
       const key = g.trim().toLowerCase();
-      if (key) genreCount.set(key, (genreCount.get(key) ?? 0) + 1);
+      if (key) genreCount.set(key, (genreCount.get(key) ?? 0) + w);
     }
-    venueCount.set(r.venueId, (venueCount.get(r.venueId) ?? 0) + 1);
+    venueCount.set(r.venueId, (venueCount.get(r.venueId) ?? 0) + w);
+    if (r.scene) sceneCount.set(r.scene, (sceneCount.get(r.scene) ?? 0) + w);
+    if (r.wijk) wijkCount.set(r.wijk, (wijkCount.get(r.wijk) ?? 0) + w);
   }
 
   // Welke events heb ik al gesaved? Niet opnieuw aanbevelen.
@@ -874,7 +945,7 @@ eventsRoute.get('/for-you', async (c) => {
       trailerUrl: schema.events.trailerUrl,
       category: schema.events.category,
       featured: schema.events.featured,
-      genres: schema.events.genres,
+      genres: displayGenres,
       venue: {
         id: schema.venues.id,
         slug: schema.venues.slug,
@@ -883,6 +954,7 @@ eventsRoute.get('/for-you', async (c) => {
         lat: schema.venues.lat,
         lng: schema.venues.lng,
         type: schema.venues.type,
+        wijk: schema.venues.wijk,
         scene: schema.venues.scene,
         subtype: schema.venues.subtype,
         imageUrl: schema.venues.imageUrl,
@@ -895,23 +967,89 @@ eventsRoute.get('/for-you', async (c) => {
 
   // Stap 3 — score elke kandidaat. Inclusie: score > 0 OF event-venue
   // is gevolgd (gevolgde venues mogen ook zonder smaak-match meedoen).
-  type Scored = (typeof candidates)[number] & { score: number };
+  type Scored = (typeof candidates)[number] & {
+    score: number;
+    reason: string | null;
+    /** Ontdekkings-pick: buiten je gebruikelijke smaak, tegen de filter-
+        bubbel. Krijgt een eigen plek in de rail i.p.v. op score te sorteren. */
+    discovery?: boolean;
+  };
+  // Discovery alleen voor users mét een smaakprofiel — een nieuwe user krijgt
+  // sowieso de gewone (lege/score-loze) flow.
+  const hasProfile =
+    genreCount.size > 0 || venueCount.size > 0 || searchedGenre.size > 0;
   const scored: Scored[] = [];
   for (const ev of candidates) {
     let score = 0;
+    // Genre-match (saves) + zoek-match + onthoud de sterkste matches voor
+    // de reden.
+    let bestGenre: string | null = null;
+    let bestGenreW = 0;
+    let bestSearched: string | null = null;
+    let bestSearchedW = 0;
+    let avoided = false;
     for (const g of ev.genres ?? []) {
       const key = g.trim().toLowerCase();
-      if (key) score += genreCount.get(key) ?? 0;
+      if (!key) continue;
+      const gc = genreCount.get(key) ?? 0;
+      score += gc;
+      if (gc > bestGenreW) {
+        bestGenreW = gc;
+        bestGenre = g;
+      }
+      // Zoek-signaal: events met een genre dat je vaker zócht, omhoog.
+      const sg = searchedGenre.get(key) ?? 0;
+      if (sg > 0) {
+        score += 1.5 * sg;
+        if (sg > bestSearchedW) {
+          bestSearchedW = sg;
+          bestSearched = g;
+        }
+      }
+      if (avoidSet.has(key)) avoided = true;
     }
-    score += 2 * (venueCount.get(ev.venue.id) ?? 0);
-    if (followedVenueIds.has(ev.venue.id)) score += 5;
+    // Afgewezen genre (uit zoekgesprekken) → flink dempen.
+    if (avoided) score -= 3;
+    const vc = venueCount.get(ev.venue.id) ?? 0;
+    score += 2 * vc;
+    const sceneW = ev.venue.scene ? sceneCount.get(ev.venue.scene) ?? 0 : 0;
+    const wijkW = ev.venue.wijk ? wijkCount.get(ev.venue.wijk) ?? 0 : 0;
+    if (sceneW > 0) score += 1; // brede assen: licht meewegen, niet domineren
+    if (wijkW > 0) score += 1;
+    const followed = followedVenueIds.has(ev.venue.id);
+    if (followed) score += 5;
     // Friend-signaal — cap op 3 vrienden (max +9) zodat één super-
     // populair event niet alles overruled. Bij ≥3 vrienden is de
     // sociale push al sterk genoeg.
     const friendN = Math.min(3, friendSaveCountByEvent.get(ev.id) ?? 0);
     score += 3 * friendN;
-    if (score > 0 || followedVenueIds.has(ev.venue.id)) {
-      scored.push({ ...ev, score });
+    if (score > 0 || followed) {
+      // Reden: de meest overtuigende factor eerst. Transparant en kort,
+      // in Andreas-stijl (geen superlatieven). De friend-pill toont
+      // daarnaast nog wíé er gaat.
+      // Géén vrienden-reden in tekst: een save is interesse, geen belofte om
+      // te gaan, en de scoring telt ook privacy-verborgen saves. De
+      // (privacy-correcte) friend-pill toont al wíé interesse heeft.
+      let reason: string | null = null;
+      if (followed) {
+        reason = `Je volgt ${ev.venue.name}`;
+      } else if (bestGenre && bestGenreW > 0) {
+        reason = `Je houdt van ${bestGenre.toLowerCase()}`;
+      } else if (bestSearched && bestSearchedW > 0) {
+        reason = `Je zocht vaker naar ${bestSearched.toLowerCase()}`;
+      } else if (vc > 0) {
+        reason = `Je komt vaker in ${ev.venue.name}`;
+      } else if (wijkW > 0 && ev.venue.wijk) {
+        reason = `Vaak in ${ev.venue.wijk.charAt(0).toUpperCase()}${ev.venue.wijk.slice(1)}`;
+      } else if (sceneW > 0) {
+        reason = 'Past bij jouw smaak';
+      }
+      scored.push({ ...ev, score, reason });
+    } else if (hasProfile && ev.featured && !avoided) {
+      // Geen affinity-match, maar wél een editorial-pick → ontdekking buiten
+      // je gebruikelijke smaak. Bewust beperkt (alleen featured) zodat 't
+      // curated blijft, niet willekeurig.
+      scored.push({ ...ev, score: 0, reason: 'Iets nieuws voor je', discovery: true });
     }
   }
 
@@ -920,8 +1058,17 @@ eventsRoute.get('/for-you', async (c) => {
   // Stap 4 — horizon bepalen. Rail-mode: 21d (of 7d met weekOnly).
   // Feed-mode: open horizon (2 jaar = effectief unlimited; cursor
   // pagineert).
-  const horizonEnd = new Date();
-  if (mode === 'feed') {
+  // `window=tonight` → de proactieve "Jouw avond vanavond"-kaart: alleen
+  // events binnen de logische avond/nacht (tot 06:00 NL). Hergebruikt het
+  // venster van de gids zodat de grens (06:00) consistent is.
+  const tonightOnly = c.req.query('window') === 'tonight';
+  let horizonEnd = new Date();
+  if (tonightOnly) {
+    horizonEnd = resolveWhenWindow(
+      { when: 'tonight' } as PreferenceProfile,
+      new Date()
+    ).to;
+  } else if (mode === 'feed') {
     horizonEnd.setFullYear(horizonEnd.getFullYear() + 2);
   } else if (weekOnly) {
     horizonEnd.setDate(horizonEnd.getDate() + 7);
@@ -946,6 +1093,7 @@ eventsRoute.get('/for-you', async (c) => {
         id: s.id,
         score: s.score,
         anchorTime: firstActive.startsAt.getTime(),
+        discovery: s.discovery ?? false,
       };
     })
     .filter(<T,>(x: T | null): x is T => x !== null);
@@ -965,11 +1113,28 @@ eventsRoute.get('/for-you', async (c) => {
       });
     }
   } else {
-    sorted = [...ranked].sort((a, b) => {
-      const dScore = b.score - a.score;
-      if (dScore !== 0) return dScore;
-      return a.anchorTime - b.anchorTime;
-    });
+    // Rail: affinity op score, met een paar ontdekkings-picks ertussen
+    // gevlochten (niet bovenaan) zodat de lijst niet in een filterbubbel
+    // dichtslaat — Letterboxd/Wrapped-gevoel, geen TikTok.
+    const DISCOVERY_N = 2;
+    const affinity = ranked
+      .filter((r) => !r.discovery)
+      .sort((a, b) => {
+        const dScore = b.score - a.score;
+        if (dScore !== 0) return dScore;
+        return a.anchorTime - b.anchorTime;
+      });
+    const disc = ranked
+      .filter((r) => r.discovery)
+      .sort((a, b) => a.anchorTime - b.anchorTime)
+      .slice(0, DISCOVERY_N);
+    const merged = affinity.slice(0, Math.max(0, limit - disc.length));
+    let insertAt = 3;
+    for (const d of disc) {
+      merged.splice(Math.min(insertAt, merged.length), 0, d);
+      insertAt += 4;
+    }
+    sorted = merged;
   }
 
   const page = sorted.slice(0, limit);
@@ -1030,6 +1195,8 @@ eventsRoute.get('/for-you', async (c) => {
       friendsSavedCount: headFriends?.count ?? 0,
       venueFollowed: followedVenueIds.has(event.venue.id),
       series: seriesMap.get(event.id) ?? [],
+      // Uitlegbare aanbeveling: waarom staat dit in "Voor jou"?
+      reason: event.reason,
     };
   });
 
@@ -1127,7 +1294,7 @@ eventsRoute.get('/new', async (c) => {
       kind: schema.events.kind,
       category: schema.events.category,
       featured: schema.events.featured,
-      genres: schema.events.genres,
+      genres: displayGenres,
       imageUrl: schema.events.imageUrl,
       posterUrl: schema.events.posterUrl,
       stillUrl: schema.events.stillUrl,
@@ -1230,7 +1397,7 @@ eventsRoute.get('/:id', async (c) => {
       trailerUrl: schema.events.trailerUrl,
       category: schema.events.category,
       featured: schema.events.featured,
-      genres: schema.events.genres,
+      genres: displayGenres,
       venue: {
         id: schema.venues.id,
         slug: schema.venues.slug,

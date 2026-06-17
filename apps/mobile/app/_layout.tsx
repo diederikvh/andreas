@@ -34,7 +34,6 @@ import { ZoomLayerProvider } from '@/components/ZoomLayer';
 import { InboxToastProvider } from '@/components/InboxToast';
 import { InboxNotifier } from '@/components/InboxNotifier';
 import { queryClient, queryPersister } from '@/lib/queryClient';
-import { useContentModeStore } from '@/store/contentMode';
 import { useHasHydrated, useMode, useModeStore } from '@/store/mode';
 import { useSessionTimestamps } from '@/store/sessionTimestamps';
 
@@ -74,20 +73,6 @@ function RootLayout() {
   useEffect(() => {
     if (ready) {
       SplashScreen.hideAsync();
-    }
-  }, [ready]);
-
-  // Content-mode en visuele mode zijn 1-op-1 gekoppeld: 'uit'⇄'nacht',
-  // 'expo'⇄'dag'. Bij oude installs kunnen ze uit-sync zijn (de
-  // dn-switch was eerder onafhankelijk). Reconcile bij hydratie:
-  // visual-mode volgt content-mode (geen curtain animation, silent).
-  useEffect(() => {
-    if (!ready) return;
-    const cmode = useContentModeStore.getState().mode;
-    const visual = useModeStore.getState().mode;
-    const expected = cmode === 'uit' ? 'nacht' : 'dag';
-    if (visual !== expected) {
-      useModeStore.getState().setMode(expected);
     }
   }, [ready]);
 
