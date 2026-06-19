@@ -110,12 +110,26 @@ function parseHomepage(html: string): RawEvent[] {
   // weticket/ra-link levert geen RawEvent op.
   const tiles = html.split(/(?=<div class="event  ")/);
   for (const tile of tiles) {
-    const slugM = tile.match(
-      /<a\s+href="https:\/\/garagenoord\.com\/club\/([a-z0-9-]+)"\s+class="event-link"[^>]*>([\s\S]*?)<\/a>/,
-    );
-    if (!slugM) continue;
-    const slug = slugM[1];
-    const titleRaw = decodeHtmlEntities(stripTags(slugM[2]));
+    // Een tile heeft meerdere `<a class="event-link">` anchors met
+    // dezelfde href: één met de dag (`19`), één met "June, 2026", en
+    // één met de echte titel (DJ-lineup). Pak alle anchors en kies
+    // degene die noch puur numeriek noch een "Month, YYYY"-string is.
+    const anchors = [
+      ...tile.matchAll(
+        /<a\s+href="https:\/\/garagenoord\.com\/club\/([a-z0-9-]+)"\s+class="event-link"[^>]*>([\s\S]*?)<\/a>/g,
+      ),
+    ];
+    if (anchors.length === 0) continue;
+    const slug = anchors[0][1];
+    let titleRaw = '';
+    for (const a of anchors) {
+      const t = decodeHtmlEntities(stripTags(a[2]));
+      if (!t) continue;
+      if (/^\d+$/.test(t)) continue;
+      if (/^\w+,?\s*\d{4}$/.test(t)) continue;
+      titleRaw = t;
+      break;
+    }
     if (!titleRaw) continue;
     // Ticket-URL alleen accepteren als 'ie BINNEN ditzelfde tile zit
     // (geen lazy match over tile-grenzen). Eerst weticket, dan ra.co.
@@ -216,10 +230,23 @@ export async function scrapeGarageNoord(options?: { venueIds?: string[] }): Prom
       const occurrenceId = `occ-gn-${tile.slug}`;
 
       const [existing] = await db
-        .select({ id: schema.events.id })
+        .select({ id: schema.events.id, title: schema.events.title })
         .from(schema.events)
         .where(eq(schema.events.id, eventId))
         .limit(1);
+
+      // Self-heal: eerdere parser-bug schreef de dag-getal als title.
+      // Repareer bestaande events met puur numerieke (of lege) title.
+      if (existing && (/^\s*\d+\s*$/.test(existing.title) || existing.title.trim() === '')) {
+        try {
+          await db
+            .update(schema.events)
+            .set({ title: tile.title })
+            .where(eq(schema.events.id, eventId));
+        } catch (e) {
+          result.errors.push(`title-heal ${eventId}: ${(e as Error).message}`);
+        }
+      }
 
       let enriched: Awaited<ReturnType<typeof enrichEvent>> | null = null;
       let imageUrl: string | null = null;
