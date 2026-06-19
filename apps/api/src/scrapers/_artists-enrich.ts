@@ -27,7 +27,7 @@
  * niet opnieuw bij MB gezocht.
  */
 
-import { and, eq, gte, sql } from 'drizzle-orm';
+import { and, eq, gte, inArray, sql } from 'drizzle-orm';
 
 import { db, schema } from '../db/index.js';
 import { isLineupPlaceholderName } from './enrich.js';
@@ -330,7 +330,10 @@ export async function enrichLineupArtists(
         enrichedAt: schema.artists.enrichedAt,
       })
       .from(schema.artists)
-      .where(sql`LOWER(${schema.artists.name}) = ANY(${lowers}::text[])`);
+      // inArray genereert een geldige `IN ($1, …)`-lijst. (Eerder:
+      // `= ANY(${lowers}::text[])` — Drizzle rendert een JS-array daar als
+      // een row `($1, …)`, en `(row)::text[]` is ongeldig in Postgres → 500.)
+      .where(inArray(sql`LOWER(${schema.artists.name})`, lowers));
     for (const r of rows) {
       const lower = r.name.toLowerCase();
       existingByLower.set(lower, r);
