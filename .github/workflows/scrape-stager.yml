@@ -25,7 +25,14 @@ jobs:
       # van één scraper de andere niet meeneemt. Playwright-scrapers
       # (paradiso, melkweg, muziekgebouw, ontheroof) draaien lokaal —
       # die zitten niet in de Dockerfile op Fly.
+      # `max-parallel: 6` bakent de gelijktijdige load op de Fly-VM af:
+      # 57 curls tegelijk OOM-de de 512mb machine (alle in-flight requests
+      # kregen dan synchroon 502 na ~3m20s). Met 6 tegelijk × ~90s per
+      # scraper duurt de sweep ~15 min — binnen de 30 min job-timeout.
+      # ponytail: cap ophogen als de sweep te lang duurt, RAM bumpen als
+      # 502s terugkomen op < 6 gelijktijdig.
       fail-fast: false
+      max-parallel: 6
       matrix:
         scraper: [stager, ical, jsonld, ticketmaster, theater, boomchicago, concertgemaal, wptheatre, p60, patronaat, ziggodome, ita, operaballet, podiummozaiek, celebratix, weeztix, shelter, sieraad, garagenoord, krakeling, eventscalendar, volkshotel, akhnaton, dezwijger, debalie, felixmeritis, rijksakademie, deceuvel, lima, perdu, nieuweboekhandel, eventbrite, aaservices, vrijburcht, munganga, westweelde, veronica, supper, gashouder, levenslang, clubup, ijland, odessa, fullhouse, bostheater, eye, kriterion, themovies, studiok, filmhallen, lab111, uitkijk, fchyena, rialto, cinecenter, cinemadevlugt, cavia]
         # Niet in cron: bimhuis, ot301, fourvenues, radioradio, ketelhuis, thepulse (Playwright, niet in Fly Dockerfile)
