@@ -51,7 +51,11 @@ async function fetchTiles(browser: Browser): Promise<Tile[]> {
   const ctx = await browser.newContext({ userAgent: UA });
   const page = await ctx.newPage();
   try {
-    await page.goto(CALENDAR_URL, { waitUntil: 'networkidle', timeout: 30000 });
+    // Tiles zijn SSR (curl geeft ze direct). `networkidle` haalt 30s niet
+    // door open analytics-verbindingen — `domcontentloaded` + selector-wait
+    // is genoeg. Zelfde patroon als melkweg.ts.
+    await page.goto(CALENDAR_URL, { waitUntil: 'domcontentloaded', timeout: 30000 });
+    await page.waitForSelector('time.agenda-tile__dates', { timeout: 15000 });
     // String-based evaluate vermijdt DOM-type issues in TS strict mode
     // (zoals melkweg.ts en muziekgebouw.ts ook doen).
     const tiles = (await page.evaluate(`(() => {
