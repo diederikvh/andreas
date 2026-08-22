@@ -166,7 +166,33 @@ async function renderDetail(browser: any, url: string): Promise<ParadisoDetail> 
   const ctx = await browser.newContext({ locale: 'nl-NL', userAgent: UA });
   const page = await ctx.newPage();
   try {
-    await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 });
+    // Twee losse oorzaken achter de 36 van 439 events die wegvielen:
+    //
+    // 1. `networkidle` haalde 30s niet door open analytics-verbindingen,
+    //    terwijl de pagina zelf al lang stond. `domcontentloaded` +
+    //    selector-wait is genoeg — zelfde patroon als bimhuis.ts /
+    //    melkweg.ts. Gezonde detail-pages zijn <2s binnen, dus 15s is ruim.
+    // 2. Paradiso's origin geeft intermittent een 500 ná 30s op detail-
+    //    pages; dezelfde URL geeft de volgende poging een snelle 200.
+    //    Los gemeten ~50% faalkans per poging, maar de faals zijn NIET
+    //    onafhankelijk: in een volle run haalden 3 pogingen skipped van
+    //    36 → 22, niet naar ~4. De origin degradeert onder onze eigen
+    //    sequentiële load, dus meer pogingen kopen weinig.
+    // ponytail: 3 pogingen, geen backoff — kost ~2 min extra wall-clock
+    // voor 14 events. Volgende lever is throttlen tussen requests (of
+    // een langere pauze na een 500), niet nóg meer pogingen.
+    let lastErr: Error | null = null;
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 15000 });
+        await page.waitForSelector('main', { timeout: 10000 });
+        lastErr = null;
+        break;
+      } catch (e) {
+        lastErr = e as Error;
+      }
+    }
+    if (lastErr) throw lastErr;
     await page.waitForTimeout(800);
     const result: ParadisoDetail = await page.evaluate(`(() => {
       const main = document.querySelector('main') ?? document.body;
