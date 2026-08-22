@@ -21,6 +21,7 @@ import {
   getForYouEvents,
   getForYouFeed,
   getNewEventsSince,
+  type Lane,
   getRecentEvents,
   getFriendDetail,
   getFriendRequests,
@@ -100,8 +101,11 @@ export const queryKeys = {
         ? [...categories].sort().join(',')
         : 'all',
     ] as const,
-  newArrivalsSince: (sinceIso: string | null) =>
-    ['events', 'new', 'since', sinceIso ?? 'pending'] as const,
+  newArrivalsSince: (
+    sinceIso: string | null,
+    lanes: string,
+    limit: number
+  ) => ['events', 'new', 'since', sinceIso ?? 'pending', lanes, limit] as const,
   recentEvents: (limit: number) =>
     ['events', 'new', 'recent', limit] as const,
   dismisses: () => ['dismisses'] as const,
@@ -155,18 +159,26 @@ export function useEvents(filter: EventsFilter = {}) {
 }
 
 /**
- * Events met createdAt > since (sessie-grens). Voor de badge en de
- * primaire lijst op /new. `since` mag null zijn (eerste sessie ooit)
- * — query staat dan op pauze.
+ * Wat is er sinds `since` aan het systeem toegevoegd — nieuwe events én
+ * nieuwe datums bij bestaande events. Voor de badge op Avond en de
+ * lijst op /new. `since` mag null zijn (eerste sessie ooit) — query
+ * staat dan op pauze.
+ *
+ * Levert `{ events, total, laneCounts }`: de server capt de lijst zodat
+ * de pagina af te maken blijft, `total` zegt hoeveel er achter die cap
+ * zit.
  */
 export function useNewArrivalsSince(
   since: Date | null,
-  opts: { enabled?: boolean } = {}
+  opts: { enabled?: boolean; lanes?: Lane[]; limit?: number } = {}
 ) {
   const sinceIso = since ? since.toISOString() : null;
+  const lanes = opts.lanes ?? [];
+  const laneKey = lanes.length > 0 ? [...lanes].sort().join(',') : 'all';
+  const limit = opts.limit ?? 0;
   return useQuery({
-    queryKey: queryKeys.newArrivalsSince(sinceIso),
-    queryFn: () => getNewEventsSince(since!),
+    queryKey: queryKeys.newArrivalsSince(sinceIso, laneKey, limit),
+    queryFn: () => getNewEventsSince(since!, { lanes, limit: opts.limit }),
     enabled: (opts.enabled ?? true) && Boolean(since),
     staleTime: 5 * 60_000,
     refetchOnWindowFocus: true,
@@ -492,15 +504,27 @@ export function useToggleSave() {
       qc.invalidateQueries({ queryKey: queryKeys.saves() });
       qc.invalidateQueries({ queryKey: queryKeys.mirror() });
       qc.invalidateQueries({ queryKey: queryKeys.forYou() });
+      // Prefix-invalidate over álle since/lane/limit-varianten. Zonder
+      // dit serveert de bewaarde cache na een koude herstart nog even
+      // de lijst van vóór je oordeel, en staat je weggetikte event er
+      // gewoon weer — dat leest als "mijn nee is niet aangekomen".
+      qc.invalidateQueries({ queryKey: ['events', 'new'] });
     },
   });
 }
 
+type ToggleDismissInput = { occurrenceId: string; source?: SaveSource | null };
+
 export function useToggleDismiss() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (occurrenceId: string) => toggleDismiss(occurrenceId),
-    onMutate: async (occurrenceId) => {
+    mutationFn: (input: ToggleDismissInput | string) =>
+      typeof input === 'string'
+        ? toggleDismiss(input)
+        : toggleDismiss(input.occurrenceId, input.source),
+    onMutate: async (input) => {
+      const occurrenceId =
+        typeof input === 'string' ? input : input.occurrenceId;
       await qc.cancelQueries({ queryKey: queryKeys.dismisses() });
       const prev = qc.getQueryData<string[]>(queryKeys.dismisses()) ?? [];
       // Optimistic: voeg toe als 'ie nog niet in de lijst staat,
@@ -511,13 +535,18 @@ export function useToggleDismiss() {
       qc.setQueryData<string[]>(queryKeys.dismisses(), next);
       return { prev };
     },
-    onError: (_err, _id, ctx) => {
+    onError: (_err, _input, ctx) => {
       if (ctx?.prev) qc.setQueryData(queryKeys.dismisses(), ctx.prev);
     },
     onSettled: () => {
       qc.invalidateQueries({ queryKey: queryKeys.dismisses() });
       qc.invalidateQueries({ queryKey: queryKeys.mirror() });
       qc.invalidateQueries({ queryKey: queryKeys.forYou() });
+      // Prefix-invalidate over álle since/lane/limit-varianten. Zonder
+      // dit serveert de bewaarde cache na een koude herstart nog even
+      // de lijst van vóór je oordeel, en staat je weggetikte event er
+      // gewoon weer — dat leest als "mijn nee is niet aangekomen".
+      qc.invalidateQueries({ queryKey: ['events', 'new'] });
     },
   });
 }

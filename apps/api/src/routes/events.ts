@@ -6,6 +6,8 @@ import {
   buildFriendsByOccurrence,
   buildOccurrencesByEvent,
   buildSeriesByEvent,
+  buildTasteProfile,
+  dislikePenalty,
   findEventsWithOccurrencesInRange,
   maybeUserId,
 } from './_helpers.js';
@@ -779,26 +781,11 @@ eventsRoute.get('/for-you', async (c) => {
         )
     : [];
 
-  // Stap 1 — bouw smaak-signaal uit de save-historie. Per save wegen we op
-  // recentheid (decay) en bron (actieve saves zwaarder), en tellen genre,
-  // venue, scene en wijk.
-  const historyRows = await db
-    .select({
-      genres: displayGenres,
-      venueId: schema.events.venueId,
-      scene: schema.venues.scene,
-      wijk: schema.venues.wijk,
-      source: schema.saves.source,
-      savedAt: schema.saves.createdAt,
-    })
-    .from(schema.saves)
-    .innerJoin(
-      schema.occurrences,
-      eq(schema.saves.occurrenceId, schema.occurrences.id)
-    )
-    .innerJoin(schema.events, eq(schema.occurrences.eventId, schema.events.id))
-    .innerJoin(schema.venues, eq(schema.events.venueId, schema.venues.id))
-    .where(eq(schema.saves.userId, me));
+  // Stap 1 — smaak-signaal. Ja én nee, allebei recentheids-gewogen.
+  // Gedeeld met /new zodat de dagelijkse lijst op hetzelfde profiel rankt
+  // als de aanbevelingen; anders leert de app wel van je oordeel maar
+  // merk je dat niet op de plek waar je 't gaf.
+  const taste = await buildTasteProfile(me, displayGenres);
 
   const [followedRaw, blockedRaw, friendIds] = await Promise.all([
     getFollowedVenueIds(me),
@@ -847,40 +834,17 @@ eventsRoute.get('/for-you', async (c) => {
   // Gebruiker zonder enig profiel-signaal (geen saves, geen follows, geen
   // zoekgeschiedenis) krijgt een lege response — niets om op te scoren.
   if (
-    historyRows.length === 0 &&
+    taste.likeCount === 0 &&
     followedRaw.length === 0 &&
     searchedGenre.size === 0
   ) {
     return c.json({ events: [], nextCursor: null });
   }
 
-  // Recentheids-decay (halveert ~elke 60 dagen) × bron-gewicht: een save
-  // via een actieve intentie (op-gevoel-swipe, zoek) telt zwaarder dan een
-  // passieve. Zo weegt "wat je nu leuk vindt" mee, niet alleen het verleden.
-  const HALF_LIFE_MS = 60 * 24 * 3600 * 1000;
-  const ACTIVE_SOURCES = new Set(['op-gevoel', 'search', 'gered']);
-  const nowMs = Date.now();
-  const saveWeight = (r: (typeof historyRows)[number]): number => {
-    const ageMs = Math.max(0, nowMs - new Date(r.savedAt).getTime());
-    const recency = Math.pow(0.5, ageMs / HALF_LIFE_MS);
-    const src = r.source && ACTIVE_SOURCES.has(r.source) ? 1.3 : 1.0;
-    return recency * src;
-  };
-
-  const genreCount = new Map<string, number>();
-  const venueCount = new Map<string, number>();
-  const sceneCount = new Map<string, number>();
-  const wijkCount = new Map<string, number>();
-  for (const r of historyRows) {
-    const w = saveWeight(r);
-    for (const g of r.genres ?? []) {
-      const key = g.trim().toLowerCase();
-      if (key) genreCount.set(key, (genreCount.get(key) ?? 0) + w);
-    }
-    venueCount.set(r.venueId, (venueCount.get(r.venueId) ?? 0) + w);
-    if (r.scene) sceneCount.set(r.scene, (sceneCount.get(r.scene) ?? 0) + w);
-    if (r.wijk) wijkCount.set(r.wijk, (wijkCount.get(r.wijk) ?? 0) + w);
-  }
+  const genreCount = taste.genreLike;
+  const venueCount = taste.venueLike;
+  const sceneCount = taste.sceneLike;
+  const wijkCount = taste.wijkLike;
 
   // Welke events heb ik al gesaved? Niet opnieuw aanbevelen.
   const savedEventIds = new Set<string>();
@@ -1018,10 +982,14 @@ eventsRoute.get('/for-you', async (c) => {
     for (const g of ev.genres ?? []) {
       const key = g.trim().toLowerCase();
       if (!key) continue;
+      // Netto genre-signaal: wat je saved minus wat je wegtikte. Een
+      // genre waar je consequent nee op zegt zakt hierdoor onder nul en
+      // duwt het event omlaag in plaats van 'm alleen niet te helpen.
       const gc = genreCount.get(key) ?? 0;
-      score += gc;
-      if (gc > bestGenreW) {
-        bestGenreW = gc;
+      const gd = dislikePenalty(taste.genreDislike.get(key) ?? 0);
+      score += gc - gd;
+      if (gc - gd > bestGenreW) {
+        bestGenreW = gc - gd;
         bestGenre = g;
       }
       // Zoek-signaal: events met een genre dat je vaker zócht, omhoog.
@@ -1037,11 +1005,22 @@ eventsRoute.get('/for-you', async (c) => {
     }
     // Afgewezen genre (uit zoekgesprekken) → flink dempen.
     if (avoided) score -= 3;
+    // Venue idem: drie keer nee bij dezelfde zaal is een uitspraak over
+    // die zaal. Zwaarder gedempt dan genre (factor 1.5 tegen +2 voor een
+    // save) omdat je bij een venue die veel programmeert vanzelf vaker
+    // nee zegt — zie de exposure-kanttekening bij buildTasteProfile.
     const vc = venueCount.get(ev.venue.id) ?? 0;
-    score += 2 * vc;
+    const vd = dislikePenalty(taste.venueDislike.get(ev.venue.id) ?? 0, 1.5);
+    score += 2 * vc - vd;
     const sceneW = ev.venue.scene ? sceneCount.get(ev.venue.scene) ?? 0 : 0;
     const wijkW = ev.venue.wijk ? wijkCount.get(ev.venue.wijk) ?? 0 : 0;
-    if (sceneW > 0) score += 1; // brede assen: licht meewegen, niet domineren
+    const sceneD = ev.venue.scene
+      ? taste.sceneDislike.get(ev.venue.scene) ?? 0
+      : 0;
+    // Scene en wijk zijn brede assen — die mogen meewegen maar niet
+    // domineren, dus blijft het aan beide kanten bij een vaste ±1.
+    if (sceneW > 0) score += 1;
+    else if (sceneD > 0) score -= 1;
     if (wijkW > 0) score += 1;
     const followed = followedVenueIds.has(ev.venue.id);
     if (followed) score += 5;
@@ -1281,22 +1260,60 @@ eventsRoute.get('/genres', async (c) => {
 });
 
 /**
- * "Net binnen" — events op createdAt desc. Twee query-modes:
+ * "Net binnen" — wat is er sinds `since` aan het systeem toegevoegd?
  *
- *  - `?since=ISO`: alleen events met createdAt > since (gebruikt door
- *    de homepage-shortcut badge en als primaire lijst op /new). Cap
- *    op 30 dagen terug om gigantische payloads voor langdurig-
- *    inactieve gebruikers te voorkomen.
- *  - geen `since`: laatste N events (default 10, cap 100). Fallback-
- *    query die /new client-side firet wanneer de since-query leeg is,
- *    zodat de pagina nooit kaal blijft.
+ * Anker is de **occurrence**, niet het event. Een nieuwe datum bij een
+ * bestaand event (Melkweg plakt er drie shows bij, een wekelijks feest
+ * krijgt zijn najaarsreeks) is nieuws; die zag je hiervoor niet, want
+ * toen filterde deze route op `events.createdAt`. In de praktijk is dat
+ * de meerderheid — op een drukke scrape-dag hoort 80-90% van de nieuwe
+ * datums bij een event dat al bestond.
  *
- * Filter: published + venue published + ≥1 toekomstige occurrence
- * (events die al voorbij zijn op moment van scrape zijn ruis).
+ * Twee query-modes:
+ *  - `?since=ISO` — alles met een occurrence-createdAt > since. Cap op
+ *    30 dagen terug zodat een gebruiker die een kwartaal weg was geen
+ *    payload van duizenden rijen krijgt.
+ *  - geen `since` — de laatst toegevoegde N. Fallback zodat /new nooit
+ *    kaal blijft.
  *
- * Lean shape — dezelfde velden als `/events?lean=1` zodat de mobile
- * client met EventListRow + bestaande types kan renderen.
+ * Verder:
+ *  - `?lane=film,live` filtert op baan (zie LANE_SQL).
+ *  - Resultaat is **per event**, nieuwste toevoeging eerst, met
+ *    `newOccurrenceCount` zodat de UI "3 nieuwe datums" kan tonen.
+ *  - `total` telt de events vóór de cap, zodat de UI "15 van 47" kan
+ *    zeggen en een meer-knop kan aanbieden.
+ *  - `laneCounts` voedt de filter-chips zonder tweede request.
+ *
+ * Lean shape — gelijk aan `/events?lean=1` zodat de client 'm met
+ * EventListRow en de bestaande types kan renderen.
  */
+
+/**
+ * De vier banen waarin je een avond kiest, plus een restbak. Afgeleid
+ * in de query, bewust géén kolom: de regel is een heuristiek die nog
+ * gaat schuiven, en dan is één plek aanpassen goedkoper dan een
+ * dagelijkse job die 8k rijen herberekent.
+ *
+ * Muziek splitst op venue-type én aanvangstijd — Paradiso en Melkweg
+ * zijn `podium` maar draaien 's nachts clubprogramma, dus tijd moet
+ * meebeslissen. Spiegelt wat /clubs en /live nu client-side doen.
+ *
+ * ponytail: venue-type komt van het event, niet van de occurrence.
+ * Wijkt alleen af bij films in meerdere bioscopen, en dáár beslist de
+ * categorie de baan al.
+ */
+const LANES = ['film', 'theater', 'live', 'club', 'kunst'] as const;
+type Lane = (typeof LANES)[number];
+const AMS_HOUR = sql`EXTRACT(HOUR FROM ${schema.occurrences.startsAt} AT TIME ZONE 'Europe/Amsterdam')`;
+const LANE_SQL = sql<Lane>`CASE
+  WHEN ${schema.events.category} = 'Film' THEN 'film'
+  WHEN ${schema.events.category} = 'Theater' THEN 'theater'
+  WHEN ${schema.events.category} = 'Muziek' THEN
+    CASE WHEN ${schema.venues.type} = 'club' OR ${AMS_HOUR} >= 23 OR ${AMS_HOUR} < 5
+      THEN 'club' ELSE 'live' END
+  ELSE 'kunst'
+END`;
+
 eventsRoute.get('/new', async (c) => {
   const sinceParam = c.req.query('since');
   let since: Date | null = null;
@@ -1304,25 +1321,223 @@ eventsRoute.get('/new', async (c) => {
     const parsed = new Date(sinceParam);
     if (Number.isNaN(parsed.getTime()))
       return c.json({ error: 'bad-since' }, 400);
-    // Cap aan de oude kant: gebruiker die 3 maanden weg is geweest
-    // krijgt geen lijst van honderden weken oude items.
     const minSince = new Date(Date.now() - 30 * 24 * 3600 * 1000);
     since = parsed < minSince ? minSince : parsed;
   }
 
-  // Default limit verschilt per mode: with-since 200 (volledig
-  // gewenst), without-since 10 (alleen "wat is er sowieso recent
-  // toegevoegd" voor de fallback-rij).
-  const defaultLimit = since ? 200 : 10;
+  // Baan-filter. Onbekende waardes vallen weg; lege lijst = alles.
+  const laneRaw = c.req.query('lane');
+  const laneFilters: Lane[] = laneRaw
+    ? laneRaw
+        .split(',')
+        .map((s) => s.trim())
+        .filter((s): s is Lane => (LANES as readonly string[]).includes(s))
+    : [];
+
+  // Cap op 15 met since: de dagpagina moet áf kunnen. Op een zaterdag
+  // komen er 150 events binnen en dan is "alles" geen lijst maar een
+  // klus. De client vraagt een hogere limit op via de meer-knop.
+  const defaultLimit = since ? 15 : 10;
   const limit = Math.min(
-    Number(c.req.query('limit') ?? defaultLimit),
-    since ? 500 : 100
+    Math.max(1, Number(c.req.query('limit') ?? defaultLimit) || defaultLimit),
+    200
   );
 
   const me = await maybeUserId(c);
-  const blockedVenueIds = me
-    ? new Set(await getBlockedVenueIds(me))
-    : new Set<string>();
+  const [blockedRaw, followedRaw, taste] = me
+    ? await Promise.all([
+        getBlockedVenueIds(me),
+        getFollowedVenueIds(me),
+        buildTasteProfile(me, displayGenres),
+      ])
+    : [[], [], null];
+  const blockedVenueIds = new Set(blockedRaw);
+  const followedVenueIds = new Set(followedRaw);
+
+  // Stap 1 — de nieuwe occurrences zelf. Alleen wat nog moet gebeuren:
+  // een gisteren gescrapete voorstelling van vorige week is geen nieuws.
+  // Zelfde effectieve-eindtijd-regel als de rest van de feeds.
+  const occRows = await db
+    .select({
+      eventId: schema.occurrences.eventId,
+      occurrenceId: schema.occurrences.id,
+      startsAt: schema.occurrences.startsAt,
+      createdAt: schema.occurrences.createdAt,
+      venueId: schema.venues.id,
+      scene: schema.venues.scene,
+      wijk: schema.venues.wijk,
+      genres: displayGenres,
+      lane: LANE_SQL,
+    })
+    .from(schema.occurrences)
+    .innerJoin(schema.events, eq(schema.events.id, schema.occurrences.eventId))
+    .innerJoin(schema.venues, eq(schema.venues.id, schema.events.venueId))
+    .where(
+      and(
+        eq(schema.events.published, true),
+        eq(schema.venues.published, true),
+        ne(schema.occurrences.status, 'cancelled'),
+        sql`COALESCE(${schema.occurrences.endsAt}, ${schema.occurrences.startsAt} + CASE WHEN ${schema.events.category} = 'Muziek' THEN INTERVAL '4 hours' ELSE INTERVAL '1 hour' END) >= NOW()`,
+        since ? gt(schema.occurrences.createdAt, since) : sql`true`,
+        blockedVenueIds.size > 0
+          ? not(inArray(schema.venues.id, Array.from(blockedVenueIds)))
+          : sql`true`
+      )
+    )
+    .orderBy(desc(schema.occurrences.createdAt))
+    // Ruime bovengrens: de drukste dag tot nu toe leverde ~570 nieuwe
+    // datums. 4000 dekt een maand-inhaalslag zonder de payload te laten
+    // ontsporen; we dedupen hierna toch naar events.
+    .limit(4000);
+
+  // Stap 2 — groepeer naar event, nieuwste toevoeging eerst. Melkweg die
+  // twaalf datums bij één reeks plakt is één regel in de lijst, geen
+  // twaalf. De baan van het vroegste nieuwe moment wint.
+  type Agg = {
+    eventId: string;
+    lane: Lane;
+    laneStartsAt: number;
+    newOccurrenceIds: string[];
+    venueId: string;
+    scene: string | null;
+    wijk: string | null;
+    genres: string[];
+    /** Smaak-score; 0 zolang je nog geen profiel hebt. */
+    score: number;
+  };
+  const byEvent = new Map<string, Agg>();
+  for (const row of occRows) {
+    const startMs = new Date(row.startsAt).getTime();
+    const existing = byEvent.get(row.eventId);
+    if (!existing) {
+      byEvent.set(row.eventId, {
+        eventId: row.eventId,
+        lane: row.lane,
+        laneStartsAt: startMs,
+        newOccurrenceIds: [row.occurrenceId],
+        venueId: row.venueId,
+        scene: row.scene,
+        wijk: row.wijk,
+        genres: row.genres ?? [],
+        score: 0,
+      });
+      continue;
+    }
+    existing.newOccurrenceIds.push(row.occurrenceId);
+    if (startMs < existing.laneStartsAt) {
+      existing.lane = row.lane;
+      existing.laneStartsAt = startMs;
+    }
+  }
+
+  // Al beoordeeld = weg. Een ja of nee is een oordeel over het event,
+  // niet over die ene voorstelling — dus één dismiss op een film met 19
+  // screenings haalt de hele film uit je lijst, anders staat 'ie er
+  // morgen via screening nummer twee gewoon weer. Dit is wat de pagina
+  // over dagen heen laat leeglopen in plaats van dichtslibben.
+  if (me && byEvent.size > 0) {
+    const ids = [...byEvent.keys()];
+    const [saved, dismissed] = await Promise.all([
+      db
+        .select({ eventId: schema.occurrences.eventId })
+        .from(schema.saves)
+        .innerJoin(
+          schema.occurrences,
+          eq(schema.saves.occurrenceId, schema.occurrences.id)
+        )
+        .where(
+          and(
+            eq(schema.saves.userId, me),
+            inArray(schema.occurrences.eventId, ids)
+          )
+        ),
+      db
+        .select({ eventId: schema.occurrences.eventId })
+        .from(schema.dismisses)
+        .innerJoin(
+          schema.occurrences,
+          eq(schema.dismisses.occurrenceId, schema.occurrences.id)
+        )
+        .where(
+          and(
+            eq(schema.dismisses.userId, me),
+            inArray(schema.occurrences.eventId, ids)
+          )
+        ),
+    ]);
+    for (const r of saved) byEvent.delete(r.eventId);
+    for (const r of dismissed) byEvent.delete(r.eventId);
+  }
+
+  // Tellingen vóór de cap — de chips moeten laten zien wat je wegfiltert,
+  // dus die tellen we over álle banen, niet over de gefilterde set.
+  const laneCounts = Object.fromEntries(LANES.map((l) => [l, 0])) as Record<Lane, number>;
+  for (const agg of byEvent.values()) laneCounts[agg.lane]++;
+
+  const matching = [...byEvent.values()].filter(
+    (agg) => laneFilters.length === 0 || laneFilters.includes(agg.lane)
+  );
+  const total = matching.length;
+
+  // Binnen een baan op smaak sorteren. Dit is waar het beoordelen zich
+  // terugbetaalt: elke ja en nee die je gisteren gaf bepaalt mee wat er
+  // vandaag in je vijftien staat. Zonder profiel (score overal 0) valt
+  // 'ie terug op nieuwste-eerst, precies zoals hiervoor.
+  if (taste && (taste.likeCount > 0 || taste.dislikeCount > 0)) {
+    for (const agg of matching) {
+      let score = 0;
+      for (const g of agg.genres) {
+        const key = g.trim().toLowerCase();
+        if (!key) continue;
+        score +=
+          (taste.genreLike.get(key) ?? 0) -
+          dislikePenalty(taste.genreDislike.get(key) ?? 0);
+      }
+      score +=
+        2 * (taste.venueLike.get(agg.venueId) ?? 0) -
+        dislikePenalty(taste.venueDislike.get(agg.venueId) ?? 0, 1.5);
+      if (agg.scene) {
+        if ((taste.sceneLike.get(agg.scene) ?? 0) > 0) score += 1;
+        else if ((taste.sceneDislike.get(agg.scene) ?? 0) > 0) score -= 1;
+      }
+      if (agg.wijk && (taste.wijkLike.get(agg.wijk) ?? 0) > 0) score += 1;
+      if (followedVenueIds.has(agg.venueId)) score += 5;
+      agg.score = score;
+    }
+  }
+
+  // Beurtelings uit elke baan plukken i.p.v. botweg de nieuwste 15. Een
+  // rechttoe-rechtaan slice levert vijftien films op zodra de bioscoop-
+  // scrapers als laatste draaiden — dan lijkt er die dag niets anders te
+  // zijn gebeurd.
+  const queues = new Map<Lane, Agg[]>();
+  for (const agg of matching) {
+    const q = queues.get(agg.lane);
+    if (q) q.push(agg);
+    else queues.set(agg.lane, [agg]);
+  }
+  // Stabiel: gelijke scores houden hun nieuwste-eerst volgorde.
+  for (const q of queues.values()) q.sort((a, b) => b.score - a.score);
+  const page: Agg[] = [];
+  while (page.length < limit) {
+    let placed = false;
+    for (const q of queues.values()) {
+      const next = q.shift();
+      if (!next) continue;
+      page.push(next);
+      placed = true;
+      if (page.length >= limit) break;
+    }
+    if (!placed) break;
+  }
+
+  if (page.length === 0)
+    return c.json({ events: [], total: 0, laneCounts });
+
+  // Stap 3 — hang de volledige lean shape aan de gekozen events.
+  const occRange = await findEventsWithOccurrencesInRange({
+    eventIds: page.map((a) => a.eventId),
+  });
 
   const eventRows = await db
     .select({
@@ -1350,37 +1565,17 @@ eventsRoute.get('/new', async (c) => {
     })
     .from(schema.events)
     .innerJoin(schema.venues, eq(schema.events.venueId, schema.venues.id))
-    .where(
-      and(
-        eq(schema.events.published, true),
-        eq(schema.venues.published, true),
-        since ? gt(schema.events.createdAt, since) : sql`true`,
-        blockedVenueIds.size > 0
-          ? not(inArray(schema.venues.id, Array.from(blockedVenueIds)))
-          : sql`true`
-      )
-    )
-    .orderBy(desc(schema.events.createdAt))
-    .limit(limit);
+    .where(inArray(schema.events.id, page.map((a) => a.eventId)));
 
-  if (eventRows.length === 0) return c.json({ events: [] });
+  const rowById = new Map(eventRows.map((r) => [r.id, r]));
 
-  // Stap 2: future occurrences voor deze events.
-  const occRange = await findEventsWithOccurrencesInRange({
-    eventIds: eventRows.map((e) => e.id),
-  });
-
-  const followedVenueIds = me
-    ? new Set(await getFollowedVenueIds(me))
-    : new Set<string>();
-
-  // Stap 3: lean response — strip events zonder upcoming occurrence
-  // (events.createdAt > since maar alle occurrences zijn voorbij — bv.
-  // een laat-gescraped event van vorige week).
-  const events = eventRows
-    .filter((e) => occRange.byEvent.has(e.id))
-    .map((event) => {
-      const occ = occRange.byEvent.get(event.id)!;
+  // Volgorde van `page` aanhouden (nieuwste toevoeging eerst), niet die
+  // van de DB-select.
+  const events = page
+    .map((agg) => {
+      const event = rowById.get(agg.eventId);
+      const occ = event ? occRange.byEvent.get(agg.eventId) : undefined;
+      if (!event || !occ) return null;
       const isExhibition = event.kind === 'exhibition';
       const nextStarts = occ.next?.startsAt ?? null;
       const nextEnds = occ.next?.endsAt ?? null;
@@ -1408,15 +1603,28 @@ eventsRoute.get('/new', async (c) => {
           friendsSaved: [],
           friendsSavedCount: 0,
         })),
+        lane: agg.lane,
+        newOccurrenceCount: agg.newOccurrenceIds.length,
+        newOccurrenceIds: agg.newOccurrenceIds,
+        /** Waar een ja/nee op landt. De rij toont `occ.next` (de
+            eerstvolgende voorstelling), dus daar hoort een save ook op
+            te landen — niet op de toevallig laatst-gescrapete. Valt
+            terug op het nieuwe moment als er geen next is. */
+        rateOccurrenceId: occ.next?.id ?? agg.newOccurrenceIds[0],
+        // Verschil dat de UI moet kunnen maken: "nieuw" (event bestond
+        // nog niet) versus "3 datums erbij" (bestaand event, nieuwe
+        // voorstellingen). Zonder since is alles per definitie 'nieuw'.
+        isNewEvent: since ? new Date(event.createdAt).getTime() > since.getTime() : true,
         friendsSaved: [],
         friendsSavedCount: 0,
         venueFollowed: followedVenueIds.has(event.venue.id),
         series: [],
         myInvitesCount: 0,
       };
-    });
+    })
+    .filter((e) => e !== null);
 
-  return c.json({ events });
+  return c.json({ events, total, laneCounts });
 });
 
 eventsRoute.get('/:id', async (c) => {

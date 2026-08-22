@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gt, gte, inArray, isNull, lte, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, gte, inArray, isNull, lte, or, sql, type SQL } from 'drizzle-orm';
 import type { Context } from 'hono';
 
 import { auth } from '../auth.js';
@@ -587,4 +587,136 @@ export function denormalizeEvent<T extends { id: string }>(
     occurrenceCount: occ?.count ?? 0,
     nextOccurrenceVenue: occ?.next?.venue ?? null,
   };
+}
+
+/**
+ * Smaakprofiel van één gebruiker: wat trok je aan, en wat wees je af.
+ *
+ * Twee bronnen, zelfde vorm. Saves zijn het ja-signaal, dismisses het
+ * nee-signaal. Dat laatste lag er al maanden (elke left-swipe op
+ * /op-gevoel, en sinds kort elk kruisje op /new) maar werd alléén
+ * gebruikt om iets te verbergen — het woog nergens in mee. Daardoor
+ * leerde de app niets van "nee", terwijl dat de helft van de gebaren is.
+ *
+ * Beide kanten krijgen dezelfde recentheids-decay: wat je vorig jaar
+ * vond weegt minder dan wat je vorige week vond.
+ *
+ * ponytail: we tellen rauwe gebaren, geen impressies. Een venue die veel
+ * programmeert verzamelt daardoor mechanisch meer nee's — vandaar de caps
+ * bij het scoren. Als dat alsnog scheeftrekt is de volgende stap delen
+ * door hoe vaak je 'm te zien kreeg, en dat vraagt impressie-logging.
+ */
+export type TasteProfile = {
+  genreLike: Map<string, number>;
+  genreDislike: Map<string, number>;
+  venueLike: Map<string, number>;
+  venueDislike: Map<string, number>;
+  sceneLike: Map<string, number>;
+  sceneDislike: Map<string, number>;
+  wijkLike: Map<string, number>;
+  wijkDislike: Map<string, number>;
+  /** Aantal onderliggende gebaren — voor "heeft deze user een profiel?". */
+  likeCount: number;
+  dislikeCount: number;
+};
+
+const TASTE_HALF_LIFE_MS = 60 * 24 * 3600 * 1000;
+/** Een save via een actief gebaar (swipe, zoek) telt zwaarder dan een passieve. */
+const ACTIVE_SOURCES = new Set(['op-gevoel', 'search', 'gered', 'new']);
+
+export async function buildTasteProfile(
+  userId: string,
+  displayGenres: SQL<string[]>
+): Promise<TasteProfile> {
+  const columns = {
+    genres: displayGenres,
+    venueId: schema.events.venueId,
+    scene: schema.venues.scene,
+    wijk: schema.venues.wijk,
+  };
+
+  const [likes, dislikes] = await Promise.all([
+    db
+      .select({
+        ...columns,
+        source: schema.saves.source,
+        at: schema.saves.createdAt,
+      })
+      .from(schema.saves)
+      .innerJoin(
+        schema.occurrences,
+        eq(schema.saves.occurrenceId, schema.occurrences.id)
+      )
+      .innerJoin(schema.events, eq(schema.occurrences.eventId, schema.events.id))
+      .innerJoin(schema.venues, eq(schema.events.venueId, schema.venues.id))
+      .where(eq(schema.saves.userId, userId)),
+    db
+      .select({
+        ...columns,
+        source: schema.dismisses.source,
+        at: schema.dismisses.createdAt,
+      })
+      .from(schema.dismisses)
+      .innerJoin(
+        schema.occurrences,
+        eq(schema.dismisses.occurrenceId, schema.occurrences.id)
+      )
+      .innerJoin(schema.events, eq(schema.occurrences.eventId, schema.events.id))
+      .innerJoin(schema.venues, eq(schema.events.venueId, schema.venues.id))
+      .where(eq(schema.dismisses.userId, userId)),
+  ]);
+
+  const nowMs = Date.now();
+  const tally = (
+    rows: typeof likes,
+  ): [Map<string, number>, Map<string, number>, Map<string, number>, Map<string, number>] => {
+    const genre = new Map<string, number>();
+    const venue = new Map<string, number>();
+    const scene = new Map<string, number>();
+    const wijk = new Map<string, number>();
+    for (const r of rows) {
+      const ageMs = Math.max(0, nowMs - new Date(r.at).getTime());
+      const recency = Math.pow(0.5, ageMs / TASTE_HALF_LIFE_MS);
+      const w = recency * (r.source && ACTIVE_SOURCES.has(r.source) ? 1.3 : 1.0);
+      for (const g of r.genres ?? []) {
+        const key = g.trim().toLowerCase();
+        if (key) genre.set(key, (genre.get(key) ?? 0) + w);
+      }
+      venue.set(r.venueId, (venue.get(r.venueId) ?? 0) + w);
+      if (r.scene) scene.set(r.scene, (scene.get(r.scene) ?? 0) + w);
+      if (r.wijk) wijk.set(r.wijk, (wijk.get(r.wijk) ?? 0) + w);
+    }
+    return [genre, venue, scene, wijk];
+  };
+
+  const [genreLike, venueLike, sceneLike, wijkLike] = tally(likes);
+  const [genreDislike, venueDislike, sceneDislike, wijkDislike] = tally(dislikes);
+
+  return {
+    genreLike,
+    genreDislike,
+    venueLike,
+    venueDislike,
+    sceneLike,
+    sceneDislike,
+    wijkLike,
+    wijkDislike,
+    likeCount: likes.length,
+    dislikeCount: dislikes.length,
+  };
+}
+
+/**
+ * Hoe zwaar een nee weegt ten opzichte van een ja. Bewust lager dan 1:
+ * "ik wil hier heen" is een scherper signaal dan "nu even niet" — dat
+ * laatste kan net zo goed over de datum of je humeur gaan als over het
+ * genre. En omdat we geen impressies tellen, mag één druk programmerende
+ * venue zichzelf niet wegdrukken; vandaar ook de caps.
+ */
+export const DISLIKE_WEIGHT = 0.6;
+export const MAX_DISLIKE_PENALTY = 4;
+
+/** Negatieve bijdrage van één dimensie, gedempt en gecapt. */
+export function dislikePenalty(raw: number, factor = 1): number {
+  return Math.min(MAX_DISLIKE_PENALTY, DISLIKE_WEIGHT * factor * raw);
 }

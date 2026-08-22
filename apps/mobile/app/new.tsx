@@ -13,6 +13,7 @@ import { useCallback, useMemo, useState } from 'react';
 import {
   Pressable,
   RefreshControl,
+  ScrollView,
   SectionList,
   StyleSheet,
   Text,
@@ -26,7 +27,7 @@ import { EventListRow } from '@/components/EventListRow';
 import { RefreshBanner } from '@/components/RefreshBanner';
 import { SpinningCross } from '@/components/SpinningCross';
 import { useSession } from '@/lib/authClient';
-import type { ApiEvent } from '@/lib/api';
+import { LANES, type ApiEvent, type Lane } from '@/lib/api';
 import {
   CATEGORY_TICK,
   VENUE_TYPE_TICK,
@@ -36,9 +37,16 @@ import {
   rowTimeLabel,
   translateCategory,
 } from '@/lib/eventDisplay';
+import { softTap } from '@/lib/haptics';
 import { useLocale, useT } from '@/lib/i18n';
-import { useNewArrivalsSince, useRecentEvents } from '@/lib/queries';
+import {
+  useNewArrivalsSince,
+  useRecentEvents,
+  useToggleDismiss,
+  useToggleSave,
+} from '@/lib/queries';
 import type { BadgeTone } from '@/lib/types';
+import { useNewFilters } from '@/store/newFilters';
 import {
   useNewWindowStart,
   useSessionTimestamps,
@@ -74,19 +82,39 @@ export default function NewScreen() {
     }, [])
   );
 
-  // Primair: events die sinds vorige sessie nieuw zijn. Pauzeert
-  // wanneer since=null (eerste-ooit-launch).
+  // Baan-voorkeur (film/theater/live/club/kunst). Leeg = alles. Staat in
+  // een persisted store, want dit is een voorkeur en geen sessie-filter.
+  const activeLanes = useNewFilters((s) => s.activeLanes);
+  const toggleLane = useNewFilters((s) => s.toggleLane);
+
+  // De server capt op 15 zodat de lijst áf te maken is. Wie meer wil
+  // klapt uit; dat is een tweede request, geen client-side slice.
+  const [expanded, setExpanded] = useState(false);
+
+  // Primair: alles dat sinds de vorige sessie is toegevoegd — nieuwe
+  // events én nieuwe datums bij bestaande events. Pauzeert wanneer
+  // since=null (eerste-ooit-launch).
   const {
-    data: newSinceLast,
+    data: arrivals,
     isLoading: loadingSince,
     error: errorSince,
-  } = useNewArrivalsSince(since, { enabled: authed });
+  } = useNewArrivalsSince(since, {
+    enabled: authed,
+    lanes: activeLanes,
+    limit: expanded ? 200 : undefined,
+  });
 
   // Fallback: wanneer er sinds de vorige sessie 0 nieuwe items zijn (of
   // wanneer er nog geen since is) draaien we 'n tweede query voor de
   // laatste 10 recente events zodat de pagina nooit kaal blijft.
+  // Niet wanneer je zelf banen hebt weggeklikt — dan is "leeg" een
+  // antwoord op je filter, geen gebrek aan aanbod, en zou de fallback
+  // juist tonen wat je net wegfilterde.
   const sinceEmpty =
-    !since || (newSinceLast !== undefined && newSinceLast.length === 0);
+    !since ||
+    (arrivals !== undefined &&
+      arrivals.total === 0 &&
+      activeLanes.length === 0);
   const {
     data: recent,
     isLoading: loadingRecent,
@@ -94,7 +122,23 @@ export default function NewScreen() {
   } = useRecentEvents(10, { enabled: authed && sinceEmpty });
 
   const rawEvents =
-    newSinceLast && newSinceLast.length > 0 ? newSinceLast : recent;
+    arrivals && arrivals.events.length > 0 ? arrivals.events : recent;
+  // Wat je deze sessie al beoordeeld hebt. De server haalt beoordeelde
+  // events er ook uit, maar pas bij de volgende fetch — deze set laat de
+  // rij meteen verdwijnen zodat de lijst onder je handen leegloopt.
+  // Dát is de beloning: je kunt 'm áf krijgen.
+  const [rated, setRated] = useState<Set<string>>(new Set());
+  const markRated = useCallback((eventId: string) => {
+    setRated((prev) => new Set(prev).add(eventId));
+  }, []);
+
+  // `total` telt vóór de cap: 15 in beeld, 47 achter de meer-knop. Min
+  // wat je deze sessie al hebt weggetikt — de server weet daar pas van
+  // bij de volgende fetch, en tot die tijd zou de teller stil blijven
+  // staan terwijl de lijst onder je handen korter wordt.
+  const total = Math.max(0, (arrivals?.total ?? recent?.length ?? 0) - rated.size);
+  const shown = (arrivals?.events.length ?? recent?.length ?? 0) - rated.size;
+  const laneCounts = arrivals?.laneCounts;
   // Server geeft de lijst in createdAt-desc volgorde (meest recent
   // gescraped eerst). Visueel is dat verwarrend: gebruiker ziet de
   // event-datum naast elke kaart en die springt dan random rond. Hier
@@ -106,25 +150,41 @@ export default function NewScreen() {
   // Mooie persoonlijke filter zonder dat je écht items mist.
   const events = useMemo(() => {
     if (!rawEvents) return undefined;
-    return [...rawEvents].sort((a, b) => {
-      const aT = a.startsAt ? new Date(a.startsAt).getTime() : Infinity;
-      const bT = b.startsAt ? new Date(b.startsAt).getTime() : Infinity;
-      return aT - bT;
-    });
-  }, [rawEvents]);
+    return [...rawEvents]
+      .filter((e) => !rated.has(e.id))
+      .sort((a, b) => {
+        const aT = a.startsAt ? new Date(a.startsAt).getTime() : Infinity;
+        const bT = b.startsAt ? new Date(b.startsAt).getTime() : Infinity;
+        return aT - bT;
+      });
+  }, [rawEvents, rated]);
 
+  // Eén sectie per baan, in vaste volgorde zodat de lijst er elke dag
+  // hetzelfde uitziet ongeacht welke scraper toevallig als laatste liep.
+  // Binnen een baan komen gevolgde venues bovenaan — dat signaal was
+  // eerder een eigen sectie, maar de baan-indeling is de belangrijkere
+  // scheiding en twee kapstokken door elkaar leest niet.
   const sections = useMemo(() => {
     if (!events) return [];
-    const followed = events.filter((e) => e.venueFollowed);
-    const others = events.filter((e) => !e.venueFollowed);
-    const out: { kind: 'followed' | 'others'; data: ApiEvent[] }[] = [];
-    if (followed.length > 0) out.push({ kind: 'followed', data: followed });
-    if (others.length > 0) out.push({ kind: 'others', data: others });
+    const out: { lane: Lane | 'onbekend'; data: ApiEvent[] }[] = [];
+    for (const lane of LANES) {
+      const data = events.filter((e) => e.lane === lane);
+      if (data.length > 0)
+        out.push({
+          lane,
+          data: [
+            ...data.filter((e) => e.venueFollowed),
+            ...data.filter((e) => !e.venueFollowed),
+          ],
+        });
+    }
+    // De fallback-query (`/events/new` zonder since) levert geen lane —
+    // die rijen vallen hier in één naamloze sectie.
+    const rest = events.filter((e) => !e.lane);
+    if (rest.length > 0) out.push({ lane: 'onbekend', data: rest });
     return out;
   }, [events]);
-  // Header pas tonen als je ECHT iets volgt — anders is "Andere venues"
-  // alleen verwarrend. Bij 0 follows = 1 sectie zonder kop.
-  const showSectionHeaders = sections.length > 1;
+  const showSectionHeaders = sections.some((s) => s.lane !== 'onbekend');
   const showingFallback =
     sinceEmpty && (recent?.length ?? 0) > 0;
   const isLoading = (since && loadingSince) || (sinceEmpty && loadingRecent);
@@ -209,9 +269,11 @@ export default function NewScreen() {
         <SectionList
           sections={sections}
           keyExtractor={(e) => e.id}
-          renderItem={({ item }) => <NewArrivalRow event={item} />}
+          renderItem={({ item }) => (
+            <NewArrivalRow event={item} onRated={markRated} />
+          )}
           renderSectionHeader={({ section }) =>
-            showSectionHeaders ? (
+            showSectionHeaders && section.lane !== 'onbekend' ? (
               <View
                 style={[
                   styles.sectionHead,
@@ -219,30 +281,86 @@ export default function NewScreen() {
                 ]}
               >
                 <Text style={[styles.sectionHeadText, { color: roles.fg }]}>
-                  {section.kind === 'followed'
-                    ? t('Bij jouw venues', 'At your venues')
-                    : t('Bij andere venues', 'At other venues')}
+                  {laneLabel(section.lane, t)}
                 </Text>
               </View>
             ) : null
           }
           stickySectionHeadersEnabled={false}
           ListHeaderComponent={
-            <View style={styles.fallbackHint}>
-              <Text style={[styles.fallbackText, { color: roles.fg }]}>
-                {sinceLabel
-                  ? showingFallback || !events || events.length === 0
-                    ? t(
-                        `Niks nieuws sinds ${sinceLabel} — hier zie je de laatste ${events?.length ?? 0} aanwinsten.`,
-                        `Nothing new since ${sinceLabel} — here are the latest ${events?.length ?? 0} additions.`
-                      )
-                    : t(
-                        `${events.length} ${events.length === 1 ? 'aanwinst' : 'aanwinsten'} sinds je vorige bezoek (${sinceLabel}).`,
-                        `${events.length} ${events.length === 1 ? 'new addition' : 'new additions'} since your last visit (${sinceLabel}).`
-                      )
-                  : null}
-              </Text>
+            <View>
+              <View style={styles.fallbackHint}>
+                <Text style={[styles.fallbackText, { color: roles.fg }]}>
+                  {sinceLabel
+                    ? showingFallback || !events || events.length === 0
+                      ? t(
+                          `Niks nieuws sinds ${sinceLabel} — hier zie je de laatste ${events?.length ?? 0} aanwinsten.`,
+                          `Nothing new since ${sinceLabel} — here are the latest ${events?.length ?? 0} additions.`
+                        )
+                      : shown < total
+                        ? t(
+                            `${shown} van ${total} sinds je vorige bezoek (${sinceLabel}).`,
+                            `${shown} of ${total} since your last visit (${sinceLabel}).`
+                          )
+                        : t(
+                            `${total} ${total === 1 ? 'aanwinst' : 'aanwinsten'} sinds je vorige bezoek (${sinceLabel}).`,
+                            `${total} ${total === 1 ? 'new addition' : 'new additions'} since your last visit (${sinceLabel}).`
+                          )
+                    : null}
+                </Text>
+              </View>
+              {laneCounts ? (
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.chipRow}
+                >
+                  {LANES.filter(
+                    (lane) =>
+                      (laneCounts[lane] ?? 0) > 0 || activeLanes.includes(lane)
+                  ).map((lane) => {
+                    const on = activeLanes.includes(lane);
+                    return (
+                      <Pressable
+                        key={lane}
+                        onPress={() => toggleLane(lane)}
+                        style={[
+                          styles.laneChip,
+                          {
+                            borderColor: on ? roles.accent : roles.fgPlaceholder,
+                            backgroundColor: on ? roles.accent : 'transparent',
+                          },
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.laneChipText,
+                            { color: on ? roles.bg : roles.fg },
+                          ]}
+                        >
+                          {laneLabel(lane, t)} {laneCounts[lane] ?? 0}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </ScrollView>
+              ) : null}
             </View>
+          }
+          ListFooterComponent={
+            shown < total ? (
+              <Pressable
+                onPress={() => setExpanded(true)}
+                style={[styles.moreBtn, { borderColor: roles.fgPlaceholder }]}
+              >
+                <Text style={[styles.moreBtnText, { color: roles.fg }]}>
+                  {t(
+                    `Toon de resterende ${total - shown}`,
+                    `Show remaining ${total - shown}`
+                  )}
+                </Text>
+              </Pressable>
+            ) : null
           }
           contentContainerStyle={{
             paddingTop: topInset,
@@ -274,6 +392,23 @@ export default function NewScreen() {
   );
 }
 
+/** Baan-labels. "live" en "club" zijn de scheiding waar het om draait:
+    een concert om 20:30 en een feest om 01:00 zijn niet dezelfde vraag. */
+function laneLabel(lane: Lane, t: ReturnType<typeof useT>): string {
+  switch (lane) {
+    case 'film':
+      return t('Film', 'Film');
+    case 'theater':
+      return t('Theater', 'Theatre');
+    case 'live':
+      return t('Live muziek', 'Live music');
+    case 'club':
+      return t('Clubs & dj’s', 'Clubs & DJs');
+    case 'kunst':
+      return t('Kunst & meer', 'Art & more');
+  }
+}
+
 function formatSinceLabel(date: Date, locale: ReturnType<typeof useLocale>): string {
   const day = date.getDate();
   const month = monthShort(date.getMonth(), locale).toLowerCase();
@@ -282,8 +417,18 @@ function formatSinceLabel(date: Date, locale: ReturnType<typeof useLocale>): str
   return year === nowYear ? `${day} ${month}` : `${day} ${month} ${year}`;
 }
 
-function NewArrivalRow({ event }: { event: ApiEvent }) {
+function NewArrivalRow({
+  event,
+  onRated,
+}: {
+  event: ApiEvent;
+  onRated: (eventId: string) => void;
+}) {
   const locale = useLocale();
+  const t = useT();
+  const roles = useRoles();
+  const toggleSave = useToggleSave();
+  const toggleDismiss = useToggleDismiss();
   const venueTone =
     event.venue.type &&
     (VENUE_TYPE_TICK as Record<string, BadgeTone>)[event.venue.type]
@@ -297,8 +442,58 @@ function NewArrivalRow({ event }: { event: ApiEvent }) {
   const month = monthShort(d.getMonth(), locale).toLowerCase();
   const time = rowTimeLabel(start, event.endsAt ?? null, locale);
   const dateLabel = `${dow} ${d.getDate()} ${month}`;
+  // Onder een baan-kop is de categorie-tag ruis. Wat je daar wél wil
+  // weten: is dit nieuw, of kreeg iets bestaands er datums bij? Dat
+  // laatste zag je hiervoor helemaal niet.
+  const extraDates = (event.newOccurrenceCount ?? 0) > 1;
+  const tags =
+    event.lane && event.isNewEvent === false && extraDates
+      ? [
+          {
+            label: t(
+              `+${event.newOccurrenceCount} datums`,
+              `+${event.newOccurrenceCount} dates`
+            ),
+            tone,
+          },
+        ]
+      : [{ label: translateCategory(event.category, locale), tone }];
+  // Ja/nee landt op één occurrence, maar geldt voor het hele event: de
+  // server haalt daarna álle voorstellingen van dit event uit /new.
+  // Anders dismis je een film met 19 screenings negentien keer.
+  const rateId = event.rateOccurrenceId;
+  const rate = (kind: 'ja' | 'nee') => {
+    if (!rateId) return;
+    softTap();
+    if (kind === 'ja') toggleSave.mutate({ occurrenceId: rateId, source: 'new' });
+    else toggleDismiss.mutate({ occurrenceId: rateId, source: 'new' });
+    onRated(event.id);
+  };
+
+  const actions = rateId ? (
+    <View style={styles.rateCol}>
+      <Pressable
+        onPress={() => rate('ja')}
+        hitSlop={6}
+        style={[styles.rateBtn, { borderColor: roles.fgPlaceholder }]}
+        accessibilityLabel={t('Interessant', 'Interesting')}
+      >
+        <Ionicons name="heart" size={18} color={roles.accent} />
+      </Pressable>
+      <Pressable
+        onPress={() => rate('nee')}
+        hitSlop={6}
+        style={[styles.rateBtn, { borderColor: roles.fgPlaceholder }]}
+        accessibilityLabel={t('Niks voor mij', 'Not for me')}
+      >
+        <Ionicons name="close" size={18} color={roles.fgMuted} />
+      </Pressable>
+    </View>
+  ) : null;
+
   return (
     <EventListRow
+      actions={actions}
       thumb={eventImageUrl(event) ?? ''}
       thumbSize={96}
       title={event.title}
@@ -307,7 +502,7 @@ function NewArrivalRow({ event }: { event: ApiEvent }) {
       time={time}
       dateLabel={dateLabel}
       dateAbove
-      tags={[{ label: translateCategory(event.category, locale), tone }]}
+      tags={tags}
       genreLabel={(event.genres ?? [])[0]}
       tick={tone}
       onPress={() =>
@@ -365,6 +560,56 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 21,
     letterSpacing: -0.1,
+  },
+  // Twee knoppen onder elkaar in de tijd-kolom. Ver genoeg uit elkaar
+  // dat je 'nee' niet per ongeluk raakt als je 'ja' bedoelt.
+  rateCol: {
+    justifyContent: 'center',
+    gap: 10,
+    paddingLeft: 4,
+  },
+  rateBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 999,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  chipRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 22,
+    paddingTop: 8,
+    paddingBottom: 4,
+  },
+  laneChip: {
+    height: 36,
+    paddingHorizontal: 14,
+    borderRadius: 999,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  laneChipText: {
+    fontFamily: fontFamily.medium,
+    fontSize: 13,
+    letterSpacing: -0.06,
+  },
+  moreBtn: {
+    marginHorizontal: 22,
+    marginTop: 14,
+    height: 46,
+    borderRadius: 999,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  moreBtnText: {
+    fontFamily: fontFamily.medium,
+    fontSize: 14,
+    letterSpacing: -0.06,
   },
   // Section-headers — zelfde display-stijl als de category-headers
   // op Agenda: dikke font-titel, geen mono-kicker.

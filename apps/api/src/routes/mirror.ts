@@ -302,18 +302,32 @@ export const dismissesRoute = new Hono();
  * `/op-gevoel` in latere sessies, en is input voor het smaak-profiel
  * (welke patronen wijst de gebruiker af).
  *
- * Body: `{ occurrenceId, source? }`. Source default 'op-gevoel' want dat
- * is het enige scherm met een dismiss-gebaar in v1.
+ * Body: `{ occurrenceId, source? }`. Zonder source valt 'ie terug op de
+ * kolom-default 'op-gevoel'; call-sites horen 'm mee te sturen, anders
+ * schrijft /new z'n nee's weg alsof ze van het swipescherm kwamen en
+ * klopt de bron-breakdown op de spiegel niet meer.
  */
+const DISMISS_SOURCES = [
+  'venue', 'friend', 'search', 'op-gevoel', 'avond', 'agenda', 'kaart',
+  'series', 'gered', 'new', 'other',
+] as const;
 dismissesRoute.post('/', async (c) => {
   const userId = await requireUserId(c);
   if (typeof userId !== 'string') return userId;
 
-  const body = (await c.req.json()) as { occurrenceId?: string };
+  const body = (await c.req.json()) as {
+    occurrenceId?: string;
+    source?: string;
+  };
   const occurrenceId = body.occurrenceId;
   if (!occurrenceId) {
     return c.json({ error: 'occurrenceId is verplicht' }, 400);
   }
+  const source =
+    typeof body.source === 'string' &&
+    (DISMISS_SOURCES as readonly string[]).includes(body.source)
+      ? (body.source as (typeof DISMISS_SOURCES)[number])
+      : undefined;
 
   const existing = await db
     .select()
@@ -347,7 +361,7 @@ dismissesRoute.post('/', async (c) => {
     .limit(1);
   if (!occ) return c.json({ error: 'occurrence niet gevonden' }, 404);
 
-  await db.insert(schema.dismisses).values({ userId, occurrenceId });
+  await db.insert(schema.dismisses).values({ userId, occurrenceId, source });
   return c.json({ dismissed: true });
 });
 

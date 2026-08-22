@@ -35,7 +35,13 @@ Root `package.json` heeft scripts: `pnpm dev:mobile`, `pnpm dev:api`, `pnpm db:g
 - **react-native-maps** (Apple Maps default).
 - **@expo/vector-icons** (Ionicons) voor system-iconen; **`components/Cross.tsx`** voor het brand-kruis.
 
-Native deps werken in **Expo Go** — geen dev client nodig totdat we een native module gebruiken die niet in Expo Go zit.
+**Expo Go werkt niet meer** — `kaart.tsx` importeert `@maplibre/maplibre-react-native`, en die native module zit niet in Expo Go (`MLRNCameraModule could not be found`, faalt bij het registreren van de route dus de héle app blijft zwart). Draai een dev build:
+
+```
+npx expo run:ios --device <udid>
+```
+
+Let op: `expo-dev-client` zit **niet** in de deps, dus de build heeft geen dev-launcher en zoekt Metro altijd op poort **8081** — `--port 8082` wordt genegeerd en je krijgt "No script URL provided". Zorg dat 8081 vrij is.
 
 ### Backend (`apps/api`)
 - **Hono** op Node (start lokaal op `:8787`).

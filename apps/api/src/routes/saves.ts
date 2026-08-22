@@ -113,6 +113,7 @@ const SAVE_SOURCES = [
   'kaart',
   'series',
   'gered',
+  'new',
   'other',
 ] as const;
 type SaveSource = (typeof SAVE_SOURCES)[number];

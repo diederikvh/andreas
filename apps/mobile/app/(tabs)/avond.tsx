@@ -72,6 +72,7 @@ import {
 } from '@/lib/queries';
 import { useSession } from '@/lib/authClient';
 import { useMode, useRoles } from '@/store/mode';
+import { useNewFilters } from '@/store/newFilters';
 import { useAddSavedVandaagSearch } from '@/store/savedVandaagSearches';
 import { useNewBadgeSince } from '@/store/sessionTimestamps';
 import { useVandaagFilters } from '@/store/vandaagFilters';
@@ -1809,12 +1810,16 @@ function NewBanner() {
   const roles = useRoles();
   const t = useT();
   const since = useNewBadgeSince();
-  const { data: events } = useNewArrivalsSince(since);
+  // Baan-voorkeur meesturen zodat de badge telt wat je straks ook écht
+  // te zien krijgt — een 12 die opent op 3 rijen is een kapotte belofte.
+  const activeLanes = useNewFilters((s) => s.activeLanes);
+  const { data: arrivals } = useNewArrivalsSince(since, { lanes: activeLanes });
   // Badge telt events nieuwer dan je laatste /new-bezoek → zakt naar 0
   // zodra je de pagina hebt gezien, loopt pas weer op bij nieuwe
-  // aanwinsten. Bij since=null (eerste sessie) staat de query op pauze
+  // aanwinsten. `total` en niet `events.length`, want de lijst is gecapt
+  // op 15. Bij since=null (eerste sessie) staat de query op pauze
   // → 0, geen badge.
-  const count = events?.length ?? 0;
+  const count = arrivals?.total ?? 0;
   return (
     <Pressable
       onPress={() => router.push('/new' as never)}

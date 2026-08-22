@@ -102,6 +102,15 @@ export type ApiEvent = {
   trailerUrl?: string | null;
   category: 'Muziek' | 'Theater' | 'Literatuur' | 'Film' | 'Kunst' | 'Lezing';
   featured: boolean;
+  /** Alleen gevuld door `/events/new`: in welke baan dit event valt. */
+  lane?: Lane;
+  /** Alleen `/events/new`: hoeveel datums er sinds `since` bij kwamen. */
+  newOccurrenceCount?: number;
+  /** Alleen `/events/new`: bestond het event zelf nog niet (true), of
+      kreeg een bestaand event er datums bij (false)? */
+  isNewEvent?: boolean;
+  /** Alleen `/events/new`: de occurrence waar een ja/nee op landt. */
+  rateOccurrenceId?: string;
   /** Venue van de eerstvolgende occurrence. Voor films met multi-venue
       (Anora speelt bij Eye én Kriterion) wijkt dit af van `venue` — die
       blijft "wie scrapete dit het eerst" en is voor list-rendering vaak
@@ -329,12 +338,33 @@ export async function getForYouFeed(
  * "Net binnen sinds X": events met createdAt > since. Gebruikt voor de
  * shortcut-badge + primaire lijst op /new.
  */
-export async function getNewEventsSince(since: Date): Promise<ApiEvent[]> {
+/**
+ * De vier banen waarin je een avond kiest (plus een restbak voor kunst,
+ * lezingen en literatuur). Server leidt 'm af per occurrence — zie
+ * LANE_SQL in `routes/events.ts`.
+ */
+export const LANES = ['film', 'theater', 'live', 'club', 'kunst'] as const;
+export type Lane = (typeof LANES)[number];
+
+export type NewArrivals = {
+  events: ApiEvent[];
+  /** Aantal events dat aan het filter voldoet vóór de cap — voedt
+      "15 van 47" en de meer-knop. */
+  total: number;
+  /** Per baan het aantal events, altijd ongefilterd geteld zodat de
+      chips laten zien wat je wegklikt. */
+  laneCounts: Record<Lane, number>;
+};
+
+export async function getNewEventsSince(
+  since: Date,
+  opts: { lanes?: Lane[]; limit?: number } = {}
+): Promise<NewArrivals> {
   const params = new URLSearchParams({ since: since.toISOString() });
-  const { events } = await authedRequest<{ events: ApiEvent[] }>(
-    `/events/new?${params.toString()}`
-  );
-  return events;
+  if (opts.lanes && opts.lanes.length > 0)
+    params.set('lane', opts.lanes.join(','));
+  if (opts.limit) params.set('limit', String(opts.limit));
+  return authedRequest<NewArrivals>(`/events/new?${params.toString()}`);
 }
 
 /** Slanke venue-shape voor de search-resultaten lijst. */
@@ -1013,6 +1043,7 @@ export type SaveSource =
   | 'kaart'
   | 'series'
   | 'gered'
+  | 'new'
   | 'other';
 
 export async function toggleSave(
@@ -1026,11 +1057,12 @@ export async function toggleSave(
 }
 
 export async function toggleDismiss(
-  occurrenceId: string
+  occurrenceId: string,
+  source?: SaveSource | null
 ): Promise<{ dismissed: boolean }> {
   return await authedRequest<{ dismissed: boolean }>('/dismisses', {
     method: 'POST',
-    body: JSON.stringify({ occurrenceId }),
+    body: JSON.stringify({ occurrenceId, source: source ?? undefined }),
   });
 }
 
@@ -1476,6 +1508,13 @@ export type ApiFeedEvent = {
   imageUrl: string | null;
   category: 'Muziek' | 'Theater' | 'Literatuur' | 'Film' | 'Kunst' | 'Lezing';
   featured: boolean;
+  /** Alleen gevuld door `/events/new`: in welke baan dit event valt. */
+  lane?: Lane;
+  /** Alleen `/events/new`: hoeveel datums er sinds `since` bij kwamen. */
+  newOccurrenceCount?: number;
+  /** Alleen `/events/new`: bestond het event zelf nog niet (true), of
+      kreeg een bestaand event er datums bij (false)? */
+  isNewEvent?: boolean;
   genres: string[];
   venue: {
     id: string;

@@ -71,6 +71,9 @@ export const saveSource = pgEnum('save_source', [
   'kaart',
   'series',
   'gered',
+  /** De dagelijkse "net binnen"-lijst (/new) — de plek waar je nieuw
+      aanbod meteen beoordeelt. */
+  'new',
   'other',
 ]);
 export const venueFollowState = pgEnum('venue_follow_state', [
