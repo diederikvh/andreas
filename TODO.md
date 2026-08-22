@@ -2,7 +2,7 @@
 
 Live status van het project. Cross-checken met `HANDOFF.md` voor de oorspronkelijke briefing en met de huidige codebase voor de waarheid. Per open punt staat genoeg context om een agent zelfstandig te laten werken.
 
-Laatste sync: 2026-05-16 · branch `main`.
+Laatste sync: 2026-08-22 · branch `main`.
 
 ## Stand
 
@@ -141,6 +141,8 @@ Laatste sync: 2026-05-16 · branch `main`.
 
 - ⬜ **"Voor jou" op Agenda** — copy van Avond-rail of natuurlijker geïntegreerd in tijdslijn. Plan noemde "/avond of /agenda".
 - ⬜ **"Omdat je X volgt..."-venue-suggesties** — light collaborative filtering op venue-follows (welke venues hebben overlap met jouw save-patroon). Apart endpoint `/venues/for-you` of als sectie op Avond/Jij.
+- ⬜ **Dagelijkse push naar `/new`** (afgesproken: oppakken vanaf ~29 aug 2026) — cron die één keer per dag kijkt of er ná baan-filtering iets overblijft, en alleen dán pusht. Stilte bij nul is expliciet onderdeel van het ontwerp: een digest die elke dag móet vullen wordt ruis. Endpoint en pagina staan al (`/events/new` + `/new`), `push_tokens` ook; wat ontbreekt is de scheduler en een per-user voorkeur voor het tijdstip. Let op het volume: nieuwe events per dag schommelde in aug tussen 3 en 150, dus de cap van 15 is wat de push waarmaakt.
+- ⬜ **Wijzigingen los van nieuws** — "je zaterdag is verplaatst/afgelast" is service en urgent, "12 nieuwe dingen" is ontdekking en dat niet. Meng je ze, dan negeer je de ene en mis je de andere. Vraagt een `updatedAt` op `occurrences` (nu alleen `createdAt`).
 - ⬜ **Push voor matches** — match-logic + scheduler. Alleen voor events die hoog scoren tegen jouw profiel, en alleen bij gevolgde venues of genres met N≥3 saves. Géén "deze week speelt er..."-broadcast. `push_tokens` tabel bestaat al.
 - ⬜ **Email digest** — wekelijks/maandelijks. Custom header-block met top-3 voorgestelde events, daarna editorial keuzes. Vereist mail-provider (Resend/Postmark) + cron.
 - ⬜ **Reactivation-flow** — cron-scan op `users.lastSeenAt` na 2+ weken inactief. Stille trigger naar push of digest gebaseerd op profiel.
@@ -305,7 +307,8 @@ Quick recall van wat er in de app zit. Check dit eerst bij elke "kunnen we X toe
 - **Social feed** — `useSocialFeed` toont saves van vrienden, gebruikt in /going + Avond-rail.
 - **Smaak-spiegel** — `/jij` heeft een Letterboxd/Wrapped-stijl identity-mirror: top venues, top genres, weekday-distributie, monthly timeline, identity-zin gegenereerd uit aggregates. Server: [mirror.ts](apps/api/src/routes/mirror.ts).
 - **Mood-swiper** — `/op-gevoel` is een card-swiper (links=dismiss, rechts=save).
-- **Op-gevoel dismisses** — left-swipe verbergt event permanent; dismisses tellen mee in spiegel.
+- **Dagelijkse "net binnen"-lijst** — `/new` ankert op `occurrences.createdAt`, dus óók een nieuwe datum bij een bestaand event (op een drukke scrape-dag 80-90% van de aanwas). Vijf banen (film/theater/live/club/kunst, afgeleid in de query — zie `LANE_SQL`), gecapt op 15 en beurtelings uit elke baan geplukt. Ja/nee per rij; een oordeel geldt voor het hele event en haalt 'm uit de lijst. Baan-voorkeur persist in `store/newFilters.ts`.
+- **Nee's wegen mee** — `buildTasteProfile()` in [_helpers.ts](apps/api/src/routes/_helpers.ts) telt saves én dismisses, recentheids-gewogen; `/for-you` en `/new` ranken er allebei op. Een nee weegt 0,6 van een ja en is gecapt (we tellen gebaren, geen impressies — een druk programmerende venue verzamelt anders mechanisch te veel straf).
 - **Push** — `PushManager` + `expoPushTokens` tabel. Pushes worden gestuurd voor: friend-requests, invitations, group-events, share-invite-claims. ([push.ts](apps/api/src/push.ts))
 - **Inbox / in-app notificaties** — `InboxNotifier` + `InboxToast` componenten.
 - **Series/festivals** — Schema + UI staat (events_in_series M:N, /series/[slug] page, featured-toggle, auto-expiry op `endsAt`). Nu gevuld met ADE 2026 + Lenteballet 2026.
@@ -320,7 +323,7 @@ Quick recall van wat er in de app zit. Check dit eerst bij elke "kunnen we X toe
 - Persoonlijke chronologische **timeline** ("waar je geweest bent").
 - **Mini-reviews / posts** onder events.
 - **Lists / curated collections** (Letterboxd-stijl).
-- **Donderdag-digest push** (push fires nu alleen op interacties, niet op tijdblok).
+- **Tijdgestuurde push** (push fires nog steeds alleen op interacties). Zie het open punt hieronder — dit is nu het laatste stuk dat de app zichzelf laat openen.
 - **Onboarding scene-pick** voor first-sessie pre-bootstrap.
 
 ---
