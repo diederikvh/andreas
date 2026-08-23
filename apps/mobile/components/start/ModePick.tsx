@@ -39,33 +39,30 @@ export function ModePick({ onPicked }: Props) {
       ]}
     >
       <Text style={[styles.kicker, { color: roles.accent }]}>
-        {t('Dag of nacht', 'Day or night')}
+        {t('Uiterlijk', 'Appearance')}
       </Text>
 
       <Text style={[styles.title, { color: roles.fg }]}>
-        {t('Wat zoek je?', 'What are you after?')}
+        {t('Hoe wil je ’m zien?', 'How should it look?')}
       </Text>
 
       <Text style={[styles.sub, { color: roles.fgRead }]}>
         {t(
-          "Twee agenda's. Twee ritmes. Eentje voor wat overdag in de stad gebeurt, eentje voor wat 's avonds en 's nachts losgaat. Begin waar je nu zin in hebt.",
-          'Two agendas. Two rhythms. One for what happens in the city by day, one for what kicks off in the evening and at night. Start with whatever you’re into right now.'
+          'Puur een kwestie van smaak: je ziet in allebei precies hetzelfde aanbod. Wisselen kan altijd, boven in beeld.',
+          'Purely a matter of taste — both show exactly the same programme. You can switch any time, up at the top.'
         )}
       </Text>
 
       <View style={styles.tiles}>
         <ModeTile
           name={t('Nacht', 'Night')}
-          meta={t('feesten, concerten, films', 'parties, concerts, films')}
+          meta={t('donker, acid-geel', 'dark, acid yellow')}
           onPress={() => pick('nacht')}
           variant="nacht"
         />
         <ModeTile
           name={t('Dag', 'Day')}
-          meta={t(
-            'exposities, matinees, openings',
-            'exhibitions, matinees, openings'
-          )}
+          meta={t('licht, karmijnrood', 'light, crimson')}
           onPress={() => pick('dag')}
           variant="dag"
         />
