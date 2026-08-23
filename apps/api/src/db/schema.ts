@@ -190,6 +190,11 @@ export const users = pgTable(
         het admin-insights-dashboard. Null voor users die nooit hebben
         ingelogd sinds de feature is geïntroduceerd. */
     lastSeenAt: timestamp({ withTimezone: true }),
+    /** Wanneer deze gebruiker /new voor het laatst bekeek. Stond eerder
+        alleen op het toestel, waardoor je inhaal-venster verdween bij
+        een nieuwe telefoon. Op de user-rij reist 'ie mee — een van de
+        concrete voordelen van een account boven anoniem. */
+    lastSeenNewAt: timestamp({ withTimezone: true }),
   },
   (t) => [
     uniqueIndex('users_phone_number_idx').on(t.phoneNumber),

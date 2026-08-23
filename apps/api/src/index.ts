@@ -165,6 +165,24 @@ app.get('/me', async (c) => {
   return c.json({ user: row ?? session.user });
 });
 
+/**
+ * Markeer /new als gezien. Client roept dit aan bij het verlaten van de
+ * pagina, náást z'n eigen lokale timestamp.
+ *
+ * Alleen zinvol voor echte accounts: bij een anonieme gebruiker leeft de
+ * identiteit toch op dit ene toestel, en dan voegt een server-kopie
+ * niets toe boven de lokale opslag.
+ */
+app.post('/me/seen-new', async (c) => {
+  const session = await auth.api.getSession({ headers: c.req.raw.headers });
+  if (!session) return c.json({ error: 'unauthorized' }, 401);
+  await db
+    .update(schema.users)
+    .set({ lastSeenNewAt: new Date() })
+    .where(eq(schema.users.id, session.user.id));
+  return c.json({ ok: true });
+});
+
 app.patch('/me', async (c) => {
   const session = await auth.api.getSession({
     headers: c.req.raw.headers,

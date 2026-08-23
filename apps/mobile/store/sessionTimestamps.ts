@@ -40,6 +40,17 @@ type State = {
   hydrated: boolean;
   markLaunch: () => void;
   markNewSeen: () => void;
+  /**
+   * Neem de serverwaarde over als die ouder is dan wat dit toestel
+   * weet. Gebeurt één keer per launch, zodra `/me` binnen is.
+   *
+   * Alleen naar achteren schuiven, nooit naar voren: anders zou een
+   * nieuwe telefoon (waar `previous` op nu staat) je venster wegpoetsen
+   * in plaats van herstellen. En bewust op `previous` en niet op
+   * `lastSeenNewAt`, zodat de sessie-stabiliteit van de lijst intact
+   * blijft — binnen één sessie blijft de lijst dezelfde.
+   */
+  adoptServerSeen: (iso: string | null | undefined) => void;
 };
 
 export const useSessionTimestamps = create<State>()(
@@ -64,6 +75,16 @@ export const useSessionTimestamps = create<State>()(
       },
       markNewSeen: () => {
         set({ lastSeenNewAt: Date.now() });
+      },
+      adoptServerSeen: (iso) => {
+        if (!iso) return;
+        const ts = Date.parse(iso);
+        if (Number.isNaN(ts)) return;
+        const { previous, lastSeenNewAt } = get();
+        const next: Partial<State> = {};
+        if (previous === 0 || ts < previous) next.previous = ts;
+        if (lastSeenNewAt === 0 || ts > lastSeenNewAt) next.lastSeenNewAt = ts;
+        if (Object.keys(next).length > 0) set(next);
       },
     }),
     {

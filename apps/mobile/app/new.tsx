@@ -27,8 +27,13 @@ import { FilterChip } from '@/components/FilterChip';
 import { EventListRow } from '@/components/EventListRow';
 import { RefreshBanner } from '@/components/RefreshBanner';
 import { SpinningCross } from '@/components/SpinningCross';
-import { useSession } from '@/lib/authClient';
-import { LANES, type ApiEvent, type Lane } from '@/lib/api';
+import { useIsRegistered, useSession } from '@/lib/authClient';
+import {
+  LANES,
+  markNewSeenOnServer,
+  type ApiEvent,
+  type Lane,
+} from '@/lib/api';
 import {
   CATEGORY_TICK,
   VENUE_TYPE_TICK,
@@ -64,6 +69,7 @@ export default function NewScreen() {
 
   const { data: session } = useSession();
   const authed = Boolean(session?.user?.id);
+  const registered = useIsRegistered();
   // De lijst ankert op de sessie-grens (`previous`), niet op je
   // laatste bezoek. Daardoor blijft 'ie de hele sessie dezelfde "nieuw
   // sinds je vorige bezoek"-lijst tonen — wegstappen en terugkomen
@@ -78,8 +84,12 @@ export default function NewScreen() {
     useCallback(() => {
       return () => {
         useSessionTimestamps.getState().markNewSeen();
+        // Ook serverkant, zodat het venster een nieuwe telefoon
+        // overleeft. Alleen zinvol met een echt account — anoniem leeft
+        // je identiteit toch op dit toestel.
+        if (registered) void markNewSeenOnServer();
       };
-    }, [])
+    }, [registered])
   );
 
   // Baan-voorkeur (film/theater/live/club/kunst). Leeg = alles. Staat in

@@ -15,6 +15,7 @@ import Animated, { FadeIn } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQueryClient } from '@tanstack/react-query';
 
+import { AccountWall } from '@/components/AccountWall';
 import { AppHeader, HEADER_HEIGHT } from '@/components/AppHeader';
 import { Cross } from '@/components/Cross';
 import { ProfileAvatar } from '@/components/ProfileAvatar';
@@ -42,8 +43,8 @@ import {
   useOutgoingFriendRequests,
   useRemoveFriend,
 } from '@/lib/queries';
-import { useRoles } from '@/store/mode';
-import { fontFamily } from '@/theme/tokens';
+import { useMode, useRoles } from '@/store/mode';
+import { fontFamily, palette } from '@/theme/tokens';
 
 /**
  * Social-tab — bundelt alles wat met andere mensen te maken heeft:
@@ -58,6 +59,7 @@ import { fontFamily } from '@/theme/tokens';
  */
 export default function Social() {
   const roles = useRoles();
+  const isNacht = useMode() === 'nacht';
   const insets = useSafeAreaInsets();
   const t = useT();
   const scrollRef = useRef<ScrollView>(null);
@@ -116,6 +118,22 @@ export default function Social() {
   return (
     <View style={[styles.root, { backgroundColor: roles.bg }]}>
       <RefreshBanner visible={refreshing} topOffset={topInset + 8} />
+      {!authed ? (
+        // Buiten de ScrollView: daarbinnen krijgt de muur geen hoogte om
+        // in te centreren en plakt 'ie tegen de header. Zelfde opzet als
+        // /going.
+        <View
+          style={{ flex: 1, paddingTop: topInset, paddingBottom: bottomInset }}
+        >
+          <AccountWall
+            title={t('Ga samen op pad', 'Head out together')}
+            body={t(
+              'Zie waar je vrienden heen gaan, nodig ze uit voor wat jij gevonden hebt en houd bij wie er meegaat.',
+              'See where your friends are going, invite them to what you found, and keep track of who’s coming.'
+            )}
+          />
+        </View>
+      ) : (
       <ScrollView
         ref={scrollRef}
         style={styles.page}
@@ -143,7 +161,27 @@ export default function Social() {
           busyReq={acceptReq.isPending || declineReq.isPending}
         />
       </ScrollView>
-      <AppHeader title={t('Friends', 'Friends')} />
+      )}
+      {/* Friends staat niet meer in de tab-bar (die is Vandaag · Agenda ·
+          Meer), dus zónder sluit-knop is er geen weg terug — de balk is
+          op verborgen routes onzichtbaar. Zelfde knop als /films, /going
+          en de rest onder Meer. */}
+      <AppHeader
+        title={t('Friends', 'Friends')}
+        hideAvatar
+        rightSlot={
+          <Pressable
+            onPress={() => router.back()}
+            hitSlop={8}
+            style={[
+              styles.closeBtn,
+              { backgroundColor: isNacht ? palette.noir2 : palette.paper2 },
+            ]}
+          >
+            <Ionicons name="close" size={20} color={roles.fg} />
+          </Pressable>
+        }
+      />
     </View>
   );
 }
@@ -174,22 +212,7 @@ function FriendsPanel({
   const roles = useRoles();
   const t = useT();
 
-  if (!authed) {
-    return (
-      <View style={styles.emptyCenter}>
-        <Ionicons name="people-outline" size={48} color={roles.fgMuted} />
-        <Text style={[styles.emptyTitle, { color: roles.fg }]}>
-          {t('Log in om je vrienden te zien', 'Sign in to see your friends')}
-        </Text>
-        <Text style={[styles.emptySub, { color: roles.fgMuted }]}>
-          {t(
-            'Vrienden delen wat ze hebben gepland — log in via Jij om jullie netwerk te zien.',
-            'Friends share what they’ve planned — sign in via You to see your network.'
-          )}
-        </Text>
-      </View>
-    );
-  }
+
 
   const hasInbox =
     (invites && invites.length > 0) || (requests && requests.length > 0);
@@ -782,6 +805,13 @@ function PendingRow({ user }: { user: ApiFriendRequest }) {
 }
 
 const styles = StyleSheet.create({
+  closeBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   root: { flex: 1 },
   page: { flex: 1 },
 

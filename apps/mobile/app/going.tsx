@@ -22,6 +22,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQueryClient } from '@tanstack/react-query';
 
+import { AccountWall } from '@/components/AccountWall';
 import { AppHeader, HEADER_HEIGHT } from '@/components/AppHeader';
 import { EventListRow } from '@/components/EventListRow';
 import { RefreshBanner } from '@/components/RefreshBanner';
@@ -176,9 +177,7 @@ export default function GoingScreen() {
 
   const isLoading = savesLoading || feedLoading;
   const error = savesError ?? feedError;
-  const isEmpty =
-    (!authed && !isLoading) ||
-    (authed && !isLoading && !error && merged.length === 0);
+  const isEmpty = authed && !isLoading && !error && merged.length === 0;
 
   const closeBtn = (
     <Pressable
@@ -197,7 +196,18 @@ export default function GoingScreen() {
     <View style={[styles.root, { backgroundColor: roles.bg }]}>
       <RefreshBanner visible={refreshing} topOffset={topInset + 8} />
 
-      {isEmpty ? (
+      {!authed ? (
+        <View style={{ flex: 1, paddingTop: topInset, paddingBottom: bottomInset }}>
+          <AccountWall
+            icon="footsteps-outline"
+            title={t('Zie wie waarheen gaat', 'See who’s going where')}
+            body={t(
+              'Met vrienden erbij zie je hier wat zij hebben gepland, en kun je ze meevragen naar wat jij hebt gevonden.',
+              'With friends added you see what they’ve planned here, and you can bring them along to what you found.'
+            )}
+          />
+        </View>
+      ) : isEmpty ? (
         <View
           style={[
             styles.emptyCenter,

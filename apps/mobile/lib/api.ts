@@ -898,8 +898,22 @@ export type ApiMe = {
   /** Toegang tot de conversationele zoek ("Andreas-gids"). Opt-in per
       gebruiker via admin; bepaalt of de "Vraag de gids"-banner verschijnt. */
   guideEnabled: boolean;
+  /** Wanneer je /new voor het laatst bekeek, serverkant. Alleen gevuld
+      voor echte accounts; laat het inhaal-venster een nieuwe telefoon
+      overleven. ISO-string of null. */
+  lastSeenNewAt?: string | null;
   createdAt: string;
 };
+
+/** Markeer /new als gezien op de server. Stil falen: dit is een
+    comfort-feature, geen reden om de gebruiker iets te melden. */
+export async function markNewSeenOnServer(): Promise<void> {
+  try {
+    await authedRequest('/me/seen-new', { method: 'POST' });
+  } catch {
+    // stil
+  }
+}
 
 import * as SecureStore from 'expo-secure-store';
 

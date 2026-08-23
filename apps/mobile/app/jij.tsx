@@ -460,7 +460,21 @@ export default function Jij() {
             houdt gewoon je anonieme identiteit en alles blijft werken.
             Eerder was er zonder sessie nergens om heen te gaan, en toen
             was afsluiten dus geen optie. */}
-        <ModalCloseBtn onPress={onCancelSignIn} fullScreen />
+        <Pressable
+          onPress={onCancelSignIn}
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityLabel="Sluiten"
+          style={[
+            styles.signInCloseBtn,
+            {
+              top: insets.top + 12,
+              backgroundColor: isNacht ? palette.noir2 : palette.paper2,
+            },
+          ]}
+        >
+          <Ionicons name="close" size={20} color={roles.fg} />
+        </Pressable>
       </KeyboardAvoidingView>
     );
   }
@@ -879,23 +893,12 @@ function authFieldStyle(isNacht: boolean) {
  * rechtsboven; iOS-modals zitten al onder de status-bar (top: 12),
  * Android-modals moeten safe-area aanhouden (top: insets.top + 12).
  */
-function ModalCloseBtn({
-  onPress,
-  fullScreen = false,
-}: {
-  onPress?: () => void;
-  /** Staat deze knop op een vol scherm in plaats van in een pageSheet?
-      Een pageSheet begint al ónder de statusbalk, een gepusht scherm
-      niet — daar moet de inset er wél bij, anders valt de knop achter
-      de klok. */
-  fullScreen?: boolean;
-}) {
+function ModalCloseBtn({ onPress }: { onPress?: () => void }) {
   const mode = useMode();
   const roles = useRoles();
   const insets = useSafeAreaInsets();
   const isNacht = mode === 'nacht';
-  const top =
-    (fullScreen || Platform.OS === 'android' ? insets.top : 0) + 12;
+  const top = (Platform.OS === 'android' ? insets.top : 0) + 12;
   return (
     <Pressable
       accessibilityRole="button"
@@ -1694,6 +1697,20 @@ function SegmentPicker<T extends string>({
 }
 
 const styles = StyleSheet.create({
+  // Zelfde sluit-knop als op /films, /clubs, /theater en /going: 36×36
+  // cirkel met een Ionicons-kruis. De kleinere ModalCloseBtn met het
+  // brand-kruis is voor sheets; dit is een vol scherm en hoort bij die
+  // familie.
+  signInCloseBtn: {
+    position: 'absolute',
+    right: 22,
+    width: 36,
+    height: 36,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 20,
+  },
   root: { flex: 1 },
   loadingRoot: { alignItems: 'center', justifyContent: 'center' },
 

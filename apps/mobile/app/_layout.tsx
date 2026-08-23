@@ -25,6 +25,8 @@ import { AppState } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
+import { useIsRegistered } from '@/lib/authClient';
+import { useMe } from '@/lib/queries';
 import { ModeCurtain } from '@/components/ModeCurtain';
 import { PushManager } from '@/components/PushManager';
 import { SentryUserBinder } from '@/components/SentryUserBinder';
@@ -124,6 +126,7 @@ function RootLayout() {
                 <PushManager />
                 <InboxNotifier />
                 <SentryUserBinder />
+                <SeenWindowSync />
                 <ShareInviteClaimer />
                 <UpdateBanner />
                 <StatusBar style={mode === 'nacht' ? 'light' : 'dark'} />
@@ -137,3 +140,25 @@ function RootLayout() {
 }
 
 export default Sentry.wrap(RootLayout);
+
+/**
+ * Neem het server-venster over zodra `/me` binnen is.
+ *
+ * Voor ingelogde gebruikers weet de server wanneer je /new voor het
+ * laatst bekeek. Op een nieuwe telefoon staat de lokale sessiegrens op
+ * "nu" en zou je dus niks gemist hebben; door de oudere serverwaarde
+ * over te nemen zie je alsnog alles sinds je laatste bezoek — ook als
+ * dat op je vorige toestel was.
+ *
+ * Alleen naar achteren schuiven, en op `previous` in plaats van op
+ * `lastSeenNewAt`, zodat de lijst binnen één sessie stabiel blijft.
+ */
+function SeenWindowSync() {
+  const registered = useIsRegistered();
+  const { data: me } = useMe();
+  useEffect(() => {
+    if (!registered) return;
+    useSessionTimestamps.getState().adoptServerSeen(me?.lastSeenNewAt);
+  }, [registered, me?.lastSeenNewAt]);
+  return null;
+}
