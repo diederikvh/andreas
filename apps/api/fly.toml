@@ -31,5 +31,23 @@ primary_region = "ams"
 
 [[vm]]
   size = "shared-cpu-1x"
-  memory = "512mb"
+  # 512mb was te krap voor de nachtelijke scrape-sweep. Gereproduceerd op
+  # 2026-08-23: zes scrapers draaien gelijktijdig in hetzelfde Node-proces
+  # (de admin-endpoint roept ze in-process aan), en zodra theater z'n
+  # zwaarste venue start — Concertgebouw, 4460 sitemap-URLs — tikt het
+  # proces door de limiet:
+  #
+  #   Out of memory: Killed process 642 (node)  anon-rss: 402596kB
+  #   Main child exited with signal 'SIGKILL'
+  #
+  # Elke request die dan openstaat krijgt synchroon een 502. Daarom
+  # verloor de scrape-workflow sinds 12 aug elke dag 3-10 van z'n 64
+  # jobs, telkens andere: puur wie er op dat moment in-flight was. Sentry
+  # zag er niets van, want SIGKILL is niet op te vangen.
+  #
+  # Piek was 393mb, dus 1gb geeft ruime marge. Let op: dit koopt ruimte,
+  # het maakt het probleem niet kleiner. De structurele fix is die 4053
+  # Concertgebouw-pagina's niet ophalen — van de 4460 wordt 91% direct
+  # weggegooid omdat alle datums voorbij zijn.
+  memory = "1024mb"
   cpus = 1

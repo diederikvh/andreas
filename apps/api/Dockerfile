@@ -31,31 +31,32 @@ ENV NODE_ENV=production
 ENV PORT=8787
 # Vangrail tegen ongeremde heap-groei: zonder cap leest Node op Fly de
 # host-memory in plaats van de container-limiet, en laat z'n heap dus
-# voorbij de 512mb van de VM groeien vóórdat GC-druk ontstaat.
+# voorbij de VM-limiet groeien vóórdat GC-druk ontstaat.
 #
 # Deze flag zet alleen de old-space, niet het totale heap-plafond.
 # Gemeten (node 24) komt er consistent ~192mb bij voor young generation
 # + V8-overhead:
 #
 #   192 → 384mb heap-limit      320 → 512mb
-#   256 → 448mb                 384 → 576mb  ← boven de VM-limiet
+#   256 → 448mb                 384 → 576mb
 #
-# 256 dus: plafond 448mb, en boven wat de scrapers realistisch nodig
-# hebben. Gemeten op de zwaarste venue (Concertgebouw, 4460 sitemap-
-# URLs): piek heapUsed 35mb, piek RSS 232mb. Zes gelijktijdige scrapers
-# in hetzelfde proces landen daarmee rond 210mb heap — daar moet de cap
-# boven liggen, anders ruilen we een container-OOM in voor een
-# heap-OOM.
+# 256 dus: plafond 448mb binnen de 1gb VM, en boven wat de scrapers
+# realistisch nodig hebben. Gemeten op de zwaarste venue (Concertgebouw,
+# 4460 sitemap-URLs): piek heapUsed 35mb bij een RSS van 232mb. Zes
+# gelijktijdige scrapers landen rond 210mb heap — daar moet de cap boven
+# liggen, anders ruilen we een container-OOM in voor een heap-OOM.
 #
-# EERLIJK: die 35mb zegt ook dat de heap vermoedelijk NIET de oorzaak is
-# van de nachtelijke 502s. De 197mb tussen heap en RSS is native
-# geheugen (sharp/resvg-buffers zitten buiten de heap) plus baseline.
-# Deze cap is dus goedkope verzekering die een runaway-heap afvangt en
-# een crash diagnostiseerbaar maakt (clean heap-OOM met stacktrace i.p.v.
-# een stille SIGKILL), geen bewezen fix.
+# LET OP: deze cap was NIET de fix voor de nachtelijke 502s. Die kwamen
+# van een OOM-kill op RSS (393mb gemeten, heap 35mb) — het geheugen zat
+# buiten de heap, dus een heap-cap raakt het niet. Dat is opgelost door
+# de VM naar 1gb te tillen; zie de toelichting in fly.toml.
 #
-# ponytail: als de 502s blijven komen is de volgende stap `memory =
-# "1024mb"` in fly.toml (RSS-gedreven OOM), niet deze waarde tweaken.
+# Wat deze cap wél doet: een runaway heap afvangen vóór de container-
+# limiet, zodat je een clean heap-OOM met stacktrace krijgt in plaats
+# van een stille SIGKILL. Goedkope diagnostiek, geen fix.
+#
+# ponytail: waarde meeschalen als de VM-grootte verandert — reken met de
+# +192, niet met het VM-getal.
 ENV NODE_OPTIONS="--max-old-space-size=256"
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=build /app/apps/api/dist ./apps/api/dist
