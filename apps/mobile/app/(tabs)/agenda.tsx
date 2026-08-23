@@ -75,7 +75,6 @@ const MONTH_LABEL_HEIGHT = 14;
 const DAYSTRIP_HEIGHT = 76;
 const DAYSTRIP_INNER_HEIGHT = DAYSTRIP_HEIGHT - MONTH_LABEL_HEIGHT;
 const CHIPROW_HEIGHT = 60;
-const RANGEBAR_HEIGHT = 44;
 /** Hoever in de toekomst de day-strip kijkt vanaf vandaag. 90 dagen
     dekt het gros van wat venues geannonceerd hebben staan — verder
     kunnen we later infinite-paginaten als het nodig is. */
@@ -274,8 +273,7 @@ export default function Agenda() {
 
   // -8 om de chip-rij 8px omhoog te trekken, dichter tegen de
   // "Andreas" wordmark aan. De day-strip die hier ook in zat is weg.
-  const stickyOffset =
-    insets.top + HEADER_HEIGHT + RANGEBAR_HEIGHT + CHIPROW_HEIGHT - 8;
+  const stickyOffset = insets.top + HEADER_HEIGHT + CHIPROW_HEIGHT - 8;
 
   // Pull-to-refresh: invalideert beide agenda-caches zodat én de day-
   // strip én de huidige dag opnieuw fetchen.
@@ -396,8 +394,9 @@ export default function Agenda() {
         initialNumToRender={12}
       />
       <AppHeader title={t('Agenda', 'Agenda')}>
-        <RangeButton range={range} onPress={() => setRangeOpen(true)} />
         <ChipRow
+          range={range}
+          onOpenRange={() => setRangeOpen(true)}
           activeCats={activeCats}
           query={query}
           activeBlocks={activeBlocks}
@@ -463,52 +462,20 @@ function formatRange(range: DateRange, locale: Locale, t: ReturnType<typeof useT
   return `${day(a)} – ${day(b)}`;
 }
 
-/** De datum-knop waar de day-strip stond. Toont het bereik en opent de
-    kiezer; het aantal dagen ernaast maakt zichtbaar hoe breed je kijkt. */
-function RangeButton({
-  range,
-  onPress,
-}: {
-  range: DateRange;
-  onPress: () => void;
-}) {
-  const roles = useRoles();
-  const locale = useLocale();
-  const t = useT();
-  const days =
-    Math.round(
-      (Date.parse(`${range.to}T12:00:00`) -
-        Date.parse(`${range.from}T12:00:00`)) /
-        86400000
-    ) + 1;
-  return (
-    <View style={styles.rangeBar}>
-      <Pressable
-        onPress={onPress}
-        style={[styles.rangeBtn, { borderColor: roles.fgPlaceholder }]}
-      >
-        <Ionicons name="calendar-outline" size={16} color={roles.accent} />
-        <Text style={[styles.rangeBtnText, { color: roles.fg }]}>
-          {formatRange(range, locale, t)}
-        </Text>
-        <Text style={[styles.rangeBtnDays, { color: roles.fgMuted }]}>
-          {days === 1 ? t('1 dag', '1 day') : t(`${days} dagen`, `${days} days`)}
-        </Text>
-        <Ionicons name="chevron-down" size={14} color={roles.fgMuted} />
-      </Pressable>
-    </View>
-  );
-}
-
 /**
- * Van–tot kiezen. Bewust geen native date-picker: die zit niet in de
- * deps en zou een nieuwe native module betekenen — dan kan een wijziging
- * niet meer over-the-air en heb je een nieuwe build nodig voor een
- * datumveld. Dit is een maandraster van Views, ships gewoon mee.
+ * Van–tot kiezen. Zelfde drawer-vorm als de filter-sheet: pageSheet,
+ * kop met titel en uitleg, scroll-body, vaste voet met de bevestig-knop.
+ * Twee laden die anders aanvoelen terwijl ze hetzelfde doen (de lijst
+ * verkleinen) is precies het soort inconsistentie dat een app rommelig
+ * maakt.
  *
- * Bediening: eerste tik zet de startdatum, tweede tik de einddatum.
- * Tik je een dag vóór de start, dan begint 'ie opnieuw vanaf daar —
- * anders zit je vast als je je vergist.
+ * Bewust geen native date-picker: die zit niet in de deps en zou een
+ * nieuwe native module betekenen — dan kan een wijziging aan een
+ * datumveld niet meer over-the-air.
+ *
+ * Bediening: eerste tik zet de startdatum, tweede de einddatum. Tik je
+ * een dag vóór de start, dan begint 'ie opnieuw vanaf daar — anders zit
+ * je vast zodra je je vergist.
  */
 function DateRangeSheet({
   visible,
@@ -523,9 +490,12 @@ function DateRangeSheet({
 }) {
   const roles = useRoles();
   const mode = useMode();
+  const isNacht = mode === 'nacht';
   const locale = useLocale();
   const t = useT();
-  const insets = useSafeAreaInsets();
+  const sheetInsets = useSafeAreaInsets();
+  const footerPaddingBottom =
+    Platform.OS === 'android' ? sheetInsets.bottom + 16 : 16;
   const [draft, setDraft] = useState<DateRange>(range);
   const [anchor, setAnchor] = useState<string | null>(null);
 
@@ -547,7 +517,7 @@ function DateRangeSheet({
     { label: t('30 dagen', '30 days'), range: spanFrom(today, 29) },
   ];
 
-  // Twee maanden vooruit is genoeg om een weekend of een festival te
+  // Drie maanden vooruit is genoeg om een weekend of een festival te
   // prikken zonder een oneindige scroll te bouwen.
   const months = [monthOf(today, 0), monthOf(today, 1), monthOf(today, 2)];
 
@@ -562,69 +532,98 @@ function DateRangeSheet({
     setAnchor(null);
   };
 
+  const dayCount =
+    Math.round(
+      (Date.parse(`${draft.to}T12:00:00`) -
+        Date.parse(`${draft.from}T12:00:00`)) /
+        86400000
+    ) + 1;
+
   return (
     <Modal
       visible={visible}
       animationType="slide"
-      transparent
+      presentationStyle="pageSheet"
       onRequestClose={onClose}
     >
-      <Pressable style={styles.sheetBackdrop} onPress={onClose} />
-      <View
-        style={[
-          styles.sheet,
-          {
-            backgroundColor: mode === 'nacht' ? palette.noir2 : palette.paper2,
-            paddingBottom: insets.bottom + 16,
-          },
-        ]}
-      >
-        <View style={styles.rangeHead}>
-          <Text style={[styles.rangeTitle, { color: roles.fg }]}>
-            {formatRange(draft, locale, t)}
-          </Text>
-          <Pressable onPress={onClose} hitSlop={8}>
-            <Ionicons name="close" size={22} color={roles.fg} />
+      <View style={[styles.sheetRoot, { backgroundColor: roles.bg }]}>
+        <View style={styles.sheetDragHandleWrap}>
+          <View
+            style={[
+              styles.sheetDragHandle,
+              { backgroundColor: roles.fgPlaceholder },
+            ]}
+          />
+        </View>
+        {Platform.OS !== 'ios' && (
+          <Pressable
+            onPress={onClose}
+            hitSlop={8}
+            style={[
+              styles.sheetCloseBtn,
+              { backgroundColor: isNacht ? palette.noir2 : palette.paper2 },
+            ]}
+          >
+            <Cross size={14} thickness={2.6} color={roles.fg} />
           </Pressable>
+        )}
+        <View style={styles.sheetHead}>
+          <Text style={[styles.sheetTitle, { color: roles.fg }]}>
+            {t('Periode', 'Range')}
+          </Text>
+          <Text style={[styles.sheetLead, { color: roles.fgMuted }]}>
+            {t(
+              'Kies een vaste periode, of tik een begin- en einddatum aan.',
+              'Pick a preset range, or tap a start and end date.'
+            )}
+          </Text>
         </View>
 
         <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.presetRow}
+          style={styles.sheetScroll}
+          contentContainerStyle={styles.sheetScrollContent}
+          showsVerticalScrollIndicator={false}
         >
-          {presets.map((p) => {
-            const on = p.range.from === draft.from && p.range.to === draft.to;
-            return (
-              <Pressable
-                key={p.label}
-                onPress={() => {
-                  softTap();
-                  setDraft(p.range);
-                  setAnchor(null);
-                }}
-                style={[
-                  styles.preset,
-                  {
-                    borderColor: on ? roles.accent : roles.fgPlaceholder,
-                    backgroundColor: on ? roles.accent : 'transparent',
-                  },
-                ]}
-              >
-                <Text
+          <View style={styles.presetRow}>
+            {presets.map((p) => {
+              const on = p.range.from === draft.from && p.range.to === draft.to;
+              return (
+                <Pressable
+                  key={p.label}
+                  onPress={() => {
+                    softTap();
+                    setDraft(p.range);
+                    setAnchor(null);
+                  }}
                   style={[
-                    styles.presetText,
-                    { color: on ? roles.bg : roles.fg },
+                    styles.catChip,
+                    {
+                      borderColor: on
+                        ? roles.accent
+                        : isNacht
+                          ? '#2a2a2d'
+                          : palette.paper,
+                      backgroundColor: on
+                        ? `${isNacht ? palette.acid : palette.red}1f`
+                        : isNacht
+                          ? palette.noir2
+                          : palette.paper2,
+                    },
                   ]}
                 >
-                  {p.label}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </ScrollView>
+                  <Text
+                    style={[
+                      styles.catChipText,
+                      { color: on ? roles.accent : roles.fgMuted },
+                    ]}
+                  >
+                    {p.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
 
-        <ScrollView style={styles.calScroll} showsVerticalScrollIndicator={false}>
           {months.map((m) => (
             <MonthGrid
               key={m.key}
@@ -632,19 +631,34 @@ function DateRangeSheet({
               draft={draft}
               minDay={today}
               onPick={pick}
-              locale={locale}
             />
           ))}
         </ScrollView>
 
-        <Pressable
-          onPress={() => onApply(draft)}
-          style={[styles.applyBtn, { backgroundColor: roles.accent }]}
+        <View
+          style={[
+            styles.sheetFooter,
+            { borderTopColor: roles.bgChip, paddingBottom: footerPaddingBottom },
+          ]}
         >
-          <Text style={[styles.applyText, { color: roles.onAccent }]}>
-            {t('Toon deze periode', 'Show this range')}
-          </Text>
-        </Pressable>
+          <Pressable
+            onPress={() => onApply(draft)}
+            style={[
+              styles.sheetDoneBtn,
+              { backgroundColor: isNacht ? palette.acid : palette.red },
+            ]}
+          >
+            <Text
+              style={[
+                styles.sheetDoneText,
+                { color: isNacht ? palette.noir : palette.paper3 },
+              ]}
+            >
+              {formatRange(draft, locale, t)}
+              {dayCount > 1 ? ` · ${dayCount} ${t('dagen', 'days')}` : ''}
+            </Text>
+          </Pressable>
+        </View>
       </View>
     </Modal>
   );
@@ -697,13 +711,11 @@ function MonthGrid({
   draft,
   minDay,
   onPick,
-  locale,
 }: {
   month: MonthInfo;
   draft: DateRange;
   minDay: string;
   onPick: (day: string) => void;
-  locale: Locale;
 }) {
   const roles = useRoles();
   const first = new Date(month.year, month.month, 1);
@@ -725,32 +737,41 @@ function MonthGrid({
           const disabled = day < minDay;
           const inRange = day >= draft.from && day <= draft.to;
           const isEdge = day === draft.from || day === draft.to;
+          // De gekleurde vorm zit ín de cel, niet óp de cel. Anders
+          // vullen aangrenzende dagen de volle celbreedte en plakken de
+          // bollen aan elkaar tot één band.
           return (
             <Pressable
               key={day}
               disabled={disabled}
               onPress={() => onPick(day)}
-              style={[
-                styles.cell,
-                inRange && {
-                  backgroundColor: isEdge ? roles.accent : `${roles.accent}26`,
-                },
-              ]}
+              style={styles.cell}
             >
-              <Text
+              <View
                 style={[
-                  styles.cellText,
-                  {
-                    color: disabled
-                      ? roles.fgPlaceholder
-                      : isEdge
-                        ? roles.bg
-                        : roles.fg,
+                  styles.cellDot,
+                  inRange && {
+                    backgroundColor: isEdge
+                      ? roles.accent
+                      : `${roles.accent}26`,
                   },
                 ]}
               >
-                {Number(day.slice(-2))}
-              </Text>
+                <Text
+                  style={[
+                    styles.cellText,
+                    {
+                      color: disabled
+                        ? roles.fgPlaceholder
+                        : isEdge
+                          ? roles.bg
+                          : roles.fg,
+                    },
+                  ]}
+                >
+                  {Number(day.slice(-2))}
+                </Text>
+              </View>
             </Pressable>
           );
         })}
@@ -760,6 +781,8 @@ function MonthGrid({
 }
 
 function ChipRow({
+  range,
+  onOpenRange,
   activeCats,
   query,
   activeBlocks,
@@ -775,6 +798,8 @@ function ChipRow({
   onToggleFriends,
   onToggleFavorites,
 }: {
+  range: DateRange;
+  onOpenRange: () => void;
   activeCats: ApiEvent['category'][];
   query: string;
   activeBlocks: TimeBlock[];
@@ -893,6 +918,29 @@ function ChipRow({
         contentContainerStyle={styles.chipRow}
         keyboardShouldPersistTaps="handled"
       >
+        {/* Datum en filter zijn allebei "verklein de lijst" — dus dezelfde
+            rij en dezelfde chip-vorm. De datum staat vooraan omdat 'ie
+            altijd een waarde heeft; het filter is optioneel. */}
+        <Pressable
+          onPress={() => {
+            softTap();
+            onOpenRange();
+          }}
+          style={[
+            styles.catChip,
+            {
+              borderColor: roles.accent,
+              backgroundColor: `${isNacht ? palette.acid : palette.red}1f`,
+              flexDirection: 'row',
+              gap: 6,
+            },
+          ]}
+        >
+          <Ionicons name="calendar-outline" size={16} color={roles.accent} />
+          <Text style={[styles.catChipText, { color: roles.accent }]}>
+            {formatRange(range, locale, t)}
+          </Text>
+        </Pressable>
         <Pressable
           onPress={() => {
             softTap();
@@ -1502,29 +1550,6 @@ const styles = StyleSheet.create({
   },
   dayHeaderCount: { fontFamily: fontFamily.mono, fontSize: 12 },
 
-  // Bereik-knop (stond waar de day-strip zat)
-  rangeBar: {
-    height: RANGEBAR_HEIGHT,
-    justifyContent: 'center',
-    paddingHorizontal: 18,
-  },
-  rangeBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    alignSelf: 'flex-start',
-    height: 34,
-    paddingHorizontal: 12,
-    borderRadius: 999,
-    borderWidth: 1,
-  },
-  rangeBtnText: {
-    fontFamily: fontFamily.medium,
-    fontSize: 14,
-    letterSpacing: -0.1,
-  },
-  rangeBtnDays: { fontFamily: fontFamily.mono, fontSize: 11 },
-
   // Datum-kiezer
   sheetBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)' },
   sheet: {
@@ -1545,7 +1570,13 @@ const styles = StyleSheet.create({
     fontSize: 20,
     letterSpacing: -0.4,
   },
-  presetRow: { gap: 8, paddingHorizontal: 22, paddingBottom: 14 },
+  // Wrappende rij, niet een kolom. Padding zit al op sheetScrollContent.
+  presetRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    paddingBottom: 18,
+  },
   preset: {
     height: 34,
     paddingHorizontal: 14,
@@ -1556,7 +1587,7 @@ const styles = StyleSheet.create({
   },
   presetText: { fontFamily: fontFamily.medium, fontSize: 13 },
   calScroll: { paddingHorizontal: 16 },
-  month: { paddingBottom: 18 },
+  month: { paddingBottom: 22 },
   monthGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -1565,12 +1596,20 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     alignContent: 'flex-start',
   },
+  // Cel = tikvlak (volle 1/7 breedte), bol = de gekleurde vorm erin.
+  // Vaste 38×38 zodat 't een rondje is en geen pil, met lucht ertussen.
   cell: {
     width: `${100 / 7}%`,
     height: 46,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 999,
+  },
+  cellDot: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   cellText: { fontFamily: fontFamily.medium, fontSize: 14 },
   applyBtn: {
