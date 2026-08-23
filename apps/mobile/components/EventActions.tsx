@@ -80,10 +80,9 @@ export function EventActions({
   };
 
   const onInvite = () => {
-    if (!authed) {
-      router.push('/jij' as never);
-      return;
-    }
+    // Geen bounce naar /jij meer: het invite-scherm toont zelf de
+    // account-muur, en dan zie je nog wél voor welk event je 't wilde
+    // doen. Saven hierboven werkt anoniem gewoon door.
     Haptics.selectionAsync();
     router.push(
       `/event/${eventId}/invite?o=${occurrenceId}` as never

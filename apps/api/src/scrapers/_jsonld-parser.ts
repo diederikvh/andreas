@@ -259,10 +259,20 @@ export function extractJsonLdEvents(html: string): ParsedJsonLdEvent[] {
         ...extractPerformers(ev.performers),
       ];
 
-      // Stable UID: voorkeur ticketUrl > eventUrl > name+startDate.
-      // Behoudt idempotency over scrapes heen: dezelfde voorstelling
-      // op dezelfde tijd produceert dezelfde id.
-      const uidSource = ticketUrl ?? eventUrl ?? `${name}|${startsAt.toISOString()}`;
+      // Stable UID: eventUrl (permalink) > name+startDate.
+      //
+      // NIET ticketUrl: die is muteerbaar. Lofi wisselt per event van
+      // ticket-provider (geen offer → sibforms-nieuwsbrief → bash.social
+      // → weeztix) en kreeg bij elke wissel een nieuwe id, dus een
+      // nieuw event náást het oude. Resultaat: 81 events waar 48 echte
+      // shows staan. De ticket-URL is een attribuut van het event, geen
+      // identiteit.
+      //
+      // startsAt blijft op volledige timestamp-granulariteit — date-only
+      // events (Lofi, W139) parsen naar UTC-midnight en zijn dus per dag
+      // stabiel, terwijl een bioscoop met 14:00 én 20:00 op dezelfde dag
+      // twee losse events houdt.
+      const uidSource = eventUrl ?? `${name}|${startsAt.toISOString()}`;
       if (seenUids.has(uidSource)) continue;
       seenUids.add(uidSource);
 

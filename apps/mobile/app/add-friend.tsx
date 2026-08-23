@@ -4,6 +4,8 @@ import * as Haptics from 'expo-haptics';
 import { Image } from 'expo-image';
 import { router, useLocalSearchParams } from 'expo-router';
 
+import { useIsRegistered } from '@/lib/authClient';
+import { AccountWall } from '@/components/AccountWall';
 import { BackButton } from '@/components/BackButton';
 import { Cross } from '@/components/Cross';
 import { useEffect, useState } from 'react';
@@ -84,6 +86,7 @@ export default function AddFriend() {
     params.scan === '1' && !initialHandle
   );
 
+  const registered = useIsRegistered();
   const search = useUserSearch(debouncedQ);
   const sendRequest = useSendFriendRequest();
   const acceptRequest = useAcceptFriendRequest();
@@ -144,6 +147,20 @@ export default function AddFriend() {
         <View style={styles.topBarSpacer} />
       </View>
 
+      {!registered ? (
+        // Iemand toevoegen vraagt een handle om te delen — dat is precies
+        // wat een anonieme identiteit niet heeft.
+        <View style={{ flex: 1 }}>
+          <AccountWall
+            icon="qr-code-outline"
+            title={tx('Vind je vrienden', 'Find your friends')}
+            body={tx(
+              'Met een eigen handle en QR-code voegen jullie elkaar in één scan toe.',
+              'With your own handle and QR code you add each other in a single scan.'
+            )}
+          />
+        </View>
+      ) : (
       <View style={styles.body}>
         <View
           style={[
@@ -316,6 +333,7 @@ export default function AddFriend() {
           )}
         </ScrollView>
       </View>
+      )}
       {scannerOpen && (
         <ScanQRSheet
           onClose={() => {

@@ -1,7 +1,7 @@
 import { Redirect, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 
-import { useSession } from '@/lib/authClient';
+import { useIsRegistered, useSession } from '@/lib/authClient';
 import { savePendingShareInviteToken } from '@/lib/pendingShareInvite';
 
 /**
@@ -12,13 +12,14 @@ import { savePendingShareInviteToken } from '@/lib/pendingShareInvite';
  * We slaan de token altijd op in AsyncStorage, óók als de user al
  * ingelogd is — de claim-hook in de root-layout vuurt dan kort daarna
  * en handelt de friendship-creatie + toast af. De redirect-richting
- * hangt af van de auth-staat: ingelogd → /social (waar je je nieuwe
- * vriend ziet), niet-ingelogd → /jij?onboarding=1 (phone-OTP → naam +
- * handle). Na login vuurt de claim-hook alsnog.
+ * hangt af van de auth-staat: mét account → /social (waar je je nieuwe
+ * vriend ziet), anoniem of uitgelogd → /jij (account aanmaken). Na
+ * aanmaken vuurt de claim-hook alsnog.
  */
 export default function FriendInviteEntry() {
   const { token } = useLocalSearchParams<{ token: string }>();
-  const { data: session, isPending } = useSession();
+  const { isPending } = useSession();
+  const registered = useIsRegistered();
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
@@ -31,7 +32,9 @@ export default function FriendInviteEntry() {
   // anders kan een snelle redirect de claim-hook missen.
   if (isPending || !saved) return null;
 
-  const authed = Boolean(session?.user?.id);
-  if (authed) return <Redirect href="/social" />;
-  return <Redirect href="/jij?onboarding=1" />;
+  // Een vriendschap claimen vraagt een echt account: er moet iemand aan
+  // de andere kant staan. Een anonieme sessie telt dus niet — die gaat
+  // eerst langs de aanmaak-flow, waarna de claim-hook alsnog vuurt.
+  if (registered) return <Redirect href="/social" />;
+  return <Redirect href="/jij" />;
 }

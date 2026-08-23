@@ -15,6 +15,8 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { useIsRegistered } from '@/lib/authClient';
+import { AccountWall } from '@/components/AccountWall';
 import { Cross } from '@/components/Cross';
 import { EventListRow } from '@/components/EventListRow';
 import type { ApiEventInviteRecord, ApiGroupSummary, ApiPublicUser } from '@/lib/api';
@@ -72,7 +74,8 @@ export default function InviteModal() {
   const locale = useLocale();
 
   const { data: event } = useEvent(eventId);
-  const { data: friends } = useFriends();
+  const registered = useIsRegistered();
+  const { data: friends } = useFriends({ enabled: registered });
   const { data: groups } = useGroups();
   const { data: outgoing } = useOutgoingFriendRequests();
   const sendInvites = useSendInvitations();
@@ -237,6 +240,21 @@ export default function InviteModal() {
         )}
       </View>
 
+      {!registered ? (
+        // Uitnodigen gaat per definitie over iemand anders, dus hier stopt
+        // anoniem. De muur staat op het scherm zelf en niet op de knop
+        // ernaartoe: dan zie je nog wél voor welk event je 't wilde doen.
+        <View style={{ flex: 1, paddingBottom: insets.bottom + 24 }}>
+          <AccountWall
+            icon="person-add-outline"
+            title={t('Vraag iemand mee', 'Bring someone along')}
+            body={t(
+              'Nodig vrienden uit voor wat jij gevonden hebt en zie wie er meegaat.',
+              'Invite friends to what you found and see who’s coming along.'
+            )}
+          />
+        </View>
+      ) : (
       <ScrollView
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
@@ -350,6 +368,7 @@ export default function InviteModal() {
         )}
 
       </ScrollView>
+      )}
 
       {hasSelectable && (
       <View
