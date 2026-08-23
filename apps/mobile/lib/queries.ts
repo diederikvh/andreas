@@ -952,3 +952,22 @@ export function useSetVenueFollow() {
   });
 }
 
+
+/**
+ * Openstaande sociale notificaties: vriendschapsverzoeken plus
+ * uitnodigingen waar ík nog over moet beslissen. Een eigen verstuurde
+ * pending invite telt niet mee — die staat bij de ander open.
+ *
+ * Zit hier zodat de tab-bar en het Meer-scherm dezelfde teller tonen;
+ * die stonden eerder los van elkaar en dat gaat vroeg of laat uiteen
+ * lopen.
+ */
+export function useSocialBadgeCount(enabled: boolean): number {
+  const { data: requests } = useFriendRequests({ enabled });
+  const { data: invitations } = useInvitations({ enabled });
+  if (!enabled) return 0;
+  const pendingForMe =
+    invitations?.filter((inv) => !inv.isOutgoing && inv.myStatus === 'pending')
+      .length ?? 0;
+  return (requests?.length ?? 0) + pendingForMe;
+}

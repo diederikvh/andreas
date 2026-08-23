@@ -9,7 +9,7 @@
  * Drie groepen, in volgorde van hoe vaak je ze nodig hebt:
  *   1. Doen — Vraag Andreas, wat is er nieuw, wat raden we aan.
  *   2. Vrienden.
- *   3. Bladeren per soort — film, clubs, live, theater, kaart, venues.
+ *   3. Bladeren per soort — live, theater, clubs, film, kaart, venues.
  */
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { router } from 'expo-router';
@@ -21,7 +21,7 @@ import { AppHeader, HEADER_HEIGHT } from '@/components/AppHeader';
 import { useSession } from '@/lib/authClient';
 import { softTap } from '@/lib/haptics';
 import { useT } from '@/lib/i18n';
-import { useNewArrivalsSince } from '@/lib/queries';
+import { useMe, useNewArrivalsSince, useSocialBadgeCount } from '@/lib/queries';
 import { useNewFilters } from '@/store/newFilters';
 import { useRoles } from '@/store/mode';
 import { useNewBadgeSince } from '@/store/sessionTimestamps';
@@ -54,22 +54,34 @@ export default function MeerScreen() {
   });
   const newCount = arrivals?.total ?? 0;
 
+  // `users.guideEnabled` is een opt-in per gebruiker uit het
+  // admin-paneel — /zoek geeft 403 zonder die vlag, dus de ingang mag
+  // niet zichtbaar zijn als 'ie uitstaat. Stond eerder op de banner die
+  // ik weghaalde; hier hoort 'ie weer.
+  const { data: me } = useMe();
+  const guideEnabled = me?.guideEnabled ?? false;
+  const socialCount = useSocialBadgeCount(Boolean(session?.user?.id));
+
   const go = (path: string) => () => {
     softTap();
     router.push(path as never);
   };
 
   const doen: Entry[] = [
-    {
-      key: 'gids',
-      icon: <Cross20 color={roles.accent} />,
-      label: t('Vraag Andreas', 'Ask Andreas'),
-      hint: t('Zeg waar je zin in hebt', 'Say what you feel like'),
-      onPress: () => {
-        softTap();
-        openGuide();
-      },
-    },
+    ...(guideEnabled
+      ? [
+          {
+            key: 'gids',
+            icon: <Cross20 color={roles.accent} />,
+            label: t('Vraag Andreas', 'Ask Andreas'),
+            hint: t('Zeg waar je zin in hebt', 'Say what you feel like'),
+            onPress: () => {
+              softTap();
+              openGuide();
+            },
+          },
+        ]
+      : []),
     {
       key: 'new',
       icon: <Ionicons name="flash-outline" size={22} color={roles.accent} />,
@@ -93,6 +105,7 @@ export default function MeerScreen() {
       icon: <Ionicons name="people-outline" size={22} color={roles.accent} />,
       label: t('Vrienden', 'Friends'),
       hint: t('Wat zij bewaarden', 'What they saved'),
+      badge: socialCount,
       onPress: go('/social'),
     },
     {
@@ -103,19 +116,11 @@ export default function MeerScreen() {
     },
   ];
 
+  // Volgorde is Diederiks prioriteit, niet alfabetisch of per
+  // datavolume: live en theater eerst, film verderop. Films zijn de
+  // grootste categorie in aantal, maar dat is precies waarom ze niet
+  // bovenaan hoeven.
   const bladeren: Entry[] = [
-    {
-      key: 'films',
-      icon: <Ionicons name="film-outline" size={22} color={roles.accent} />,
-      label: t('Films', 'Films'),
-      onPress: go('/films'),
-    },
-    {
-      key: 'clubs',
-      icon: <Ionicons name="disc-outline" size={22} color={roles.accent} />,
-      label: t('Clubs', 'Clubs'),
-      onPress: go('/clubs'),
-    },
     {
       key: 'live',
       icon: (
@@ -133,6 +138,18 @@ export default function MeerScreen() {
       onPress: go('/theater'),
     },
     {
+      key: 'clubs',
+      icon: <Ionicons name="disc-outline" size={22} color={roles.accent} />,
+      label: t('Clubs', 'Clubs'),
+      onPress: go('/clubs'),
+    },
+    {
+      key: 'films',
+      icon: <Ionicons name="film-outline" size={22} color={roles.accent} />,
+      label: t('Films', 'Films'),
+      onPress: go('/films'),
+    },
+    {
       key: 'kaart',
       icon: <Ionicons name="map-outline" size={22} color={roles.accent} />,
       label: t('Kaart', 'Map'),
@@ -143,15 +160,6 @@ export default function MeerScreen() {
       icon: <Ionicons name="business-outline" size={22} color={roles.accent} />,
       label: t('Venues', 'Venues'),
       onPress: go('/venues'),
-    },
-    {
-      key: 'vibes',
-      icon: (
-        <MaterialCommunityIcons name="cards-outline" size={22} color={roles.accent} />
-      ),
-      label: t('Vibes', 'Vibes'),
-      hint: t('Swipe door het aanbod', 'Swipe through what’s on'),
-      onPress: go('/op-gevoel'),
     },
   ];
 

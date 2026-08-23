@@ -17,15 +17,10 @@ import {
   TabIconAgenda,
   TabIconAvond,
   TabIconMeer,
-  TabIconSocial,
 } from '@/components/icons/TabIcons';
 import { useSession } from '@/lib/authClient';
 import { tinyTap } from '@/lib/haptics';
-import {
-  useFriendRequests,
-  useInvitations,
-  useNewArrivalsSince,
-} from '@/lib/queries';
+import { useNewArrivalsSince, useSocialBadgeCount } from '@/lib/queries';
 import { useMode, useRoles } from '@/store/mode';
 import { useNewFilters } from '@/store/newFilters';
 import { useNewBadgeSince } from '@/store/sessionTimestamps';
@@ -39,13 +34,14 @@ type IconCmp = ComponentType<{ color: string }>;
 // `jij` is sinds de IA-shift géén tab meer — bereikbaar via de
 // avatar-knop rechtsboven in de AppHeader.
 //
-// Vier tabs, en de vierde is een verzamelbak. De homepage droeg eerder
+// Drie tabs, en de derde is een verzamelbak. De homepage droeg eerder
 // elf uitgangen; die staan nu achter Meer zodat Vandaag over vanavond
-// gaat in plaats van over navigatie.
+// gaat in plaats van over navigatie. Vrienden stond hier ook nog los,
+// maar zit al in Meer — dus weg uit de bar, en z'n teller telt op bij
+// die van Meer.
 const TAB_ICONS: Record<string, IconCmp> = {
   avond: TabIconAvond,
   agenda: TabIconAgenda,
-  social: TabIconSocial,
   meer: TabIconMeer,
 };
 
@@ -63,25 +59,17 @@ export function TabBar({ state, navigation }: BottomTabBarProps) {
   // de welkom-flow te vermijden.
   const { data: session } = useSession();
   const isAuthed = Boolean(session?.user?.id);
-  const { data: requests } = useFriendRequests({ enabled: isAuthed });
-  const { data: invitations } = useInvitations({ enabled: isAuthed });
-  // Meer-badge: hoeveel staat er klaar om te beoordelen op /new, ná je
-  // baan-voorkeur. Zelfde bron als de teller op het scherm zelf.
+  // Meer draagt twee tellers samen: wat er te beoordelen staat op /new
+  // (ná je baan-voorkeur) plus je openstaande vriend-verzoeken en
+  // uitnodigingen. Eén getal op de bar, uitgesplitst per rij zodra je
+  // Meer opent — anders weet je wel dát er iets is maar niet wát.
   const newSince = useNewBadgeSince();
   const activeLanes = useNewFilters((s) => s.activeLanes);
   const { data: arrivals } = useNewArrivalsSince(newSince, {
     enabled: isAuthed,
     lanes: activeLanes,
   });
-  const newBadge = arrivals?.total ?? 0;
-  // Tel alleen invitations waar ik écht moet beslissen: ingekomen
-  // (niet door mij verstuurd) én nog pending. Een eigen verstuurde
-  // pending invite (uitstaand bij iemand anders) telt niet als notif
-  // voor mij.
-  const pendingForMe =
-    invitations?.filter((inv) => !inv.isOutgoing && inv.myStatus === 'pending')
-      .length ?? 0;
-  const socialBadge = isAuthed ? (requests?.length ?? 0) + pendingForMe : 0;
+  const meerBadge = (arrivals?.total ?? 0) + useSocialBadgeCount(isAuthed);
 
   // Op Android leverde expo-blur weinig effect, dus tint extra
   // opaque om de pill nog leesbaar te houden boven scrollende content.
@@ -108,15 +96,14 @@ export function TabBar({ state, navigation }: BottomTabBarProps) {
   // Filter naar alleen zichtbare tabs (kaart heeft href:null, valt af).
   const visible = state.routes.filter((r) => TAB_ICONS[r.name]);
   const currentRoute = state.routes[state.index];
-  // Twee soorten "niet in de bar". Kaart wil de balk écht weg: eigen
-  // sluit-knop in de header en maximaal schermvulling voor de map.
-  // Venues is gewoon een blader-scherm dat uit de bar is gehaald — daar
-  // moet je juist wél verder kunnen klikken, dus die houdt de balk
-  // (alleen zonder actieve tab).
+  // Kaart en Venues hebben allebei een sluit-knop in hun header en
+  // gedragen zich als een gepushte pagina onder Meer, niet als tab —
+  // dus daar valt de balk weg. Anders zou je twee manieren terug
+  // hebben die verschillende dingen doen.
   const onHiddenRoute = currentRoute
     ? !TAB_ICONS[currentRoute.name]
     : false;
-  const hidesBar = currentRoute?.name === 'kaart';
+  const hidesBar = onHiddenRoute;
   const focusedVisibleIndex = onHiddenRoute
     ? -1
     : visible.findIndex((r) => r.key === currentRoute?.key);
@@ -229,12 +216,8 @@ export function TabBar({ state, navigation }: BottomTabBarProps) {
         // de homepage, en die banners zijn weg. Zonder dit zie je nergens
         // meer dát er iets te beoordelen is, en dat is precies waar de
         // dagelijkse lus op draait.
-        const count = route.name === 'social' ? socialBadge : newBadge;
-        const showBadge =
-          (route.name === 'social' || route.name === 'meer') &&
-          count > 0 &&
-          !focused;
-        const badgeLabel = count > 9 ? '9+' : String(count);
+        const showBadge = route.name === 'meer' && meerBadge > 0 && !focused;
+        const badgeLabel = meerBadge > 9 ? '9+' : String(meerBadge);
         return (
           <Pressable
             key={route.key}
