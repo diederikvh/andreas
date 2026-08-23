@@ -584,7 +584,14 @@ function DateRangeSheet({
           contentContainerStyle={styles.sheetScrollContent}
           showsVerticalScrollIndicator={false}
         >
-          <View style={styles.presetRow}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            // Breekt uit de 22px body-padding zodat de chips van rand
+            // tot rand kunnen scrollen in plaats van af te kappen.
+            style={styles.presetScroll}
+            contentContainerStyle={styles.presetRow}
+          >
             {presets.map((p) => {
               const on = p.range.from === draft.from && p.range.to === draft.to;
               return (
@@ -622,7 +629,9 @@ function DateRangeSheet({
                 </Pressable>
               );
             })}
-          </View>
+          </ScrollView>
+
+          <View style={[styles.presetDivider, { backgroundColor: roles.bgChip }]} />
 
           {months.map((m) => (
             <MonthGrid
@@ -993,7 +1002,7 @@ function ChipRow({
             }
             onPress={onToggleFavorites}
             style={[
-              styles.friendsToggle,
+              styles.catChip,
               {
                 borderColor: onlyFavorites
                   ? roles.accent
@@ -1005,14 +1014,24 @@ function ChipRow({
                   : isNacht
                     ? palette.noir2
                     : palette.paper2,
+                flexDirection: 'row',
+                gap: 6,
               },
             ]}
           >
             <Ionicons
               name={onlyFavorites ? 'bookmark' : 'bookmark-outline'}
-              size={14}
+              size={15}
               color={onlyFavorites ? roles.accent : roles.fgMuted}
             />
+            <Text
+              style={[
+                styles.catChipText,
+                { color: onlyFavorites ? roles.accent : roles.fgMuted },
+              ]}
+            >
+              {t('Mijn venues', 'My venues')}
+            </Text>
           </Pressable>
         )}
         {saved.map((s) => {
@@ -1570,12 +1589,17 @@ const styles = StyleSheet.create({
     fontSize: 20,
     letterSpacing: -0.4,
   },
-  // Wrappende rij, niet een kolom. Padding zit al op sheetScrollContent.
+  presetScroll: { marginHorizontal: -22 },
   presetRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
     gap: 8,
-    paddingBottom: 18,
+    paddingHorizontal: 22,
+  },
+  presetDivider: {
+    height: StyleSheet.hairlineWidth,
+    marginTop: 18,
+    marginBottom: 20,
+    marginHorizontal: -22,
   },
   preset: {
     height: 34,
