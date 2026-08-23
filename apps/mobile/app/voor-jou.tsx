@@ -33,6 +33,10 @@ import { useQueryClient } from '@tanstack/react-query';
 
 import { AanbevolenPicker } from '@/components/AanbevolenPicker';
 import { AppHeader, HEADER_HEIGHT } from '@/components/AppHeader';
+import {
+  FILTER_ROW_HEIGHT,
+  FilterChip as Chip,
+} from '@/components/FilterChip';
 import { BannerTitleOverlay } from '@/components/BannerTitleOverlay';
 import { EventActions } from '@/components/EventActions';
 import { FollowVenueButton } from '@/components/FollowVenueButton';
@@ -59,7 +63,9 @@ import { useMode, useRoles } from '@/store/mode';
 import { fontFamily, palette } from '@/theme/tokens';
 
 const HORIZONTAL_PADDING = 14;
-const CHIPROW_HEIGHT = 36;
+// Gelijk aan Agenda/Venues/Vandaag — de chips zijn nu dezelfde
+// component, dus de rij moet ook dezelfde hoogte hebben.
+const CHIPROW_HEIGHT = FILTER_ROW_HEIGHT;
 
 type FeedNight = {
   id: string;
@@ -387,37 +393,6 @@ export default function VoorJouScreen() {
   );
 }
 
-function Chip({
-  label,
-  active,
-  onPress,
-}: {
-  label: string;
-  active: boolean;
-  onPress: () => void;
-}) {
-  const roles = useRoles();
-  return (
-    <Pressable
-      onPress={onPress}
-      style={[
-        styles.chip,
-        {
-          backgroundColor: active ? roles.accent : `${roles.bg}99`,
-        },
-      ]}
-    >
-      <Text
-        style={[
-          styles.chipText,
-          { color: active ? roles.onAccent : roles.fg },
-        ]}
-      >
-        {label}
-      </Text>
-    </Pressable>
-  );
-}
 
 function FeedCard({
   night,
@@ -636,18 +611,6 @@ const styles = StyleSheet.create({
     gap: 8,
     alignItems: 'center',
     height: '100%',
-  },
-  chip: {
-    paddingHorizontal: 14,
-    height: 32,
-    borderRadius: 999,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  chipText: {
-    fontFamily: fontFamily.bold,
-    fontSize: 13,
-    letterSpacing: -0.13,
   },
   card: {
     marginBottom: 28,

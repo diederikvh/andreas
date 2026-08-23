@@ -23,6 +23,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQueryClient } from '@tanstack/react-query';
 
 import { AppHeader, HEADER_HEIGHT } from '@/components/AppHeader';
+import { FILTER_CHIP_HEIGHT } from '@/components/FilterChip';
 import { Cross } from '@/components/Cross';
 import { RefreshBanner } from '@/components/RefreshBanner';
 import { SpinningCross } from '@/components/SpinningCross';
@@ -1385,7 +1386,7 @@ const styles = StyleSheet.create({
     height: 24,
   },
   catChip: {
-    height: 44,
+    height: FILTER_CHIP_HEIGHT,
     paddingHorizontal: 18,
     borderRadius: 999,
     borderWidth: 1,

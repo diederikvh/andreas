@@ -23,6 +23,7 @@ import Animated, { FadeIn } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppHeader, HEADER_HEIGHT } from '@/components/AppHeader';
+import { FILTER_CHIP_HEIGHT } from '@/components/FilterChip';
 import { Cross } from '@/components/Cross';
 import { Rail, useRailCardStyles } from '@/components/Rail';
 import { FilmRailCard, FILM_CARD_WIDTH } from '@/components/FilmRailCard';
@@ -2157,7 +2158,7 @@ const styles = StyleSheet.create({
     height: 24,
   },
   catChip: {
-    height: 44,
+    height: FILTER_CHIP_HEIGHT,
     paddingHorizontal: 18,
     borderRadius: 999,
     borderWidth: 1,

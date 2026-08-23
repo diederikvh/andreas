@@ -10,6 +10,7 @@ import {
   FlatList,
   KeyboardAvoidingView,
   Modal,
+  useWindowDimensions,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
   Platform,
@@ -25,6 +26,7 @@ import Animated, { FadeIn } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppHeader, HEADER_HEIGHT } from '@/components/AppHeader';
+import { FILTER_CHIP_HEIGHT } from '@/components/FilterChip';
 import { FilterHint } from '@/components/FilterHint';
 import { Cross } from '@/components/Cross';
 import { EventListRow } from '@/components/EventListRow';
@@ -293,6 +295,13 @@ export default function Agenda() {
     }
   }, [qc]);
 
+  // Alles terug naar af: categorieën, types, tijdblokken, zoekterm,
+  // toggles én de periode. Een "wis filters" die de datums laat staan
+  // levert een nog steeds lege lijst op — dan lijkt de knop stuk.
+  const clearAll = useCallback(() => {
+    useAgendaFilters.getState().reset();
+  }, []);
+
   const hasActiveFilter =
     activeCats.length > 0 ||
     activeTypes.length > 0 ||
@@ -353,18 +362,10 @@ export default function Agenda() {
               />
             )}
             {!rowsLoading && !rowsError && rows.length === 0 && (
-              <ListState
-                text={
-                  hasActiveFilter
-                    ? t(
-                        'Niks in deze periode met deze filter.',
-                        'Nothing in this range with this filter.'
-                      )
-                    : t(
-                        'Niks in deze periode. Rek de datums op.',
-                        'Nothing in this range. Widen the dates.'
-                      )
-                }
+              <EmptyState
+                hasFilter={hasActiveFilter}
+                onClear={clearAll}
+                topInset={stickyOffset}
               />
             )}
           </Animated.View>
@@ -1528,6 +1529,64 @@ function AgendaRowItem({
   );
 }
 
+/**
+ * Lege lijst. Stond eerder als regeltje tekst linksboven, waar 't
+ * wegviel tegen een leeg scherm en je niet zag wat je eraan kon doen.
+ * Nu gecentreerd met een icoon en een uitweg.
+ */
+function EmptyState({
+  hasFilter,
+  onClear,
+  topInset,
+}: {
+  hasFilter: boolean;
+  onClear: () => void;
+  topInset: number;
+}) {
+  const roles = useRoles();
+  const t = useT();
+  const { height } = useWindowDimensions();
+  return (
+    <View
+      style={[
+        styles.emptyState,
+        // Vult de ruimte onder de sticky header zodat 'ie optisch
+        // midden in het lege scherm staat, niet vlak onder de chips.
+        { minHeight: height - topInset - 220 },
+      ]}
+    >
+      <Ionicons name="calendar-outline" size={44} color={roles.fgPlaceholder} />
+      <Text style={[styles.emptyStateTitle, { color: roles.fg }]}>
+        {t('Niks in deze periode', 'Nothing in this range')}
+      </Text>
+      <Text style={[styles.emptyStateBody, { color: roles.fgMuted }]}>
+        {hasFilter
+          ? t(
+              'Je filter is misschien te smal. Wis \'m, of rek de datums op.',
+              'Your filter may be too narrow. Clear it, or widen the dates.'
+            )
+          : t(
+              'Rek de datums op om verder vooruit te kijken.',
+              'Widen the dates to look further ahead.'
+            )}
+      </Text>
+      {hasFilter && (
+        <Pressable
+          onPress={() => {
+            softTap();
+            onClear();
+          }}
+          style={[styles.emptyStateBtn, { backgroundColor: roles.accent }]}
+        >
+          <Text style={[styles.emptyStateBtnText, { color: roles.onAccent }]}>
+            {t('Wis filters', 'Clear filters')}
+          </Text>
+        </Pressable>
+      )}
+    </View>
+  );
+}
+
 function ListState({
   text,
   tone = 'muted',
@@ -1777,7 +1836,7 @@ const styles = StyleSheet.create({
     height: 24,
   },
   catChip: {
-    height: 44,
+    height: FILTER_CHIP_HEIGHT,
     paddingHorizontal: 18,
     borderRadius: 999,
     borderWidth: 1,
@@ -1799,6 +1858,38 @@ const styles = StyleSheet.create({
   },
 
   listState: { paddingHorizontal: 22, paddingVertical: 14 },
+  emptyState: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 40,
+    gap: 10,
+  },
+  emptyStateTitle: {
+    fontFamily: fontFamily.displayBold,
+    fontSize: 20,
+    letterSpacing: -0.4,
+    textAlign: 'center',
+    marginTop: 4,
+  },
+  emptyStateBody: {
+    fontFamily: fontFamily.body,
+    fontSize: 14,
+    lineHeight: 20,
+    textAlign: 'center',
+  },
+  emptyStateBtn: {
+    marginTop: 8,
+    height: 44,
+    paddingHorizontal: 22,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyStateBtnText: {
+    fontFamily: fontFamily.medium,
+    fontSize: 14,
+    letterSpacing: -0.06,
+  },
   loadingWrap: {
     paddingVertical: 32,
     alignItems: 'center',

@@ -23,6 +23,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQueryClient } from '@tanstack/react-query';
 
 import { AppHeader, HEADER_HEIGHT } from '@/components/AppHeader';
+import { FilterChip } from '@/components/FilterChip';
 import { EventListRow } from '@/components/EventListRow';
 import { RefreshBanner } from '@/components/RefreshBanner';
 import { SpinningCross } from '@/components/SpinningCross';
@@ -318,31 +319,15 @@ export default function NewScreen() {
                   {LANES.filter(
                     (lane) =>
                       (laneCounts[lane] ?? 0) > 0 || activeLanes.includes(lane)
-                  ).map((lane) => {
-                    const on = activeLanes.includes(lane);
-                    return (
-                      <Pressable
-                        key={lane}
-                        onPress={() => toggleLane(lane)}
-                        style={[
-                          styles.laneChip,
-                          {
-                            borderColor: on ? roles.accent : roles.fgPlaceholder,
-                            backgroundColor: on ? roles.accent : 'transparent',
-                          },
-                        ]}
-                      >
-                        <Text
-                          style={[
-                            styles.laneChipText,
-                            { color: on ? roles.bg : roles.fg },
-                          ]}
-                        >
-                          {laneLabel(lane, t)} {laneCounts[lane] ?? 0}
-                        </Text>
-                      </Pressable>
-                    );
-                  })}
+                  ).map((lane) => (
+                    <FilterChip
+                      key={lane}
+                      label={laneLabel(lane, t)}
+                      count={laneCounts[lane] ?? 0}
+                      active={activeLanes.includes(lane)}
+                      onPress={() => toggleLane(lane)}
+                    />
+                  ))}
                 </ScrollView>
               ) : null}
             </View>
@@ -583,19 +568,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 22,
     paddingTop: 8,
     paddingBottom: 4,
-  },
-  laneChip: {
-    height: 36,
-    paddingHorizontal: 14,
-    borderRadius: 999,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  laneChipText: {
-    fontFamily: fontFamily.medium,
-    fontSize: 13,
-    letterSpacing: -0.06,
   },
   moreBtn: {
     marginHorizontal: 22,
