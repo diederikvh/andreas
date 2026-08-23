@@ -559,7 +559,26 @@ export async function scrapeTheater(options?: {
                 endsAt: slot.endsAt,
                 priceCents: null,
                 priceNote: existing ? null : (enriched?.priceNote ?? null),
-                ticketUrl: url,
+                // canonicalUrl, niet de opgehaalde url. Als de JSON-LD
+                // zelf een `url` opgeeft is dát de pagina van deze
+                // voorstelling; de URL die wij toevallig ophaalden kan
+                // een alias zijn (Concertgebouw serveert pagina's die de
+                // JSON-LD van een ander concert tonen — daarom leidt de
+                // slug hierboven al van canonicalUrl af). Venues zonder
+                // `url` in hun JSON-LD vallen terug op url, dus voor hen
+                // verandert er niets.
+                //
+                // Effect gemeten op Concertgebouw: klein. Van 20
+                // steekproef-occurrences klopte de ticketlink er daarna
+                // 2 in plaats van 1. De rest hangt aan pagina's die
+                // helemaal geen JSON-LD hebben (200, 545kb, consistent
+                // over 6 pogingen) of die 404'en. Dat is niet van onze
+                // kant te repareren: hun structured data is er simpelweg
+                // niet. Een bron die het wél weet is hun
+                // Elasticsearch-GraphQL op cms.concertgebouw.nl/api —
+                // publiek token staat in de agenda-pagina, maar
+                // introspectie is uit, dus het schema moet geraden.
+                ticketUrl: canonicalUrl,
                 room: existing ? null : (enriched?.room ?? null),
                 lineup: existing ? null : (enriched?.lineup ?? null),
                 status: 'scheduled',
@@ -569,7 +588,7 @@ export async function scrapeTheater(options?: {
                 set: {
                   startsAt: slot.startsAt,
                   endsAt: slot.endsAt,
-                  ticketUrl: url,
+                  ticketUrl: canonicalUrl,
                 },
               });
             result.occurrencesUpserted++;
