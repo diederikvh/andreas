@@ -32,6 +32,6 @@ export default function FriendInviteEntry() {
   if (isPending || !saved) return null;
 
   const authed = Boolean(session?.user?.id);
-  if (authed) return <Redirect href="/(tabs)/social" />;
+  if (authed) return <Redirect href="/social" />;
   return <Redirect href="/jij?onboarding=1" />;
 }

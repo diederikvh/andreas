@@ -32,7 +32,7 @@ export function ShareInviteClaimer() {
           { text: 'Later', style: 'cancel' },
           {
             text: 'Bekijk',
-            onPress: () => router.push('/(tabs)/social' as never),
+            onPress: () => router.push('/social' as never),
           },
         ],
         { cancelable: true }
