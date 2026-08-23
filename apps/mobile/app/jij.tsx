@@ -29,7 +29,7 @@ import { ProfileAvatar } from '@/components/ProfileAvatar';
 import { SpinningCross } from '@/components/SpinningCross';
 import type { ApiMe } from '@/lib/api';
 import { getMe, updateMe, uploadAvatar } from '@/lib/api';
-import { authClient, useSession } from '@/lib/authClient';
+import { authClient, useIsRegistered, useSession } from '@/lib/authClient';
 import {
   type LocalePreference,
   useLocale,
@@ -68,12 +68,17 @@ export default function Jij() {
   // Tussen "session er is" en "me terug van server" is sessionStage
   // tijdelijk 'profile' (omdat me?.handle nog undefined is). Dat gaf
   // een flash van "wat is je naam?". Behandel die periode als loading.
-  const stageUnknown = sessionPending || (Boolean(session?.user?.id) && me === undefined);
-  const authedAndOnboarded = Boolean(session?.user?.id && me?.handle);
+  // Een anonieme sessie telt hier niet als "ingelogd". Sinds
+  // anoniem-eerst heeft iedereen een sessie zodra de app opent, dus
+  // `Boolean(session)` zegt alleen dat er een identiteit is — niet dat
+  // er een persoon aan hangt. Dit scherm gaat over die persoon.
+  const registered = useIsRegistered();
+  const stageUnknown = sessionPending || (registered && me === undefined);
+  const authedAndOnboarded = Boolean(registered && me?.handle);
 
   // Stage uit sessie + me afgeleid; tijdelijke override voor de
   // "code"-stap die geen server-state heeft.
-  const sessionStage: Stage = !session
+  const sessionStage: Stage = !registered
     ? 'phone'
     : !me?.handle
       ? 'profile'

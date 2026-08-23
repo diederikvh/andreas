@@ -25,7 +25,7 @@ import type {
   ApiGroupSummary,
   ApiInvitation,
 } from '@/lib/api';
-import { useSession } from '@/lib/authClient';
+import { useSession, useIsRegistered } from '@/lib/authClient';
 import {
   dowMixed,
   monthShort,
@@ -65,7 +65,8 @@ export default function Social() {
   const qc = useQueryClient();
 
   const { data: session } = useSession();
-  const authed = Boolean(session?.user?.id);
+  // Anonieme sessie telt niet: dit scherm gaat over andere mensen.
+  const authed = useIsRegistered();
 
   const { data: requests } = useFriendRequests({ enabled: authed });
   const { data: invitations } = useInvitations({ enabled: authed });

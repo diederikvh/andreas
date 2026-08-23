@@ -26,7 +26,7 @@ import { AppHeader, HEADER_HEIGHT } from '@/components/AppHeader';
 import { EventListRow } from '@/components/EventListRow';
 import { RefreshBanner } from '@/components/RefreshBanner';
 import { SpinningCross } from '@/components/SpinningCross';
-import { useSession } from '@/lib/authClient';
+import { useSession, useIsRegistered } from '@/lib/authClient';
 import {
   type ApiFeedEvent,
   type SavedApiEvent,
@@ -65,7 +65,8 @@ export default function GoingScreen() {
   const qc = useQueryClient();
 
   const { data: session } = useSession();
-  const authed = Boolean(session?.user?.id);
+  // Anonieme sessie telt niet: dit scherm gaat over andere mensen.
+  const authed = useIsRegistered();
   const { data: me } = useMe();
   const { data: saves, isLoading: savesLoading, error: savesError } =
     useMySaves({ enabled: authed });

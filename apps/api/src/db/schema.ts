@@ -137,7 +137,11 @@ export const users = pgTable(
   'users',
   {
     id: text().primaryKey(),
-    phoneNumber: text().notNull(),
+    /** Nullable sinds anoniem-eerst: bij eerste app-start krijgt iedereen
+        een user-rij zónder nummer. Pas bij accountaanmaak wordt 'ie
+        gevuld. De unique index blijft kloppen — Postgres ziet NULLs als
+        onderling ongelijk. */
+    phoneNumber: text(),
     phoneNumberVerified: boolean().notNull().default(false),
     /** Andreas-handle. Wordt later in onboarding ingesteld; bij
         phone-OTP signup nog niet bekend. */
@@ -168,6 +172,12 @@ export const users = pgTable(
         weigert (403) zonder deze vlag; de mobile-app verbergt de
         "Vraag de gids"-banner. */
     guideEnabled: boolean().notNull().default(false),
+    /** Van de better-auth anonymous-plugin. `true` = device-identiteit
+        zonder telefoonnummer of naam. Zulke users kunnen alles wat over
+        henzelf gaat (saven, wegtikken, volgen, push), maar niets
+        sociaals — daar vraagt de app om een echt account, waarna
+        `onLinkAccount` in auth.ts de data overzet. */
+    isAnonymous: boolean().notNull().default(false),
     createdAt: timestamp({ withTimezone: true })
       .notNull()
       .default(sql`now()`),

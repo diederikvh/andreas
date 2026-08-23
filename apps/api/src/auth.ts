@@ -2,8 +2,8 @@ import { expo } from '@better-auth/expo';
 import { betterAuth } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { createAuthMiddleware } from 'better-auth/api';
-import { bearer, mcp, phoneNumber } from 'better-auth/plugins';
-import { eq } from 'drizzle-orm';
+import { anonymous, bearer, mcp, phoneNumber } from 'better-auth/plugins';
+import { eq, sql as dsql } from 'drizzle-orm';
 
 import { db, schema } from './db/index.js';
 import { sendSms } from './sms/messagebird.js';
@@ -159,6 +159,26 @@ export const auth = betterAuth({
   },
   plugins: [
     expo(),
+    /**
+     * Anoniem-eerst. Bij eerste app-start doet de client een
+     * `signIn.anonymous()`; dat levert een echte user-rij en sessie op,
+     * zodat elk bestaand endpoint ongewijzigd blijft werken — geen
+     * tweede soort identiteit door de hele API heen.
+     *
+     * `onLinkAccount` vuurt zodra zo iemand écht inlogt. Daar verhuizen
+     * we z'n spullen naar het echte account. Dat moet expliciet: zonder
+     * deze hook gooit de plugin de anonieme user weg en is alles wat je
+     * vóór het inloggen bewaarde verdwenen.
+     */
+    anonymous({
+      emailDomainName: 'anon.andreas.amsterdam',
+      onLinkAccount: async ({ anonymousUser, newUser }) => {
+        const from = anonymousUser.user.id;
+        const to = newUser.user.id;
+        if (!from || !to || from === to) return;
+        await migrateAnonymousData(from, to);
+      },
+    }),
     // Mobile draagt sessie via Authorization: Bearer <token> i.p.v.
     // cookies — bearer-plugin laat better-auth dat herkennen.
     bearer(),
@@ -212,3 +232,50 @@ export const auth = betterAuth({
     }),
   ],
 });
+
+
+/**
+ * Verhuis alles wat een anonieme gebruiker heeft opgebouwd naar het
+ * account waarmee 'ie zojuist inlogde.
+ *
+ * Twee gevallen, en het tweede is de reden dat dit geen simpele UPDATE
+ * is: logt iemand in op een nummer dat al een account heeft (oude
+ * telefoon, herinstallatie), dan bestaan beide kanten al. Een blinde
+ * UPDATE knalt dan op de primary keys — `(user_id, occurrence_id)` is
+ * uniek. Dus: verplaats alleen wat het doel-account nog niet heeft, en
+ * gooi de rest weg. Het bestaande account wint, want dat is het oudere
+ * en bewustere signaal.
+ *
+ * `zoek_logs` heeft geen unique constraint per user, dus die kan in één
+ * keer over.
+ */
+async function migrateAnonymousData(from: string, to: string) {
+  // Elk paar: tabel + de kolom die samen met user_id de rij uniek maakt.
+  const pairs = [
+    { table: 'saves', key: 'occurrence_id' },
+    { table: 'dismisses', key: 'occurrence_id' },
+    { table: 'venue_follows', key: 'venue_id' },
+    { table: 'push_tokens', key: 'token' },
+  ] as const;
+
+  for (const { table, key } of pairs) {
+    await db.execute(dsql`
+      UPDATE ${dsql.identifier(table)} AS a
+         SET user_id = ${to}
+       WHERE a.user_id = ${from}
+         AND NOT EXISTS (
+           SELECT 1 FROM ${dsql.identifier(table)} AS b
+            WHERE b.user_id = ${to}
+              AND b.${dsql.identifier(key)} = a.${dsql.identifier(key)}
+         )
+    `);
+    // Wat overblijft is een dubbeling met het bestaande account.
+    await db.execute(
+      dsql`DELETE FROM ${dsql.identifier(table)} WHERE user_id = ${from}`
+    );
+  }
+
+  await db.execute(
+    dsql`UPDATE zoek_logs SET user_id = ${to} WHERE user_id = ${from}`
+  );
+}

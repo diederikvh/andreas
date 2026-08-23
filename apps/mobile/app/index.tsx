@@ -5,7 +5,7 @@ import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 
 import { ModePick } from '@/components/start/ModePick';
 import { Splash } from '@/components/start/Splash';
-import { useSession } from '@/lib/authClient';
+import { ensureAnonymousSession, useSession } from '@/lib/authClient';
 import { useModeStore, useRoles } from '@/store/mode';
 
 const SPLASH_HOLD_MS = 1600;
@@ -14,45 +14,46 @@ type Stage = 'splash' | 'mode';
 
 /**
  * Start flow op cold-start:
- *  - Ingelogd → /avond (returning user, happy path).
- *  - Niet ingelogd + al eens onboarded → /jij?onboarding=1
- *    (mode-keuze is al persisted, dus skip de mode-pick; alleen
- *    phone-OTP opnieuw).
- *  - Niet ingelogd + nooit onboarded → splash → mode-pick →
- *    /jij?onboarding=1 (eerste-keer-volledige flow).
+ *  - Al eens onboarded → /avond. Punt.
+ *  - Eerste keer → splash → mode-pick → /avond.
  *
- * Zodra de gebruiker een handle heeft (= profile compleet), markeert
- * /jij `hasOnboarded` en replace't naar /avond.
+ * Er wordt niet meer om een account gevraagd. Bij eerste start loggen we
+ * stil anoniem in; dat levert een user-rij en sessie op zodat je meteen
+ * kunt saven, wegtikken en volgen, en zodat de dagelijkse push ergens
+ * aan kan hangen. Een echt account is pas nodig zodra er andere mensen
+ * bij komen kijken (vrienden, uitnodigen, delen) — dat vraagt de app
+ * dáár, niet vooraf.
+ *
+ * `hasOnboarded` betekent nu dus "mode gekozen", niet "profiel af".
  */
 export default function StartScreen() {
   const roles = useRoles();
   const [stage, setStage] = useState<Stage>('splash');
   const { data: session, isPending: sessionPending } = useSession();
 
+  // Zorg tijdens de splash dat er een identiteit is. Loopt parallel aan
+  // de splash-hold, dus in de praktijk kost 't geen wachttijd.
+  useEffect(() => {
+    if (sessionPending) return;
+    if (!session?.user?.id) void ensureAnonymousSession();
+  }, [sessionPending, session]);
+
   useEffect(() => {
     if (stage !== 'splash') return;
-    // Wacht tot we weten of er een sessie is — anders kan een snelle
-    // redirect een ingelogde user toch naar onboarding sturen.
     if (sessionPending) return;
-    const isAuthed = Boolean(session?.user?.id);
     const t = setTimeout(() => {
       const { hasOnboarded } = useModeStore.getState();
-      if (isAuthed) {
-        router.replace('/avond');
-      } else if (hasOnboarded) {
-        router.replace('/jij?onboarding=1');
-      } else {
-        setStage('mode');
-      }
+      if (hasOnboarded) router.replace('/avond');
+      else setStage('mode');
     }, SPLASH_HOLD_MS);
     return () => clearTimeout(t);
-  }, [stage, sessionPending, session]);
+  }, [stage, sessionPending]);
 
   const handlePicked = () => {
-    // hasOnboarded zetten we NIET hier — pas zodra /jij de phone-OTP-
-    // flow heeft afgerond. Zo komt iemand die de app sluit tijdens
-    // de phone-step bij volgende start netjes terug bij mode-pick.
-    router.replace('/jij?onboarding=1');
+    // Mode gekozen = onboarding klaar. Er komt geen inlogstap meer
+    // achteraan, dus dit is het moment om 't af te vinken.
+    useModeStore.getState().completeOnboarding();
+    router.replace('/avond');
   };
 
   return (
