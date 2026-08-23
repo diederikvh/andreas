@@ -2416,24 +2416,49 @@ function ymToLabel(ym: string): string {
 
 adminUi.get('/insights', async (c) => {
   // ─── 0. Growth — DAU / WAU / MAU ──────────────────────────────────
-  // Aantal users actief in de afgelopen 24h / 7d / 30d, op basis van
-  // `users.last_seen_at`. NULL = nooit gezien sinds tracking begon.
+  // Actieve users op `users.last_seen_at` (NULL = nooit gezien sinds
+  // tracking begon), gesplitst op anoniem versus account.
+  //
+  // Die splitsing is niet cosmetisch: sinds anoniem-eerst krijgt élke
+  // installatie een user-rij. Zonder splitsing tellen deze tegels
+  // installaties in plaats van mensen, en dan zegt "MAU" niets meer.
   const [growth] = (
     await db.execute(sql`
       SELECT
         COUNT(*)::int AS total,
+        COUNT(*) FILTER (WHERE NOT is_anonymous)::int AS accounts,
+        COUNT(*) FILTER (WHERE is_anonymous)::int AS anon,
         COUNT(*) FILTER (
           WHERE last_seen_at >= NOW() - INTERVAL '24 hours'
         )::int AS dau,
         COUNT(*) FILTER (
+          WHERE last_seen_at >= NOW() - INTERVAL '24 hours' AND NOT is_anonymous
+        )::int AS dau_accounts,
+        COUNT(*) FILTER (
           WHERE last_seen_at >= NOW() - INTERVAL '7 days'
         )::int AS wau,
         COUNT(*) FILTER (
+          WHERE last_seen_at >= NOW() - INTERVAL '7 days' AND NOT is_anonymous
+        )::int AS wau_accounts,
+        COUNT(*) FILTER (
           WHERE last_seen_at >= NOW() - INTERVAL '30 days'
-        )::int AS mau
+        )::int AS mau,
+        COUNT(*) FILTER (
+          WHERE last_seen_at >= NOW() - INTERVAL '30 days' AND NOT is_anonymous
+        )::int AS mau_accounts
       FROM users
     `)
-  ).rows as Array<{ total: number; dau: number; wau: number; mau: number }>;
+  ).rows as Array<{
+    total: number;
+    accounts: number;
+    anon: number;
+    dau: number;
+    dau_accounts: number;
+    wau: number;
+    wau_accounts: number;
+    mau: number;
+    mau_accounts: number;
+  }>;
 
   // Nieuwe signups en saves per dag — 30 dagen terug. Generate_series
   // vult lege dagen met 0 zodat de tabel monotoon scrollt.
@@ -2446,7 +2471,9 @@ adminUi.get('/insights', async (c) => {
       )::date AS day
     ),
     signups AS (
-      SELECT DATE_TRUNC('day', created_at)::date AS day, COUNT(*)::int AS n
+      SELECT DATE_TRUNC('day', created_at)::date AS day,
+             COUNT(*)::int AS n,
+             COUNT(*) FILTER (WHERE NOT is_anonymous)::int AS n_accounts
       FROM users
       WHERE created_at >= NOW() - INTERVAL '30 days'
       GROUP BY day
@@ -2460,6 +2487,7 @@ adminUi.get('/insights', async (c) => {
     SELECT
       d.day::text AS day,
       COALESCE(s.n, 0) AS signups,
+      COALESCE(s.n_accounts, 0) AS signup_accounts,
       COALESCE(sd.n, 0) AS saves
     FROM days d
     LEFT JOIN signups s ON s.day = d.day
@@ -2469,6 +2497,7 @@ adminUi.get('/insights', async (c) => {
   const dailyActivity = dailyActivityRows.rows as Array<{
     day: string;
     signups: number;
+    signup_accounts: number;
     saves: number;
   }>;
   const maxSignups = Math.max(1, ...dailyActivity.map((r) => r.signups));
@@ -2943,36 +2972,64 @@ adminUi.get('/insights', async (c) => {
         <h3>Growth</h3>
         <p style="opacity:0.7;font-size:13px;">
           Actieve users op basis van laatste app-launch / tab-focus.
-          `lastSeenAt` wordt 1× per uur per user bijgewerkt.
+          `lastSeenAt` wordt 1× per uur per user bijgewerkt. Het grote
+          getal is iedereen; eronder staat hoeveel daarvan een account
+          heeft. Sinds anoniem-eerst krijgt elke installatie een user-rij,
+          dus zonder die splitsing tel je installaties in plaats van
+          mensen.
         </p>
-        <div class="grid-3" style="grid-template-columns:repeat(4,1fr);">
+        <div class="grid-3" style="grid-template-columns:repeat(5,1fr);">
           <div class="stat">
             <small>DAU · 24h</small>
             <strong>{growth?.dau ?? 0}</strong>
+            <small style="opacity:0.6;">
+              {growth?.dau_accounts ?? 0} met account
+            </small>
           </div>
           <div class="stat">
             <small>WAU · 7d</small>
             <strong>{growth?.wau ?? 0}</strong>
+            <small style="opacity:0.6;">
+              {growth?.wau_accounts ?? 0} met account
+            </small>
           </div>
           <div class="stat">
             <small>MAU · 30d</small>
             <strong>{growth?.mau ?? 0}</strong>
+            <small style="opacity:0.6;">
+              {growth?.mau_accounts ?? 0} met account
+            </small>
           </div>
           <div class="stat">
-            <small>Totaal users</small>
-            <strong>{growth?.total ?? 0}</strong>
+            <small>Accounts</small>
+            <strong>{growth?.accounts ?? 0}</strong>
+            <small style="opacity:0.6;">van {growth?.total ?? 0} totaal</small>
+          </div>
+          <div class="stat">
+            <small>Anoniem</small>
+            <strong>{growth?.anon ?? 0}</strong>
+            <small style="opacity:0.6;">nu zonder account</small>
           </div>
         </div>
         <details style="margin-top:1rem;">
           <summary style="font-size:13px;opacity:0.7;">
             Dagelijkse activiteit · laatste 30 dagen
           </summary>
+          <p style="opacity:0.7;font-size:12px;margin-top:0.5rem;">
+            Let op: dit telt user-rijen zoals ze nú bestaan. Koppelt een
+            anonieme installatie later aan een telefoonnummer, dan ruimt
+            better-auth de anonieme rij op — die installatie verschuift
+            dus met terugwerkende kracht van z'n installatiedag naar de
+            dag van het account. Voor echte installatie-historie is een
+            apart event-log nodig.
+          </p>
           <table style="margin-top:0.75rem;">
             <thead>
               <tr>
                 <th>Dag</th>
-                <th style="text-align:right;">Signups</th>
-                <th style="width:30%;">Signups bar</th>
+                <th style="text-align:right;">Nieuw</th>
+                <th style="text-align:right;">wv. account</th>
+                <th style="width:26%;">Nieuw bar</th>
                 <th style="text-align:right;">Saves</th>
                 <th style="width:30%;">Saves bar</th>
               </tr>
@@ -2983,6 +3040,11 @@ adminUi.get('/insights', async (c) => {
                   <td style="font-family:monospace;font-size:12px;">{r.day}</td>
                   <td style="text-align:right;">
                     {r.signups > 0 ? r.signups : (
+                      <span style="opacity:0.3;">·</span>
+                    )}
+                  </td>
+                  <td style="text-align:right;">
+                    {r.signup_accounts > 0 ? r.signup_accounts : (
                       <span style="opacity:0.3;">·</span>
                     )}
                   </td>
@@ -3396,13 +3458,20 @@ adminUi.get('/users', async (c) => {
     })
     .from(schema.users)
     .where(
+      // Anonieme rijen weglaten. Sinds anoniem-eerst is dat elke
+      // installatie, en die zijn hier ruis: deze tabel is om een
+      // persoon te vinden en z'n gids-toegang te zetten. Hoeveel er
+      // anoniem rondlopen staat op de Growth-tegels.
       q.length > 0
-        ? or(
-            ilike(schema.users.handle, needle),
-            ilike(schema.users.name, needle),
-            ilike(schema.users.phoneNumber, needle)
+        ? and(
+            eq(schema.users.isAnonymous, false),
+            or(
+              ilike(schema.users.handle, needle),
+              ilike(schema.users.name, needle),
+              ilike(schema.users.phoneNumber, needle)
+            )
           )
-        : undefined
+        : eq(schema.users.isAnonymous, false)
     )
     .orderBy(desc(schema.users.guideEnabled), desc(schema.users.createdAt))
     .limit(100);
