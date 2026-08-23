@@ -104,7 +104,6 @@ export default function MeerScreen() {
       key: 'social',
       icon: <Ionicons name="people-outline" size={22} color={roles.accent} />,
       label: t('Vrienden', 'Friends'),
-      hint: t('Wat zij bewaarden', 'What they saved'),
       badge: socialCount,
       onPress: go('/social'),
     },

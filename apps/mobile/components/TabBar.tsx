@@ -1,3 +1,4 @@
+import { Ionicons } from '@expo/vector-icons';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import MaskedView from '@react-native-masked-view/masked-view';
 import { BlurView } from 'expo-blur';
@@ -22,6 +23,7 @@ import { useSession } from '@/lib/authClient';
 import { tinyTap } from '@/lib/haptics';
 import { useNewArrivalsSince, useSocialBadgeCount } from '@/lib/queries';
 import { useMode, useRoles } from '@/store/mode';
+import { useZoekStore } from '@/store/zoek';
 import { useNewFilters } from '@/store/newFilters';
 import { useNewBadgeSince } from '@/store/sessionTimestamps';
 import { fontFamily, palette } from '@/theme/tokens';
@@ -184,7 +186,8 @@ export function TabBar({ state, navigation }: BottomTabBarProps) {
           </MaskedView>
         )}
       </View>
-      <View style={[styles.bar, { bottom, borderColor: border }]}>
+      <View style={[styles.barRow, { bottom }]} pointerEvents="box-none">
+      <View style={[styles.bar, { borderColor: border }]}>
         <BlurView
           intensity={40}
           tint={mode === 'nacht' ? 'dark' : 'light'}
@@ -248,6 +251,27 @@ export function TabBar({ state, navigation }: BottomTabBarProps) {
         );
       })}
       </View>
+      {/* Zoeken staat naast de balk, niet erin. Het is geen plek waar je
+          heen navigeert maar iets wat je dóét — een eigen capsule zegt
+          dat, en de drie tabs blijven een gesloten setje. */}
+      <Pressable
+        onPress={() => {
+          tinyTap();
+          useZoekStore.getState().openSearch();
+        }}
+        accessibilityRole="button"
+        accessibilityLabel="Zoeken"
+        style={[styles.searchPill, { borderColor: border }]}
+      >
+        <BlurView
+          intensity={40}
+          tint={mode === 'nacht' ? 'dark' : 'light'}
+          style={StyleSheet.absoluteFill}
+        />
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: tint }]} />
+        <Ionicons name="search" size={21} color={idle} />
+      </Pressable>
+      </View>
     </>
   );
 }
@@ -262,15 +286,30 @@ const styles = StyleSheet.create({
     bottom: 0,
     overflow: 'hidden',
   },
-  bar: {
+  // Rij met twee losse capsules: de tabs, en zoeken ernaast.
+  barRow: {
     position: 'absolute',
     left: 20,
     right: 20,
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    gap: 10,
+  },
+  bar: {
+    flex: 1,
     padding: 6,
     borderRadius: 999,
     borderWidth: 1,
     flexDirection: 'row',
     gap: 2,
+    overflow: 'hidden',
+  },
+  searchPill: {
+    width: 58,
+    borderRadius: 999,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
     overflow: 'hidden',
   },
   button: {
