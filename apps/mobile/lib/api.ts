@@ -628,6 +628,8 @@ export async function getAgendaDays(input: {
 
 export async function getAgendaDay(input: {
   date: string;
+  /** Laatste dag van de reeks (YYYY-MM-DD). Weglaten = alleen `date`. */
+  toDate?: string;
   /** Optionele cutoff: events met effectieve eindtijd vóór deze tijd
       worden weggefilterd. Bedoeld voor "vandaag" zodat een 14:00-show
       om 16:30 niet meer in de lijst staat. */
@@ -636,6 +638,7 @@ export async function getAgendaDay(input: {
 }): Promise<AgendaRow[]> {
   const params = buildAgendaQuery(input.filters ?? {});
   params.set('date', input.date);
+  if (input.toDate) params.set('to', input.toDate);
   if (input.from) params.set('from', input.from);
   const { rows } = await authedRequest<{ rows: AgendaRow[] }>(
     `/events/agenda?${params.toString()}`

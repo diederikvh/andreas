@@ -565,10 +565,15 @@ eventsRoute.get('/agenda/days', async (c) => {
 });
 
 /**
- * Rows voor één logische dag. `date` = YYYY-MM-DD (NL-local). Het
- * window draait 06:00 → next-day 06:00 zodat een 02:00-club-event bij
- * de avond ervoor hoort (zelfde regel als mobile's
- * groupOccurrenceRowsByDay). Sortering: startsAt ASC.
+ * Rows voor een reeks logische dagen. `date` = eerste dag (YYYY-MM-DD,
+ * NL-local), optioneel `to` = laatste dag. Zonder `to` is het één dag,
+ * zoals hiervoor.
+ *
+ * Het window draait 06:00 → (laatste dag + 1) 06:00 zodat een
+ * 02:00-club-event bij de avond ervoor hoort — zelfde regel als
+ * mobile's `groupOccurrenceRowsByDay`, die de rijen daarna per dag
+ * groepeert. Sortering: startsAt ASC, dus de client hoeft alleen te
+ * splitsen, niet te sorteren.
  *
  * Lean row-shape — geen volledig venue-object, geen occurrencesInRange,
  * geen series-array (alleen de eerste naam). Friends-pill: top 3 +
@@ -579,6 +584,25 @@ eventsRoute.get('/agenda', async (c) => {
   const dateParam = c.req.query('date');
   if (!dateParam || !/^\d{4}-\d{2}-\d{2}$/.test(dateParam)) {
     return c.json({ error: 'date param vereist (YYYY-MM-DD)' }, 400);
+  }
+  // Eindpunt van de reeks. Ongeldig of vóór `date` => één dag.
+  const toRaw = c.req.query('to');
+  const toParam =
+    toRaw && /^\d{4}-\d{2}-\d{2}$/.test(toRaw) && toRaw >= dateParam
+      ? toRaw
+      : dateParam;
+  // Bovengrens op de reeks: een half jaar aan rijen in één response
+  // helpt niemand en is een makkelijke manier om de API plat te leggen.
+  // 92 dagen ≈ een kwartaal, ruim boven wat de UI aanbiedt.
+  const MAX_RANGE_DAYS = 92;
+  const spanDays =
+    Math.round(
+      (Date.parse(`${toParam}T12:00:00Z`) -
+        Date.parse(`${dateParam}T12:00:00Z`)) /
+        86400000
+    ) + 1;
+  if (spanDays > MAX_RANGE_DAYS) {
+    return c.json({ error: `reeks max ${MAX_RANGE_DAYS} dagen` }, 400);
   }
   // Optionele cutoff voor "verlopen events op vandaag": mobile stuurt
   // de huidige tijd mee zodat een 14:00-show om 16:30 niet meer in de
@@ -594,7 +618,7 @@ eventsRoute.get('/agenda', async (c) => {
   // AT TIME ZONE op een naïeve timestamp interpreteert hem ALS lokale
   // tijd en geeft 'm terug als timestamptz (UTC) voor vergelijking.
   const windowStart = sql`(${dateParam}::text || ' 06:00:00')::timestamp AT TIME ZONE 'Europe/Amsterdam'`;
-  const windowEnd = sql`((${dateParam}::date + 1)::text || ' 06:00:00')::timestamp AT TIME ZONE 'Europe/Amsterdam'`;
+  const windowEnd = sql`((${toParam}::date + 1)::text || ' 06:00:00')::timestamp AT TIME ZONE 'Europe/Amsterdam'`;
   // Effectieve windowStart voor het "nog niet voorbij"-filter: max van
   // windowStart en de meegegeven cut-off. Voor toekomstige dagen pakt
   // GREATEST sowieso windowStart; voor vandaag pakt 'ie focusedNow.
@@ -646,14 +670,20 @@ eventsRoute.get('/agenda', async (c) => {
     .innerJoin(schema.events, eq(schema.events.id, schema.occurrences.eventId))
     .innerJoin(schema.venues, eq(schema.venues.id, schema.events.venueId))
     .where(and(...conditions))
-    .orderBy(asc(schema.occurrences.startsAt));
+    .orderBy(asc(schema.occurrences.startsAt))
+    // Ongelimiteerd was prima toen dit één dag was (~50 rijen). Met een
+    // reeks van een maand loopt 't in de duizenden, en alles daarna
+    // (venue-overrides, friends-pills, series) schaalt mee. 1500 dekt
+    // een ruime maand Amsterdam; daarboven moet de gebruiker maar
+    // filteren.
+    .limit(1500);
 
   if (rows.length === 0) return c.json({ rows: [] });
 
   // Occurrence-venue overrides: voor films die in meerdere bioscopen
   // draaien wijkt occ.venueId af van event.venueId. Apart fetchen,
   // niet via JOIN — drizzle's aliasedTable speelt slecht samen met de
-  // TS-inferentie en de N is sowieso klein (max ~50 rows per dag).
+  // TS-inferentie en de N blijft behapbaar (gecapt op 1500 rijen).
   // Eén pass i.p.v. O(n²): collect alle occ-venue-ids die niet matchen
   // met de event-venue-id van dezelfde row.
   const overrideVenueIds = [

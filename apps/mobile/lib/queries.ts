@@ -83,8 +83,8 @@ export const queryKeys = {
   // achter de schermen een refetch fired.
   agendaDays: (input: { filters: AgendaFilters }) =>
     ['agenda-days', input.filters] as const,
-  agendaDay: (input: { date: string; filters: AgendaFilters }) =>
-    ['agenda-day', input.date, input.filters] as const,
+  agendaDay: (input: { date: string; toDate?: string; filters: AgendaFilters }) =>
+    ['agenda-day', input.date, input.toDate ?? input.date, input.filters] as const,
   mirror: () => ['mirror', 'me'] as const,
   forYou: (opts: { weekOnly?: boolean; tonight?: boolean } = {}) =>
     [
@@ -334,6 +334,8 @@ export function useAgendaDays(input: {
  */
 export function useAgendaDay(input: {
   date: string | null;
+  /** Laatste dag van de reeks. Weglaten = één dag. */
+  toDate?: string;
   /** Cutoff voor verlopen events op "vandaag" — laat undefined voor
       toekomstige dagen (geen no-op, scheelt 'm uit de query-key). */
   from?: string;
@@ -343,10 +345,12 @@ export function useAgendaDay(input: {
   return useQuery({
     queryKey: queryKeys.agendaDay({
       date: input.date ?? '',
+      toDate: input.toDate,
       filters: input.filters,
     }),
     queryFn: () =>
       getAgendaDay({
+        toDate: input.toDate,
         date: input.date!,
         from: input.from,
         filters: input.filters,

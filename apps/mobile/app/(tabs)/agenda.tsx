@@ -55,7 +55,12 @@ import {
   useFriends,
 } from '@/lib/queries';
 import { useTabDoubleTap } from '@/lib/useTabDoubleTap';
-import { useAgendaFilters } from '@/store/agendaFilters';
+import {
+  defaultRange,
+  isoDay,
+  useAgendaFilters,
+  type DateRange,
+} from '@/store/agendaFilters';
 import { useMode, useModeStore, useRoles } from '@/store/mode';
 import {
   isSavedSearchActive,
@@ -70,6 +75,7 @@ const MONTH_LABEL_HEIGHT = 14;
 const DAYSTRIP_HEIGHT = 76;
 const DAYSTRIP_INNER_HEIGHT = DAYSTRIP_HEIGHT - MONTH_LABEL_HEIGHT;
 const CHIPROW_HEIGHT = 60;
+const RANGEBAR_HEIGHT = 44;
 /** Hoever in de toekomst de day-strip kijkt vanaf vandaag. 90 dagen
     dekt het gros van wat venues geannonceerd hebben staan — verder
     kunnen we later infinite-paginaten als het nodig is. */
@@ -124,41 +130,23 @@ const TONE: Record<
 // FlatList-items binnen de geselecteerde dag: cat-header die collapse-
 // state beheert, gevolgd door 0+ rij-items (verborgen als ingeklapt).
 type AgendaItem =
-  | {
-      type: 'header';
-      id: string;
-      category: ApiEvent['category'];
-      count: number;
-      collapsed: boolean;
-    }
+  | { type: 'day'; id: string; date: string; count: number }
   | { type: 'row'; id: string; row: AgendaRowData };
 
-function deriveDay(date: string, count: number, locale: Locale): DaySummary {
-  // Noon-tijd vermijdt rare TZ-edges rondom middernacht (DST etc.).
-  const d = new Date(`${date}T12:00:00`);
-  return {
-    id: date,
-    date,
-    dow: dowMixed(d.getDay(), locale),
-    num: String(d.getDate()).padStart(2, '0'),
-    month: monthShort(d.getMonth(), locale),
-    count,
-  };
+/** Welke logische dag hoort bij dit tijdstip? Vóór 06:00 telt als de
+    avond ervoor — een clubnacht die om 02:00 nog draait staat onder
+    zaterdag, niet onder zondag. Spiegelt het 06:00-window op de
+    server. */
+function logicalDayOf(iso: string): string {
+  const d = new Date(iso);
+  if (d.getHours() < 6) d.setDate(d.getDate() - 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
 function logicalTodayDate(now: Date): string {
   // Logische dag-shift: vóór 06:00 → kalenderdag - 1.
   const d = new Date(now);
   if (d.getHours() < 6) d.setDate(d.getDate() - 1);
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, '0');
-  const dd = String(d.getDate()).padStart(2, '0');
-  return `${yyyy}-${mm}-${dd}`;
-}
-
-function addDaysToDate(date: string, days: number): string {
-  const d = new Date(`${date}T12:00:00`);
-  d.setDate(d.getDate() + days);
   const yyyy = d.getFullYear();
   const mm = String(d.getMonth() + 1).padStart(2, '0');
   const dd = String(d.getDate()).padStart(2, '0');
@@ -234,14 +222,20 @@ export default function Agenda() {
   // alleen bij tab-focus zodat de query-key niet middenin het scrollen
   // verandert. Bij volgende focus zit je vanzelf op de nieuwe dag.
   const focusedNow = useFocusedNow();
-  const fromDate = useMemo(
-    () => logicalTodayDate(new Date(focusedNow)),
-    [focusedNow]
-  );
-  const toDate = useMemo(
-    () => addDaysToDate(fromDate, AGENDA_WINDOW_DAYS),
-    [fromDate]
-  );
+  const range = useAgendaFilters((s) => s.range);
+  const setRange = useAgendaFilters((s) => s.setRange);
+  const [rangeOpen, setRangeOpen] = useState(false);
+
+  // Als je de app een dag laat openstaan schuift 'vandaag' door onder
+  // een bereik dat nog op gisteren begint. Bij focus corrigeren we dat,
+  // maar alleen als je 't bereik niet zelf hebt opgerekt naar het
+  // verleden — dan is 't een bewuste keuze.
+  useEffect(() => {
+    const today = logicalTodayDate(new Date(focusedNow));
+    if (range.from < today && range.to >= today) {
+      setRange({ from: today, to: range.to });
+    }
+  }, [focusedNow, range.from, range.to, setRange]);
 
   // Server-side filters voor beide agenda-endpoints. Time-blocks
   // óók server-side zodat de day-strip-tellingen er rekening mee houden
@@ -259,76 +253,29 @@ export default function Agenda() {
     [activeCats, activeTypes, activeBlocks, query, onlyFavorites, onlyFriends]
   );
 
-  // Day-strip: lichte aggregate-query per logische dag. Geen row-data.
-  // `from` = huidige tijd (niet middernacht), zodat een late-night-club
-  // die om 02:00 stopt niet als "gisteren had 12 events" verschijnt op
-  // een 10:00-bezoek. Late-night events die nog lopen blijven wél
-  // zichtbaar — de logical-day-cutoff doet de rest.
-  const {
-    data: agendaDays,
-    isLoading: daysLoading,
-    error: daysError,
-  } = useAgendaDays({
-    from: new Date(focusedNow).toISOString(),
-    to: `${toDate}T00:00:00.000Z`,
-    filters: apiFilters,
-  });
-
-  const days: DaySummary[] = useMemo(() => {
-    if (!agendaDays) return [];
-    return agendaDays.map((d) => deriveDay(d.date, d.count, locale));
-  }, [agendaDays, locale]);
-
-  const [selectedDate, setSelectedDate] = useState<string | null>(null);
-
-  // Auto-select wanneer eerste data binnenkomt of huidige selectie door
-  // een filter-wijziging uit de lijst verdwijnt.
-  useEffect(() => {
-    if (days.length === 0) {
-      if (selectedDate !== null) setSelectedDate(null);
-      return;
-    }
-    if (!selectedDate || !days.find((d) => d.id === selectedDate)) {
-      setSelectedDate(days[0].id);
-    }
-  }, [days, selectedDate]);
-
-  // Lean rows voor de geselecteerde dag. `from` is alleen relevant
-  // voor de huidige logische dag (filtert verlopen events); voor
-  // toekomstige dagen passeert 't onschadelijk via GREATEST in SQL.
+  // Eén reeks in plaats van dag-voor-dag. De day-strip liet je telkens
+  // één dag zien; om te weten wat er deze week speelde moest je zeven
+  // keer tikken en kon je nooit doorscrollen. Nu haalt 'ie het hele
+  // bereik op en groeperen we clientside per logische dag.
+  //
+  // `from` = huidige tijd (niet middernacht) zodat een middagshow die
+  // al voorbij is uit vandaag valt. Voor de dagen erna passeert 'ie
+  // onschadelijk via GREATEST in SQL.
   const {
     data: rows = [],
     isLoading: rowsLoading,
     error: rowsError,
   } = useAgendaDay({
-    date: selectedDate,
+    date: range.from,
+    toDate: range.to,
     from: new Date(focusedNow).toISOString(),
     filters: apiFilters,
   });
 
-  // Prefetch ±1 dag zodat tap op volgende/vorige chip instant rendert.
-  const prefetchDay = useAgendaDayPrefetch();
-  useEffect(() => {
-    if (!selectedDate) return;
-    const idx = days.findIndex((d) => d.id === selectedDate);
-    if (idx < 0) return;
-    const fromIso = new Date(focusedNow).toISOString();
-    const next = days[idx + 1]?.id;
-    const prev = days[idx - 1]?.id;
-    if (next)
-      prefetchDay({ date: next, from: fromIso, filters: apiFilters });
-    if (prev)
-      prefetchDay({ date: prev, from: fromIso, filters: apiFilters });
-  }, [selectedDate, days, apiFilters, prefetchDay, focusedNow]);
-
-  // -8 om de day-strip + chip-row 8px omhoog te trekken, dichter
-  // tegen de "Andreas" wordmark aan.
+  // -8 om de chip-rij 8px omhoog te trekken, dichter tegen de
+  // "Andreas" wordmark aan. De day-strip die hier ook in zat is weg.
   const stickyOffset =
-    insets.top + HEADER_HEIGHT + DAYSTRIP_HEIGHT + CHIPROW_HEIGHT - 8;
-
-  const selectDay = useCallback((id: string) => {
-    setSelectedDate(id);
-  }, []);
+    insets.top + HEADER_HEIGHT + RANGEBAR_HEIGHT + CHIPROW_HEIGHT - 8;
 
   // Pull-to-refresh: invalideert beide agenda-caches zodat én de day-
   // strip én de huidige dag opnieuw fetchen.
@@ -338,10 +285,7 @@ export default function Agenda() {
     setRefreshing(true);
     const start = Date.now();
     try {
-      await Promise.all([
-        qc.invalidateQueries({ queryKey: ['agenda-days'] }),
-        qc.invalidateQueries({ queryKey: ['agenda-day'] }),
-      ]);
+      await qc.invalidateQueries({ queryKey: ['agenda-day'] });
     } finally {
       const elapsed = Date.now() - start;
       if (elapsed < 700) {
@@ -351,7 +295,6 @@ export default function Agenda() {
     }
   }, [qc]);
 
-  const selectedDay = days.find((d) => d.id === selectedDate) ?? null;
   const hasActiveFilter =
     activeCats.length > 0 ||
     activeTypes.length > 0 ||
@@ -360,56 +303,29 @@ export default function Agenda() {
     onlyFriends ||
     onlyFavorites;
 
-  // Per-categorie collapse-state. Reset bij dag-wissel zodat alles
-  // open is wanneer je naar een nieuwe dag tikt (anders zou je
-  // verwachten alles te zien maar krijg je een ingeklapte view).
-  const [collapsedCats, setCollapsedCats] = useState<Set<string>>(
-    () => new Set()
-  );
-  useEffect(() => {
-    setCollapsedCats(new Set());
-  }, [selectedDate]);
-
-  const toggleCollapse = useCallback((cat: ApiEvent['category']) => {
-    setCollapsedCats((cur) => {
-      const next = new Set(cur);
-      if (next.has(cat)) next.delete(cat);
-      else next.add(cat);
-      return next;
-    });
-  }, []);
-
-  // Items voor de FlatList: cat-headers + rows, gegroepeerd in vaste
-  // CATEGORIES-volgorde (matcht Vandaag's rail-volgorde). Een ingeklapte
-  // categorie laat alleen de header staan zodat je de groep visueel
-  // kan overslaan.
+  // Items voor de FlatList: dag-kop + rijen op tijd. De grondslag is nu
+  // de dág, niet de categorie — met een reeks van zeven dagen zou je
+  // anders twee lagen koppen boven elkaar krijgen (dag > categorie) en
+  // dan scrolt niks meer lekker. Categorie zit al als tag op de rij en
+  // als filter in de chip-rij.
   const items: AgendaItem[] = useMemo(() => {
-    const byCat = new Map<ApiEvent['category'], AgendaRowData[]>();
-    for (const row of rows) {
-      const arr = byCat.get(row.category) ?? [];
-      arr.push(row);
-      byCat.set(row.category, arr);
-    }
     const out: AgendaItem[] = [];
-    for (const cat of CATEGORIES) {
-      const arr = byCat.get(cat);
-      if (!arr || arr.length === 0) continue;
-      const collapsed = collapsedCats.has(cat);
-      out.push({
-        type: 'header',
-        id: `header::${cat}`,
-        category: cat,
-        count: arr.length,
-        collapsed,
-      });
-      if (!collapsed) {
-        for (const row of arr) {
-          out.push({ type: 'row', id: row.id, row });
-        }
+    let currentDay: string | null = null;
+    for (const row of rows) {
+      const day = logicalDayOf(row.startsAt);
+      if (day !== currentDay) {
+        currentDay = day;
+        out.push({
+          type: 'day',
+          id: `day::${day}`,
+          date: day,
+          count: rows.filter((r) => logicalDayOf(r.startsAt) === day).length,
+        });
       }
+      out.push({ type: 'row', id: row.id, row });
     }
     return out;
-  }, [rows, collapsedCats]);
+  }, [rows]);
 
   return (
     <View style={[styles.root, { backgroundColor: roles.bg }]}>
@@ -419,55 +335,40 @@ export default function Agenda() {
         data={items}
         keyExtractor={(item) => item.id}
         renderItem={({ item }) =>
-          item.type === 'header' ? (
-            <CategoryHeader
-              category={item.category}
-              count={item.count}
-              collapsed={item.collapsed}
-              onPress={() => toggleCollapse(item.category)}
-            />
+          item.type === 'day' ? (
+            <DayHeader date={item.date} count={item.count} />
           ) : (
             <AgendaRowItem row={item.row} onTap={onRowTap} />
           )
         }
         ListHeaderComponent={
           <Animated.View entering={FadeIn.duration(220)}>
-            {(daysLoading || rowsLoading) && (
+            {rowsLoading && (
               <View style={styles.loadingWrap}>
                 <SpinningCross size={28} color={roles.fgPlaceholder} />
               </View>
             )}
-            {(daysError || rowsError) && (
+            {rowsError && (
               <ListState
                 text={t('Kon agenda niet laden.', 'Couldn’t load agenda.')}
                 tone="error"
               />
             )}
-            {!daysLoading &&
-              !daysError &&
-              days.length === 0 && (
-                <ListState
-                  text={
-                    hasActiveFilter
-                      ? t(
-                          'Geen events voor deze filter.',
-                          'No events for this filter.'
-                        )
-                      : t('Nog geen events.', 'No events yet.')
-                  }
-                />
-              )}
-            {!rowsLoading &&
-              !rowsError &&
-              days.length > 0 &&
-              rows.length === 0 && (
-                <ListState
-                  text={t(
-                    'Geen events op deze dag voor deze filter.',
-                    'No events on this day for this filter.'
-                  )}
-                />
-              )}
+            {!rowsLoading && !rowsError && rows.length === 0 && (
+              <ListState
+                text={
+                  hasActiveFilter
+                    ? t(
+                        'Niks in deze periode met deze filter.',
+                        'Nothing in this range with this filter.'
+                      )
+                    : t(
+                        'Niks in deze periode. Rek de datums op.',
+                        'Nothing in this range. Widen the dates.'
+                      )
+                }
+              />
+            )}
           </Animated.View>
         }
         showsVerticalScrollIndicator={false}
@@ -495,6 +396,7 @@ export default function Agenda() {
         initialNumToRender={12}
       />
       <AppHeader title={t('Agenda', 'Agenda')}>
+        <RangeButton range={range} onPress={() => setRangeOpen(true)} />
         <ChipRow
           activeCats={activeCats}
           query={query}
@@ -511,17 +413,348 @@ export default function Agenda() {
           onToggleFriends={() => setOnlyFriends(!onlyFriends)}
           onToggleFavorites={() => setOnlyFavorites(!onlyFavorites)}
         />
-        <View style={{ height: DAYSTRIP_HEIGHT }}>
-          {days.length > 0 && selectedDate && (
-            <DayStrip
-              days={days}
-              selectedId={selectedDate}
-              onSelect={selectDay}
-            />
-          )}
-        </View>
       </AppHeader>
       <FilterHint />
+      <DateRangeSheet
+        visible={rangeOpen}
+        range={range}
+        onClose={() => setRangeOpen(false)}
+        onApply={(next) => {
+          setRange(next);
+          setRangeOpen(false);
+        }}
+      />
+    </View>
+  );
+}
+
+/** Dag-kop in de lijst. Vervangt de losse day-strip: je scrolt nu
+    gewoon door de dagen heen in plaats van er per stuk op te tikken. */
+function DayHeader({ date, count }: { date: string; count: number }) {
+  const roles = useRoles();
+  const locale = useLocale();
+  const t = useT();
+  const d = new Date(`${date}T12:00:00`);
+  const today = logicalTodayDate(new Date());
+  const isToday = date === today;
+  const label = isToday
+    ? t('Vandaag', 'Today')
+    : `${dowMixed(d.getDay(), locale)} ${d.getDate()} ${monthShort(d.getMonth(), locale).toLowerCase()}`;
+  return (
+    <View style={[styles.dayHeader, { backgroundColor: roles.bg }]}>
+      <Text style={[styles.dayHeaderText, { color: roles.fg }]}>{label}</Text>
+      <Text style={[styles.dayHeaderCount, { color: roles.fgMuted }]}>
+        {count}
+      </Text>
+    </View>
+  );
+}
+
+function formatRange(range: DateRange, locale: Locale, t: ReturnType<typeof useT>): string {
+  const a = new Date(`${range.from}T12:00:00`);
+  const b = new Date(`${range.to}T12:00:00`);
+  const day = (d: Date) =>
+    `${d.getDate()} ${monthShort(d.getMonth(), locale).toLowerCase()}`;
+  if (range.from === range.to) {
+    return range.from === logicalTodayDate(new Date())
+      ? t('Vandaag', 'Today')
+      : day(a);
+  }
+  return `${day(a)} – ${day(b)}`;
+}
+
+/** De datum-knop waar de day-strip stond. Toont het bereik en opent de
+    kiezer; het aantal dagen ernaast maakt zichtbaar hoe breed je kijkt. */
+function RangeButton({
+  range,
+  onPress,
+}: {
+  range: DateRange;
+  onPress: () => void;
+}) {
+  const roles = useRoles();
+  const locale = useLocale();
+  const t = useT();
+  const days =
+    Math.round(
+      (Date.parse(`${range.to}T12:00:00`) -
+        Date.parse(`${range.from}T12:00:00`)) /
+        86400000
+    ) + 1;
+  return (
+    <View style={styles.rangeBar}>
+      <Pressable
+        onPress={onPress}
+        style={[styles.rangeBtn, { borderColor: roles.fgPlaceholder }]}
+      >
+        <Ionicons name="calendar-outline" size={16} color={roles.accent} />
+        <Text style={[styles.rangeBtnText, { color: roles.fg }]}>
+          {formatRange(range, locale, t)}
+        </Text>
+        <Text style={[styles.rangeBtnDays, { color: roles.fgMuted }]}>
+          {days === 1 ? t('1 dag', '1 day') : t(`${days} dagen`, `${days} days`)}
+        </Text>
+        <Ionicons name="chevron-down" size={14} color={roles.fgMuted} />
+      </Pressable>
+    </View>
+  );
+}
+
+/**
+ * Van–tot kiezen. Bewust geen native date-picker: die zit niet in de
+ * deps en zou een nieuwe native module betekenen — dan kan een wijziging
+ * niet meer over-the-air en heb je een nieuwe build nodig voor een
+ * datumveld. Dit is een maandraster van Views, ships gewoon mee.
+ *
+ * Bediening: eerste tik zet de startdatum, tweede tik de einddatum.
+ * Tik je een dag vóór de start, dan begint 'ie opnieuw vanaf daar —
+ * anders zit je vast als je je vergist.
+ */
+function DateRangeSheet({
+  visible,
+  range,
+  onClose,
+  onApply,
+}: {
+  visible: boolean;
+  range: DateRange;
+  onClose: () => void;
+  onApply: (next: DateRange) => void;
+}) {
+  const roles = useRoles();
+  const mode = useMode();
+  const locale = useLocale();
+  const t = useT();
+  const insets = useSafeAreaInsets();
+  const [draft, setDraft] = useState<DateRange>(range);
+  const [anchor, setAnchor] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (visible) {
+      setDraft(range);
+      setAnchor(null);
+    }
+  }, [visible, range]);
+
+  const today = logicalTodayDate(new Date());
+  const presets: Array<{ label: string; range: DateRange }> = [
+    { label: t('Vandaag', 'Today'), range: { from: today, to: today } },
+    {
+      label: t('Komend weekend', 'This weekend'),
+      range: weekendRange(new Date()),
+    },
+    { label: t('7 dagen', '7 days'), range: defaultRange() },
+    { label: t('30 dagen', '30 days'), range: spanFrom(today, 29) },
+  ];
+
+  // Twee maanden vooruit is genoeg om een weekend of een festival te
+  // prikken zonder een oneindige scroll te bouwen.
+  const months = [monthOf(today, 0), monthOf(today, 1), monthOf(today, 2)];
+
+  const pick = (day: string) => {
+    softTap();
+    if (anchor === null || day < anchor) {
+      setAnchor(day);
+      setDraft({ from: day, to: day });
+      return;
+    }
+    setDraft({ from: anchor, to: day });
+    setAnchor(null);
+  };
+
+  return (
+    <Modal
+      visible={visible}
+      animationType="slide"
+      transparent
+      onRequestClose={onClose}
+    >
+      <Pressable style={styles.sheetBackdrop} onPress={onClose} />
+      <View
+        style={[
+          styles.sheet,
+          {
+            backgroundColor: mode === 'nacht' ? palette.noir2 : palette.paper2,
+            paddingBottom: insets.bottom + 16,
+          },
+        ]}
+      >
+        <View style={styles.rangeHead}>
+          <Text style={[styles.rangeTitle, { color: roles.fg }]}>
+            {formatRange(draft, locale, t)}
+          </Text>
+          <Pressable onPress={onClose} hitSlop={8}>
+            <Ionicons name="close" size={22} color={roles.fg} />
+          </Pressable>
+        </View>
+
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.presetRow}
+        >
+          {presets.map((p) => {
+            const on = p.range.from === draft.from && p.range.to === draft.to;
+            return (
+              <Pressable
+                key={p.label}
+                onPress={() => {
+                  softTap();
+                  setDraft(p.range);
+                  setAnchor(null);
+                }}
+                style={[
+                  styles.preset,
+                  {
+                    borderColor: on ? roles.accent : roles.fgPlaceholder,
+                    backgroundColor: on ? roles.accent : 'transparent',
+                  },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.presetText,
+                    { color: on ? roles.bg : roles.fg },
+                  ]}
+                >
+                  {p.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+
+        <ScrollView style={styles.calScroll} showsVerticalScrollIndicator={false}>
+          {months.map((m) => (
+            <MonthGrid
+              key={m.key}
+              month={m}
+              draft={draft}
+              minDay={today}
+              onPick={pick}
+              locale={locale}
+            />
+          ))}
+        </ScrollView>
+
+        <Pressable
+          onPress={() => onApply(draft)}
+          style={[styles.applyBtn, { backgroundColor: roles.accent }]}
+        >
+          <Text style={[styles.applyText, { color: roles.onAccent }]}>
+            {t('Toon deze periode', 'Show this range')}
+          </Text>
+        </Pressable>
+      </View>
+    </Modal>
+  );
+}
+
+type MonthInfo = { key: string; year: number; month: number; label: string };
+
+function monthOf(from: string, offset: number): MonthInfo {
+  const d = new Date(`${from}T12:00:00`);
+  d.setDate(1);
+  d.setMonth(d.getMonth() + offset);
+  return {
+    key: `${d.getFullYear()}-${d.getMonth()}`,
+    year: d.getFullYear(),
+    month: d.getMonth(),
+    label: `${d.toLocaleDateString('nl-NL', { month: 'long' })} ${d.getFullYear()}`,
+  };
+}
+
+function spanFrom(from: string, plusDays: number): DateRange {
+  const d = new Date(`${from}T12:00:00`);
+  d.setDate(d.getDate() + plusDays);
+  return { from, to: isoDay(d) };
+}
+
+/**
+ * Het weekend waar je in zit, of het eerstvolgende. Vrijdag en zaterdag
+ * lopen door tot en met zondag; op zondag is 't weekend nog maar één
+ * dag. Doordeweeks pak je de komende vrijdag t/m zondag.
+ */
+function weekendRange(now: Date): DateRange {
+  const d = new Date(now);
+  if (d.getHours() < 6) d.setDate(d.getDate() - 1);
+  const dow = d.getDay(); // 0 = zondag
+  if (dow === 0) return { from: isoDay(d), to: isoDay(d) };
+  if (dow === 5 || dow === 6) {
+    const sun = new Date(d);
+    sun.setDate(sun.getDate() + (7 - dow));
+    return { from: isoDay(d), to: isoDay(sun) };
+  }
+  const fri = new Date(d);
+  fri.setDate(fri.getDate() + (5 - dow));
+  const sun = new Date(fri);
+  sun.setDate(sun.getDate() + 2);
+  return { from: isoDay(fri), to: isoDay(sun) };
+}
+
+function MonthGrid({
+  month,
+  draft,
+  minDay,
+  onPick,
+  locale,
+}: {
+  month: MonthInfo;
+  draft: DateRange;
+  minDay: string;
+  onPick: (day: string) => void;
+  locale: Locale;
+}) {
+  const roles = useRoles();
+  const first = new Date(month.year, month.month, 1);
+  const daysInMonth = new Date(month.year, month.month + 1, 0).getDate();
+  // Maandag-eerst raster: JS geeft zondag=0, dus omrekenen.
+  const lead = (first.getDay() + 6) % 7;
+  const cells: Array<string | null> = [
+    ...Array<null>(lead).fill(null),
+    ...Array.from({ length: daysInMonth }, (_, i) =>
+      isoDay(new Date(month.year, month.month, i + 1))
+    ),
+  ];
+  return (
+    <View style={styles.month}>
+      <Text style={[styles.monthLabel, { color: roles.fg }]}>{month.label}</Text>
+      <View style={styles.monthGrid}>
+        {cells.map((day, i) => {
+          if (!day) return <View key={`pad-${i}`} style={styles.cell} />;
+          const disabled = day < minDay;
+          const inRange = day >= draft.from && day <= draft.to;
+          const isEdge = day === draft.from || day === draft.to;
+          return (
+            <Pressable
+              key={day}
+              disabled={disabled}
+              onPress={() => onPick(day)}
+              style={[
+                styles.cell,
+                inRange && {
+                  backgroundColor: isEdge ? roles.accent : `${roles.accent}26`,
+                },
+              ]}
+            >
+              <Text
+                style={[
+                  styles.cellText,
+                  {
+                    color: disabled
+                      ? roles.fgPlaceholder
+                      : isEdge
+                        ? roles.bg
+                        : roles.fg,
+                  },
+                ]}
+              >
+                {Number(day.slice(-2))}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
     </View>
   );
 }
@@ -1158,183 +1391,6 @@ function FilterChip({
   );
 }
 
-function DayStrip({
-  days,
-  selectedId,
-  onSelect,
-}: {
-  days: DaySummary[];
-  selectedId: string;
-  onSelect: (id: string) => void;
-}) {
-  const roles = useRoles();
-  const scrollRef = useRef<ScrollView>(null);
-  const chipLayouts = useRef<Record<string, { x: number; width: number }>>({});
-  const viewport = useRef(0);
-  // Toon de maand van wat er nu in het midden van de strip te zien
-  // is. Updated via onScroll (horizontaal door de strip) en via
-  // selectedId (tap of vertical-scroll selectie).
-  const initialMonth =
-    days.find((d) => d.id === selectedId)?.month ?? days[0]?.month ?? '';
-  const [visibleMonth, setVisibleMonth] = useState(initialMonth);
-
-  // Whenever the selection changes (click OR vertical scroll), bring
-  // the active chip into view — centred when possible.
-  useEffect(() => {
-    const layout = chipLayouts.current[selectedId];
-    const vp = viewport.current;
-    if (!layout || vp === 0 || !scrollRef.current) return;
-    const targetX = Math.max(0, layout.x - (vp - layout.width) / 2);
-    scrollRef.current.scrollTo({ x: targetX, animated: true });
-  }, [selectedId]);
-
-  // Sync visibleMonth wanneer een nieuwe day geselecteerd wordt (tap
-  // of vertical-scroll van de lijst) — anders blijft 't oude maand
-  // staan totdat de gebruiker zelf horizontaal scrollt.
-  useEffect(() => {
-    const day = days.find((d) => d.id === selectedId);
-    if (day && day.month !== visibleMonth) setVisibleMonth(day.month);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedId]);
-
-  const onHorizontalScroll = (
-    e: NativeSyntheticEvent<NativeScrollEvent>
-  ) => {
-    const scrollX = e.nativeEvent.contentOffset.x;
-    const vp = viewport.current;
-    if (vp === 0) return;
-    const center = scrollX + vp / 2;
-    for (const [id, layout] of Object.entries(chipLayouts.current)) {
-      if (layout.x <= center && center <= layout.x + layout.width) {
-        const day = days.find((d) => d.id === id);
-        if (day && day.month !== visibleMonth) {
-          setVisibleMonth(day.month);
-        }
-        return;
-      }
-    }
-  };
-
-  return (
-    <View>
-      <Text style={[styles.monthLabel, { color: roles.fg }]}>
-        {visibleMonth}
-      </Text>
-      <ScrollView
-        ref={scrollRef}
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.dayStrip}
-        onLayout={(e) => {
-          viewport.current = e.nativeEvent.layout.width;
-        }}
-        onScroll={onHorizontalScroll}
-        scrollEventThrottle={64}
-      >
-        {days.map((day) => (
-          <DayChip
-            key={day.id}
-            day={day}
-            active={day.id === selectedId}
-            onPress={() => onSelect(day.id)}
-            onLayout={(x, width) => {
-              chipLayouts.current[day.id] = { x, width };
-            }}
-          />
-        ))}
-      </ScrollView>
-    </View>
-  );
-}
-
-function DayChip({
-  day,
-  active,
-  onPress,
-  onLayout,
-}: {
-  day: DaySummary;
-  active: boolean;
-  onPress: () => void;
-  onLayout: (x: number, width: number) => void;
-}) {
-  const roles = useRoles();
-  return (
-    <Pressable
-      onPress={onPress}
-      onLayout={(e) =>
-        onLayout(e.nativeEvent.layout.x, e.nativeEvent.layout.width)
-      }
-      style={[
-        styles.dayChip,
-        // Inactieve chips krijgen een half-transparante bg-tint zodat ze
-        // niet in de gradient-blur van de AppHeader verdwijnen — vooral
-        // belangrijk nu de strip onder de filter-chips zit. Active chip
-        // overschrijft met accent.
-        { backgroundColor: `${roles.bg}99` },
-        active && { backgroundColor: roles.accent },
-      ]}
-    >
-      <Text
-        style={[
-          styles.dayChipDow,
-          { color: active ? roles.onAccent : roles.fgMuted },
-        ]}
-      >
-        {day.dow}
-      </Text>
-      <Text
-        style={[
-          styles.dayChipNum,
-          { color: active ? roles.onAccent : roles.fg },
-        ]}
-      >
-        {day.num}
-      </Text>
-    </Pressable>
-  );
-}
-
-function CategoryHeader({
-  category,
-  count,
-  collapsed,
-  onPress,
-}: {
-  category: ApiEvent['category'];
-  count: number;
-  collapsed: boolean;
-  onPress: () => void;
-}) {
-  const mode = useMode();
-  const roles = useRoles();
-  const locale = useLocale();
-  const tone = TONE[mode][CATEGORY_TICK[category]];
-  return (
-    <Pressable
-      onPress={() => {
-        tinyTap();
-        onPress();
-      }}
-      style={styles.catHeader}
-    >
-      <View style={styles.catHeaderLeft}>
-        <Text style={[styles.catHeaderLabel, { color: tone }]}>
-          {translateCategory(category, locale)}
-        </Text>
-        <Ionicons
-          name={collapsed ? 'chevron-forward' : 'chevron-down'}
-          size={14}
-          color={tone}
-        />
-      </View>
-      <Text style={[styles.catHeaderCount, { color: roles.fgPlaceholder }]}>
-        {count}
-      </Text>
-    </Pressable>
-  );
-}
-
 function DateAnchor({
   dow,
   num,
@@ -1429,6 +1485,103 @@ function ListState({
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
+
+  // Dag-kop in de lijst
+  dayHeader: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+    paddingHorizontal: 22,
+    paddingTop: 18,
+    paddingBottom: 8,
+  },
+  dayHeaderText: {
+    fontFamily: fontFamily.displayBold,
+    fontSize: 20,
+    letterSpacing: -0.4,
+  },
+  dayHeaderCount: { fontFamily: fontFamily.mono, fontSize: 12 },
+
+  // Bereik-knop (stond waar de day-strip zat)
+  rangeBar: {
+    height: RANGEBAR_HEIGHT,
+    justifyContent: 'center',
+    paddingHorizontal: 18,
+  },
+  rangeBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    alignSelf: 'flex-start',
+    height: 34,
+    paddingHorizontal: 12,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
+  rangeBtnText: {
+    fontFamily: fontFamily.medium,
+    fontSize: 14,
+    letterSpacing: -0.1,
+  },
+  rangeBtnDays: { fontFamily: fontFamily.mono, fontSize: 11 },
+
+  // Datum-kiezer
+  sheetBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)' },
+  sheet: {
+    borderTopLeftRadius: 22,
+    borderTopRightRadius: 22,
+    paddingTop: 16,
+    maxHeight: '86%',
+  },
+  rangeHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 22,
+    paddingBottom: 12,
+  },
+  rangeTitle: {
+    fontFamily: fontFamily.displayBold,
+    fontSize: 20,
+    letterSpacing: -0.4,
+  },
+  presetRow: { gap: 8, paddingHorizontal: 22, paddingBottom: 14 },
+  preset: {
+    height: 34,
+    paddingHorizontal: 14,
+    borderRadius: 999,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  presetText: { fontFamily: fontFamily.medium, fontSize: 13 },
+  calScroll: { paddingHorizontal: 16 },
+  month: { paddingBottom: 18 },
+  monthGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    // Zonder dit strekken de rijen mee met de container en krijg je een
+    // gat onder een maand die op een halve rij eindigt.
+    alignItems: 'flex-start',
+    alignContent: 'flex-start',
+  },
+  cell: {
+    width: `${100 / 7}%`,
+    height: 46,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 999,
+  },
+  cellText: { fontFamily: fontFamily.medium, fontSize: 14 },
+  applyBtn: {
+    marginHorizontal: 22,
+    marginTop: 8,
+    height: 50,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  applyText: { fontFamily: fontFamily.displayBold, fontSize: 15 },
 
   dayStrip: {
     gap: 6,
