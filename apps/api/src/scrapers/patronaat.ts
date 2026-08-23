@@ -3,6 +3,7 @@ import { eq } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
 import { uploadToBunny } from '../storage/bunny.js';
 import { enrichEvent, refineKindByDuration } from './enrich.js';
+import { loadVenueTitleMap, resolveEventId } from './_title-dedup.js';
 
 /**
  * Patronaat (Haarlem) scraper. WordPress zonder publieke WP REST API,
@@ -300,6 +301,10 @@ export async function scrapePatronaat(options?: {
 
   const venueCategory = venue.categories?.[0] ?? 'Muziek';
 
+  // De slug bevat de datum ("novulent-05-12-26"), dus een festival over
+  // vier dagen werd vier events ("Haarlem Live"). Titel is de identiteit.
+  const byTitle = await loadVenueTitleMap(VENUE_ID, 'evt-patronaat-');
+
   for (const card of cards) {
     try {
       if (!card.date) {
@@ -307,7 +312,7 @@ export async function scrapePatronaat(options?: {
         continue;
       }
 
-      const eventId = `evt-patronaat-${card.slug}`;
+      const { eventId } = resolveEventId(byTitle, card.title, `evt-patronaat-${card.slug}`);
       const occurrenceId = `occ-patronaat-${card.slug}`;
 
       const [existing] = await db
@@ -342,7 +347,9 @@ export async function scrapePatronaat(options?: {
           })
           .onConflictDoUpdate({
             target: schema.occurrences.id,
-            set: { startsAt, ticketUrl: detail.ticketUrl ?? card.url },
+            // eventId meenemen: occurrences die nog aan een per-avond-
+            // event hingen verhuizen zo zelf naar het canonieke event.
+            set: { eventId, startsAt, ticketUrl: detail.ticketUrl ?? card.url },
           });
         result.occurrencesUpserted++;
         continue;
@@ -400,6 +407,7 @@ export async function scrapePatronaat(options?: {
           .onConflictDoUpdate({
             target: schema.occurrences.id,
             set: {
+              eventId,
               startsAt,
               priceNote: enriched.priceNote,
               ticketUrl: detail.ticketUrl ?? card.url,

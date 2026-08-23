@@ -3,6 +3,7 @@ import { eq } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
 import { uploadToBunny } from '../storage/bunny.js';
 import { enrichEvent, refineKindByDuration } from './enrich.js';
+import { loadVenueTitleMap, resolveEventId } from './_title-dedup.js';
 
 /**
  * Melkweg scraper. Hun /agenda is een Next.js SPA achter Cloudflare —
@@ -221,10 +222,14 @@ export async function scrapeMelkweg(options?: {
     return (end ?? t) > cutoff;
   });
 
+  // Melkweg geeft per avond een eigen CMS-id, dus "Cheeky Monday" werd
+  // 5 losse events voor 5 maandagen. Titel is de identiteit.
+  const byTitle = await loadVenueTitleMap(VENUE_ID, `evt-mw-${VENUE_ID}-`);
+
   for (const ev of upcoming) {
     try {
       const a = ev.attributes;
-      const eventId = `evt-mw-${VENUE_ID}-${ev.id}`;
+      const { eventId } = resolveEventId(byTitle, a.name, `evt-mw-${VENUE_ID}-${ev.id}`);
       const occurrenceId = `occ-mw-${VENUE_ID}-${ev.id}`;
       const startsAt = new Date(a.startTime ?? a.startDate);
       const endsAt = a.endDate ? new Date(a.endDate) : null;
@@ -264,7 +269,10 @@ export async function scrapeMelkweg(options?: {
           })
           .onConflictDoUpdate({
             target: schema.occurrences.id,
-            set: { startsAt, endsAt, ticketUrl, status },
+              // eventId meenemen: occurrences die nog aan een
+              // per-avond-event hingen verhuizen zo zelf naar het
+              // canonieke event.
+            set: { eventId, startsAt, endsAt, ticketUrl, status },
           });
         result.occurrencesUpserted++;
         continue;
@@ -325,6 +333,7 @@ export async function scrapeMelkweg(options?: {
           .onConflictDoUpdate({
             target: schema.occurrences.id,
             set: {
+              eventId,
               startsAt,
               endsAt,
               priceNote: enriched.priceNote,

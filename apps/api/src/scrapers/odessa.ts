@@ -3,6 +3,7 @@ import { eq } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
 import { uploadToBunny } from '../storage/bunny.js';
 import { enrichEvent, refineKindByDuration } from './enrich.js';
+import { loadVenueTitleMap, resolveEventId } from './_title-dedup.js';
 
 /**
  * Odessa Amsterdam (Veemkade) — Wix-site die zijn programma uit
@@ -205,13 +206,17 @@ export async function scrapeOdessa(_options?: {
 
   const cutoff = Date.now() - 6 * 60 * 60 * 1000;
 
+  // Hipsy geeft per avond een eigen id, dus "Ecstatic Dance | Yarun
+  // Dee" werd 5 losse events. Titel binnen de venue is de identiteit.
+  const byTitle = await loadVenueTitleMap(VENUE_ID, 'evt-od-');
+
   for (const card of cards) {
     try {
       if (card.startsAt.getTime() < cutoff) {
         result.skipped++;
         continue;
       }
-      const eventId = `evt-od-${card.hipsyId}`;
+      const { eventId } = resolveEventId(byTitle, card.title, `evt-od-${card.hipsyId}`);
       const occurrenceId = `occ-od-${card.hipsyId}`;
 
       const [existing] = await db
@@ -301,7 +306,10 @@ export async function scrapeOdessa(_options?: {
           })
           .onConflictDoUpdate({
             target: schema.occurrences.id,
-            set: { startsAt, ticketUrl: card.ticketUrl },
+              // eventId meenemen: occurrences die nog aan een
+              // per-avond-event hingen verhuizen zo zelf naar het
+              // canonieke event.
+            set: { eventId, startsAt, ticketUrl: card.ticketUrl },
           });
         result.occurrencesUpserted++;
       } catch (e) {
