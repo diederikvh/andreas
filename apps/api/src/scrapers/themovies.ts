@@ -19,7 +19,6 @@
  *      idempotent over re-runs.
  */
 
-import { eq } from 'drizzle-orm';
 
 import { db, schema } from '../db/index.js';
 import { fetchTextWithTimeout } from './_fetch.js';
@@ -32,6 +31,23 @@ import {
 const SITEMAP_URL = 'https://themovies.nl/fk-feed/film-sitemap-xml';
 const VENUE_ID = 'the-movies';
 const UA = 'AndreasBot/1.0 (+https://andreas.amsterdam)';
+
+/**
+ * De sitemap bevat élke film die er ooit liep — 580 URLs, waarvan maar
+ * een fractie nog speelt. themovies.nl knijpt af zodra je die in één
+ * burst langsgaat: eerst nog snelle responses (~15ms), daarna niets
+ * meer. Elke geblokkeerde fetch loopt dan in de 15s-timeout van
+ * `fetchTextWithTimeout`, dus 580 × 15s = ruim twee uur. In CI kapte
+ * curl er op 25 minuten mee (exit 28) — dat was de dagelijkse failure.
+ *
+ * Twee remmen dus. Ruimte tussen de requests om de limiet niet te
+ * raken, en een noodstop als het tóch gebeurt: dan liever een snelle
+ * partiële run met een duidelijke error dan twee uur doorploegen.
+ */
+const REQUEST_SPACING_MS = 200;
+const MAX_CONSECUTIVE_FAILURES = 8;
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 export interface TheMoviesResult {
   venueId: 'the-movies';
@@ -83,13 +99,25 @@ export async function scrapeTheMovies(): Promise<TheMoviesResult[]> {
 
   const dedupeMap = await loadFilmDedupeMap();
   const now = Date.now();
+  let consecutiveFailures = 0;
+  let first = true;
   for (const filmUrl of filmUrls) {
     try {
+      if (!first) await sleep(REQUEST_SPACING_MS);
+      first = false;
       const html = await fetchText(filmUrl);
       if (!html) {
         result.errors.push(`fetch failed: ${filmUrl}`);
+        if (++consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+          result.errors.push(
+            `gestopt na ${consecutiveFailures} mislukte fetches op rij — bron weigert; ` +
+              `${result.fetched} van ${filmUrls.length} films gedaan`
+          );
+          break;
+        }
         continue;
       }
+      consecutiveFailures = 0;
       result.fetched += 1;
 
       const { movie, screenings } = parseJsonLd(html);
@@ -141,26 +169,12 @@ export async function scrapeTheMovies(): Promise<TheMoviesResult[]> {
             : null;
         const ticketUrl = s.url ?? s.offers?.url ?? null;
 
-        const [existingOcc] = await db
-          .select({ id: schema.occurrences.id })
-          .from(schema.occurrences)
-          .where(eq(schema.occurrences.id, occId))
-          .limit(1);
-
-        if (existingOcc) {
-          await db
-            .update(schema.occurrences)
-            .set({
-              startsAt,
-              endsAt,
-              priceCents,
-              ticketUrl,
-              venueId: VENUE_ID,
-              eventId,
-            })
-            .where(eq(schema.occurrences.id, occId));
-        } else {
-          await db.insert(schema.occurrences).values({
+        // Eén upsert i.p.v. select-dan-update/insert: halveert de
+        // round-trips per screening, en dit is het patroon dat de
+        // andere scrapers ook gebruiken.
+        await db
+          .insert(schema.occurrences)
+          .values({
             id: occId,
             eventId,
             venueId: VENUE_ID,
@@ -169,8 +183,11 @@ export async function scrapeTheMovies(): Promise<TheMoviesResult[]> {
             priceCents,
             ticketUrl,
             status: 'scheduled',
+          })
+          .onConflictDoUpdate({
+            target: schema.occurrences.id,
+            set: { eventId, venueId: VENUE_ID, startsAt, endsAt, priceCents, ticketUrl },
           });
-        }
         result.occurrencesUpserted += 1;
       }
 
