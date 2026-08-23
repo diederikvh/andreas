@@ -3,6 +3,7 @@ import { eq } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
 import { uploadToBunny } from '../storage/bunny.js';
 import { enrichEvent, refineKindByDuration } from './enrich.js';
+import { loadVenueTitleMap, resolveEventId } from './_title-dedup.js';
 
 /**
  * Nationale Opera & Ballet (Stopera). Drupal-CMS.
@@ -236,6 +237,8 @@ export async function scrapeOperaballet(options?: {
 
   const cutoff = Date.now() - 6 * 60 * 60 * 1000;
 
+  const byTitle = await loadVenueTitleMap(VENUE_ID, 'evt-ob-');
+
   for (const url of showUrls) {
     try {
       const meta = await fetchShowMeta(url);
@@ -245,7 +248,12 @@ export async function scrapeOperaballet(options?: {
       const endRef = (meta.endDate ?? meta.startDate)?.getTime() ?? null;
       if (endRef !== null && endRef < cutoff) { result.skipped++; continue; }
 
-      const eventId = `evt-ob-${meta.nodeId}`;
+      // fetchShowMeta halen we voor elke show-URL op, dus titel, datum
+      // en JSON-LD-description zijn hier alle drie gratis.
+      const { eventId } = resolveEventId(byTitle, meta.title, `evt-ob-${meta.nodeId}`, {
+        startsAt: meta.startDate,
+        description: meta.description,
+      });
       const [existing] = await db
         .select({ id: schema.events.id })
         .from(schema.events)
@@ -349,6 +357,9 @@ export async function scrapeOperaballet(options?: {
             .onConflictDoUpdate({
               target: schema.occurrences.id,
               set: {
+                // eventId meenemen: occurrences die nog aan een los
+                // event hingen verhuizen zo zelf mee.
+                eventId,
                 startsAt: slot.startsAt,
                 ticketUrl: slot.ticketUrl,
                 status: slot.status as 'scheduled' | 'sold_out',

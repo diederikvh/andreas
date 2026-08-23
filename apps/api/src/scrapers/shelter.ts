@@ -3,6 +3,7 @@ import { eq } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
 import { uploadToBunny } from '../storage/bunny.js';
 import { enrichEvent, refineKindByDuration } from './enrich.js';
+import { loadVenueTitleMap, resolveEventId } from './_title-dedup.js';
 
 /**
  * Shelter Amsterdam — directe WP REST API scraper.
@@ -138,6 +139,8 @@ export async function scrapeShelter(options?: { venueIds?: string[] }): Promise<
   const cutoff = Date.now() - 6 * 60 * 60 * 1000;
   const venueCategory = venue.categories?.[0] ?? 'Muziek';
 
+  const byTitle = await loadVenueTitleMap(VENUE_ID, 'evt-shelter-');
+
   for (const item of items) {
     try {
       // `date` is "2026-06-27T23:00:41" — geen TZ. Site is CET.
@@ -149,7 +152,6 @@ export async function scrapeShelter(options?: { venueIds?: string[] }): Promise<
       const endsAt = new Date(startsAt.getTime() + 7 * 60 * 60 * 1000);
 
       const slug = item.slug;
-      const eventId = `evt-shelter-${slug}`;
       const occurrenceId = `occ-shelter-${slug}`;
 
       // og_title is "DD.MM Title - Shelter Amsterdam"; rendered title is
@@ -160,6 +162,11 @@ export async function scrapeShelter(options?: { venueIds?: string[] }): Promise<
       if (!title) { result.skipped++; continue; }
 
       const description = item.yoast_head_json?.og_description?.trim() || null;
+
+      const { eventId } = resolveEventId(byTitle, title, `evt-shelter-${slug}`, {
+        startsAt,
+        description,
+      });
 
       const [existing] = await db
         .select({ id: schema.events.id })
@@ -231,7 +238,9 @@ export async function scrapeShelter(options?: { venueIds?: string[] }): Promise<
           })
           .onConflictDoUpdate({
             target: schema.occurrences.id,
-            set: { startsAt, endsAt, ticketUrl },
+            // eventId meenemen: occurrences die nog aan een los event
+            // hingen verhuizen zo zelf mee.
+            set: { eventId, startsAt, endsAt, ticketUrl },
           });
         result.occurrencesUpserted++;
       } catch (e) {

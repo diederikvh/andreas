@@ -3,6 +3,7 @@ import { eq } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
 import { uploadToBunny } from '../storage/bunny.js';
 import { enrichEvent, refineKindByDuration } from './enrich.js';
+import { loadVenueTitleMap, resolveEventId } from './_title-dedup.js';
 
 /**
  * ClubUp (Leidseplein) — Squarespace site, events-collection bereik-
@@ -109,6 +110,8 @@ export async function scrapeClubUp(_options?: {
 
   const cutoff = Date.now() - 6 * 60 * 60 * 1000;
 
+  const byTitle = await loadVenueTitleMap(VENUE_ID, 'evt-cu-');
+
   for (const ev of items) {
     try {
       if (!ev.urlId || !ev.title || !ev.startDate) {
@@ -123,7 +126,16 @@ export async function scrapeClubUp(_options?: {
       }
 
       const title = decodeEntities(ev.title).trim();
-      const eventId = `evt-cu-${ev.urlId}`;
+      // body/excerpt zitten in dezelfde feed-respons, dus inline als
+      // signaal — puur string-werk, geen extra request.
+      const { eventId } = resolveEventId(byTitle, title, `evt-cu-${ev.urlId}`, {
+        startsAt,
+        description: ev.body
+          ? decodeEntities(stripTags(ev.body)).slice(0, 800)
+          : ev.excerpt
+            ? decodeEntities(stripTags(ev.excerpt)).slice(0, 800)
+            : null,
+      });
       const occurrenceId = `occ-cu-${ev.urlId}`;
 
       const [existing] = await db
@@ -198,7 +210,9 @@ export async function scrapeClubUp(_options?: {
           })
           .onConflictDoUpdate({
             target: schema.occurrences.id,
-            set: { startsAt, endsAt, ticketUrl },
+            // eventId meenemen: occurrences die nog aan een los event
+            // hingen verhuizen zo zelf mee.
+            set: { eventId, startsAt, endsAt, ticketUrl },
           });
         result.occurrencesUpserted++;
       } catch (e) {

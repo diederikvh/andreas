@@ -3,6 +3,7 @@ import { chromium } from 'playwright';
 import { db, schema } from '../db/index.js';
 import { uploadToBunny } from '../storage/bunny.js';
 import { enrichEvent, refineKindByDuration } from './enrich.js';
+import { loadVenueTitleMap, resolveEventId } from './_title-dedup.js';
 
 /**
  * Generieke WeTicket-scraper voor venues met `scraperConfig.weticket =
@@ -181,6 +182,8 @@ export async function scrapeWeticket(options?: {
     const cutoff = Date.now() - 6 * 60 * 60 * 1000;
     const venueCategory = venue.categories?.[0] ?? 'Muziek';
 
+    const byTitle = await loadVenueTitleMap(venue.id, `evt-${venue.id}-`);
+
     for (const shop of own) {
       try {
         const startsAt = buildDate(shop.first_date ?? shop.upcoming_date);
@@ -192,7 +195,6 @@ export async function scrapeWeticket(options?: {
           buildDate(shop.last_date) ??
           new Date(startsAt.getTime() + 7 * 60 * 60 * 1000);
 
-        const eventId = `evt-${venue.id}-${shop.slug}`;
         const occurrenceId = `occ-${venue.id}-${shop.slug}`;
 
         const { title, soldOut } = cleanTitle(shop.name);
@@ -200,6 +202,14 @@ export async function scrapeWeticket(options?: {
           result.skipped++;
           continue;
         }
+
+        // Shop-listing geeft geen description, dus alleen de datum.
+        const { eventId } = resolveEventId(
+          byTitle,
+          title,
+          `evt-${venue.id}-${shop.slug}`,
+          { startsAt }
+        );
 
         const { eq } = await import('drizzle-orm');
         const [existing] = await db
@@ -271,7 +281,9 @@ export async function scrapeWeticket(options?: {
             })
             .onConflictDoUpdate({
               target: schema.occurrences.id,
-              set: { startsAt, endsAt, ticketUrl, status },
+              // eventId meenemen: occurrences die nog aan een los
+              // event hingen verhuizen zo zelf mee.
+              set: { eventId, startsAt, endsAt, ticketUrl, status },
             });
           result.occurrencesUpserted++;
         } catch (e) {

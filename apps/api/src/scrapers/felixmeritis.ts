@@ -3,6 +3,7 @@ import { eq } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
 import { uploadToBunny } from '../storage/bunny.js';
 import { enrichEvent, refineKindByDuration } from './enrich.js';
+import { loadVenueTitleMap, resolveEventId } from './_title-dedup.js';
 
 /**
  * Felix Meritis — WordPress + custom post type `vo-event`.
@@ -214,6 +215,8 @@ export async function scrapeFelixMeritis(options?: {
   const pastCutoff = now.getTime() - 24 * 60 * 60_000;
   const seen = new Set<string>();
 
+  const byTitle = await loadVenueTitleMap(VENUE_ID, 'evt-felix-');
+
   for (const p of posts) {
     try {
       if (seen.has(p.slug)) continue;
@@ -247,7 +250,15 @@ export async function scrapeFelixMeritis(options?: {
         continue;
       }
 
-      const eventId = `evt-felix-${p.slug}`;
+      let description = decode(stripTags(p.content?.rendered ?? ''))
+        .replace(/\s+/g, ' ').trim().slice(0, 800);
+      if (!description) description = null as unknown as string;
+
+      // Description is puur string-werk op de WP-post.
+      const { eventId } = resolveEventId(byTitle, title, `evt-felix-${p.slug}`, {
+        startsAt,
+        description,
+      });
       const occurrenceId = `occ-felix-${p.slug}`;
       const ticketUrl = p.link;
 
@@ -267,15 +278,13 @@ export async function scrapeFelixMeritis(options?: {
           })
           .onConflictDoUpdate({
             target: schema.occurrences.id,
-            set: { startsAt, ticketUrl },
+            // eventId meenemen: occurrences die nog aan een los event
+            // hingen verhuizen zo zelf mee.
+            set: { eventId, startsAt, ticketUrl },
           });
         result.occurrencesUpserted++;
         continue;
       }
-
-      let description = decode(stripTags(p.content?.rendered ?? ''))
-        .replace(/\s+/g, ' ').trim().slice(0, 800);
-      if (!description) description = null as unknown as string;
 
       const enriched = await enrichEvent({
         title,
@@ -314,6 +323,7 @@ export async function scrapeFelixMeritis(options?: {
           .onConflictDoUpdate({
             target: schema.occurrences.id,
             set: {
+              eventId,
               startsAt, ticketUrl,
               priceNote: enriched.priceNote, room: enriched.room,
               lineup: enriched.lineup,
