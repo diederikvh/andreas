@@ -60,6 +60,7 @@ import { useSession } from '@/lib/authClient';
 import { useSetVenueFollow, useVenue } from '@/lib/queries';
 import { useMode, useRoles } from '@/store/mode';
 import { fontFamily, palette } from '@/theme/tokens';
+import { TONE } from '@/theme/tones';
 
 const HERO_HEIGHT = 380;
 const PILL_BAR_HEIGHT = 44;
@@ -447,22 +448,9 @@ export default function VenueDetail() {
             <View style={styles.metaPills}>
               {venue.type && (() => {
                 const toneKey = VENUE_TYPE_TICK[venue.type];
-                const tone =
-                  isNacht
-                    ? toneKey === 'acid'
-                      ? palette.acid
-                      : toneKey === 'flare'
-                        ? palette.flare
-                        : toneKey === 'plum'
-                          ? palette.plum
-                          : palette.azure
-                    : toneKey === 'acid'
-                      ? palette.red
-                      : toneKey === 'flare'
-                        ? palette.forest
-                        : toneKey === 'plum'
-                          ? palette.cobalt
-                          : '#0f6e8c';
+                // Was een handgerolde ladder die TONE nabouwde en dus
+                // bij elke kleurwijziging vergeten werd.
+                const tone = TONE[isNacht ? 'nacht' : 'dag'][toneKey];
                 return (
                   <View
                     style={[
@@ -1150,9 +1138,8 @@ function groupEventsByMonth(
 // de actieve pill langs de palette springen. Stabiel per maand, zodat
 // "april" altijd dezelfde kleur heeft.
 function toneForMonth(monthIdx: number, isNacht: boolean): string {
-  const tones = isNacht
-    ? [palette.acid, palette.flare, palette.plum, palette.azure]
-    : [palette.red, palette.forest, palette.cobalt, '#0f6e8c'];
+  const t = TONE[isNacht ? 'nacht' : 'dag'];
+  const tones = [t.acid, t.flare, t.plum, t.azure];
   return tones[monthIdx % 4];
 }
 

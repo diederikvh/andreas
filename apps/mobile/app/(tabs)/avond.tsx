@@ -75,6 +75,7 @@ import { useAddSavedVandaagSearch } from '@/store/savedVandaagSearches';
 import { useVandaagFilters } from '@/store/vandaagFilters';
 import { useZoekStore } from '@/store/zoek';
 import { fontFamily, palette } from '@/theme/tokens';
+import { TONE } from '@/theme/tones';
 
 function formatMetaForRow(row: OccurrenceRow, locale: Locale): string {
   const d = new Date(row.occurrence.startsAt);
@@ -113,30 +114,6 @@ const CATEGORIES_ORDER: ApiEvent['category'][] = [
   'Film',
 ];
 
-// Tone-mapping per mode — zelfde patroon als in EventListRow zodat de
-// cat-titels op Vandaag dezelfde kleuren delen als de tag-pills op de
-// rijen eronder.
-const TONE: Record<
-  'nacht' | 'dag',
-  Record<'acid' | 'flare' | 'plum' | 'azure' | 'saffron' | 'cobalt', string>
-> = {
-  nacht: {
-    acid: palette.acid,
-    flare: palette.flare,
-    plum: palette.plum,
-    azure: palette.azure,
-    saffron: palette.saffron,
-    cobalt: palette.cobalt,
-  },
-  dag: {
-    acid: palette.red,
-    flare: palette.forest,
-    plum: palette.cobalt,
-    azure: '#0f6e8c',
-    saffron: '#a8560a',
-    cobalt: '#1a3157',
-  },
-};
 
 export default function Avond() {
   const mode = useMode();

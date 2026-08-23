@@ -55,6 +55,7 @@ import {
   useSavedVenueSearches,
 } from '@/store/savedVenueSearches';
 import { fontFamily, palette } from '@/theme/tokens';
+import { TONE } from '@/theme/tones';
 
 // Filter-opties voor de unified filter-sheet. Geordend zodat de meest
 // gebruikte chips bovenaan staan binnen elke sectie. Labels worden
@@ -103,30 +104,6 @@ function getSceneChips(
   ];
 }
 
-// Tone-mapping voor mode-aware kleuren — zelfde shape als de TONE-map
-// in EventListRow zodat venue-types en event-categorieën dezelfde
-// brand-palette delen.
-const TONE: Record<
-  'nacht' | 'dag',
-  Record<'acid' | 'flare' | 'plum' | 'azure' | 'saffron' | 'cobalt', string>
-> = {
-  nacht: {
-    acid: palette.acid,
-    flare: palette.flare,
-    plum: palette.plum,
-    azure: palette.azure,
-    saffron: palette.saffron,
-    cobalt: palette.cobalt,
-  },
-  dag: {
-    acid: palette.red,
-    flare: palette.forest,
-    plum: palette.cobalt,
-    azure: '#0f6e8c',
-    saffron: '#a8560a',
-    cobalt: '#1a3157',
-  },
-};
 
 const CHIPROW_HEIGHT = 60;
 

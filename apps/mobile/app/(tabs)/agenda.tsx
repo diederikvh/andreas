@@ -72,6 +72,7 @@ import {
   useSavedSearches,
 } from '@/store/savedSearches';
 import { fontFamily, palette } from '@/theme/tokens';
+import { TONE } from '@/theme/tones';
 
 const MONTH_LABEL_HEIGHT = 14;
 const DAYSTRIP_HEIGHT = 76;
@@ -103,30 +104,6 @@ type DaySummary = {
   count: number;
 };
 
-// Categorie-tinten per mode — zelfde mapping als op Vandaag, zodat een
-// "Muziek"-sub-kop in de Agenda matcht met de tag-pill op de event-row
-// én met het cat-kopje op Vandaag.
-const TONE: Record<
-  'nacht' | 'dag',
-  Record<'acid' | 'flare' | 'plum' | 'azure' | 'saffron' | 'cobalt', string>
-> = {
-  nacht: {
-    acid: palette.acid,
-    flare: palette.flare,
-    plum: palette.plum,
-    azure: palette.azure,
-    saffron: palette.saffron,
-    cobalt: palette.cobalt,
-  },
-  dag: {
-    acid: palette.red,
-    flare: palette.forest,
-    plum: palette.cobalt,
-    azure: '#0f6e8c',
-    saffron: '#a8560a',
-    cobalt: '#1a3157',
-  },
-};
 
 // FlatList-items binnen de geselecteerde dag: cat-header die collapse-
 // state beheert, gevolgd door 0+ rij-items (verborgen als ingeklapt).

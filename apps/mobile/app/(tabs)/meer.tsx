@@ -23,7 +23,7 @@ import { softTap } from '@/lib/haptics';
 import { useT } from '@/lib/i18n';
 import { useMe, useNewArrivalsSince, useSocialBadgeCount } from '@/lib/queries';
 import { useNewFilters } from '@/store/newFilters';
-import { useRoles } from '@/store/mode';
+import { useMode, useRoles } from '@/store/mode';
 import { useNewBadgeSince } from '@/store/sessionTimestamps';
 import { useZoekStore } from '@/store/zoek';
 import { fontFamily } from '@/theme/tokens';
@@ -172,7 +172,7 @@ export default function MeerScreen() {
         showsVerticalScrollIndicator={false}
       >
         <Group entries={doen} />
-        <Group entries={vrienden} />
+        <Group entries={vrienden} label={t('Vrienden', 'Friends')} />
         <Group entries={bladeren} label={t('Bladeren', 'Browse')} />
       </ScrollView>
       <AppHeader title={t('Meer', 'More')} />
@@ -182,6 +182,7 @@ export default function MeerScreen() {
 
 function Group({ entries, label }: { entries: Entry[]; label?: string }) {
   const roles = useRoles();
+  const isNacht = useMode() === 'nacht';
   return (
     <View style={styles.groupWrap}>
       {label && (
@@ -189,7 +190,17 @@ function Group({ entries, label }: { entries: Entry[]; label?: string }) {
           {label}
         </Text>
       )}
-      <View style={[styles.group, { backgroundColor: roles.bgLift }]}>
+      {/* Op de donkere canvas is een lichter vlak de enige manier om een
+          kaart te laten zien; op wit werkt dat averechts — dan wordt de
+          hele pagina grijs. Daar volstaat een rand. */}
+      <View
+        style={[
+          styles.group,
+          isNacht
+            ? { backgroundColor: roles.bgLift }
+            : { borderWidth: StyleSheet.hairlineWidth, borderColor: roles.bgChip },
+        ]}
+      >
         {entries.map((e, i) => (
           <Row key={e.key} entry={e} last={i === entries.length - 1} />
         ))}

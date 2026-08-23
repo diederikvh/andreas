@@ -7,32 +7,8 @@ import { useLocale, type Locale } from '@/lib/i18n';
 import type { BadgeTone, Friend } from '@/lib/types';
 import { useMode, useRoles } from '@/store/mode';
 import { fontFamily, palette } from '@/theme/tokens';
+import { TONE } from '@/theme/tones';
 
-const TONE = {
-  nacht: {
-    acid: palette.acid,
-    flare: palette.flare,
-    plum: palette.plum,
-    azure: palette.azure,
-    saffron: palette.saffron,
-    cobalt: palette.cobalt,
-  },
-  dag: {
-    acid: palette.red,
-    flare: palette.forest,
-    plum: palette.cobalt,
-    // Film. Was '#8a5b00' — een bruin dat op de oude cream-bg nog als
-    // warm okergeel las, maar op wit modderig wordt. Petrol houdt 't
-    // fris en blijft los van dag.plum (cobalt) en dag.cobalt (navy).
-    azure: '#0f6e8c',
-    // Literatuur. Was '#9d6008', afgedonkerd voor leesbaarheid op cream.
-    // Op wit kan 't schoner: minder groen in de bruin, zelfde contrast.
-    saffron: '#a8560a',
-    // Lezing — donkerder navy dan dag.plum (=cobalt) zodat Kunst en
-    // Lezing in dag-mode visueel uit elkaar blijven.
-    cobalt: '#1a3157',
-  },
-} as const;
 
 export type EventTag = { label: string; tone: BadgeTone };
 

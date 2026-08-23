@@ -60,27 +60,10 @@ import type { BadgeTone } from '@/lib/types';
 import { useMode, useRoles } from '@/store/mode';
 import { useKaartFilters } from '@/store/kaartFilters';
 import { fontFamily, palette } from '@/theme/tokens';
+import { TONE } from '@/theme/tones';
 
 import { AvondFilterSheet } from './avond';
 
-const TONE = {
-  nacht: {
-    acid: palette.acid,
-    flare: palette.flare,
-    plum: palette.plum,
-    azure: palette.azure,
-    saffron: palette.saffron,
-    cobalt: palette.cobalt,
-  },
-  dag: {
-    acid: palette.red,
-    flare: palette.forest,
-    plum: palette.cobalt,
-    azure: '#0f6e8c',
-    saffron: '#a8560a',
-    cobalt: '#1a3157',
-  },
-} as const;
 
 const SHEET_OPEN_SINGLE = 200;
 const SHEET_CLOSED = 0;
