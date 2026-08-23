@@ -345,14 +345,14 @@ export default function Jij() {
               : t('Stap 2/2', 'Step 2/2')}
           </Text>
           <Text style={[styles.title, { color: roles.fg }]}>
-            {t('Inloggen', 'Sign in')}
+            {t('Maak een account', 'Create an account')}
           </Text>
 
           {stage === 'phone' && (
             <Text style={[styles.lead, { color: roles.fgRead }]}>
               {t(
-                'Ga samen op pad. Zie waar je vrienden heen gaan, nodig ze uit voor wat jij gevonden hebt, en neem je smaak mee als je van telefoon wisselt.',
-                'Head out together. See where your friends are going, invite them to what you found, and take your taste with you when you switch phones.'
+                'Dan gaat het pas echt leven. Zie waar je vrienden heen gaan, nodig ze uit voor wat jij gevonden hebt, en neem je smaak mee als je van telefoon wisselt.',
+                'That’s when it comes alive. See where your friends are going, invite them to what you found, and take your taste with you when you switch phones.'
               )}
             </Text>
           )}
