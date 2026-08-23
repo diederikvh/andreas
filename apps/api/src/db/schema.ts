@@ -359,6 +359,24 @@ export const venues = pgTable('venues', {
           sessions` URL krijgt — zonder strip wordt elke avond een
           eigen event. */
       showSlugStripPattern?: string;
+      /** Voor venues met een enorme historische sitemap: crawl elke run
+          alleen de `headUrls` nieuwste show-URLs, en de volledige lijst
+          op één vaste weekdag (`tailWeekday`, 0 = zondag, in Amsterdamse
+          tijd). Vereist een numerieke id aan het begin van het laatste
+          URL-segment — die loopt op in de tijd, dus aflopend sorteren
+          zet de nieuwste vooraan.
+
+          Concertgebouw: 4460 URLs, waarvan ~400 nog een toekomstige
+          datum. Van de 615 toekomstige occurrences zit 88% in de
+          bovenste 800 en 90% in de bovenste 1200; de rest loopt als
+          dunne staart door tot het einde. Vandaar niet "stoppen zodra
+          het droog is" (dat kostte ~32 concerten) maar een volledige
+          sweep één keer per week.
+
+          Werkt alleen als beide velden gezet zijn — anders zou de
+          staart nooit gecrawld worden. */
+      headUrls?: number;
+      tailWeekday?: number;
     };
   }>(),
   /** Admin-toggle: false = verbergen uit publieke endpoints zonder

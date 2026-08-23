@@ -347,7 +347,32 @@ export async function scrapeTheater(options?: {
     // en de staart één vaste weekdag. Max 7 dagen vertraging op ~70
     // occurrences, en 80% minder fetches per nacht.
 
-    await runWithConcurrency(showUrls, SHOW_FETCH_CONCURRENCY, async (url) => {
+    // Head-vandaag / staart-wekelijks. Zie de meting in het comment
+    // hierboven: stoppen-zodra-droog kan niet, maar de staart bestaat
+    // vrijwel alleen uit oude pagina's waarvan de datums niet meer
+    // wijzigen. Een nieuw aangekondigd concert krijgt juist een hoge id
+    // en zit dus altijd in de head.
+    let toCrawl = showUrls;
+    if (cfg.headUrls && cfg.tailWeekday !== undefined && showUrls.length > cfg.headUrls) {
+      const idOf = (u: string) =>
+        Number(u.split('/').pop()?.match(/^(\d+)/)?.[1] ?? 0);
+      const ordered = [...showUrls].sort((a, b) => idOf(b) - idOf(a));
+      // Weekdag in Amsterdamse tijd, niet UTC: de cron staat op 02:00
+      // UTC en dat is hier al de volgende ochtend.
+      const weekday = new Date(
+        new Date().toLocaleString('en-US', { timeZone: 'Europe/Amsterdam' })
+      ).getDay();
+      const fullSweep = weekday === cfg.tailWeekday;
+      toCrawl = fullSweep ? ordered : ordered.slice(0, cfg.headUrls);
+      // Niet stil afkappen: elke run zegt wat hij overslaat.
+      console.log(
+        `[theater] ${venue.id}: ${fullSweep ? 'volledige sweep' : `head-only, ${toCrawl.length} van ${ordered.length}`}` +
+          ` (weekdag ${weekday}, staart op ${cfg.tailWeekday})`
+      );
+      result.fetched = toCrawl.length;
+    }
+
+    await runWithConcurrency(toCrawl, SHOW_FETCH_CONCURRENCY, async (url) => {
       try {
         const html = await fetchHtml(url, !!cfg.useGooglebotUA);
         if (!html) { result.skipped++; return; }
