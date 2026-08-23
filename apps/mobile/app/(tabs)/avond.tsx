@@ -132,8 +132,8 @@ const TONE: Record<
     acid: palette.red,
     flare: palette.forest,
     plum: palette.cobalt,
-    azure: '#8a5b00',
-    saffron: '#9d6008',
+    azure: '#0f6e8c',
+    saffron: '#a8560a',
     cobalt: '#1a3157',
   },
 };
@@ -1579,7 +1579,7 @@ function FeaturedCard({
   const titleColor = isNacht ? palette.ink : palette.paper3;
   const metaColor = isNacht
     ? 'rgba(242,242,239,0.85)'
-    : 'rgba(245,241,232,0.95)';
+    : 'rgba(255,255,255,0.95)';
   const categoryTone = category
     ? TONE[mode][CATEGORY_TICK[category]]
     : undefined;

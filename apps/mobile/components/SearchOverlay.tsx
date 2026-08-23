@@ -361,7 +361,7 @@ export function SearchOverlay({
               colors={
                 isNacht
                   ? ['rgba(10,10,11,0.92)', 'rgba(10,10,11,0.88)', 'transparent']
-                  : ['rgba(245,241,232,0.94)', 'rgba(245,241,232,0.9)', 'transparent']
+                  : ['rgba(255,255,255,0.94)', 'rgba(255,255,255,0.9)', 'transparent']
               }
               locations={[0, 0.7, 1]}
               style={StyleSheet.absoluteFill}

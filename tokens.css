@@ -15,11 +15,11 @@
   --ink:         #f2f2ef;   /* primary text on nacht */
   --ink-muted:   #9a9a94;
 
-  --paper:       #d9d1bf;   /* dag background */
-  --paper-2:     #ebe6d8;   /* lifted paper */
-  --paper-3:     #f5f1e8;   /* highlight paper */
-  --soil:        #1a1410;   /* primary text on dag */
-  --soil-muted:  #5a4e3f;
+  --paper:       #e4e4e9;   /* dag background */
+  --paper-2:     #f1f1f4;   /* lifted paper */
+  --paper-3:     #ffffff;   /* highlight paper */
+  --soil:        #141417;   /* primary text on dag */
+  --soil-muted:  #6e6e78;
 
   /* Brand accents — shared across modes */
   --acid:        #d4ff3a;   /* nacht-only accent (never on dag) */

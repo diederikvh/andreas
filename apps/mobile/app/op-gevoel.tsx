@@ -821,7 +821,7 @@ const styles = StyleSheet.create({
     fontSize: 11,
     letterSpacing: 1.2,
     textTransform: 'uppercase',
-    color: 'rgba(245,241,232,0.92)',
+    color: 'rgba(255,255,255,0.92)',
   },
   cardTitle: {
     fontFamily: fontFamily.display,
@@ -835,7 +835,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
     letterSpacing: 0.8,
     textTransform: 'uppercase',
-    color: 'rgba(245,241,232,0.88)',
+    color: 'rgba(255,255,255,0.88)',
   },
 
   // Vol-formaat kleur-overlay — wordt opaque-er naarmate je swipet.

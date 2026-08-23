@@ -21,10 +21,13 @@ const TONE = {
     acid: palette.red,
     flare: palette.forest,
     plum: palette.cobalt,
-    azure: '#8a5b00',
-    // Donkerder amber voor cream-bg leesbaarheid; palette.saffron
-    // (#e89b2e) is te licht op paper3.
-    saffron: '#9d6008',
+    // Film. Was '#8a5b00' — een bruin dat op de oude cream-bg nog als
+    // warm okergeel las, maar op wit modderig wordt. Petrol houdt 't
+    // fris en blijft los van dag.plum (cobalt) en dag.cobalt (navy).
+    azure: '#0f6e8c',
+    // Literatuur. Was '#9d6008', afgedonkerd voor leesbaarheid op cream.
+    // Op wit kan 't schoner: minder groen in de bruin, zelfde contrast.
+    saffron: '#a8560a',
     // Lezing — donkerder navy dan dag.plum (=cobalt) zodat Kunst en
     // Lezing in dag-mode visueel uit elkaar blijven.
     cobalt: '#1a3157',

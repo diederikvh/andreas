@@ -462,7 +462,7 @@ export default function VenueDetail() {
                         ? palette.forest
                         : toneKey === 'plum'
                           ? palette.cobalt
-                          : '#8a5b00';
+                          : '#0f6e8c';
                 return (
                   <View
                     style={[
@@ -1152,7 +1152,7 @@ function groupEventsByMonth(
 function toneForMonth(monthIdx: number, isNacht: boolean): string {
   const tones = isNacht
     ? [palette.acid, palette.flare, palette.plum, palette.azure]
-    : [palette.red, palette.forest, palette.cobalt, '#8a5b00'];
+    : [palette.red, palette.forest, palette.cobalt, '#0f6e8c'];
   return tones[monthIdx % 4];
 }
 

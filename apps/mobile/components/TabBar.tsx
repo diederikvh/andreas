@@ -79,12 +79,14 @@ export function TabBar({ state, navigation }: BottomTabBarProps) {
     Platform.OS === 'android'
       ? mode === 'nacht'
         ? 'rgba(23,23,26,0.92)'
-        : 'rgba(235,230,216,0.94)'
+        : 'rgba(241,241,244,0.94)'
       : mode === 'nacht'
         ? 'rgba(23,23,26,0.65)'
-        : 'rgba(235,230,216,0.7)';
+        : 'rgba(241,241,244,0.7)';
   const border = mode === 'nacht' ? '#2a2a2d' : palette.paper;
-  const idle = mode === 'nacht' ? '#6a6a68' : '#8a7e6b';
+  // Inactief icoon. Dag was '#8a7e6b' — een warm grijs dat bij de oude
+  // cream-bg hoorde en op wit als vaalbruin leest.
+  const idle = mode === 'nacht' ? '#6a6a68' : '#9a9aa4';
   // iOS: -16 corrigeert tegen de home-indicator-zone die toch al
   // diapublisher-vrij is. Android: insets.bottom is óf ~0 (gesture
   // nav, edge-to-edge) óf de hoogte van de 3-knops nav-bar (~48dp) —
@@ -150,7 +152,7 @@ export function TabBar({ state, navigation }: BottomTabBarProps) {
   // nu compact zodat content erboven helder blijft.
   const fadeHeight = insets.bottom + 65;
   const tintNacht = 'rgba(10,10,11,0.8)';
-  const tintDag = 'rgba(245,241,232,0.88)';
+  const tintDag = 'rgba(255,255,255,0.88)';
   const fadeTint = mode === 'nacht' ? tintNacht : tintDag;
 
   return (

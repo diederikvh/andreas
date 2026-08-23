@@ -12,12 +12,19 @@ export const palette = {
   ink: '#f2f2ef',
   inkMuted: '#9a9a94',
 
-  // Dag
-  paper: '#d9d1bf',
-  paper2: '#ebe6d8',
-  paper3: '#f5f1e8',
-  soil: '#1a1410',
-  soilMuted: '#5a4e3f',
+  // Dag — wit met rood. Was een cream/beige-schaal (#f5f1e8 canvas,
+  // warm-bruine tekst); dat las als papier maar ook als oud. Nu een
+  // neutrale wit-grijs-schaal zodat het rood het enige warme in beeld
+  // is en er ook echt uitspringt.
+  //
+  // Namen blijven `paper*` — ze zitten op ~170 call-sites en de rol is
+  // niet veranderd: paper3 = canvas, paper2 = tegel bóven het canvas,
+  // paper = rand/chip. Alleen de waarden zijn nu wit in plaats van geel.
+  paper: '#e4e4e9',
+  paper2: '#f1f1f4',
+  paper3: '#ffffff',
+  soil: '#141417',
+  soilMuted: '#6e6e78',
 
   // Brand accents
   acid: '#d4ff3a', // nacht-only
@@ -62,13 +69,14 @@ export const roles = {
     /** Emphasis colour for em-words inside titles. Always the warm pop. */
     emphasis: palette.flare,
     onAccent: palette.noir,
-    curtainBg: palette.paper,
+    curtainBg: palette.paper3,
     curtainFg: palette.soil,
   },
   dag: {
-    // The dag canvas is paper-3 (the lightest cream); the darker paper
-    // is reserved for tiles/cards so they read as a layer ABOVE the
-    // canvas. Mirrors `.phone.dag { background: #f5f1e8 }` in the mocks.
+    // Canvas is paper3 (wit); de donkerdere papers zijn tegels die
+    // erbóven liggen. Op puur wit is het verschil tussen canvas en
+    // tegel klein, dus bgChip (paper) doet ook dienst als randkleur —
+    // vandaar dat die iets zwaarder is dan je voor een vlak zou kiezen.
     bg: palette.paper3,
     bgLift: palette.paper2,
     bgChip: palette.paper,
@@ -77,9 +85,9 @@ export const roles = {
         verdwijnen. */
     bgTag: palette.paper2,
     fg: palette.soil,
-    fgRead: '#3d342a',
+    fgRead: '#38383f',
     fgMuted: palette.soilMuted,
-    fgPlaceholder: '#a89c84',
+    fgPlaceholder: '#adadb6',
     accent: palette.red,
     accent2: palette.forest,
     /** Same warm-pop role as nacht; in dag the warm pop IS the primary red. */

@@ -17,7 +17,7 @@ export function DnSwitch() {
   const switchMode = useModeSwitch();
   const isNacht = mode === 'nacht';
 
-  const trackBg = isNacht ? 'rgba(31,31,35,0.7)' : 'rgba(235,230,216,0.7)';
+  const trackBg = isNacht ? 'rgba(31,31,35,0.7)' : 'rgba(241,241,244,0.7)';
   const trackBorder = isNacht ? '#2a2a2d' : palette.paper;
   const idle = roles.fgPlaceholder;
 

@@ -76,8 +76,8 @@ const TONE = {
     acid: palette.red,
     flare: palette.forest,
     plum: palette.cobalt,
-    azure: '#8a5b00',
-    saffron: '#9d6008',
+    azure: '#0f6e8c',
+    saffron: '#a8560a',
     cobalt: '#1a3157',
   },
 } as const;
@@ -813,7 +813,7 @@ export default function Kaart() {
                   backgroundColor:
                     mode === 'nacht'
                       ? 'rgba(23,23,26,0.65)'
-                      : 'rgba(235,230,216,0.7)',
+                      : 'rgba(241,241,244,0.7)',
                 },
               ]}
             />
@@ -885,7 +885,7 @@ function FilterButton({
                 backgroundColor:
                   mode === 'nacht'
                     ? 'rgba(23,23,26,0.65)'
-                    : 'rgba(235,230,216,0.7)',
+                    : 'rgba(241,241,244,0.7)',
               },
             ]}
           />
@@ -955,7 +955,7 @@ function ViewSwitch({
             backgroundColor:
               mode === 'nacht'
                 ? 'rgba(23,23,26,0.65)'
-                : 'rgba(235,230,216,0.7)',
+                : 'rgba(241,241,244,0.7)',
           },
         ]}
       />
@@ -1011,7 +1011,7 @@ function TransportToggle({
             backgroundColor:
               mode === 'nacht'
                 ? 'rgba(23,23,26,0.65)'
-                : 'rgba(235,230,216,0.7)',
+                : 'rgba(241,241,244,0.7)',
           },
         ]}
       />

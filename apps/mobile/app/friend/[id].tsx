@@ -601,7 +601,7 @@ function FriendSubTabs({
               backgroundColor:
                 mode === 'nacht'
                   ? 'rgba(23,23,26,0.65)'
-                  : 'rgba(235,230,216,0.7)',
+                  : 'rgba(241,241,244,0.7)',
             },
           ]}
         />

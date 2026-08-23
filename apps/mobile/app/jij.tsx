@@ -472,7 +472,11 @@ export default function Jij() {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
         contentContainerStyle={{
-          paddingTop: insets.top + 56,
+          // In de bewerk-modal is dit een pageSheet: die begint al ónder
+          // de statusbalk, dus `insets.top` (van het scherm eronder)
+          // erbij optellen duwde de kop een halve statusbalk naar
+          // beneden. Alleen de onboarding-variant vult wél het scherm.
+          paddingTop: isEditingExisting ? 34 : insets.top + 56,
           paddingBottom: insets.bottom + 96,
           paddingHorizontal: 22,
         }}
@@ -1305,8 +1309,8 @@ function AppearanceSection() {
           </Text>
           <Text style={[styles.privacySub, { color: roles.fgMuted }]}>
             {t(
-              'Het visuele thema van de app: nacht is donker (acid-geel), dag is licht (cream, karmijn). Puur smaak — het aanbod blijft hetzelfde.',
-              'The app’s visual theme: night is dark (acid yellow), day is light (cream, crimson). Purely taste — the content stays the same.'
+              'Het visuele thema van de app: nacht is donker (acid-geel), dag is licht (wit, karmijn). Puur smaak — het aanbod blijft hetzelfde.',
+              'The app’s visual theme: night is dark (acid yellow), day is light (white, crimson). Purely taste — the content stays the same.'
             )}
           </Text>
           <SegmentPicker value={mode} options={options} onChange={setMode} />

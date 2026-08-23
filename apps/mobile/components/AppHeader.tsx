@@ -122,10 +122,10 @@ export function AppHeader({
                   Platform.OS === 'android'
                     ? mode === 'nacht'
                       ? 'rgba(10,10,11,0.92)'
-                      : 'rgba(245,241,232,0.95)'
+                      : 'rgba(255,255,255,0.95)'
                     : mode === 'nacht'
                       ? 'rgba(10,10,11,0.78)'
-                      : 'rgba(245,241,232,0.82)',
+                      : 'rgba(255,255,255,0.82)',
               },
             ]}
           />
@@ -139,7 +139,7 @@ export function AppHeader({
           colors={
             mode === 'nacht'
               ? ['rgba(10,10,11,0.92)', 'rgba(10,10,11,0.88)', 'transparent']
-              : ['rgba(245,241,232,0.94)', 'rgba(245,241,232,0.9)', 'transparent']
+              : ['rgba(255,255,255,0.94)', 'rgba(255,255,255,0.9)', 'transparent']
           }
           locations={[0, 0.7, 1]}
           style={StyleSheet.absoluteFill}
