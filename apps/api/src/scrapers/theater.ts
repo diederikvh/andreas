@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { and, eq, gt, inArray } from 'drizzle-orm';
 
 import { db, schema } from '../db/index.js';
 import { uploadToBunny } from '../storage/bunny.js';
@@ -268,6 +268,9 @@ export type TheaterVenueResult = {
   fetched: number;
   inserted: number;
   occurrencesUpserted: number;
+  /** Toekomstige occurrences verwijderd omdat de bron ze niet meer
+      opsomt (voorstelling afgelast of verschoven). */
+  occurrencesPruned: number;
   skipped: number;
   errors: string[];
 };
@@ -292,6 +295,7 @@ export async function scrapeTheater(options?: {
       fetched: 0,
       inserted: 0,
       occurrencesUpserted: 0,
+      occurrencesPruned: 0,
       skipped: 0,
       errors: [],
     };
@@ -308,6 +312,11 @@ export async function scrapeTheater(options?: {
     // suffix, Meervaart heeft twee URLs per voorstelling. De titel is
     // in al die gevallen wél identiek. Zie _title-dedup.ts.
     const byTitle = await loadVenueTitleMap(venue.id, 'evt-th-');
+
+    // Welke occurrence-ids de bron deze run per event opsomde. Na de
+    // crawl gooien we de toekomstige occurrences weg die hier niet in
+    // staan — zie de prune onderaan.
+    const seenOcc = new Map<string, Set<string>>();
 
     const allEntries = await fetchSitemap(cfg.sitemapUrl);
     const urlCutoff = Date.now() - SITEMAP_STALE_MS;
@@ -564,6 +573,9 @@ export async function scrapeTheater(options?: {
                 },
               });
             result.occurrencesUpserted++;
+            const seen = seenOcc.get(eventId) ?? new Set<string>();
+            seen.add(occurrenceId);
+            seenOcc.set(eventId, seen);
           } catch (e) {
             result.errors.push(`occurrence ${url} ${slot.startsAt.toISOString()}: ${(e as Error).message}`);
             result.skipped++;
@@ -575,9 +587,57 @@ export async function scrapeTheater(options?: {
       }
     });
 
+    // Prune: toekomstige occurrences weg die de bron niet meer opsomt.
+    // Zonder dit blijven afgelaste en verschoven voorstellingen staan —
+    // bij Concertgebouw stonden er 615 toekomstige occurrences in de DB
+    // terwijl een volledige sweep er 246 bevestigde.
+    //
+    // Alleen events die deze run mínstens één bevestigde datum hadden.
+    // Dat is de veiligheidsklem: een pagina die tijdelijk geen JSON-LD
+    // geeft, een fetch-timeout of een sitemap-entry die buiten de
+    // lastmod-filter viel, bereikt de slot-loop nooit en staat dus niet
+    // in seenOcc — die events blijven onaangeraakt in plaats van
+    // leeggeruimd te worden.
+    //
+    // Per event, niet per pagina: alias-URLs die naar hetzelfde event
+    // mappen zouden elkaars datums wegpruimen als we per pagina
+    // zouden werken.
+    const pruneCutoff = new Date(Date.now() - 6 * 60 * 60 * 1000);
+    for (const [eventId, keep] of seenOcc) {
+      try {
+        const stale = await db
+          .select({ id: schema.occurrences.id })
+          .from(schema.occurrences)
+          .where(
+            and(
+              eq(schema.occurrences.eventId, eventId),
+              gt(schema.occurrences.startsAt, pruneCutoff)
+            )
+          );
+        const drop = stale.map((r) => r.id).filter((id) => !keep.has(id));
+        if (!drop.length) continue;
+        // Saves hangen aan occurrence-ids: een occurrence met een save
+        // laten we staan, ook al biedt de bron 'm niet meer aan. Beter
+        // een verlopen rij dan een verdwenen save.
+        const saved = await db
+          .select({ occurrenceId: schema.saves.occurrenceId })
+          .from(schema.saves)
+          .where(inArray(schema.saves.occurrenceId, drop));
+        const savedIds = new Set(saved.map((r) => r.occurrenceId));
+        const finalDrop = drop.filter((id) => !savedIds.has(id));
+        if (!finalDrop.length) continue;
+        await db
+          .delete(schema.occurrences)
+          .where(inArray(schema.occurrences.id, finalDrop));
+        result.occurrencesPruned += finalDrop.length;
+      } catch (e) {
+        result.errors.push(`prune ${eventId}: ${(e as Error).message}`);
+      }
+    }
+
     const tookMs = Date.now() - venueStart;
     console.log(
-      `[theater] done ${venue.slug} in ${tookMs}ms — fetched=${result.fetched} inserted=${result.inserted} occ=${result.occurrencesUpserted} skipped=${result.skipped} errors=${result.errors.length}`
+      `[theater] done ${venue.slug} in ${tookMs}ms — fetched=${result.fetched} inserted=${result.inserted} occ=${result.occurrencesUpserted} pruned=${result.occurrencesPruned} skipped=${result.skipped} errors=${result.errors.length}`
     );
     results.push(result);
   }
