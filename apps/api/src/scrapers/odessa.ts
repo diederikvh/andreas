@@ -216,14 +216,7 @@ export async function scrapeOdessa(_options?: {
         result.skipped++;
         continue;
       }
-      const { eventId } = resolveEventId(byTitle, card.title, `evt-od-${card.hipsyId}`);
       const occurrenceId = `occ-od-${card.hipsyId}`;
-
-      const [existing] = await db
-        .select({ id: schema.events.id })
-        .from(schema.events)
-        .where(eq(schema.events.id, eventId))
-        .limit(1);
 
       let enriched: Awaited<ReturnType<typeof enrichEvent>> | null = null;
 
@@ -246,6 +239,24 @@ export async function scrapeOdessa(_options?: {
         const mm = String(detail.startTime.minute).padStart(2, '0');
         startsAt = new Date(`${get('year')}-${get('month')}-${get('day')}T${hh}:${mm}:00${off}`);
       }
+
+      // Resolven ná de detail-fetch: die haalden we voor elk item toch al
+      // op (voor de echte starttijd), dus de description is hier gratis
+      // beschikbaar als signaal. Zonder die tekst zou een wekelijkse
+      // serie met eigen programma per avond samengevoegd worden en z'n
+      // description verliezen.
+      const { eventId } = resolveEventId(
+        byTitle,
+        card.title,
+        `evt-od-${card.hipsyId}`,
+        { startsAt, description: detail.description }
+      );
+
+      const [existing] = await db
+        .select({ id: schema.events.id })
+        .from(schema.events)
+        .where(eq(schema.events.id, eventId))
+        .limit(1);
 
       if (!existing) {
         let imageUrl: string | null = null;

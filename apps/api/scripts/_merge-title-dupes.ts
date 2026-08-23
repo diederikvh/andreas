@@ -1,26 +1,39 @@
 /**
  * Voeg events samen die binnen één venue dezelfde genormaliseerde titel
- * hebben: één event, alle datums als occurrences. Dekt drie gevallen
- * die uit dezelfde oorzaak komen (id afgeleid van een muteerbare
- * bron-slug i.p.v. van de voorstelling):
+ * hebben: één event, alle datums als occurrences.
  *
- *   zelfde dag  — Frascati's typo-correctie, Meervaart's twee URLs
- *   run         — "Fat Freddy's Drop" op 12/13/14 okt als 3 events
- *   terugkerend — "Cheeky Monday" 5× voor 5 maandagen
+ * Een gelijke titel alleen is NIET genoeg. `description` zit op
+ * event-niveau, dus samenvoegen platslaat de tekst van avond 2..N.
+ * Gemeten: van 90 clusters met meer dan één description hebben 81 écht
+ * andere tekst (tot 1% overeenkomst) — "CinemAnita Fiber Factory" is
+ * elke week een andere film. Daar is de gelijke titel een serienaam,
+ * geen identiteit.
+ *
+ * Dus dezelfde regel als resolveEventId in _title-dedup.ts — samenvoegen
+ * mag als één van twee dingen klopt:
+ *
+ *   datum sluit aan (≤1 dag)  — alias-URL op dezelfde dag (Frascati's
+ *     typo-correctie, Meervaart's twee URLs) of een run over
+ *     opeenvolgende avonden ("Fat Freddy's Drop" 12/13/14 okt).
+ *   description komt overeen  — terugkerende avond die echt elke keer
+ *     hetzelfde is ("Dynasty | 21+"). Datums liggen weken uit elkaar,
+ *     dus alleen de tekst kan het bevestigen.
  *
  * Occurrences worden VERPLAATST, niet verwijderd: saves hangen aan
  * occurrence-ids, dus verplaatsen houdt ze heel. Alleen een occurrence
  * die exact samenvalt met één op het blijvende event is echt dubbel en
  * gaat weg — en dan nog alleen als er geen save aan hangt.
  *
- * Dry-run tenzij --apply. Beperk met --venue=<id>.
+ * Dry-run tenzij --apply. Beperk met --venue=<id>[,<id>…].
  *
- * ponytail: title-match binnen één venue, geen fuzzy matching. Een
- * venue die twee losse shows identiek noemt bestaat (nog) niet in de
- * data; als dat opduikt is de sleutel het punt om aan te scherpen.
+ * ponytail: prefix-vergelijking i.p.v. edit-distance, en één map-entry
+ * per titel. Teksten die hetzelfde zijn zijn byte-identiek tot een
+ * eventuele slotzin, dus dat is genoeg; bij echt fuzzy bronnen is dit
+ * het punt om aan te scherpen.
  */
 import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import { db, schema } from '../src/db/index.js';
+import { descriptionSimilarity, SAME_SHOW_SIMILARITY, titleKey } from '../src/scrapers/_title-dedup.js';
 
 const APPLY = process.argv.includes('--apply');
 /** Komma-lijst: `--venue=frascati,meervaart`. Nodig omdat de merge
@@ -29,10 +42,6 @@ const APPLY = process.argv.includes('--apply');
     een eigen id geeft (celebratix, odessa, melkweg, patronaat) voegt
     de volgende scrape de rijen gewoon opnieuw toe. */
 const VENUES = process.argv.find((a) => a.startsWith('--venue='))?.split('=')[1]?.split(',').filter(Boolean);
-
-const titleKey = (s: string) =>
-  s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
-    .replace(/[^a-z0-9]+/g, ' ').trim();
 
 const evs = await db
   .select({
@@ -55,22 +64,51 @@ let mergedEvents = 0, movedOcc = 0, droppedOcc = 0, keptForSave = 0;
 for (const [key, members] of [...groups].sort((a, b) => a[0].localeCompare(b[0]))) {
   if (members.length < 2) continue;
   const keeper = members[0];               // laagste id — deterministisch
-  const losers = members.slice(1);
+  const candidates = members.slice(1);
 
   const loserOcc = await db
-    .select({ id: schema.occurrences.id, startsAt: schema.occurrences.startsAt })
+    .select({ id: schema.occurrences.id, eventId: schema.occurrences.eventId, startsAt: schema.occurrences.startsAt })
     .from(schema.occurrences)
-    .where(inArray(schema.occurrences.eventId, losers.map((e) => e.id)))
+    .where(inArray(schema.occurrences.eventId, candidates.map((e) => e.id)))
     .orderBy(asc(schema.occurrences.startsAt));
   const keeperOcc = await db
     .select({ id: schema.occurrences.id, startsAt: schema.occurrences.startsAt })
     .from(schema.occurrences)
     .where(eq(schema.occurrences.eventId, keeper.id));
 
+  // Zelfde regel als resolveEventId in _title-dedup.ts: een gelijke
+  // titel is niet genoeg. Alleen samenvoegen als de datum aansluit
+  // (alias-URL of run) óf de description overeenkomt (terugkerende
+  // avond die echt elke keer hetzelfde is). Anders blijft het een eigen
+  // event — "CinemAnita Fiber Factory" is elke week een andere film en
+  // zou z'n tekst verliezen.
+  const keeperDays = keeperOcc.map((o) => o.startsAt.getTime());
+  const keeperDesc = (keeper.description ?? '').trim();
+  const losers: typeof candidates = [];
+  const skipped: string[] = [];
+  for (const c of candidates) {
+    const cDays = loserOcc.filter((o) => o.eventId === c.id).map((o) => o.startsAt.getTime());
+    const adjacent = cDays.some((t) =>
+      keeperDays.some((k) => Math.abs(k - t) <= 86_400_000)
+    );
+    const cDesc = (c.description ?? '').trim();
+    const descOk = !cDesc || !keeperDesc
+      || descriptionSimilarity(cDesc, keeperDesc) > SAME_SHOW_SIMILARITY;
+    if (adjacent || descOk) losers.push(c);
+    else skipped.push(c.id);
+  }
+  if (!losers.length) {
+    if (skipped.length) {
+      console.log(`SKIP  ${key} — ${skipped.length} event(s) met eigen description, laat staan`);
+    }
+    continue;
+  }
+
   const taken = new Set(keeperOcc.map((o) => o.startsAt.getTime()));
   const toMove: string[] = [];
   const toDrop: string[] = [];
-  for (const o of loserOcc) {
+  const loserIdSet = new Set(losers.map((e) => e.id));
+  for (const o of loserOcc.filter((o) => loserIdSet.has(o.eventId))) {
     if (taken.has(o.startsAt.getTime())) {
       const saves = await db.select().from(schema.saves)
         .where(eq(schema.saves.occurrenceId, o.id));
@@ -103,6 +141,7 @@ for (const [key, members] of [...groups].sort((a, b) => a[0].localeCompare(b[0])
   if (Object.keys(patch).length) console.log(`        event  += ${Object.keys(patch).join(', ')}`);
   console.log(`        occ    verplaats ${toMove.length}, verwijder ${toDrop.length}`);
   for (const l of losers) console.log(`        weg    ${l.id}`);
+  for (const sk of skipped) console.log(`        blijft ${sk}  (eigen description)`);
 
   if (APPLY) {
     await db.transaction(async (tx) => {

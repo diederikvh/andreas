@@ -229,7 +229,13 @@ export async function scrapeMelkweg(options?: {
   for (const ev of upcoming) {
     try {
       const a = ev.attributes;
-      const { eventId } = resolveEventId(byTitle, a.name, `evt-mw-${VENUE_ID}-${ev.id}`);
+      // Description komt uit een apart _next/data-endpoint, dus datum.
+      const { eventId } = resolveEventId(
+        byTitle,
+        a.name,
+        `evt-mw-${VENUE_ID}-${ev.id}`,
+        { startsAt: new Date(a.startTime ?? a.startDate) }
+      );
       const occurrenceId = `occ-mw-${VENUE_ID}-${ev.id}`;
       const startsAt = new Date(a.startTime ?? a.startDate);
       const endsAt = a.endDate ? new Date(a.endDate) : null;

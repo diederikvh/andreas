@@ -379,7 +379,10 @@ export async function scrapeTheater(options?: {
         const { eventId, owns: ownsEvent } = resolveEventId(
           byTitle,
           title,
-          `evt-th-${venue.id}-${titleSlug}`
+          `evt-th-${venue.id}-${titleSlug}`,
+          // De datums (slots) worden hieronder pas opgebouwd; de
+          // description uit het JSON-LD-blok is hier al beschikbaar.
+          { description: head.description ? decodeEntities(head.description) : null }
         );
 
         const [existing] = await db

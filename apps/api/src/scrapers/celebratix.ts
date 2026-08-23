@@ -131,7 +131,8 @@ export async function scrapeCelebratix(options?: {
         const { eventId } = resolveEventId(
           byTitle,
           ev.name,
-          `evt-cel-${venue.id}-${ev.sqid}`
+          `evt-cel-${venue.id}-${ev.sqid}`,
+          { startsAt, description: ev.shortDescription?.trim() || null }
         );
         const [existing] = await db
           .select({ id: schema.events.id })

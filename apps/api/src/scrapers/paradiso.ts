@@ -273,8 +273,9 @@ export async function scrapeParadiso(options?: {
   // een terugkerende avond idem. Titel binnen de venue is de identiteit.
   // Per venue een eigen map, want deze scraper routeert ook naar
   // Tolhuistuin/Bitterzoet/Doka. Lazy: alleen venues die we echt zien.
-  const titleMaps = new Map<string, Map<string, string>>();
-  const titleMapFor = async (vid: string): Promise<Map<string, string>> => {
+  type TitleMap = Awaited<ReturnType<typeof loadVenueTitleMap>>;
+  const titleMaps = new Map<string, TitleMap>();
+  const titleMapFor = async (vid: string): Promise<TitleMap> => {
     let m = titleMaps.get(vid);
     if (!m) {
       m = await loadVenueTitleMap(vid, `evt-par-${vid}-`);
@@ -302,10 +303,13 @@ export async function scrapeParadiso(options?: {
       r.fetched++;
 
       try {
+        // Description komt uit renderDetail (Playwright), ná dit punt —
+        // dus de datum is hier het enige signaal.
         const { eventId } = resolveEventId(
           await titleMapFor(venueId),
           ev.title,
-          `evt-par-${venueId}-${ev.id}`
+          `evt-par-${venueId}-${ev.id}`,
+          { startsAt: new Date(ev.startDateTime) }
         );
         const occurrenceId = `occ-par-${venueId}-${ev.id}`;
         const ticketUrl = `${HOMEPAGE}/${ev.uri.replace(/^\//, '')}`;

@@ -312,14 +312,7 @@ export async function scrapePatronaat(options?: {
         continue;
       }
 
-      const { eventId } = resolveEventId(byTitle, card.title, `evt-patronaat-${card.slug}`);
       const occurrenceId = `occ-patronaat-${card.slug}`;
-
-      const [existing] = await db
-        .select({ id: schema.events.id })
-        .from(schema.events)
-        .where(eq(schema.events.id, eventId))
-        .limit(1);
 
       // Detail-page nodig voor aanvangstijd + ticket-URL.
       const detailHtml = await fetchHtml(card.url);
@@ -329,6 +322,23 @@ export async function scrapePatronaat(options?: {
       }
       const detail = extractDetail(detailHtml, card.date);
       const startsAt = detail.startsAt ?? card.date;
+
+      // Resolven ná de detail-fetch: die halen we voor elk item toch al
+      // op, dus de description is hier gratis beschikbaar als signaal.
+      // Zonder die tekst zou een serie met eigen programma per avond
+      // samengevoegd worden en z'n description verliezen.
+      const { eventId } = resolveEventId(
+        byTitle,
+        card.title,
+        `evt-patronaat-${card.slug}`,
+        { startsAt, description: detail.description }
+      );
+
+      const [existing] = await db
+        .select({ id: schema.events.id })
+        .from(schema.events)
+        .where(eq(schema.events.id, eventId))
+        .limit(1);
 
       if (existing) {
         await db
