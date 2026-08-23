@@ -3,6 +3,7 @@ import { eq } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
 import { uploadToBunny } from '../storage/bunny.js';
 import { enrichEvent, refineKindByDuration } from './enrich.js';
+import { loadVenueTitleMap, resolveEventId } from './_title-dedup.js';
 
 /**
  * De Krakeling — kindertheater, pure-HTTP scraper.
@@ -138,6 +139,8 @@ export async function scrapeKrakeling(options?: { venueIds?: string[] }): Promis
   const cutoff = Date.now() - 6 * 60 * 60 * 1000;
   const venueCategory = venue.categories?.[0] ?? 'Theater';
 
+  const byTitle = await loadVenueTitleMap(VENUE_ID, 'evt-krak-');
+
   for (const slug of slugs) {
     try {
       const html = await fetchHtml(`${BASE}/programma/${slug}`);
@@ -148,7 +151,12 @@ export async function scrapeKrakeling(options?: { venueIds?: string[] }): Promis
       const fresh = meta.showtimes.filter((d) => d.getTime() > cutoff);
       if (fresh.length === 0) { result.skipped++; continue; }
 
-      const eventId = `evt-krak-${slug}`;
+      // De show-pagina halen we voor elke slug op, dus titel, datum en
+      // og:description zijn hier alle drie gratis beschikbaar.
+      const { eventId } = resolveEventId(byTitle, meta.title, `evt-krak-${slug}`, {
+        startsAt: fresh[0] ?? null,
+        description: meta.description,
+      });
       const [existing] = await db
         .select({ id: schema.events.id })
         .from(schema.events)
@@ -215,7 +223,9 @@ export async function scrapeKrakeling(options?: { venueIds?: string[] }): Promis
             })
             .onConflictDoUpdate({
               target: schema.occurrences.id,
-              set: { startsAt, ticketUrl },
+              // eventId meenemen: occurrences die nog aan een per-avond-
+              // event hingen verhuizen zo zelf naar het canonieke event.
+              set: { eventId, startsAt, ticketUrl },
             });
           result.occurrencesUpserted++;
         } catch (e) {

@@ -1,5 +1,4 @@
 import { Ionicons } from '@expo/vector-icons';
-import type { ReactNode } from 'react';
 import { Image } from 'expo-image';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
@@ -60,10 +59,6 @@ type Props = {
       die bevat alleen `time` zodat 'ie smal en leesbaar blijft. */
   dateLabel?: string;
   onPress?: () => void;
-  /** Optionele knoppen rechts in de rij, vóór de accent-tick. Gebruikt
-      door /new voor de ja/nee-beoordeling. Vervangt de tijd-kolom —
-      die twee vechten anders om dezelfde ruimte. */
-  actions?: ReactNode;
 };
 
 /**
@@ -91,7 +86,6 @@ export function EventListRow({
   dateAbove = false,
   dateLabel,
   onPress,
-  actions,
 }: Props) {
   const mode = useMode();
   const roles = useRoles();
@@ -100,7 +94,7 @@ export function EventListRow({
   // Wanneer venueAsPill aanstaat (Vandaag/Agenda) gaat de tijd naar
   // een eigen kolom rechts; subline wordt dan compact (alleen
   // duration als die meekomt). Anders: oude subline-layout.
-  const showTimeRight = venueAsPill && Boolean(time) && !actions;
+  const showTimeRight = venueAsPill && Boolean(time);
   const dateAboveText = dateAbove
     ? [dateLabel, time, duration].filter(Boolean).join(' · ')
     : '';
@@ -253,7 +247,6 @@ export function EventListRow({
             </View>
           )}
         </View>
-        {actions}
         {showTimeRight && (
           <View style={styles.rowTimeCol}>
             <View style={styles.rowTimeRotate}>

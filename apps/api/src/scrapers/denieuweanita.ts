@@ -3,6 +3,7 @@ import { eq } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
 import { uploadToBunny } from '../storage/bunny.js';
 import { enrichEvent, refineKindByDuration } from './enrich.js';
+import { loadVenueTitleMap, resolveEventId } from './_title-dedup.js';
 
 /**
  * De Nieuwe Anita (kleinkunst-podium/café Frederik Hendrikbuurt) scraper.
@@ -225,6 +226,8 @@ export async function scrapeDeNieuweAnita(options?: {
   const currentYear = now.getFullYear();
   const currentMonth = now.getMonth();
 
+  const byTitle = await loadVenueTitleMap(VENUE_ID, 'evt-anita-');
+
   for (const p of posts) {
     try {
       const slug = p.slug;
@@ -264,7 +267,25 @@ export async function scrapeDeNieuweAnita(options?: {
         continue;
       }
 
-      const eventId = `evt-anita-${slug}`;
+      // Description: gebruik content.rendered (per-post unieke tekst).
+      // De WP excerpt-template op Anita is admin-fout gevuld met
+      // dezelfde "Witte Geit..."-tekst op álle posts, dus die negeren
+      // we volledig. Content begint met de titel + tijd-aanduiding;
+      // we knippen 'm op 800 tekens om buitenproportionele description-
+      // sizes te voorkomen.
+      let description = decode(stripTags(p.content.rendered || ''))
+        .replace(/\s+/g, ' ')
+        .trim()
+        .slice(0, 800);
+      if (!description) description = null as unknown as string;
+
+      // Description is hier al bekend (puur string-werk op de WP-post),
+      // dus die kan als signaal mee: "CinemAnita Fiber Factory" is elke
+      // week een andere film en mag niet samengevoegd worden.
+      const { eventId } = resolveEventId(byTitle, title, `evt-anita-${slug}`, {
+        startsAt,
+        description,
+      });
       const occurrenceId = `occ-anita-${slug}`;
 
       const [existing] = await db
@@ -290,23 +311,13 @@ export async function scrapeDeNieuweAnita(options?: {
           })
           .onConflictDoUpdate({
             target: schema.occurrences.id,
-            set: { startsAt, ticketUrl: p.link },
+            // eventId meenemen: occurrences die nog aan een per-avond-
+            // event hingen verhuizen zo zelf naar het canonieke event.
+            set: { eventId, startsAt, ticketUrl: p.link },
           });
         result.occurrencesUpserted++;
         continue;
       }
-
-      // Description: gebruik content.rendered (per-post unieke tekst).
-      // De WP excerpt-template op Anita is admin-fout gevuld met
-      // dezelfde "Witte Geit..."-tekst op álle posts, dus die negeren
-      // we volledig. Content begint met de titel + tijd-aanduiding;
-      // we knippen 'm op 800 tekens om buitenproportionele description-
-      // sizes te voorkomen.
-      let description = decode(stripTags(p.content.rendered || ''))
-        .replace(/\s+/g, ' ')
-        .trim()
-        .slice(0, 800);
-      if (!description) description = null as unknown as string;
 
       const enriched = await enrichEvent({
         title,

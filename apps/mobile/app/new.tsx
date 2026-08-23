@@ -222,6 +222,12 @@ export default function NewScreen() {
     setLastRated(null);
   }, [lastRated, toggleSaveMut, toggleDismissMut]);
 
+  // Welke rij de veeg-hint krijgt. Eén keer vastgezet op de eerste rij
+  // die we te zien krijgen, en daarna niet meer verschoven — anders
+  // begint de volgende rij te wiebelen zodra je de eerste wegveegt.
+  const [hintId, setHintId] = useState<string | null>(null);
+  const hintDone = useRef(false);
+
   // `total` telt vóór de cap: 15 in beeld, 47 achter de meer-knop. Min
   // wat je deze sessie al hebt weggetikt — de server weet daar pas van
   // bij de volgende fetch, en tot die tijd zou de teller stil blijven
@@ -256,6 +262,14 @@ export default function NewScreen() {
   // Binnen een baan komen gevolgde venues bovenaan — dat signaal was
   // eerder een eigen sectie, maar de baan-indeling is de belangrijkere
   // scheiding en twee kapstokken door elkaar leest niet.
+  useEffect(() => {
+    if (hintDone.current) return;
+    const first = events?.[0];
+    if (!first) return;
+    hintDone.current = true;
+    setHintId(first.id);
+  }, [events]);
+
   const sections = useMemo(() => {
     if (!events) return [];
     const out: { lane: Lane | 'onbekend'; data: ApiEvent[] }[] = [];
@@ -367,6 +381,7 @@ export default function NewScreen() {
               event={item}
               onRated={markRated}
               onRemember={rememberForUndo}
+              hint={item.id === hintId}
             />
           )}
           renderSectionHeader={({ section }) =>
@@ -583,9 +598,11 @@ function NewArrivalRow({
   event,
   onRated,
   onRemember,
+  hint,
 }: {
   event: ApiEvent;
   onRated: (eventId: string) => void;
+  hint: boolean;
   onRemember: (entry: {
     eventId: string;
     occurrenceId: string;
@@ -646,36 +663,15 @@ function NewArrivalRow({
     useNewFilters.getState().bumpRated();
   };
 
-  const actions = rateId ? (
-    <View style={styles.rateCol}>
-      <Pressable
-        onPress={() => rate('ja')}
-        hitSlop={6}
-        style={[styles.rateBtn, { borderColor: roles.fgPlaceholder }]}
-        accessibilityLabel={t('Interessant', 'Interesting')}
-      >
-        <Ionicons name="heart" size={18} color={roles.accent} />
-      </Pressable>
-      <Pressable
-        onPress={() => rate('nee')}
-        hitSlop={6}
-        style={[styles.rateBtn, { borderColor: roles.fgPlaceholder }]}
-        accessibilityLabel={t('Niks voor mij', 'Not for me')}
-      >
-        <Ionicons name="close" size={18} color={roles.fgMuted} />
-      </Pressable>
-    </View>
-  ) : null;
-
   return (
     <SwipeableRow
+      hint={hint}
       enabled={Boolean(rateId)}
       onSwipeRight={() => rate('ja')}
       onSwipeLeft={() => rate('nee')}
       onPress={() => router.push(`/event/${event.id}?source=new` as never)}
     >
     <EventListRow
-      actions={actions}
       thumb={eventImageUrl(event) ?? ''}
       thumbSize={96}
       title={event.title}
@@ -743,21 +739,6 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 21,
     letterSpacing: -0.1,
-  },
-  // Twee knoppen onder elkaar in de tijd-kolom. Ver genoeg uit elkaar
-  // dat je 'nee' niet per ongeluk raakt als je 'ja' bedoelt.
-  rateCol: {
-    justifyContent: 'center',
-    gap: 10,
-    paddingLeft: 4,
-  },
-  rateBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 999,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   // Zweeft boven de lijst, net boven de home-indicator. Zes seconden
   // zichtbaar — lang genoeg om 'm te zien na een misveeg, kort genoeg

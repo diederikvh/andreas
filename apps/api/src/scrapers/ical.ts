@@ -5,6 +5,7 @@ import { eq } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
 import { uploadToBunny } from '../storage/bunny.js';
 import { enrichEvent, refineKindByDuration } from './enrich.js';
+import { loadVenueTitleMap, resolveEventId } from './_title-dedup.js';
 import { parseVEvents, type ParsedVEvent } from './_ical-parser.js';
 
 /**
@@ -149,6 +150,8 @@ async function scrapeOneVenue(
 
   const groups = groupVEvents(upcoming);
 
+  const byTitle = await loadVenueTitleMap(venue.id, `evt-ical-${venue.id}-`);
+
   for (const [groupKey, instances] of groups) {
     // Sorteer instanties op startsAt; eerste = canoniek voor enrich +
     // image-mirror (één call per recurring event, niet per instance).
@@ -157,7 +160,17 @@ async function scrapeOneVenue(
 
     try {
       const groupHash = shortHash(groupKey);
-      const eventId = `evt-ical-${venue.id}-${groupHash}`;
+      // groupVEvents groepeert op urlStem; een terugkerend event dat per
+      // instantie een eigen URL krijgt valt daardoor in losse groepen
+      // (Ruigoord's "Theo's Theetuin", "Dansjewel"). De titel-map vangt
+      // dat. Summary én description komen uit de iCal zelf, dus beide
+      // signalen zijn hier gratis.
+      const { eventId } = resolveEventId(
+        byTitle,
+        first.summary,
+        `evt-ical-${venue.id}-${groupHash}`,
+        { startsAt: first.startsAt, description: first.description }
+      );
       const status: 'scheduled' | 'cancelled' | 'sold_out' = 'scheduled';
 
       // Vroege existing-check: skip Claude voor bestaande events.
@@ -189,6 +202,9 @@ async function scrapeOneVenue(
             .onConflictDoUpdate({
               target: schema.occurrences.id,
               set: {
+                // eventId meenemen: occurrences die nog aan een losse
+                // groep hingen verhuizen zo zelf naar het canonieke event.
+                eventId,
                 startsAt: inst.startsAt,
                 endsAt: inst.endsAt,
                 ticketUrl: inst.url,
@@ -266,6 +282,7 @@ async function scrapeOneVenue(
             .onConflictDoUpdate({
               target: schema.occurrences.id,
               set: {
+                eventId,
                 startsAt: inst.startsAt,
                 endsAt: inst.endsAt,
                 priceNote: enriched.priceNote,

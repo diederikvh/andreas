@@ -3,6 +3,7 @@ import { eq } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
 import { uploadToBunny } from '../storage/bunny.js';
 import { enrichEvent, refineKindByDuration } from './enrich.js';
+import { loadVenueTitleMap, resolveEventId } from './_title-dedup.js';
 
 /**
  * Theater Mascini (kleinkunst op de Zeedijk, voorheen Casablanca
@@ -258,9 +259,18 @@ export async function scrapeTheaterMascini(options?: {
 
   const venueCategory = venue.categories?.[0] ?? 'Theater';
 
+  const byTitle = await loadVenueTitleMap(VENUE_ID, 'evt-mascini-');
+
   for (const prod of productions) {
     try {
-      const eventId = `evt-mascini-${prod.showSlug}`;
+      // Description komt pas van de show-pagina hieronder; titel en
+      // eerste datum zijn hier al bekend.
+      const { eventId } = resolveEventId(
+        byTitle,
+        prod.title,
+        `evt-mascini-${prod.showSlug}`,
+        { startsAt: prod.occurrences[0]?.startsAt ?? null }
+      );
 
       const [existing] = await db
         .select({ id: schema.events.id })
@@ -320,6 +330,7 @@ export async function scrapeTheaterMascini(options?: {
           .onConflictDoUpdate({
             target: schema.occurrences.id,
             set: {
+              eventId,
               startsAt: occ.startsAt,
               ticketUrl: occ.url,
               status: occ.soldOut ? 'sold_out' : 'scheduled',

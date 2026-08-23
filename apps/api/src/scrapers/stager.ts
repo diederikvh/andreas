@@ -6,6 +6,7 @@ import { db, schema } from '../db/index.js';
 import { uploadToBunny } from '../storage/bunny.js';
 import { parseAmsterdamLocal } from './_amsterdam-tz.js';
 import { enrichEvent, refineKindByDuration } from './enrich.js';
+import { loadVenueTitleMap, resolveEventId } from './_title-dedup.js';
 import {
   fetchMediamaticContent,
   type MediamaticContent,
@@ -279,6 +280,8 @@ async function scrapeOneVenue(
   }
   const isGrouped = venue.slug === 'mediamatic';
 
+  const byTitle = await loadVenueTitleMap(venue.id, `evt-stg-${cfg.shopId}-`);
+
   for (const [groupKey, instances] of groups) {
     instances.sort(
       (a, b) =>
@@ -287,9 +290,18 @@ async function scrapeOneVenue(
     const first = instances[0];
 
     try {
-      const eventId = isGrouped
-        ? `evt-stg-${cfg.shopId}-${shortHash(groupKey)}`
-        : `evt-stg-${cfg.shopId}-${first.eventId}`;
+      // Stager groepeert al op groupKey; wat daar doorheen glipt vangt
+      // de titel-map. Description komt pas uit de publicity-fetch
+      // hieronder (die we voor bestaande events juist overslaan), dus
+      // hier alleen de datum als signaal.
+      const { eventId } = resolveEventId(
+        byTitle,
+        first.name,
+        isGrouped
+          ? `evt-stg-${cfg.shopId}-${shortHash(groupKey)}`
+          : `evt-stg-${cfg.shopId}-${first.eventId}`,
+        { startsAt: parseAmsterdamLocal(first.startsOn) }
+      );
 
       // Vroege existing-check: spaart publicity-fetch + Claude voor
       // bestaande events. Tix-fetch per instance blijft (prijs kan
@@ -337,6 +349,9 @@ async function scrapeOneVenue(
             .onConflictDoUpdate({
               target: schema.occurrences.id,
               set: {
+                // eventId meenemen: occurrences die nog aan een
+                // per-avond-event hingen verhuizen zo zelf mee.
+                eventId,
                 startsAt: parseAmsterdamLocal(inst.startsOn),
                 endsAt: parseAmsterdamLocal(inst.endsOn),
                 priceCents: cents,
@@ -439,6 +454,7 @@ async function scrapeOneVenue(
             .onConflictDoUpdate({
               target: schema.occurrences.id,
               set: {
+                eventId,
                 startsAt: parseAmsterdamLocal(inst.startsOn),
                 endsAt: parseAmsterdamLocal(inst.endsOn),
                 priceCents: cents,

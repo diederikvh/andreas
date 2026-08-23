@@ -3,6 +3,7 @@ import { eq } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
 import { uploadToBunny } from '../storage/bunny.js';
 import { enrichEvent, refineKindByDuration } from './enrich.js';
+import { loadVenueTitleMap, resolveEventId } from './_title-dedup.js';
 
 /**
  * P60 (Amstelveen) scraper. WordPress + Elementor + custom-post-types.
@@ -247,18 +248,12 @@ export async function scrapeP60(options?: {
   const eventTypeMap = await fetchEventTypeMap();
   const venueCategory = venue.categories?.[0] ?? 'Muziek';
 
+  const byTitle = await loadVenueTitleMap(VENUE_ID, `evt-p60-${VENUE_ID}-`);
+
   for (const item of items) {
     try {
-      const eventId = `evt-p60-${VENUE_ID}-${item.id}`;
       const occurrenceId = `occ-p60-${VENUE_ID}-${item.id}`;
       const title = decodeTitle(item.title.rendered);
-
-      // Existing-check eerst — skip detail-fetch + Claude voor bestaande events
-      const [existing] = await db
-        .select({ id: schema.events.id })
-        .from(schema.events)
-        .where(eq(schema.events.id, eventId))
-        .limit(1);
 
       // Detail-page sowieso nodig voor de starts-at (zelfs voor existing,
       // want startsAt kan wijzigen en hangt niet in de WP-API).
@@ -266,6 +261,21 @@ export async function scrapeP60(options?: {
       if (!html) { result.skipped++; continue; }
       const { startsAt, description } = parseDateTimeFromHtml(html, item.title.rendered);
       if (!startsAt) { result.skipped++; continue; }
+
+      // Resolven ná de detail-fetch: die doen we toch al voor élk item,
+      // dus de description is hier gratis als signaal.
+      const { eventId } = resolveEventId(
+        byTitle,
+        title,
+        `evt-p60-${VENUE_ID}-${item.id}`,
+        { startsAt, description }
+      );
+
+      const [existing] = await db
+        .select({ id: schema.events.id })
+        .from(schema.events)
+        .where(eq(schema.events.id, eventId))
+        .limit(1);
 
       if (existing) {
         await db
@@ -284,7 +294,9 @@ export async function scrapeP60(options?: {
           })
           .onConflictDoUpdate({
             target: schema.occurrences.id,
-            set: { startsAt, ticketUrl: item.link },
+            // eventId meenemen: occurrences die nog aan een per-avond-
+            // event hingen verhuizen zo zelf naar het canonieke event.
+            set: { eventId, startsAt, ticketUrl: item.link },
           });
         result.occurrencesUpserted++;
         continue;

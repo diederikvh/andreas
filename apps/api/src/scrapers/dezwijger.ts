@@ -3,6 +3,7 @@ import { eq } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
 import { uploadToBunny } from '../storage/bunny.js';
 import { enrichEvent, refineKindByDuration } from './enrich.js';
+import { loadVenueTitleMap, resolveEventId } from './_title-dedup.js';
 
 /**
  * Pakhuis de Zwijger — pure-HTTP scraper.
@@ -311,6 +312,8 @@ export async function scrapeDeZwijger(options?: {
 
   // Dedup op slug (mocht een event op twee pages staan)
   const seen = new Set<string>();
+  const byTitle = await loadVenueTitleMap(VENUE_ID, 'evt-dz-');
+
   for (const tile of allTiles) {
     if (seen.has(tile.slug)) continue;
     seen.add(tile.slug);
@@ -320,7 +323,11 @@ export async function scrapeDeZwijger(options?: {
       continue;
     }
 
-    const eventId = `evt-dz-${tile.slug}`;
+    // tile heeft titel, datum en subtitle (= description) al binnen.
+    const { eventId } = resolveEventId(byTitle, tile.title, `evt-dz-${tile.slug}`, {
+      startsAt: tile.startsAt,
+      description: tile.subtitle ?? null,
+    });
     const occurrenceId = `occ-dz-${tile.slug}`;
 
     const [existing] = await db
@@ -348,6 +355,9 @@ export async function scrapeDeZwijger(options?: {
           .onConflictDoUpdate({
             target: schema.occurrences.id,
             set: {
+              // eventId meenemen: occurrences die nog aan een los event
+              // hingen verhuizen zo zelf naar het canonieke event.
+              eventId,
               startsAt: tile.startsAt,
               ticketUrl: tile.ticketUrl,
               priceNote: tile.priceNote,
@@ -406,6 +416,9 @@ export async function scrapeDeZwijger(options?: {
           .onConflictDoUpdate({
             target: schema.occurrences.id,
             set: {
+              // eventId meenemen: occurrences die nog aan een los event
+              // hingen verhuizen zo zelf naar het canonieke event.
+              eventId,
               startsAt: tile.startsAt,
               ticketUrl: tile.ticketUrl,
               priceNote: tile.priceNote,

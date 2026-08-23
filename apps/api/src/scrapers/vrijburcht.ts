@@ -3,6 +3,7 @@ import { eq } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
 import { uploadToBunny } from '../storage/bunny.js';
 import { enrichEvent, refineKindByDuration } from './enrich.js';
+import { loadVenueTitleMap, resolveEventId } from './_title-dedup.js';
 
 /**
  * Podium Vrijburcht — buurttheater op IJburg (Vrijburchtstraat 2).
@@ -192,6 +193,8 @@ export async function scrapeVrijburcht(_options?: {
 
   const cutoff = Date.now() - 6 * 60 * 60 * 1000;
 
+  const byTitle = await loadVenueTitleMap(venueId, 'evt-vb-');
+
   for (const [canonicalSlug, group] of groups) {
     try {
       const fresh = group.filter((it) => it.startsAt.getTime() > cutoff);
@@ -203,7 +206,13 @@ export async function scrapeVrijburcht(_options?: {
       fresh.sort((a, b) => a.startsAt.getTime() - b.startsAt.getTime());
       const head = fresh[0];
 
-      const eventId = `evt-vb-${canonicalSlug}`;
+      // head heeft titel, datum en description al — beide signalen gratis.
+      const { eventId } = resolveEventId(
+        byTitle,
+        head.title,
+        `evt-vb-${canonicalSlug}`,
+        { startsAt: head.startsAt, description: head.description }
+      );
       const [existing] = await db
         .select({ id: schema.events.id })
         .from(schema.events)
@@ -272,7 +281,9 @@ export async function scrapeVrijburcht(_options?: {
             })
             .onConflictDoUpdate({
               target: schema.occurrences.id,
-              set: { startsAt: ev.startsAt, ticketUrl: ev.url },
+              // eventId meenemen: occurrences die nog aan een losse
+              // groep hingen verhuizen zo zelf mee.
+              set: { eventId, startsAt: ev.startsAt, ticketUrl: ev.url },
             });
           result.occurrencesUpserted++;
         } catch (e) {

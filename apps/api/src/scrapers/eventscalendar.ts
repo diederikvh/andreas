@@ -3,6 +3,7 @@ import { eq } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
 import { uploadToBunny } from '../storage/bunny.js';
 import { enrichEvent, refineKindByDuration } from './enrich.js';
+import { loadVenueTitleMap, resolveEventId } from './_title-dedup.js';
 
 /**
  * Generieke scraper voor sites op **The Events Calendar (Pro)** —
@@ -170,6 +171,8 @@ export async function scrapeEventsCalendar(options?: {
     const venueCategory = venue.categories?.[0] ?? 'Muziek';
     const cutoff = Date.now() - 6 * 60 * 60 * 1000;
 
+    const byTitle = await loadVenueTitleMap(venue.id, `evt-${venue.id}-`);
+
     for (const e of events) {
       try {
         const slug = e.slug ?? String(e.id);
@@ -198,7 +201,14 @@ export async function scrapeEventsCalendar(options?: {
           continue;
         }
 
-        const eventId = `evt-${venue.id}-${slug}`;
+        // Titel, datum én description komen alle drie uit de
+        // tribe-events listing, dus beide signalen zijn hier gratis.
+        const { eventId } = resolveEventId(
+          byTitle,
+          title,
+          `evt-${venue.id}-${slug}`,
+          { startsAt, description: stripHtml(e.description ?? e.excerpt ?? null) }
+        );
         const occurrenceId = `occ-${venue.id}-${slug}`;
 
         const [existing] = await db
@@ -270,6 +280,7 @@ export async function scrapeEventsCalendar(options?: {
             .onConflictDoUpdate({
               target: schema.occurrences.id,
               set: {
+                eventId,
                 startsAt,
                 endsAt,
                 ticketUrl: e.url,

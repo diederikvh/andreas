@@ -3,6 +3,7 @@ import { eq } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
 import { uploadToBunny } from '../storage/bunny.js';
 import { enrichEvent, refineKindByDuration } from './enrich.js';
+import { loadVenueTitleMap, resolveEventId } from './_title-dedup.js';
 
 /**
  * Scraper voor Volkshotel-agenda's (Canvas / Doka / Werkplaats / etc.).
@@ -271,6 +272,7 @@ export async function scrapeVolkshotel(options?: {
   const results: VolkshotelVenueResult[] = [];
 
   for (const venue of targets) {
+    const byTitle = await loadVenueTitleMap(venue.id, `evt-${venue.id}-`);
     const cfg = venue.scraperConfig!.volkshotel!;
     const result: VolkshotelVenueResult = {
       venueId: venue.id,
@@ -307,7 +309,14 @@ export async function scrapeVolkshotel(options?: {
         }
         const endsAt = buildEndDate(startsAt, tile.timeText);
 
-        const eventId = `evt-${venue.id}-${tile.slug}`;
+        // Description komt uit fetchDescription() hieronder, die we voor
+        // bestaande events juist overslaan — dus alleen de datum.
+        const { eventId } = resolveEventId(
+          byTitle,
+          tile.title,
+          `evt-${venue.id}-${tile.slug}`,
+          { startsAt }
+        );
         const occurrenceId = `occ-${venue.id}-${tile.slug}`;
 
         const [existing] = await db
@@ -382,7 +391,9 @@ export async function scrapeVolkshotel(options?: {
             })
             .onConflictDoUpdate({
               target: schema.occurrences.id,
-              set: { startsAt, endsAt, priceCents, ticketUrl: tile.url },
+              // eventId meenemen: occurrences die nog aan een los event
+              // hingen verhuizen zo zelf mee.
+              set: { eventId, startsAt, endsAt, priceCents, ticketUrl: tile.url },
             });
           result.occurrencesUpserted++;
         } catch (e) {

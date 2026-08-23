@@ -3,6 +3,7 @@ import { eq } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
 import { uploadToBunny } from '../storage/bunny.js';
 import { enrichEvent, refineKindByDuration } from './enrich.js';
+import { loadVenueTitleMap, resolveEventId } from './_title-dedup.js';
 
 /**
  * West Weelde (Westerpark) — SvelteKit-frontend, Sanity-CMS backend.
@@ -248,6 +249,8 @@ export async function scrapeWestWeelde(_options?: {
 
   const cutoff = Date.now() - 6 * 60 * 60 * 1000;
 
+  const byTitle = await loadVenueTitleMap(VENUE_ID, 'evt-ww-');
+
   for (const ev of items) {
     try {
       const slug = ev.slug;
@@ -282,7 +285,13 @@ export async function scrapeWestWeelde(_options?: {
         endsAt = buildAmsDate(endDateStr, tr.endHour, tr.endMin);
       }
 
-      const eventId = `evt-ww-${slug}`;
+      // Description komt uit dezelfde Sanity-listing, dus gratis als
+      // signaal.
+      const description = pickDescription(ev.description);
+      const { eventId } = resolveEventId(byTitle, title, `evt-ww-${slug}`, {
+        startsAt,
+        description,
+      });
       const occurrenceId = `occ-ww-${slug}`;
 
       const [existing] = await db
@@ -300,7 +309,6 @@ export async function scrapeWestWeelde(_options?: {
         if (sourceImg) {
           imageUrl = (await mirrorImage(sourceImg, slug)) ?? sourceImg;
         }
-        const description = pickDescription(ev.description);
 
         try {
           enriched = await enrichEvent({
@@ -374,7 +382,9 @@ export async function scrapeWestWeelde(_options?: {
           })
           .onConflictDoUpdate({
             target: schema.occurrences.id,
-            set: { startsAt, endsAt, ticketUrl },
+            // eventId meenemen: occurrences die nog aan een per-avond-
+            // event hingen verhuizen zo zelf naar het canonieke event.
+            set: { eventId, startsAt, endsAt, ticketUrl },
           });
         result.occurrencesUpserted++;
       } catch (e) {

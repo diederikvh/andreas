@@ -22,7 +22,7 @@
  *    dan komt de tap niet meer aan bod.
  */
 import { Ionicons } from '@expo/vector-icons';
-import type { ReactNode } from 'react';
+import { useEffect, type ReactNode } from 'react';
 import { StyleSheet, View, useWindowDimensions } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
@@ -30,6 +30,8 @@ import Animated, {
   runOnJS,
   useAnimatedStyle,
   useSharedValue,
+  withDelay,
+  withSequence,
   withSpring,
   withTiming,
 } from 'react-native-reanimated';
@@ -47,6 +49,7 @@ export function SwipeableRow({
   onSwipeRight,
   onSwipeLeft,
   onPress,
+  hint = false,
   enabled = true,
 }: {
   children: ReactNode;
@@ -54,6 +57,8 @@ export function SwipeableRow({
   onSwipeLeft: () => void;
   /** Gewone tik op de rij. Hoort hier en niet op het kind — zie punt 3. */
   onPress?: () => void;
+  /** Wiebel deze rij één keer heen en weer als aanwijzing dat 'ie beweegt. */
+  hint?: boolean;
   enabled?: boolean;
 }) {
   const roles = useRoles();
@@ -94,6 +99,27 @@ export function SwipeableRow({
         () => runOnJS(commit)(dir)
       );
     });
+
+  // Zonder knoppen is het gebaar het enige dat er is, en een gebaar dat
+  // je niet ziet bestaat niet. Eén rij die kort naar beide kanten
+  // uitwijkt laat zien dát 'ie beweegt en welke kant welke betekenis
+  // heeft — de achtergrond kleurt mee, dus je ziet hart en kruis.
+  useEffect(() => {
+    if (!hint) return;
+    // Ruim over de helft van de drempel: de achtergrond vult naar die
+    // drempel toe, dus bij minder is het hartje nog half doorzichtig en
+    // lees je niet wat de kant betekent.
+    const peek = width * 0.22;
+    x.value = withDelay(
+      450,
+      withSequence(
+        withTiming(peek, { duration: 260 }),
+        withTiming(0, { duration: 200 }),
+        withTiming(-peek, { duration: 260 }),
+        withTiming(0, { duration: 220 })
+      )
+    );
+  }, [hint, width, x]);
 
   const tap = Gesture.Tap()
     .enabled(Boolean(onPress))

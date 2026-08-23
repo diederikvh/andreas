@@ -3,6 +3,7 @@ import { eq } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
 import { uploadToBunny } from '../storage/bunny.js';
 import { enrichEvent, refineKindByDuration } from './enrich.js';
+import { loadVenueTitleMap, resolveEventId } from './_title-dedup.js';
 
 /**
  * De Balie — pure WP REST scraper.
@@ -207,6 +208,8 @@ export async function scrapeDeBalie(options?: {
 
   const seen = new Set<string>();
 
+  const byTitle = await loadVenueTitleMap(VENUE_ID, 'evt-balie-');
+
   for (const p of posts) {
     try {
       const slug = p.slug;
@@ -243,7 +246,18 @@ export async function scrapeDeBalie(options?: {
         );
       }
 
-      const eventId = `evt-balie-${slug}`;
+      let description = decode(stripTags(p.content?.rendered ?? ''))
+        .replace(/\s+/g, ' ')
+        .trim()
+        .slice(0, 800);
+      if (!description) description = null as unknown as string;
+
+      // Description is puur string-werk op de WP-post, dus gratis als
+      // signaal naast de datum.
+      const { eventId } = resolveEventId(byTitle, title, `evt-balie-${slug}`, {
+        startsAt,
+        description,
+      });
       const occurrenceId = `occ-balie-${slug}`;
       const ticketUrl = p.link;
 
@@ -270,17 +284,14 @@ export async function scrapeDeBalie(options?: {
           })
           .onConflictDoUpdate({
             target: schema.occurrences.id,
-            set: { startsAt, ticketUrl },
+            // eventId meenemen: occurrences die nog aan een los event
+            // hingen verhuizen zo zelf naar het canonieke event.
+            set: { eventId, startsAt, ticketUrl },
           });
         result.occurrencesUpserted++;
         continue;
       }
 
-      let description = decode(stripTags(p.content?.rendered ?? ''))
-        .replace(/\s+/g, ' ')
-        .trim()
-        .slice(0, 800);
-      if (!description) description = null as unknown as string;
 
       const enriched = await enrichEvent({
         title,
@@ -330,6 +341,7 @@ export async function scrapeDeBalie(options?: {
           .onConflictDoUpdate({
             target: schema.occurrences.id,
             set: {
+              eventId,
               startsAt,
               ticketUrl,
               priceNote: enriched.priceNote,

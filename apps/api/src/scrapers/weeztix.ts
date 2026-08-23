@@ -3,6 +3,7 @@ import { eq } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
 import { uploadToBunny } from '../storage/bunny.js';
 import { enrichEvent, refineKindByDuration } from './enrich.js';
+import { loadVenueTitleMap, resolveEventId } from './_title-dedup.js';
 
 /**
  * Weeztix is een ticket-platform op OpenTicket-stack. Per shop-UUID
@@ -113,6 +114,7 @@ export async function scrapeWeeztix(options?: {
   const results: WeeztixVenueResult[] = [];
 
   for (const venue of targets) {
+    const byTitle = await loadVenueTitleMap(venue.id, `evt-wz-${venue.id}-`);
     const cfg = venue.scraperConfig!.weeztix!;
     const result: WeeztixVenueResult = {
       venueId: venue.id, fetched: 0, inserted: 0, occurrencesUpserted: 0, skipped: 0, errors: [],
@@ -145,7 +147,14 @@ export async function scrapeWeeztix(options?: {
         }
         const endsAt = ev.end ? new Date(ev.end) : null;
 
-        const eventId = `evt-wz-${venue.id}-${ev.guid}`;
+        // guid is per instantie; naam, datum en description staan alle
+        // drie in de feed, dus beide signalen zijn gratis.
+        const { eventId } = resolveEventId(
+          byTitle,
+          ev.name,
+          `evt-wz-${venue.id}-${ev.guid}`,
+          { startsAt, description: ev.description?.trim() || null }
+        );
         const [existing] = await db
           .select({ id: schema.events.id })
           .from(schema.events)
@@ -223,7 +232,9 @@ export async function scrapeWeeztix(options?: {
             })
             .onConflictDoUpdate({
               target: schema.occurrences.id,
-              set: { startsAt, endsAt, ticketUrl },
+              // eventId meenemen: occurrences die nog aan een
+              // per-instantie-event hingen verhuizen zo zelf mee.
+              set: { eventId, startsAt, endsAt, ticketUrl },
             });
           result.occurrencesUpserted++;
         } catch (e) {

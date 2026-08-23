@@ -3,6 +3,7 @@ import { eq } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
 import { uploadToBunny } from '../storage/bunny.js';
 import { enrichEvent, refineKindByDuration } from './enrich.js';
+import { loadVenueTitleMap, resolveEventId } from './_title-dedup.js';
 
 /**
  * WP Theatre scraper. Voor venues die de WordPress-plugin "WP Theatre"
@@ -178,6 +179,8 @@ async function scrapeOneVenue(
 
   const venueCategory = venue.categories?.[0] ?? 'Muziek';
 
+  const byTitle = await loadVenueTitleMap(venue.id, `evt-wpt-${venue.id}-`);
+
   for (const url of urls) {
     try {
       const html = await fetchHtml(url);
@@ -208,7 +211,14 @@ async function scrapeOneVenue(
 
       // Slug uit URL voor stable id
       const slug = url.match(/\/event\/([a-z0-9-]+)\/?$/)?.[1] ?? url.split('/').pop()!;
-      const eventId = `evt-wpt-${venue.id}-${slug}`;
+      // Titel, datum en og:description komen alle drie uit de pagina
+      // die we hierboven al hebben gefetcht.
+      const { eventId } = resolveEventId(
+        byTitle,
+        title,
+        `evt-wpt-${venue.id}-${slug}`,
+        { startsAt, description: ogDescription }
+      );
       const occurrenceId = `occ-wpt-${venue.id}-${slug}`;
 
       // Existing check (incremental pattern)
@@ -235,7 +245,9 @@ async function scrapeOneVenue(
           })
           .onConflictDoUpdate({
             target: schema.occurrences.id,
-            set: { startsAt, priceCents, priceNote, ticketUrl: url },
+            // eventId meenemen: occurrences die nog aan een los event
+            // hingen verhuizen zo zelf naar het canonieke event.
+            set: { eventId, startsAt, priceCents, priceNote, ticketUrl: url },
           });
         result.occurrencesUpserted++;
         continue;
@@ -305,6 +317,7 @@ async function scrapeOneVenue(
           .onConflictDoUpdate({
             target: schema.occurrences.id,
             set: {
+              eventId,
               startsAt,
               priceCents,
               priceNote: priceNote ?? enriched.priceNote,

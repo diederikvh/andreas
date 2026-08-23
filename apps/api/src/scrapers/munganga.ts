@@ -3,6 +3,7 @@ import { eq } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
 import { uploadToBunny } from '../storage/bunny.js';
 import { enrichEvent, refineKindByDuration } from './enrich.js';
+import { loadVenueTitleMap, resolveEventId } from './_title-dedup.js';
 
 /**
  * Teatro Munganga — Braziliaans cultureel centrum (1e Boerhaavestraat 4).
@@ -198,6 +199,8 @@ export async function scrapeMunganga(_options?: {
 
   const cutoff = Date.now() - 6 * 60 * 60 * 1000;
 
+  const byTitle = await loadVenueTitleMap(venueId, 'evt-mu-');
+
   for (const p of products) {
     try {
       const rawTitle = decodeEntities(p.title.rendered);
@@ -213,7 +216,25 @@ export async function scrapeMunganga(_options?: {
         continue;
       }
 
-      const eventId = `evt-mu-${p.id}`;
+      // Excerpt is meestal alleen "Starts 20:00 - Door open 19:30" —
+      // de echte tekst zit in `content`. Strip iframes (YouTube
+      // embeds) en HTML, neem eerste 800 chars na "Starts/Door"-regel.
+      const rawContent = p.content?.rendered ?? '';
+      const withoutIframes = rawContent.replace(/<iframe[\s\S]*?<\/iframe>/gi, '');
+      const text = decodeEntities(stripTags(withoutIframes));
+      // Strip de openings-tijd-regel die anders elke description
+      // start ("Starts 20:00 - Door open 19:30").
+      const description = text
+        .replace(/^\s*(?:Starts?(?:\s+at)?\s+\d{1,2}[:.]?\d{0,2}(?:\s*[-–]\s*Doors?\s+open\s+(?:at\s+)?\d{1,2}[:.]?\d{0,2})?)\s*/i, '')
+        .trim()
+        .slice(0, 800) || null;
+
+      // Description is puur string-werk op de WP-post, dus hier gratis
+      // als signaal.
+      const { eventId } = resolveEventId(byTitle, rawTitle, `evt-mu-${p.id}`, {
+        startsAt: parsed.startsAt,
+        description,
+      });
       const occurrenceId = `occ-mu-${p.id}`;
 
       const [existing] = await db
@@ -237,18 +258,6 @@ export async function scrapeMunganga(_options?: {
         if (sourceImg) {
           imageUrl = (await mirrorImage(sourceImg, String(p.id))) ?? sourceImg;
         }
-        // Excerpt is meestal alleen "Starts 20:00 - Door open 19:30" —
-        // de echte tekst zit in `content`. Strip iframes (YouTube
-        // embeds) en HTML, neem eerste 800 chars na "Starts/Door"-regel.
-        const rawContent = p.content?.rendered ?? '';
-        const withoutIframes = rawContent.replace(/<iframe[\s\S]*?<\/iframe>/gi, '');
-        const text = decodeEntities(stripTags(withoutIframes));
-        // Strip de openings-tijd-regel die anders elke description
-        // start ("Starts 20:00 - Door open 19:30").
-        const description = text
-          .replace(/^\s*(?:Starts?(?:\s+at)?\s+\d{1,2}[:.]?\d{0,2}(?:\s*[-–]\s*Doors?\s+open\s+(?:at\s+)?\d{1,2}[:.]?\d{0,2})?)\s*/i, '')
-          .trim()
-          .slice(0, 800) || null;
 
         try {
           enriched = await enrichEvent({
@@ -303,6 +312,7 @@ export async function scrapeMunganga(_options?: {
           .onConflictDoUpdate({
             target: schema.occurrences.id,
             set: {
+              eventId,
               startsAt: parsed.startsAt,
               endsAt: parsed.endsAt,
               ticketUrl: p.link,
