@@ -18,6 +18,21 @@ import {
 } from './_film-dedup.js';
 
 const HOME_URL = 'https://www.filmhallen.nl/';
+
+/**
+ * Zelfde rem als themovies: de film-lijst komt van de homepage en wordt
+ * sequentieel afgelopen. Zonder ruimte tussen de requests knijpt de bron
+ * af, waarna elke fetch de 15s-timeout van fetchTextWithTimeout volloopt
+ * en de job z'n 25-minuten curl-timeout haalt (exit 28). Dat was de
+ * dagelijkse failure op 19, 20 en 22 augustus.
+ *
+ * Ruimte om het te voorkomen, noodstop als het toch gebeurt: liever een
+ * snelle partiële run met een duidelijke error dan een job die vastloopt.
+ */
+const REQUEST_SPACING_MS = 200;
+const MAX_CONSECUTIVE_FAILURES = 8;
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const VENUE_ID = 'filmhallen';
 const UA = 'AndreasBot/1.0 (+https://andreas.amsterdam)';
 
@@ -73,13 +88,25 @@ export async function scrapeFilmhallen(): Promise<FilmhallenResult[]> {
 
   const dedupeMap = await loadFilmDedupeMap();
   const now = Date.now();
+  let consecutiveFailures = 0;
+  let first = true;
   for (const filmUrl of filmUrls) {
     try {
+      if (!first) await sleep(REQUEST_SPACING_MS);
+      first = false;
       const html = await fetchText(filmUrl);
       if (!html) {
         result.errors.push(`fetch failed: ${filmUrl}`);
+        if (++consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+          result.errors.push(
+            `gestopt na ${consecutiveFailures} mislukte fetches op rij — bron weigert; ` +
+              `${result.fetched} van ${filmUrls.length} films gedaan`
+          );
+          break;
+        }
         continue;
       }
+      consecutiveFailures = 0;
       result.fetched += 1;
 
       const { movie, screenings } = parseJsonLd(html);
