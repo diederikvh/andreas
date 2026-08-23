@@ -1,328 +1,303 @@
-import { eq } from 'drizzle-orm';
-import { chromium, type Browser } from 'playwright';
+import { and, eq, gt, inArray } from 'drizzle-orm';
 
 import { db, schema } from '../db/index.js';
 import { uploadToBunny } from '../storage/bunny.js';
 import { enrichEvent, refineKindByDuration } from './enrich.js';
+import { loadVenueTitleMap, resolveEventId } from './_title-dedup.js';
 
 /**
- * Fourvenues iframe-widget scraper. URL-vorm (de slug kan `@`/`:` bevatten
- * en moet daarom URL-encoded):
+ * Fourvenues — via hun eigen JSON-API in plaats van de iframe-widget.
  *
- *   https://site.fourvenues.com/en/iframe/{encodeURIComponent(slug)}/events?date=YYYY-MM
+ * De oude opzet las `<app-event-card>`-elementen uit de Angular-widget met
+ * Playwright. Fourvenues heeft die widget verbouwd naar een kalender: de
+ * cards bestaan niet meer, dus de scraper leverde 0 events terwijl Madam
+ * gewoon programmeerde. Onder de widget zit een schone API:
  *
- * Events zitten in `<app-event-card>` Angular-componenten. Tile-tekst:
- *   `{title} {Day}, {Mon} {DD}{Day}, {Mon} {DD}{HH:MM AM/PM}{HH:MM AM/PM} {venueName} More info`
- * (de date-rij staat 2× voor accessibility). Image-src in een nested
- * `<img src="https://fourvenues.com/cdn-cgi/imagedelivery/.../width=534">`.
+ *   GET /generateGuestToken            → { data: { token } }   (geen auth)
+ *   GET /api/events?startDate=<unix>&endDate=<unix>&slug=<slug>
+ *       &groupCodes[0]=<group>&pageSize=200&page=1
+ *       Authorization: Bearer <token>  → { data: [ … ] }
  *
- * Ticket-link: per tile een fourvenues short-id URL (bv.
- * `…/events/7BVU?date=2026-05`), met fallback naar de maand-URL.
+ * Let op de slug-vorm in onze config: `madam@g:pwsbn` is géén slug maar
+ * `slug=madam` + `groupCodes[0]=pwsbn`. De oude iframe-URL slikte de
+ * combinatie; deze API wil ze gesplitst.
  *
- * Idempotency:
- *  - eventId      = `evt-fv-{venueId}-{slugify(date+title)}`
- *  - occurrenceId = `occ-fv-{venueId}-{slugify(date+title)}`
+ * Per event geeft de API name, description, image, genres (echte array,
+ * dus die hoeft Claude niet te raden) en `dates`:
+ * `{date, start, end, canceled}` in unix-seconden.
+ *
+ * Geen browser meer nodig — deze scraper kan dus in de dagelijkse CI.
+ *
+ * Idempotency: `evt-fv-{venueId}-{code}` / `occ-fv-{venueId}-{code}`.
+ * `code` is Fourvenues' eigen korte event-id en is stabiel. De oude ids
+ * waren `{MM-DD}-{titel-slug}` — zonder jaar, dus een jaarlijkse
+ * herhaling botste.
  */
 
-const UA = 'Mozilla/5.0 (Andreas/1.0)';
-const MONTHS_AHEAD = 4;
-
-const ENGLISH_MONTHS: Record<string, number> = {
-  Jan: 1, Feb: 2, Mar: 3, Apr: 4, May: 5, Jun: 6, Jul: 7, Aug: 8, Sep: 9, Oct: 10, Nov: 11, Dec: 12,
-};
-
-type Tile = {
-  monthAnchor: number; // 1-12
-  day: number;         // 1-31
-  startTime: string;   // "23:00" (24h)
-  endTime: string;     // "06:00" (24h)
-  title: string;
-  imageUrl: string | null;
-  ticketUrl: string | null;
-  monthYear: string;   // "2026-05"
-};
-
-function slugify(s: string): string {
-  return s
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 80);
-}
-
-/** "09:00 PM" → 21:00; "12:00 AM" → 00:00; "03:00 AM" → 03:00. */
-function to24h(timeAmPm: string): string | null {
-  const m = timeAmPm.match(/(\d{1,2}):(\d{2})\s*(AM|PM)/i);
-  if (!m) return null;
-  let hh = parseInt(m[1], 10);
-  const mm = parseInt(m[2], 10);
-  const isPm = m[3].toUpperCase() === 'PM';
-  if (hh === 12) hh = 0;
-  if (isPm) hh += 12;
-  return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
-}
-
-/** Day + month + 24h-time + monthYearHint → Date (Amsterdam, +02:00). */
-function buildDate(month: number, day: number, time: string, monthYearHint: string): Date | null {
-  const t = time.match(/(\d{2}):(\d{2})/);
-  if (!t) return null;
-  const hh = parseInt(t[1], 10);
-  const mm = parseInt(t[2], 10);
-  const anchorYear = parseInt(monthYearHint.split('-')[0], 10) || new Date().getFullYear();
-  for (const y of [anchorYear, anchorYear + 1, anchorYear - 1]) {
-    const d = new Date(`${y}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}T${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}:00+02:00`);
-    if (isNaN(d.getTime())) continue;
-    const delta = d.getTime() - Date.now();
-    if (delta > -7 * 24 * 60 * 60 * 1000 && delta < 240 * 24 * 60 * 60 * 1000) return d;
-  }
-  return null;
-}
-
-/** Higher-res image-URL: vervang `width=534` door `width=800`. */
-function upscaleImage(src: string): string {
-  return src.replace(/width=\d+/, 'width=800');
-}
-
-type RawTile = {
-  text: string;
-  imageUrl: string | null;
-  ticketUrl: string | null;
-};
-
-async function fetchTilesForMonth(browser: Browser, slug: string, monthYear: string): Promise<Tile[]> {
-  const ctx = await browser.newContext({ userAgent: UA });
-  const page = await ctx.newPage();
-  try {
-    const slugEnc = encodeURIComponent(slug);
-    const url = `https://site.fourvenues.com/en/iframe/${slugEnc}/events?date=${monthYear}`;
-    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
-    await page.waitForTimeout(4500);
-    // Trigger lazy-loading van images
-    for (let i = 0; i < 4; i++) {
-      await page.evaluate(`window.scrollTo(0, document.body.scrollHeight * ${(i + 1) / 4})`);
-      await page.waitForTimeout(400);
-    }
-
-    const raw = (await page.evaluate(`(() => {
-      const cards = Array.from(document.querySelectorAll('app-event-card'));
-      return cards.map(card => {
-        const text = (card.textContent || '').replace(/\\s+/g, ' ').trim();
-        const img = card.querySelector('img[src*="imagedelivery"]');
-        const link = card.querySelector('a[href*="/events/"]');
-        // Angular gebruikt SkipLocationChange-style routing waarbij ?/= in
-        // de href URL-encoded staan (%3F/%3D); fix terug naar query-string.
-        const fixedHref = link
-          ? link.href.replace(/%3F/g, '?').replace(/%3D/g, '=')
-          : null;
-        return { text, imageUrl: img ? img.src : null, ticketUrl: fixedHref };
-      });
-    })()`)) as RawTile[];
-
-    const monthAnchor = parseInt(monthYear.split('-')[1], 10);
-
-    const tiles: Tile[] = [];
-    for (const r of raw) {
-      // Tekst: "Madam by Night invites: MONARK Thu, June 18Thu, June 18 21:00 03:00 AM Madam"
-      // De date-rij staat 2× herhaald — match dat met optionele tweede groep.
-      // Maandnaam is variabele lengte (3-9 chars: May, June, August, September) —
-      // we matchen `\w{3,9}` en truncaten in code naar 3-letter ENGLISH_MONTHS-key.
-      const m = r.text.match(/^(.+?)\s+(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun),\s+(\w{3,9})\s+(\d{1,2})(?:(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun),\s+\w{3,9}\s+\d{1,2})?\s*(\d{1,2}:\d{2}\s*(?:AM|PM))\s*(\d{1,2}:\d{2}\s*(?:AM|PM))/);
-      if (!m) continue;
-      const title = m[1].trim();
-      const month = ENGLISH_MONTHS[m[2].slice(0, 3)];
-      const day = parseInt(m[3], 10);
-      const start24 = to24h(m[4]);
-      const end24 = to24h(m[5]);
-      if (!month || !start24 || !end24 || !title) continue;
-      tiles.push({
-        monthAnchor: month,
-        day,
-        startTime: start24,
-        endTime: end24,
-        title,
-        imageUrl: r.imageUrl ? upscaleImage(r.imageUrl) : null,
-        ticketUrl: r.ticketUrl,
-        monthYear,
-      });
-    }
-    void monthAnchor;
-    return tiles;
-  } finally {
-    await ctx.close();
-  }
-}
-
-async function mirrorImage(sourceUrl: string, key: string): Promise<string | null> {
-  try {
-    const r = await fetch(sourceUrl, { headers: { 'user-agent': UA } });
-    if (!r.ok) return null;
-    const mime = r.headers.get('content-type') ?? 'image/jpeg';
-    if (!mime.startsWith('image/')) return null;
-    const buf = await r.arrayBuffer();
-    if (buf.byteLength < 1024 || buf.byteLength > 16 * 1024 * 1024) return null;
-    const ext = mime.includes('png') ? 'png' : mime.includes('webp') ? 'webp' : 'jpg';
-    return await uploadToBunny(`media/events/fv-${key}.${ext}`, buf, mime);
-  } catch (e) {
-    console.warn(`[fourvenues] mirror image failed: ${(e as Error).message}`);
-    return null;
-  }
-}
+const API_BASE = 'https://cli-api-service.fourvenues.com';
+const IFRAME_BASE = 'https://site.fourvenues.com/en/iframe';
+const MONTHS_AHEAD = 5;
+const FETCH_TIMEOUT_MS = 20_000;
 
 export type FourvenuesResult = {
   venueId: string;
   fetched: number;
   inserted: number;
   occurrencesUpserted: number;
+  occurrencesPruned: number;
   skipped: number;
   errors: string[];
 };
 
+type ApiEvent = {
+  id?: string;
+  code?: string;
+  slug?: string;
+  name?: string;
+  description?: string | null;
+  image?: string | null;
+  genres?: string[] | null;
+  dates?: { date?: number; start?: number; end?: number; canceled?: unknown } | null;
+};
+
+async function guestToken(): Promise<string | null> {
+  try {
+    const r = await fetch(`${API_BASE}/generateGuestToken`, {
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+    });
+    if (!r.ok) return null;
+    const j = (await r.json()) as { data?: { token?: string } };
+    return j.data?.token ?? null;
+  } catch {
+    return null;
+  }
+}
+
+async function mirrorImage(sourceUrl: string, stableId: string): Promise<string | null> {
+  try {
+    const r = await fetch(sourceUrl, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
+    if (!r.ok) return null;
+    const mime = r.headers.get('content-type') ?? 'image/jpeg';
+    if (!mime.startsWith('image/')) return null;
+    const buf = await r.arrayBuffer();
+    if (buf.byteLength > 8 * 1024 * 1024) return null;
+    const ext = mime.includes('png') ? 'png' : mime.includes('webp') ? 'webp' : 'jpg';
+    return await uploadToBunny(`media/events/fv-${stableId}.${ext}`, buf, mime);
+  } catch {
+    return null;
+  }
+}
+
+const stripTags = (s: string) => s.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+
 export async function scrapeFourvenues(options?: {
   venueIds?: string[];
 }): Promise<FourvenuesResult[]> {
-  const allVenues = await db.select().from(schema.venues);
-  const targets = allVenues.filter((v) => {
-    if (options?.venueIds && !options.venueIds.includes(v.id)) return false;
-    return Boolean(v.scraperConfig?.fourvenues?.slug);
+  const all = await db.select().from(schema.venues);
+  const targets = all.filter((v) => {
+    const cfg = (v.scraperConfig as { fourvenues?: { slug?: string } } | null)?.fourvenues;
+    if (!cfg?.slug) return false;
+    return !options?.venueIds || options.venueIds.includes(v.id);
   });
 
   const results: FourvenuesResult[] = [];
-  if (targets.length === 0) return results;
+  const token = await guestToken();
 
-  const browser = await chromium.launch();
-  try {
-    for (const venue of targets) {
-      const cfg = venue.scraperConfig!.fourvenues!;
-      const result: FourvenuesResult = {
-        venueId: venue.id, fetched: 0, inserted: 0, occurrencesUpserted: 0, skipped: 0, errors: [],
-      };
-      const venueCategory = venue.categories?.[0] ?? 'Muziek';
+  for (const venue of targets) {
+    const result: FourvenuesResult = {
+      venueId: venue.id,
+      fetched: 0,
+      inserted: 0,
+      occurrencesUpserted: 0,
+      occurrencesPruned: 0,
+      skipped: 0,
+      errors: [],
+    };
+    results.push(result);
 
-      // Fetch tiles voor 4 maanden vooruit
-      const allTiles: Tile[] = [];
-      const now = new Date();
-      for (let i = 0; i < MONTHS_AHEAD; i++) {
-        const d = new Date(now.getFullYear(), now.getMonth() + i, 1);
-        const monthYear = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-        try {
-          const tiles = await fetchTilesForMonth(browser, cfg.slug, monthYear);
-          allTiles.push(...tiles);
-        } catch (e) {
-          result.errors.push(`month ${monthYear}: ${(e as Error).message}`);
-        }
-      }
+    if (!token) {
+      result.errors.push('geen guest-token van de API');
+      continue;
+    }
 
-      // Dedup op (month-day+title) — events kunnen in meerdere maanden voorkomen
-      const seen = new Set<string>();
-      const unique = allTiles.filter((t) => {
-        const key = `${t.monthAnchor}-${t.day}__${t.title.toLowerCase()}`;
-        if (seen.has(key)) return false;
-        seen.add(key);
-        return true;
+    const raw = (venue.scraperConfig as { fourvenues: { slug: string } }).fourvenues.slug;
+    // `madam@g:pwsbn` → slug=madam, groupCodes[0]=pwsbn
+    const [slug, group] = raw.includes('@g:') ? raw.split('@g:') : [raw, null];
+
+    const now = Math.floor(Date.now() / 1000);
+    const qs = new URLSearchParams({
+      startDate: String(now - 6 * 3600),
+      endDate: String(now + MONTHS_AHEAD * 31 * 86400),
+      slug,
+      pageSize: '200',
+      page: '1',
+    });
+    if (group) qs.set('groupCodes[0]', group);
+
+    let events: ApiEvent[] = [];
+    try {
+      const r = await fetch(`${API_BASE}/api/events?${qs}`, {
+        headers: { authorization: `Bearer ${token}` },
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
       });
-      result.fetched = unique.length;
+      if (!r.ok) {
+        // 404 betekent hier: deze slug bestaat niet (meer) bij Fourvenues.
+        result.errors.push(`api HTTP ${r.status} voor slug ${slug}`);
+        continue;
+      }
+      const j = (await r.json()) as { data?: ApiEvent[] };
+      events = j.data ?? [];
+    } catch (e) {
+      result.errors.push(`api: ${(e as Error).message}`);
+      continue;
+    }
+    result.fetched = events.length;
+    console.log(`[fourvenues] ${venue.id}: ${events.length} events via de API (slug=${slug})`);
 
-      const cutoff = Date.now() - 6 * 60 * 60 * 1000;
+    const byTitle = await loadVenueTitleMap(venue.id, `evt-fv-${venue.id}-`);
+    const venueCategory = venue.categories?.[0] ?? 'Muziek';
+    const seenOcc = new Set<string>();
 
-      for (const tile of unique) {
-        try {
-          const startsAt = buildDate(tile.monthAnchor, tile.day, tile.startTime, tile.monthYear);
-          if (!startsAt || startsAt.getTime() < cutoff) {
-            result.skipped++;
+    for (const ev of events) {
+      try {
+        const code = ev.code;
+        const title = ev.name?.trim();
+        const startSec = ev.dates?.start ?? ev.dates?.date;
+        if (!code || !title || !startSec) {
+          result.skipped++;
+          continue;
+        }
+        const startsAt = new Date(startSec * 1000);
+        const endsAt = ev.dates?.end ? new Date(ev.dates.end * 1000) : null;
+        if (isNaN(startsAt.getTime())) {
+          result.skipped++;
+          continue;
+        }
+        const description = ev.description ? stripTags(ev.description).slice(0, 2000) || null : null;
+        const ticketUrl = `${IFRAME_BASE}/${encodeURIComponent(raw)}/events/${code}`;
+        const status: 'scheduled' | 'cancelled' = ev.dates?.canceled ? 'cancelled' : 'scheduled';
+
+        const { eventId } = resolveEventId(byTitle, title, `evt-fv-${venue.id}-${code}`, {
+          startsAt,
+          description,
+        });
+        const occurrenceId = `occ-fv-${venue.id}-${code}`;
+
+        const [existing] = await db
+          .select({ id: schema.events.id })
+          .from(schema.events)
+          .where(eq(schema.events.id, eventId))
+          .limit(1);
+
+        let enriched: Awaited<ReturnType<typeof enrichEvent>> | null = null;
+
+        if (!existing) {
+          let imageUrl: string | null = null;
+          if (ev.image) imageUrl = (await mirrorImage(ev.image, code)) ?? ev.image;
+          try {
+            enriched = await enrichEvent({
+              title,
+              description,
+              venueName: venue.name,
+              venueCategory,
+            });
+          } catch (e) {
+            result.errors.push(`enrich ${title}: ${(e as Error).message}`);
+          }
+          // De API geeft echte genres — die gaan voor op wat Claude gokt.
+          const genres = ev.genres?.length ? ev.genres : (enriched?.genres ?? []);
+          try {
+            await db.insert(schema.events).values({
+              id: eventId,
+              venueId: venue.id,
+              title,
+              description: enriched?.cleanedDescription ?? description,
+              kind: refineKindByDuration(enriched?.kind ?? 'show', startsAt, endsAt),
+              imageUrl,
+              category: enriched?.category ?? venueCategory,
+              featured: false,
+              genres,
+              published: true,
+            });
+            result.inserted++;
+          } catch (e) {
+            result.errors.push(`insert ${eventId}: ${(e as Error).message}`);
             continue;
           }
-          // End: als endTime < startTime, dan volgende dag
-          let endsAt: Date | null = buildDate(tile.monthAnchor, tile.day, tile.endTime, tile.monthYear);
-          if (endsAt && endsAt.getTime() < startsAt.getTime()) {
-            endsAt = new Date(endsAt.getTime() + 24 * 60 * 60 * 1000);
-          }
-
-          const dateLabel = `${String(tile.monthAnchor).padStart(2, '0')}-${String(tile.day).padStart(2, '0')}`;
-          const titleSlug = slugify(`${dateLabel}-${tile.title}`);
-          if (!titleSlug) { result.skipped++; continue; }
-          const eventId = `evt-fv-${venue.id}-${titleSlug}`;
-          const [existing] = await db
-            .select({ id: schema.events.id })
-            .from(schema.events)
-            .where(eq(schema.events.id, eventId))
-            .limit(1);
-
-          let enriched: Awaited<ReturnType<typeof enrichEvent>> | null = null;
-
-          if (!existing) {
-            try {
-              enriched = await enrichEvent({
-                title: tile.title,
-                description: null,
-                venueName: venue.name,
-                venueCategory,
-              });
-            } catch (e) {
-              result.errors.push(`enrich ${tile.title}: ${(e as Error).message}`);
-            }
-            const eventKind = refineKindByDuration(enriched?.kind ?? 'show', startsAt, endsAt);
-            const imageUrl = tile.imageUrl
-              ? await mirrorImage(tile.imageUrl, `${venue.id}-${titleSlug}`)
-              : null;
-            try {
-              await db.insert(schema.events).values({
-                id: eventId,
-                venueId: venue.id,
-                title: tile.title,
-                description: enriched?.cleanedDescription ?? null,
-                kind: eventKind,
-                imageUrl,
-                category: enriched?.category ?? venueCategory,
-                featured: false,
-                genres: enriched?.genres ?? [],
-                published: true,
-              });
-              result.inserted++;
-            } catch (e) {
-              result.errors.push(`insert event ${eventId}: ${(e as Error).message}`);
-              continue;
-            }
-          }
-
-          try {
-            const occurrenceId = `occ-fv-${venue.id}-${titleSlug}`;
-            const slugEnc = encodeURIComponent(cfg.slug);
-            const ticketUrl = tile.ticketUrl
-              ?? `https://site.fourvenues.com/en/iframe/${slugEnc}/events?date=${tile.monthYear}`;
-            await db
-              .insert(schema.occurrences)
-              .values({
-                id: occurrenceId,
-                eventId,
-                startsAt,
-                endsAt,
-                priceCents: null,
-                priceNote: existing ? null : (enriched?.priceNote ?? null),
-                ticketUrl,
-                room: null,
-                lineup: existing ? null : (enriched?.lineup ?? null),
-                status: 'scheduled',
-              })
-              .onConflictDoUpdate({
-                target: schema.occurrences.id,
-                set: { startsAt, endsAt, ticketUrl },
-              });
-            result.occurrencesUpserted++;
-          } catch (e) {
-            result.errors.push(`occurrence ${tile.title}: ${(e as Error).message}`);
-            result.skipped++;
-          }
-        } catch (e) {
-          result.errors.push(`tile ${tile.title}: ${(e as Error).message}`);
-          result.skipped++;
         }
+
+        await db
+          .insert(schema.occurrences)
+          .values({
+            id: occurrenceId,
+            eventId,
+            venueId: venue.id,
+            startsAt,
+            endsAt,
+            priceCents: null,
+            priceNote: existing ? null : (enriched?.priceNote ?? null),
+            ticketUrl,
+            room: null,
+            lineup: existing ? null : (enriched?.lineup ?? null),
+            status,
+          })
+          .onConflictDoUpdate({
+            target: schema.occurrences.id,
+            set: { eventId, venueId: venue.id, startsAt, endsAt, ticketUrl, status },
+          });
+        result.occurrencesUpserted++;
+        seenOcc.add(occurrenceId);
+      } catch (e) {
+        result.errors.push(`event ${ev.code ?? '?'}: ${(e as Error).message}`);
+        result.skipped++;
       }
-      results.push(result);
     }
-  } finally {
-    await browser.close();
+
+    // Sweep: de API geeft het complete programma voor dit venster, dus een
+    // toekomstige occurrence die we deze run niet schreven is verlopen —
+    // inclusief de restanten van de oude `{MM-DD}-{titel}`-ids. Alleen als
+    // er iets binnenkwam, en occurrences met een save blijven staan.
+    if (seenOcc.size) {
+      try {
+        const cutoff = new Date(Date.now() - 6 * 3600_000);
+        const ourEvents = await db
+          .select({ id: schema.events.id })
+          .from(schema.events)
+          .where(eq(schema.events.venueId, venue.id));
+        const rows = ourEvents.length
+          ? await db
+              .select({ id: schema.occurrences.id })
+              .from(schema.occurrences)
+              .where(
+                and(
+                  inArray(schema.occurrences.eventId, ourEvents.map((e) => e.id)),
+                  gt(schema.occurrences.startsAt, cutoff)
+                )
+              )
+          : [];
+        const orphaned = rows.map((r) => r.id).filter((id) => !seenOcc.has(id));
+        if (orphaned.length) {
+          const saved = await db
+            .select({ occurrenceId: schema.saves.occurrenceId })
+            .from(schema.saves)
+            .where(inArray(schema.saves.occurrenceId, orphaned));
+          const savedIds = new Set(saved.map((s) => s.occurrenceId));
+          const drop = orphaned.filter((id) => !savedIds.has(id));
+          if (drop.length) {
+            await db.delete(schema.occurrences).where(inArray(schema.occurrences.id, drop));
+            result.occurrencesPruned += drop.length;
+          }
+        }
+      } catch (e) {
+        result.errors.push(`sweep: ${(e as Error).message}`);
+      }
+    }
+
+    console.log(
+      `[fourvenues] ${venue.id} done — fetched=${result.fetched} inserted=${result.inserted} ` +
+        `occ=${result.occurrencesUpserted} pruned=${result.occurrencesPruned} ` +
+        `skipped=${result.skipped} errors=${result.errors.length}`
+    );
   }
 
   return results;

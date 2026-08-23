@@ -34,8 +34,9 @@ jobs:
       fail-fast: false
       max-parallel: 6
       matrix:
-        scraper: [stager, ical, jsonld, ticketmaster, theater, concertgebouw, boomchicago, concertgemaal, wptheatre, p60, patronaat, ziggodome, ita, operaballet, podiummozaiek, celebratix, weeztix, shelter, sieraad, garagenoord, krakeling, eventscalendar, volkshotel, akhnaton, dezwijger, debalie, felixmeritis, rijksakademie, deceuvel, lima, perdu, nieuweboekhandel, eventbrite, aaservices, vrijburcht, munganga, westweelde, veronica, supper, gashouder, levenslang, clubup, ijland, odessa, fullhouse, bostheater, eye, kriterion, themovies, studiok, filmhallen, lab111, uitkijk, fchyena, rialto, cinecenter, cinemadevlugt, cavia]
-        # Niet in cron: bimhuis, ot301, fourvenues, radioradio, ketelhuis, thepulse (Playwright, niet in Fly Dockerfile)
+        scraper: [stager, ical, jsonld, ticketmaster, theater, concertgebouw, fourvenues, boomchicago, concertgemaal, wptheatre, p60, patronaat, ziggodome, ita, operaballet, podiummozaiek, celebratix, weeztix, shelter, sieraad, garagenoord, krakeling, eventscalendar, volkshotel, akhnaton, dezwijger, debalie, felixmeritis, rijksakademie, deceuvel, lima, perdu, nieuweboekhandel, eventbrite, aaservices, vrijburcht, munganga, westweelde, veronica, supper, gashouder, levenslang, clubup, ijland, odessa, fullhouse, bostheater, eye, kriterion, themovies, studiok, filmhallen, lab111, uitkijk, fchyena, rialto, cinecenter, cinemadevlugt, cavia]
+        # Niet in cron: bimhuis, ot301, radioradio, ketelhuis, thepulse (Playwright, niet in Fly Dockerfile).
+        # fourvenues zit er wél in sinds die van de iframe-widget naar hun JSON-API ging — geen browser meer nodig.
     steps:
       - name: POST /admin/api/scrapers/run/${{ matrix.scraper }}
         run: |
