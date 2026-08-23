@@ -13,6 +13,13 @@
  * 2. **Er moet iets zichtbaar worden tijdens het slepen.** Anders veeg je
  *    blind en weet je pas na afloop wat er gebeurde. De achtergrond
  *    kleurt mee en het icoon verschijnt zodra je over de drempel bent.
+ *
+ * 3. **De tik hoort hier, niet in de rij zelf.** Liet je halverwege een
+ *    veeg los, dan veerde de rij netjes terug maar opende de
+ *    Pressable van EventListRow alsnog het detail: die twee weten
+ *    niets van elkaar. Vandaar dat de tap hier als gesture zit en via
+ *    `Gesture.Exclusive` verliest van de pan — heeft de pan geclaimd,
+ *    dan komt de tap niet meer aan bod.
  */
 import { Ionicons } from '@expo/vector-icons';
 import type { ReactNode } from 'react';
@@ -39,11 +46,14 @@ export function SwipeableRow({
   children,
   onSwipeRight,
   onSwipeLeft,
+  onPress,
   enabled = true,
 }: {
   children: ReactNode;
   onSwipeRight: () => void;
   onSwipeLeft: () => void;
+  /** Gewone tik op de rij. Hoort hier en niet op het kind — zie punt 3. */
+  onPress?: () => void;
   enabled?: boolean;
 }) {
   const roles = useRoles();
@@ -85,6 +95,16 @@ export function SwipeableRow({
       );
     });
 
+  const tap = Gesture.Tap()
+    .enabled(Boolean(onPress))
+    .maxDuration(400)
+    .onEnd((_e, success) => {
+      if (success && onPress) runOnJS(onPress)();
+    });
+
+  // Volgorde telt: pan eerst, dus die wint zodra 'ie geactiveerd is.
+  const gesture = Gesture.Exclusive(pan, tap);
+
   const rowStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: x.value }],
   }));
@@ -118,7 +138,7 @@ export function SwipeableRow({
           <Ionicons name="close" size={22} color={roles.fgMuted} />
         </Animated.View>
       </Animated.View>
-      <GestureDetector gesture={pan}>
+      <GestureDetector gesture={gesture}>
         <Animated.View style={[{ backgroundColor: roles.bg }, rowStyle]}>
           {children}
         </Animated.View>

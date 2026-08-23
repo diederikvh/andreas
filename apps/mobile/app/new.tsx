@@ -511,7 +511,10 @@ export default function NewScreen() {
           windowSize={7}
           initialNumToRender={8}
           maxToRenderPerBatch={8}
-          removeClippedSubviews
+          // `removeClippedSubviews` stond hier voor de performance, maar
+          // op iOS krijgen geclipte rijen geen touches meer — dus alles
+          // ná de eerste batch was niet meer te vegen. De lijst is
+          // gecapt op 15, dus die optimalisatie levert hier toch niks op.
         />
       )}
 
@@ -669,6 +672,7 @@ function NewArrivalRow({
       enabled={Boolean(rateId)}
       onSwipeRight={() => rate('ja')}
       onSwipeLeft={() => rate('nee')}
+      onPress={() => router.push(`/event/${event.id}?source=new` as never)}
     >
     <EventListRow
       actions={actions}
@@ -683,9 +687,9 @@ function NewArrivalRow({
       tags={tags}
       genreLabel={(event.genres ?? [])[0]}
       tick={tone}
-      onPress={() =>
-        router.push(`/event/${event.id}?source=new` as never)
-      }
+      // Geen onPress hier: die zit op SwipeableRow, zodat 'ie kan
+      // verliezen van de veeg. De Pressable van EventListRow blijft
+      // wel z'n indruk-feedback geven.
     />
     </SwipeableRow>
   );
