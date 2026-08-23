@@ -3,6 +3,7 @@ import { eq } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
 import { uploadToBunny } from '../storage/bunny.js';
 import { enrichEvent, refineKindByDuration } from './enrich.js';
+import { loadVenueTitleMap, resolveEventId } from './_title-dedup.js';
 
 /**
  * Paradiso scraper via GraphQL. De homepage toont maar een 'In the
@@ -267,6 +268,21 @@ export async function scrapeParadiso(options?: {
 
   // Browser éénmaal voor alle detail-renders.
   const { chromium } = await import('playwright');
+  // Paradiso's CMS geeft per avond een eigen numeriek id, dus een
+  // meerdaagse run werd N events ("Fat Freddy's Drop" 12/13/14 okt) en
+  // een terugkerende avond idem. Titel binnen de venue is de identiteit.
+  // Per venue een eigen map, want deze scraper routeert ook naar
+  // Tolhuistuin/Bitterzoet/Doka. Lazy: alleen venues die we echt zien.
+  const titleMaps = new Map<string, Map<string, string>>();
+  const titleMapFor = async (vid: string): Promise<Map<string, string>> => {
+    let m = titleMaps.get(vid);
+    if (!m) {
+      m = await loadVenueTitleMap(vid, `evt-par-${vid}-`);
+      titleMaps.set(vid, m);
+    }
+    return m;
+  };
+
   const browser = await chromium.launch({ headless: true });
 
   try {
@@ -286,7 +302,11 @@ export async function scrapeParadiso(options?: {
       r.fetched++;
 
       try {
-        const eventId = `evt-par-${venueId}-${ev.id}`;
+        const { eventId } = resolveEventId(
+          await titleMapFor(venueId),
+          ev.title,
+          `evt-par-${venueId}-${ev.id}`
+        );
         const occurrenceId = `occ-par-${venueId}-${ev.id}`;
         const ticketUrl = `${HOMEPAGE}/${ev.uri.replace(/^\//, '')}`;
         const startsAt = new Date(ev.startDateTime);
@@ -325,7 +345,10 @@ export async function scrapeParadiso(options?: {
             })
             .onConflictDoUpdate({
               target: schema.occurrences.id,
-              set: { startsAt, ticketUrl, status },
+              // eventId meenemen: occurrences die nog aan een
+              // per-avond-event hingen verhuizen zo zelf naar het
+              // canonieke event.
+              set: { eventId, startsAt, ticketUrl, status },
             });
           r.occurrencesUpserted++;
           continue;
@@ -382,6 +405,7 @@ export async function scrapeParadiso(options?: {
             .onConflictDoUpdate({
               target: schema.occurrences.id,
               set: {
+                eventId,
                 startsAt,
                 priceNote: enriched.priceNote,
                 ticketUrl,
