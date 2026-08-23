@@ -2,7 +2,7 @@
 
 Live status van het project. Cross-checken met `HANDOFF.md` voor de oorspronkelijke briefing en met de huidige codebase voor de waarheid. Per open punt staat genoeg context om een agent zelfstandig te laten werken.
 
-Laatste sync: 2026-08-22 · branch `main`.
+Laatste sync: 2026-08-23 · branch `main`.
 
 ## Stand
 
@@ -307,8 +307,30 @@ Quick recall van wat er in de app zit. Check dit eerst bij elke "kunnen we X toe
 - **Recommendations** — `useForYouEvents` engine (scoring op saves+follows, niet ML), zichtbaar op Avond.
 - **Social feed** — `useSocialFeed` toont saves van vrienden, gebruikt in /going + Avond-rail.
 - **Smaak-spiegel** — `/jij` heeft een Letterboxd/Wrapped-stijl identity-mirror: top venues, top genres, weekday-distributie, monthly timeline, identity-zin gegenereerd uit aggregates. Server: [mirror.ts](apps/api/src/routes/mirror.ts).
-- **Mood-swiper** — `/op-gevoel` is een card-swiper (links=dismiss, rechts=save).
+- **Mood-swiper** — `/op-gevoel` is een card-swiper (links=dismiss, rechts=save). Staat sinds de Meer-verhuizing **niet meer in het menu** en is dus onbereikbaar; het bestand blijft staan als referentie voor het swipe-gebaar op `/new` en kan daarna weg.
 - **Dagelijkse "net binnen"-lijst** — `/new` ankert op `occurrences.createdAt`, dus óók een nieuwe datum bij een bestaand event (op een drukke scrape-dag 80-90% van de aanwas). Vijf banen (film/theater/live/club/kunst, afgeleid in de query — zie `LANE_SQL`), gecapt op 15 en beurtelings uit elke baan geplukt. Ja/nee per rij; een oordeel geldt voor het hele event en haalt 'm uit de lijst. Baan-voorkeur persist in `store/newFilters.ts`.
+- **Anoniem-eerst** — bij eerste start doet de app een stille
+  `signIn.anonymous()` (better-auth anonymous-plugin), dus iedereen heeft
+  meteen een sessie en alle bestaande `requireUserId`-endpoints werken
+  ongewijzigd. Saven, wegtikken, volgen, smaakprofiel en push werken
+  zonder account; vrienden, uitnodigen, QR en gedeelde links tonen een
+  `AccountWall`. Bij accountaanmaak verhuist `onLinkAccount` in
+  [auth.ts](apps/api/src/auth.ts) saves, dismisses, venue_follows,
+  push_tokens en zoek_logs — met merge-logica voor het geval het
+  telefoonnummer al een account had. **Let op:** `Boolean(session)`
+  betekent niet meer "heeft een account"; gebruik `useIsRegistered()`.
+- **Navigatie** — tab-bar is Vandaag · Agenda · Meer, met zoeken als
+  losse capsule ernaast. Alles wat eerder als knoppenrij op de homepage
+  stond zit onder Meer. Friends, Going, Venues en de categoriepagina's
+  zijn gepushte routes (geen verborgen tabs — dan schuiven ze niet in en
+  gaat `back` naar de vorige tab).
+- **Agenda op periode** — van–tot in plaats van dag-voor-dag, standaard
+  zeven dagen, met een eigen datumkiezer (maandraster van Views, bewust
+  geen native picker zodat wijzigingen over-the-air kunnen).
+- **Wit dag-thema** — `palette.paper*` is wit/grijs in plaats van cream;
+  het rood is het enige warme in beeld. Tone-kleuren staan sinds die
+  omzetting op één plek: [theme/tones.ts](apps/mobile/theme/tones.ts).
+  Filter-chips idem: [components/FilterChip.tsx](apps/mobile/components/FilterChip.tsx).
 - **Nee's wegen mee** — `buildTasteProfile()` in [_helpers.ts](apps/api/src/routes/_helpers.ts) telt saves én dismisses, recentheids-gewogen; `/for-you` en `/new` ranken er allebei op. Een nee weegt 0,6 van een ja en is gecapt (we tellen gebaren, geen impressies — een druk programmerende venue verzamelt anders mechanisch te veel straf).
 - **Push** — `PushManager` + `expoPushTokens` tabel. Pushes worden gestuurd voor: friend-requests, invitations, group-events, share-invite-claims. ([push.ts](apps/api/src/push.ts))
 - **Inbox / in-app notificaties** — `InboxNotifier` + `InboxToast` componenten.

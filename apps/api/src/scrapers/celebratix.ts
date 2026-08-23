@@ -3,6 +3,7 @@ import { eq } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
 import { uploadToBunny } from '../storage/bunny.js';
 import { enrichEvent, refineKindByDuration } from './enrich.js';
+import { loadVenueTitleMap, resolveEventId } from './_title-dedup.js';
 
 /**
  * Celebratix is een ticket-platform met een publieke API per "channel".
@@ -99,6 +100,10 @@ export async function scrapeCelebratix(options?: {
       errors: [],
     };
     const venueCategory = venue.categories?.[0] ?? 'Muziek';
+    // Celebratix geeft per avond een eigen sqid, dus een wekelijkse
+    // clubavond werd 14 losse events ("Dynasty | 21+" bij Chin Chin).
+    // Titel binnen de venue is de identiteit; zie _title-dedup.ts.
+    const byTitle = await loadVenueTitleMap(venue.id, `evt-cel-${venue.id}-`);
 
     const events = await fetchEvents(cfg.channel);
     result.fetched = events.length;
@@ -123,7 +128,11 @@ export async function scrapeCelebratix(options?: {
         }
         const endsAt = ev.endDateWithTimezone?.dateTime ? new Date(ev.endDateWithTimezone.dateTime) : null;
 
-        const eventId = `evt-cel-${venue.id}-${ev.sqid}`;
+        const { eventId } = resolveEventId(
+          byTitle,
+          ev.name,
+          `evt-cel-${venue.id}-${ev.sqid}`
+        );
         const [existing] = await db
           .select({ id: schema.events.id })
           .from(schema.events)
@@ -196,7 +205,10 @@ export async function scrapeCelebratix(options?: {
             })
             .onConflictDoUpdate({
               target: schema.occurrences.id,
-              set: { startsAt, endsAt, ticketUrl },
+              // eventId meenemen: bestaande occurrences die nog aan een
+              // per-avond-event hingen verhuizen zo zelf naar het
+              // canonieke event. Zonder dit blijft de historie dubbel.
+              set: { eventId, startsAt, endsAt, ticketUrl },
             });
           result.occurrencesUpserted++;
         } catch (e) {

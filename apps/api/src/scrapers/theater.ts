@@ -1,9 +1,10 @@
-import { asc, eq } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 
 import { db, schema } from '../db/index.js';
 import { uploadToBunny } from '../storage/bunny.js';
 import { parseAmsterdamLocal, parseIsoFlexible } from './_amsterdam-tz.js';
 import { enrichEvent, refineKindByDuration } from './enrich.js';
+import { loadVenueTitleMap, resolveEventId } from './_title-dedup.js';
 
 /**
  * Generic scraper voor theater-venues met een eigen agenda achter
@@ -98,19 +99,6 @@ function slugify(s: string): string {
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
     .slice(0, 80);
-}
-
-/** Identiteits-key voor een voorstellings-titel binnen één venue.
-    Losser dan `slugify`: interpunctie en dubbele spaties vallen weg,
-    zodat "Anansi de Spin (3+) — Vanaf2" en "Anansi de Spin (3+) -
-    Vanaf2" dezelfde key geven. */
-function titleKey(s: string): string {
-  return s
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
-    .replace(/[^a-z0-9]+/g, ' ')
-    .trim();
 }
 
 // Per-fetch timeout zodat één hangende venue niet de hele
@@ -314,32 +302,12 @@ export async function scrapeTheater(options?: {
       ? new RegExp(cfg.showSlugStripPattern)
       : null;
 
-    // Titel-map voor deze venue: genormaliseerde titel → bestaand
-    // eventId. De slug-gebaseerde id alleen is niet genoeg, want de
-    // bron-slug is muteerbaar én niet uniek per voorstelling:
-    //
-    //  - Frascati corrigeerde een typo in z'n slug ("everythiing" →
-    //    "everything") en wij hielden beide events.
-    //  - Bijlmer Parktheater hangt een wisselend suffix aan de slug
-    //    (`…-tijger-3-t7rj` vs `…-tijger-3-r225`).
-    //  - Meervaart publiceert één voorstelling op twee URLs
-    //    (`/rachid-larouz` én `/wakker-worden`).
-    //
-    // In alle drie gevallen is de titel wél identiek, dus die is de
-    // betere identiteit. Alleen `evt-th-`-events: theater.ts mag geen
-    // events van andere scrapers naar zich toe trekken.
-    const byTitle = new Map<string, string>();
-    for (const row of await db
-      .select({ id: schema.events.id, title: schema.events.title })
-      .from(schema.events)
-      .where(eq(schema.events.venueId, venue.id))
-      // Vaste volgorde: bij al bestaande dubbelen bepaalt dit welk
-      // event wint, en dat moet tussen runs niet wisselen.
-      .orderBy(asc(schema.events.id))) {
-      if (!row.id.startsWith('evt-th-')) continue;
-      const k = titleKey(row.title);
-      if (k && !byTitle.has(k)) byTitle.set(k, row.id);
-    }
+    // Titel-map voor deze venue. De slug-gebaseerde id alleen is niet
+    // genoeg: Frascati publiceert per show twee sitemap-URLs (titel +
+    // tagline) en corrigeerde een typo in een slug, Bijlmer wisselt het
+    // suffix, Meervaart heeft twee URLs per voorstelling. De titel is
+    // in al die gevallen wél identiek. Zie _title-dedup.ts.
+    const byTitle = await loadVenueTitleMap(venue.id, 'evt-th-');
 
     const allEntries = await fetchSitemap(cfg.sitemapUrl);
     const urlCutoff = Date.now() - SITEMAP_STALE_MS;
@@ -405,16 +373,14 @@ export async function scrapeTheater(options?: {
         // (geen await tussen get en set) omdat runWithConcurrency
         // meerdere pagina's parallel draait — anders inserten twee
         // alias-URLs van dezelfde show alsnog beide.
-        const slugId = `evt-th-${venue.id}-${titleSlug}`;
-        const tKey = titleKey(title);
-        const mappedId = tKey ? byTitle.get(tKey) : undefined;
-        const eventId = mappedId ?? slugId;
-        if (tKey && !mappedId) byTitle.set(tKey, slugId);
-        /** Deze pagina "bezit" het event — alleen dan mag het delete-pad
-            hieronder toeslaan. Bij een alias-URL die naar een ander
-            event mapt zou dat het gedeelde event weggooien terwijl de
-            eigenaar-pagina nog datums heeft. */
-        const ownsEvent = eventId === slugId;
+        // `owns` is false bij een alias-URL die naar een ander event
+        // mapt; het delete-pad hieronder mag dan niet vuren, want de
+        // eigenaar-pagina heeft nog datums.
+        const { eventId, owns: ownsEvent } = resolveEventId(
+          byTitle,
+          title,
+          `evt-th-${venue.id}-${titleSlug}`
+        );
 
         const [existing] = await db
           .select({ id: schema.events.id })
