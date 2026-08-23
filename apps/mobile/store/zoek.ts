@@ -42,6 +42,12 @@ type ZoekState = {
   guideOpen: boolean;
   openGuide: () => void;
   closeGuide: () => void;
+  /** Idem voor de zoek-overlay. Zat eerder als lokale state in avond.tsx,
+      maar de zoek-knop staat nu in de AppHeader en moet dus vanaf elk
+      scherm te openen zijn. */
+  searchOpen: boolean;
+  openSearch: () => void;
+  closeSearch: () => void;
   /** Verstuur een gebruikersbericht en verwerk de beurt. */
   send: (text: string) => Promise<void>;
   /** Begin een vers gesprek. */
@@ -56,6 +62,9 @@ export const useZoekStore = create<ZoekState>((set, get) => ({
   guideOpen: false,
   openGuide: () => set({ guideOpen: true }),
   closeGuide: () => set({ guideOpen: false }),
+  searchOpen: false,
+  openSearch: () => set({ searchOpen: true }),
+  closeSearch: () => set({ searchOpen: false }),
 
   send: async (raw: string) => {
     const text = raw.trim();

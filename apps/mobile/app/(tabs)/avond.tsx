@@ -1,4 +1,4 @@
-import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useScrollToTop } from '@react-navigation/native';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -32,7 +32,6 @@ import {
   SQUARE_CARD_WIDTH,
 } from '@/components/VenueSquareRailCard';
 import { RefreshBanner } from '@/components/RefreshBanner';
-import { SearchOverlay } from '@/components/SearchOverlay';
 import { RunningStrip } from '@/components/RunningStrip';
 import { SpinningCross } from '@/components/SpinningCross';
 import type { ApiEvent, ApiFeedEvent, SavedApiEvent, VenueType } from '@/lib/api';
@@ -65,16 +64,13 @@ import {
   useForYouEvents,
   useMe,
   useMySaves,
-  useNewArrivalsSince,
   useSocialFeed,
   useVenues,
   useSeriesList,
 } from '@/lib/queries';
 import { useSession } from '@/lib/authClient';
 import { useMode, useRoles } from '@/store/mode';
-import { useNewFilters } from '@/store/newFilters';
 import { useAddSavedVandaagSearch } from '@/store/savedVandaagSearches';
-import { useNewBadgeSince } from '@/store/sessionTimestamps';
 import { useVandaagFilters } from '@/store/vandaagFilters';
 import { useZoekStore } from '@/store/zoek';
 import { fontFamily, palette } from '@/theme/tokens';
@@ -149,8 +145,6 @@ export default function Avond() {
   const locale = useLocale();
   const scrollRef = useRef<ScrollView>(null);
   useScrollToTop(scrollRef);
-  const [searchOpen, setSearchOpen] = useState(false);
-  const openGuide = useZoekStore((s) => s.openGuide);
 
   // Elke tap op de tab-bar (ook re-tap op /avond zelf) sluit de
   // search-overlay. Anders zou je vanuit een andere tab terugkomen op
@@ -159,7 +153,7 @@ export default function Avond() {
   const navigation = useNavigation();
   useEffect(() => {
     const unsubscribe = navigation.addListener('tabPress' as never, () => {
-      setSearchOpen(false);
+      useZoekStore.getState().closeSearch();
     });
     return unsubscribe;
   }, [navigation]);
@@ -828,20 +822,13 @@ export default function Avond() {
           </View>
         )}
 
-        {/* Rij 1 — grote banners (Gids · Voor jou · Net binnen · Zoek)
-            onder de feature. */}
-        <ShortcutsRow
-          variant="big"
-          onOpenGuide={openGuide}
-          onOpenSearch={() => setSearchOpen(true)}
-        />
-
-        {/* Rij 2 — compacte categorie/ingang-knopjes. */}
-        <ShortcutsRow
-          variant="small"
-          onOpenGuide={openGuide}
-          onOpenSearch={() => setSearchOpen(true)}
-        />
+        {/* Hier stonden twee rijen ingangen: vier grote banners (gids,
+            voor jou, net binnen, zoek) plus zeven kleine icoonknopjes
+            (films, clubs, live, theater, kaart, friends, vibes). Elf
+            uitgangen boven de programmering — dat maakte de homepage
+            een menu in plaats van een antwoord op "wat is er vanavond".
+            Alles staat nu onder de Meer-tab; zoeken zit rechtsboven in
+            de header. Zie `app/(tabs)/meer.tsx`. */}
 
         {/* Eén gepersonaliseerde rail: "Jouw avond · vanavond" (uit-modus,
             ≥3 picks) óf de bredere "Voor jou · deze week". "Meer →" opent
@@ -1158,10 +1145,6 @@ export default function Avond() {
 
       </ScrollView>
       <AppHeader title={t('Vandaag', 'Today')} />
-      <SearchOverlay
-        visible={searchOpen}
-        onClose={() => setSearchOpen(false)}
-      />
     </View>
   );
 }
@@ -1439,28 +1422,6 @@ const planningCardStyles = StyleSheet.create({
 /** Eerste shortcut-banner: ingang naar de conversationele gids. Zelfde
     bgLift-vlak als de rest, maar met een accent-border zodat 'ie subtiel
     vooraan opvalt zonder de hele rij te domineren. */
-function GidsBanner({ onPress }: { onPress: () => void }) {
-  const roles = useRoles();
-  const t = useT();
-  return (
-    <Pressable
-      onPress={onPress}
-      style={[
-        styles.shortcutBtn,
-        { backgroundColor: roles.bgLift, borderWidth: 1.5, borderColor: roles.accent },
-      ]}
-    >
-      <Ionicons name="sparkles" size={30} color={roles.accent} />
-      <Text style={[styles.shortcutKicker, { color: roles.fgMuted }]}>
-        {t('Gids', 'Guide')}
-      </Text>
-      <Text style={[styles.shortcutTitle, { color: roles.fg }]}>
-        {t('Vraag Andreas', 'Ask Andreas')}
-      </Text>
-    </Pressable>
-  );
-}
-
 function EmptyResults({
   hasFilter,
   minHeight,
@@ -1709,198 +1670,8 @@ function FeaturedCard({
   );
 }
 
-function ShortcutsRow({
-  variant,
-  onOpenGuide,
-  onOpenSearch,
-}: {
-  /** 'big' = de vier grote banners (boven de feature); 'small' = de
-      compacte categorie-knopjes (onder de feature). De feature ertussen
-      geeft rust tussen de twee knop-groepen. */
-  variant: 'big' | 'small';
-  onOpenGuide: () => void;
-  onOpenSearch: () => void;
-}) {
-  // Gids-banner alleen tonen aan gebruikers met toegang (opt-in via admin).
-  const { data: me } = useMe();
-  const guideEnabled = me?.guideEnabled ?? false;
-  const t = useT();
-  const roles = useRoles();
-  const scrollRef = useRef<ScrollView>(null);
-  const navigation = useNavigation();
-  // Re-tap op de Vandaag-tab → rij terug naar begin.
-  useEffect(() => {
-    const unsubscribe = navigation.addListener('tabPress' as never, () => {
-      if (navigation.isFocused()) {
-        scrollRef.current?.scrollTo({ x: 0, animated: true });
-      }
-    });
-    return unsubscribe;
-  }, [navigation]);
-
-  if (variant === 'big') {
-    return (
-      <ScrollView
-        ref={scrollRef}
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.shortcutScroller}
-        snapToInterval={122}
-        snapToAlignment="start"
-        decelerationRate="fast"
-      >
-        {guideEnabled ? <GidsBanner onPress={onOpenGuide} /> : null}
-        <VoorJouBanner />
-        <NewBanner />
-        <SearchBanner onPress={onOpenSearch} />
-      </ScrollView>
-    );
-  }
-
-  // Compacte categorie/ingang-knopjes (icoon boven label).
-  const small: Array<{
-    key: string;
-    icon: ReactNode;
-    label: string;
-    onPress: () => void;
-  }> = [
-    { key: 'films', icon: <Ionicons name="film-outline" size={20} color={roles.accent} />, label: t('Films', 'Films'), onPress: () => router.push('/films' as never) },
-    { key: 'clubs', icon: <Ionicons name="disc-outline" size={20} color={roles.accent} />, label: t('Clubs', 'Clubs'), onPress: () => router.push('/clubs' as never) },
-    { key: 'live', icon: <Ionicons name="musical-notes-outline" size={20} color={roles.accent} />, label: t('Live', 'Live'), onPress: () => router.push('/live' as never) },
-    { key: 'theater', icon: <MaterialCommunityIcons name="drama-masks" size={20} color={roles.accent} />, label: t('Theater', 'Theatre'), onPress: () => router.push('/theater' as never) },
-    { key: 'kaart', icon: <Ionicons name="map-outline" size={20} color={roles.accent} />, label: t('Kaart', 'Map'), onPress: () => router.push('/kaart' as never) },
-    { key: 'friends', icon: <Ionicons name="people-outline" size={20} color={roles.accent} />, label: t('Friends', 'Friends'), onPress: () => router.push('/going' as never) },
-    { key: 'vibes', icon: <MaterialCommunityIcons name="cards-outline" size={20} color={roles.accent} />, label: t('Vibes', 'Vibes'), onPress: () => router.push('/op-gevoel' as never) },
-  ];
-  void onOpenSearch;
-  return (
-    <ScrollView
-      ref={scrollRef}
-      horizontal
-      showsHorizontalScrollIndicator={false}
-      contentContainerStyle={styles.shortcutScrollerSmall}
-    >
-      {small.map((s) => (
-        <SmallShortcut key={s.key} icon={s.icon} label={s.label} onPress={s.onPress} />
-      ))}
-    </ScrollView>
-  );
-}
-
-function VoorJouBanner() {
-  const roles = useRoles();
-  const t = useT();
-  return (
-    <Pressable
-      onPress={() => router.push('/voor-jou' as never)}
-      style={[styles.shortcutBtn, { backgroundColor: roles.bgLift }]}
-    >
-      <Ionicons name="heart-outline" size={30} color={roles.accent} />
-      <Text style={[styles.shortcutKicker, { color: roles.fgMuted }]}>
-        {t('Voor jou', 'For you')}
-      </Text>
-      <Text style={[styles.shortcutTitle, { color: roles.fg }]}>
-        {t('Aanbevolen', 'Recommended')}
-      </Text>
-    </Pressable>
-  );
-}
-
-function NewBanner() {
-  const roles = useRoles();
-  const t = useT();
-  const since = useNewBadgeSince();
-  // Baan-voorkeur meesturen zodat de badge telt wat je straks ook écht
-  // te zien krijgt — een 12 die opent op 3 rijen is een kapotte belofte.
-  const activeLanes = useNewFilters((s) => s.activeLanes);
-  const { data: arrivals } = useNewArrivalsSince(since, { lanes: activeLanes });
-  // Badge telt events nieuwer dan je laatste /new-bezoek → zakt naar 0
-  // zodra je de pagina hebt gezien, loopt pas weer op bij nieuwe
-  // aanwinsten. `total` en niet `events.length`, want de lijst is gecapt
-  // op 15. Bij since=null (eerste sessie) staat de query op pauze
-  // → 0, geen badge.
-  const count = arrivals?.total ?? 0;
-  return (
-    <Pressable
-      onPress={() => router.push('/new' as never)}
-      style={[
-        styles.shortcutBtn,
-        { backgroundColor: roles.bgLift },
-      ]}
-    >
-      <View style={styles.shortcutIconRow}>
-        <Ionicons name="flash-outline" size={30} color={roles.accent} />
-        {count > 0 ? (
-          <View
-            style={[
-              styles.shortcutInlineBadge,
-              { backgroundColor: roles.accent },
-            ]}
-          >
-            <Text
-              style={[styles.shortcutBadgeText, { color: roles.onAccent }]}
-              numberOfLines={1}
-            >
-              {count > 99 ? '99+' : count}
-            </Text>
-          </View>
-        ) : null}
-      </View>
-      <Text style={[styles.shortcutKicker, { color: roles.fgMuted }]}>
-        {t('Net binnen', 'Just in')}
-      </Text>
-      <Text style={[styles.shortcutTitle, { color: roles.fg }]}>
-        {t('Nieuwste aanwinsten', 'Latest additions')}
-      </Text>
-    </Pressable>
-  );
-}
-
 /** Grote zoek-banner — vervangt het losse zoekveld; opent de SearchOverlay
     (globale cross-zoek over venues + events). */
-function SearchBanner({ onPress }: { onPress: () => void }) {
-  const roles = useRoles();
-  const t = useT();
-  return (
-    <Pressable
-      onPress={onPress}
-      style={[styles.shortcutBtn, { backgroundColor: roles.bgLift }]}
-    >
-      <Ionicons name="search-outline" size={30} color={roles.accent} />
-      <Text style={[styles.shortcutKicker, { color: roles.fgMuted }]}>
-        {t('Zoek', 'Search')}
-      </Text>
-      <Text style={[styles.shortcutTitle, { color: roles.fg }]}>
-        {t('Venues & events', 'Venues & events')}
-      </Text>
-    </Pressable>
-  );
-}
-
-/** Compacte tweede-rij-banner: alleen icoon + kicker, pill-vorm. */
-function SmallShortcut({
-  icon,
-  label,
-  onPress,
-}: {
-  icon: ReactNode;
-  label: string;
-  onPress: () => void;
-}) {
-  const roles = useRoles();
-  return (
-    <Pressable
-      onPress={onPress}
-      style={[styles.shortcutBtnSmall, { backgroundColor: roles.bgLift }]}
-    >
-      {icon}
-      <Text style={[styles.shortcutKicker, { color: roles.fg }]} numberOfLines={1}>
-        {label}
-      </Text>
-    </Pressable>
-  );
-}
-
 export function AvondFilterSheet({
   query,
   onlyFriends,

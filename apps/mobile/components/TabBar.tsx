@@ -16,8 +16,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   TabIconAgenda,
   TabIconAvond,
+  TabIconMeer,
   TabIconSocial,
-  TabIconVenues,
 } from '@/components/icons/TabIcons';
 import { useSession } from '@/lib/authClient';
 import { tinyTap } from '@/lib/haptics';
@@ -27,16 +27,20 @@ import { fontFamily, palette } from '@/theme/tokens';
 
 type IconCmp = ComponentType<{ color: string }>;
 
-// Kaart heeft `href: null` in de tabs-config, maar verschijnt nog wel
-// in `state.routes`. Door 'm hier weg te laten valt 'ie via de
-// `if (!Icon) return null;` automatisch uit de tab-bar.
+// Kaart en Venues hebben `href: null` in de tabs-config, maar
+// verschijnen nog wel in `state.routes`. Door ze hier weg te laten
+// vallen ze via de `if (!Icon) return null;` automatisch uit de bar.
 // `jij` is sinds de IA-shift géén tab meer — bereikbaar via de
 // avatar-knop rechtsboven in de AppHeader.
+//
+// Vier tabs, en de vierde is een verzamelbak. De homepage droeg eerder
+// elf uitgangen; die staan nu achter Meer zodat Vandaag over vanavond
+// gaat in plaats van over navigatie.
 const TAB_ICONS: Record<string, IconCmp> = {
   avond: TabIconAvond,
   agenda: TabIconAgenda,
-  venues: TabIconVenues,
   social: TabIconSocial,
+  meer: TabIconMeer,
 };
 
 /**
@@ -89,13 +93,15 @@ export function TabBar({ state, navigation }: BottomTabBarProps) {
   // Filter naar alleen zichtbare tabs (kaart heeft href:null, valt af).
   const visible = state.routes.filter((r) => TAB_ICONS[r.name]);
   const currentRoute = state.routes[state.index];
-  // Op een verborgen tab (zoals /kaart) verbergen we de hele tab-bar
-  // — Kaart heeft een eigen sluit-knop in de header en wil maximaal
-  // schermvulling voor de map zelf. Vroeger faadde alleen de blob
-  // uit; nu valt de balk helemaal weg.
+  // Twee soorten "niet in de bar". Kaart wil de balk écht weg: eigen
+  // sluit-knop in de header en maximaal schermvulling voor de map.
+  // Venues is gewoon een blader-scherm dat uit de bar is gehaald — daar
+  // moet je juist wél verder kunnen klikken, dus die houdt de balk
+  // (alleen zonder actieve tab).
   const onHiddenRoute = currentRoute
     ? !TAB_ICONS[currentRoute.name]
     : false;
+  const hidesBar = currentRoute?.name === 'kaart';
   const focusedVisibleIndex = onHiddenRoute
     ? -1
     : visible.findIndex((r) => r.key === currentRoute?.key);
@@ -131,7 +137,7 @@ export function TabBar({ state, navigation }: BottomTabBarProps) {
   // hook-volgorde tussen renders en gooit React "rendered fewer
   // hooks than expected" wanneer je van een zichtbare tab naar
   // /kaart navigeert.
-  if (onHiddenRoute) return null;
+  if (hidesBar) return null;
 
   // Verloop-blur áchter de pill — start vlak onder de pill-top en
   // loopt verder naar beneden tot het schermrand. Vangt taps op zodat

@@ -1,3 +1,4 @@
+import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import MaskedView from '@react-native-masked-view/masked-view';
 import { BlurView } from 'expo-blur';
@@ -13,6 +14,7 @@ import { ProfileAvatar } from '@/components/ProfileAvatar';
 import { tinyTap } from '@/lib/haptics';
 import { useMe } from '@/lib/queries';
 import { useMode, useRoles } from '@/store/mode';
+import { useZoekStore } from '@/store/zoek';
 import { fontFamily, palette } from '@/theme/tokens';
 
 export const HEADER_HEIGHT = 36;
@@ -49,6 +51,12 @@ type AppHeaderProps = {
    * standaard navigatie-affordance.
    */
   rightSlot?: ReactNode;
+  /**
+   * Verbergt de zoek-knop links van de avatar. Default false — zoeken
+   * hoort overal binnen handbereik te zijn. Aanzetten op schermen die
+   * zelf al een zoekveld hebben (Venues, Agenda-filters).
+   */
+  hideSearch?: boolean;
 };
 
 /**
@@ -66,6 +74,7 @@ export function AppHeader({
   title,
   hideAvatar = false,
   rightSlot,
+  hideSearch = false,
 }: AppHeaderProps = {}) {
   const mode = useMode();
   const roles = useRoles();
@@ -189,11 +198,40 @@ export function AppHeader({
           )}
         </View>
         <View style={styles.headerRight}>
-          {rightSlot ? rightSlot : !hideAvatar && <AvatarButton />}
+          {rightSlot ? (
+            rightSlot
+          ) : (
+            <>
+              {!hideSearch && <SearchButton />}
+              {!hideAvatar && <AvatarButton />}
+            </>
+          )}
         </View>
       </View>
       {children}
     </View>
+  );
+}
+
+/**
+ * Zoeken vanaf elk scherm. Zat eerder als kaartje tussen de shortcuts op
+ * de homepage — daar moest je eerst naar terug voordat je kon zoeken.
+ */
+function SearchButton() {
+  const roles = useRoles();
+  const openSearch = useZoekStore((s) => s.openSearch);
+  return (
+    <Pressable
+      onPress={() => {
+        tinyTap();
+        openSearch();
+      }}
+      hitSlop={8}
+      accessibilityLabel="Zoeken"
+      style={styles.searchBtn}
+    >
+      <Ionicons name="search" size={20} color={roles.fg} />
+    </Pressable>
   );
 }
 
@@ -292,6 +330,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+  },
+  searchBtn: {
+    width: 28,
+    height: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   avatarBtn: {
     width: 28,

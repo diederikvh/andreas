@@ -65,6 +65,21 @@ export function TabIconSocial({ color }: IconProps) {
   );
 }
 
+/**
+ * Meer — drie stippen. Zelfde vocabulaire als het Avond-icoon (de losse
+ * stip), zodat de rij als één set leest in plaats van als een
+ * verzameling losse tekens.
+ */
+export function TabIconMeer({ color }: IconProps) {
+  return (
+    <View style={[styles.box, styles.meerRow]}>
+      <View style={[styles.meerDot, { backgroundColor: color }]} />
+      <View style={[styles.meerDot, { backgroundColor: color }]} />
+      <View style={[styles.meerDot, { backgroundColor: color }]} />
+    </View>
+  );
+}
+
 export function TabIconJij({ color }: IconProps) {
   return (
     <View style={styles.box}>
@@ -89,6 +104,15 @@ const styles = StyleSheet.create({
     position: 'absolute',
     height: STROKE,
     left: 5,
+  },
+  meerRow: {
+    flexDirection: 'row',
+    gap: 3.5,
+  },
+  meerDot: {
+    width: 4.5,
+    height: 4.5,
+    borderRadius: 999,
   },
   diamond: {
     width: 12,
