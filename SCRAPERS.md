@@ -362,6 +362,8 @@ denieuweanita, amsterdammuseum, arti, cbkzuidoost, cobramuseum, nieuwekerk, nxtm
 
 ## Implementatie-notities
 
+- **Rate-limit-rem bij film-scrapers** — de 14 scrapers op `_film-dedup` lopen een film-lijst sequentieel af. Boven ~150 pagina's knijpt de bron af, waarna elke fetch de 15s-timeout van `fetchTextWithTimeout` volloopt en de CI-job z'n 25-minuten curl-timeout haalt (exit 28). Gemeten en gefixt bij `themovies` (580 pagina's) en `filmhallen` (202): `REQUEST_SPACING_MS = 200` plus een noodstop na 8 mislukte fetches op rij. De andere twaalf zijn nagelopen op 2026-08-23 en hebben het níet nodig — cinemadevlugt 24, studiok 17, uitkijk 28, ketelhuis 31, lab111 82, eye 84 pagina's (9-89s), en de rest itereert over maanden/producties/locaties in plaats van over een pagina-lijst. Rem toevoegen kost daar tijd zonder winst.
+
 - **"RSS in inventory"** = WordPress site met `/feed/` endpoint, maar earlier check liet zien dat die feeds blog-posts mixen met events. Vereist Claude-filter per item.
 - **Cloudflare-blocked venues** hebben Playwright nodig of een externe API (zoals Ticketmaster Discovery).
 - **Cross-venue routing** (Tolhuistuin/Bitterzoet/Doka via Paradiso) is bewezen patroon — als we andere "moederpodia" tegenkomen kunnen we die opnieuw inzetten.
