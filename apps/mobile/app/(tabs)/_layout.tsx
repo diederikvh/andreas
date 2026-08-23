@@ -26,9 +26,6 @@ export default function TabsLayout() {
         {/* Venues zat in de tab-bar maar is bladermateriaal, geen
             dagelijkse ingang — verhuisd naar Meer, net als Kaart. */}
         <Tabs.Screen name="venues" options={{ href: null }} />
-        {/* Ook Friends staat niet meer in de bar — bereikbaar via Meer,
-            met een eigen sluit-knop in de header. */}
-        <Tabs.Screen name="social" options={{ href: null }} />
         <Tabs.Screen name="meer" />
       </Tabs>
       {/* Gids-overlay buiten de Tabs gerenderd zodat 'ie óók over de

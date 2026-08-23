@@ -162,10 +162,11 @@ export default function Social() {
         />
       </ScrollView>
       )}
-      {/* Friends staat niet meer in de tab-bar (die is Vandaag · Agenda ·
-          Meer), dus zónder sluit-knop is er geen weg terug — de balk is
-          op verborgen routes onzichtbaar. Zelfde knop als /films, /going
-          en de rest onder Meer. */}
+      {/* Friends is geen tab meer (die zijn Vandaag · Agenda · Meer) maar
+          een gepusht scherm onder Meer, net als /going en /films. Dat
+          scheelt niet alleen de sluit-knop: een tab-route wisselt van tab
+          in plaats van te pushen, dus 'ie schoof niet in beeld en `back`
+          bracht je naar de vorige tab (Vandaag) in plaats van naar Meer. */}
       <AppHeader
         title={t('Friends', 'Friends')}
         hideAvatar
