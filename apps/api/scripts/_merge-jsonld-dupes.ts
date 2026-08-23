@@ -12,7 +12,7 @@
  * patroon krijgt, is dit script het startpunt.
  */
 import { createHash } from 'node:crypto';
-import { eq, inArray } from 'drizzle-orm';
+import { asc, eq, inArray } from 'drizzle-orm';
 import { db, schema } from '../src/db/index.js';
 import { extractJsonLdEvents } from '../src/scrapers/_jsonld-parser.js';
 
@@ -43,7 +43,10 @@ for (const v of venues) {
   const evs = await db
     .select()
     .from(schema.events)
-    .where(eq(schema.events.venueId, v.id));
+    .where(eq(schema.events.venueId, v.id))
+    // Vaste volgorde: zonder ORDER BY wisselt de cluster-volgorde per
+    // run, en dan is de dry-run geen betrouwbare voorspelling meer.
+    .orderBy(asc(schema.events.id));
   if (!evs.length) continue;
   const occ = await db
     .select()
@@ -93,8 +96,13 @@ for (const v of venues) {
 
     // Velden bijvullen vanuit de losers.
     const evPatch: Partial<typeof canonical> = {};
-    if (!canonical.description) evPatch.description = losers.find((e) => e.description)?.description ?? undefined;
-    if (!canonical.imageUrl) evPatch.imageUrl = losers.find((e) => e.imageUrl)?.imageUrl ?? undefined;
+    // Alleen een key zetten als er ook echt een waarde is: `= undefined`
+    // laat de key wél in het object staan, en drizzle's `.set()` gooit
+    // dan "No values to set".
+    const donorDesc = losers.find((e) => e.description)?.description;
+    if (!canonical.description && donorDesc) evPatch.description = donorDesc;
+    const donorImg = losers.find((e) => e.imageUrl)?.imageUrl;
+    if (!canonical.imageUrl && donorImg) evPatch.imageUrl = donorImg;
 
     const keepOcc = (occsOf.get(canonical.id) ?? [])[0];
     const donorOcc = losers.flatMap((e) => occsOf.get(e.id) ?? []);
@@ -116,13 +124,18 @@ for (const v of venues) {
     for (const l of losers) console.log(`        delete ${l.id}`);
 
     if (APPLY) {
-      if (Object.keys(evPatch).length) {
-        await db.update(schema.events).set(evPatch).where(eq(schema.events.id, canonical.id));
-      }
-      if (keepOcc && Object.keys(occPatch).length) {
-        await db.update(schema.occurrences).set(occPatch).where(eq(schema.occurrences.id, keepOcc.id));
-      }
-      await db.delete(schema.events).where(inArray(schema.events.id, losers.map((e) => e.id)));
+      // Eén transactie per cluster: als de backfill klapt mag de delete
+      // niet doorgaan (en omgekeerd), anders blijft er een halve merge
+      // staan waar geen dry-run meer bij past.
+      await db.transaction(async (tx) => {
+        if (Object.keys(evPatch).length) {
+          await tx.update(schema.events).set(evPatch).where(eq(schema.events.id, canonical.id));
+        }
+        if (keepOcc && Object.keys(occPatch).length) {
+          await tx.update(schema.occurrences).set(occPatch).where(eq(schema.occurrences.id, keepOcc.id));
+        }
+        await tx.delete(schema.events).where(inArray(schema.events.id, losers.map((e) => e.id)));
+      });
     }
     totalDeleted += losers.length;
   }

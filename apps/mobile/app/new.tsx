@@ -51,7 +51,10 @@ import {
   useToggleSave,
 } from '@/lib/queries';
 import type { BadgeTone } from '@/lib/types';
-import { useNewFilters } from '@/store/newFilters';
+import {
+  TASTE_NUDGE_THRESHOLD,
+  useNewFilters,
+} from '@/store/newFilters';
 import {
   useNewWindowStart,
   useSessionTimestamps,
@@ -96,6 +99,15 @@ export default function NewScreen() {
   // een persisted store, want dit is een voorkeur en geen sessie-filter.
   const activeLanes = useNewFilters((s) => s.activeLanes);
   const toggleLane = useNewFilters((s) => s.toggleLane);
+
+  // Eén keer, nadat je genoeg hebt beoordeeld om iets te verliezen te
+  // hebben: melden dat je smaak lokaal staat. Niet omdat we een account
+  // willen verkopen — omdat 't waar is, en dit het moment is waarop 't
+  // gaat knellen. Verdwijnt zodra je 'm wegtikt of een account maakt.
+  const ratedCount = useNewFilters((s) => s.ratedCount);
+  const nudgeDismissed = useNewFilters((s) => s.nudgeDismissed);
+  const showNudge =
+    !registered && !nudgeDismissed && ratedCount >= TASTE_NUDGE_THRESHOLD;
 
   // De server capt op 15 zodat de lijst áf te maken is. Wie meer wil
   // klapt uit; dat is een tweede request, geen client-side slice.
@@ -351,6 +363,46 @@ export default function NewScreen() {
                         )}
                 </Text>
               </View>
+              {showNudge && (
+                <View
+                  style={[
+                    styles.nudge,
+                    { borderColor: roles.fgPlaceholder },
+                  ]}
+                >
+                  <View style={styles.nudgeBody}>
+                    <Text style={[styles.nudgeText, { color: roles.fg }]}>
+                      {t(
+                        `Je hebt ${ratedCount} dingen beoordeeld. Dat profiel staat alleen op deze telefoon.`,
+                        `You’ve rated ${ratedCount} things. That profile lives only on this phone.`
+                      )}
+                    </Text>
+                    <Pressable
+                      onPress={() => {
+                        softTap();
+                        router.push('/jij' as never);
+                      }}
+                    >
+                      <Text
+                        style={[styles.nudgeLink, { color: roles.accent }]}
+                      >
+                        {t('Bewaar het →', 'Keep it safe →')}
+                      </Text>
+                    </Pressable>
+                  </View>
+                  <Pressable
+                    onPress={() => useNewFilters.getState().dismissNudge()}
+                    hitSlop={10}
+                    accessibilityLabel={t('Verberg', 'Dismiss')}
+                  >
+                    <Ionicons
+                      name="close"
+                      size={16}
+                      color={roles.fgPlaceholder}
+                    />
+                  </Pressable>
+                </View>
+              )}
               {laneCounts ? (
                 <ScrollView
                   horizontal
@@ -494,6 +546,7 @@ function NewArrivalRow({
     if (kind === 'ja') toggleSave.mutate({ occurrenceId: rateId, source: 'new' });
     else toggleDismiss.mutate({ occurrenceId: rateId, source: 'new' });
     onRated(event.id);
+    useNewFilters.getState().bumpRated();
   };
 
   const actions = rateId ? (
@@ -602,6 +655,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  nudge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginHorizontal: 22,
+    marginTop: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: 14,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  nudgeBody: { flex: 1, gap: 4 },
+  nudgeText: { fontFamily: fontFamily.body, fontSize: 13, lineHeight: 18 },
+  nudgeLink: { fontFamily: fontFamily.medium, fontSize: 13 },
   chipRow: {
     flexDirection: 'row',
     alignItems: 'center',

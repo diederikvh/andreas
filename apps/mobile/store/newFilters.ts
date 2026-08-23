@@ -17,7 +17,22 @@ type NewFiltersState = {
   activeLanes: Lane[];
   toggleLane: (lane: Lane) => void;
   reset: () => void;
+  /**
+   * Hoeveel je op dit toestel hebt beoordeeld. Bewust lokaal geteld en
+   * niet van de server: de melding die hierop hangt gaat er juist over
+   * dát dit alleen op deze telefoon staat.
+   */
+  ratedCount: number;
+  bumpRated: () => void;
+  /** Melding weggetikt? Dan komt 'ie niet meer terug. */
+  nudgeDismissed: boolean;
+  dismissNudge: () => void;
 };
+
+/** Vanaf hoeveel oordelen we één keer melden dat 't lokaal staat. Laag
+    genoeg om binnen een paar dagen te halen, hoog genoeg dat je al iets
+    te verliezen hebt. */
+export const TASTE_NUDGE_THRESHOLD = 20;
 
 export const useNewFilters = create<NewFiltersState>()(
   persist(
@@ -32,11 +47,15 @@ export const useNewFilters = create<NewFiltersState>()(
         });
       },
       reset: () => set({ activeLanes: [] }),
+      ratedCount: 0,
+      bumpRated: () => set({ ratedCount: get().ratedCount + 1 }),
+      nudgeDismissed: false,
+      dismissNudge: () => set({ nudgeDismissed: true }),
     }),
     {
       name: 'andreas:new-filters.v1',
       storage: createJSONStorage(() => AsyncStorage),
-      version: 1,
+      version: 2,
     }
   )
 );
