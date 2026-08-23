@@ -322,6 +322,31 @@ export async function scrapeTheater(options?: {
     const showUrls = Array.from(new Set(matching.map((e) => e.loc)));
     result.fetched = showUrls.length;
 
+    // Concertgebouw levert hier ~4460 URLs waarvan er per run maar ~400
+    // een toekomstige datum blijken te hebben; de rest halen we op en
+    // gooien we weg. Dat is de duurste post in deze scraper (~6 min) en
+    // het was de directe aanleiding voor de OOM op de 512mb VM.
+    //
+    // Geprobeerd op 2026-08-23: nieuwste-eerst crawlen op de numerieke
+    // id in de slug (die loopt op in de tijd) en stoppen zodra het droog
+    // wordt. Werkte qua winst — 4460 → 2000 URLs, 353s → 118s — maar
+    // NIET qua dekking. De toekomstige occurrences liggen zo:
+    //
+    //     positie    0- 399 : 311        positie 2000-2399 : 4
+    //     positie  400- 799 : 232        positie 2400-2799 : 6
+    //     positie  800-1199 :  12        positie 2800-3199 : 5
+    //     positie 1200-1599 :  11        positie 3200-3599 : 4
+    //     positie 1600-1999 :   9        positie 4000-4399 : 9
+    //
+    // 88% zit in de bovenste 800, maar de staart loopt dun dóór tot het
+    // einde: stoppen bij 2000 kostte ~32 komende concerten. En een
+    // ruimere marge helpt niet — die staart reset de dry-teller telkens,
+    // dus dan crawl je alsnog alles. Er is geen veilig stoppunt.
+    //
+    // Wat wél kan, als dit weer gaat knellen: de bovenste ~800 elke dag
+    // en de staart één vaste weekdag. Max 7 dagen vertraging op ~70
+    // occurrences, en 80% minder fetches per nacht.
+
     await runWithConcurrency(showUrls, SHOW_FETCH_CONCURRENCY, async (url) => {
       try {
         const html = await fetchHtml(url, !!cfg.useGooglebotUA);
