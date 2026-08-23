@@ -57,13 +57,28 @@ for (const v of venues) {
   for (const o of occ) occsOf.set(o.eventId, [...(occsOf.get(o.eventId) ?? []), o] as typeof occ);
   const firstStart = (id: string) =>
     (occsOf.get(id) ?? []).reduce<Date | null>((a, o) => (!a || o.startsAt < a ? o.startsAt : a), null);
+  /** Laatste moment waarop dit event nog relevant is. */
+  const lastEnd = (id: string) =>
+    (occsOf.get(id) ?? []).reduce<Date | null>(
+      (a, o) => { const t = o.endsAt ?? o.startsAt; return !a || t > a ? t : a; },
+      null
+    );
 
-  // Alleen komende events — verlopen dubbelen vervuilen de agenda niet.
-  const now = Date.now();
+  // Alleen events die nog in de agenda staan — verlopen dubbelen
+  // vervuilen niets.
+  //
+  // Filter op eindtijd, niet op starttijd: een all-day event dat om
+  // 09:00 begon en tot 23:00 loopt, is 's middags al "gestart" maar
+  // staat wél nog in de lijst. Op startsAt filteren liet GORDO [all day
+  // long] 3× staan. Zelfde cutoff als jsonld.ts: (endsAt ?? startsAt)
+  // met 6u marge, zodat een club-nacht tot 05:00 op z'n eigen avond
+  // meegaat.
+  const cutoff = Date.now() - 6 * 60 * 60 * 1000;
   const clusters = new Map<string, typeof evs>();
   for (const e of evs) {
     const s = firstStart(e.id);
-    if (!s || s.getTime() <= now) continue;
+    const end = lastEnd(e.id);
+    if (!s || !end || end.getTime() <= cutoff) continue;
     const k = `${e.title.trim().toLowerCase()}|${s.toISOString().slice(0, 10)}`;
     clusters.set(k, [...(clusters.get(k) ?? []), e] as typeof evs);
   }
@@ -108,7 +123,12 @@ for (const v of venues) {
     const donorOcc = losers.flatMap((e) => occsOf.get(e.id) ?? []);
     const occPatch: { ticketUrl?: string; priceCents?: number } = {};
     if (keepOcc && !keepOcc.ticketUrl) {
-      const t = donorOcc.find((o) => o.ticketUrl)?.ticketUrl;
+      // Echte ticketshop wint van een formulier-host: bij GORDO stond
+      // een sibforms-nieuwsbrief náást de weeztix-link, en "eerste
+      // donor met een URL" koos de nieuwsbrief.
+      const t =
+        donorOcc.find((o) => o.ticketUrl && !o.ticketUrl.includes('sibforms.com'))?.ticketUrl ??
+        donorOcc.find((o) => o.ticketUrl)?.ticketUrl;
       if (t) occPatch.ticketUrl = t;
     }
     if (keepOcc && keepOcc.priceCents == null) {

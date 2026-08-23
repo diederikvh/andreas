@@ -437,11 +437,21 @@ function buildAgendaWhere(opts: {
     conditions.push(inArray(schema.events.category, opts.filters.categories));
   }
   if (opts.filters.venueTypes.length > 0) {
+    // Filteren op de venue die de rij ook tóónt, niet op de venue van
+    // het event. Die twee lopen uiteen bij films: `events.venueId` is
+    // "wie scrapete dit het eerst" en dat is soms Melkweg of Paradiso,
+    // terwijl de voorstellingen in bioscopen draaien. Filterde je op
+    // Podium, dan kreeg je 67 van die filmrijen mee — en omdat films
+    // 's ochtends beginnen stonden ze bovenaan, dus het leek alsof
+    // Podium alleen maar bioscopen opleverde.
     conditions.push(
-      sql`${schema.venues.type} IN (${sql.join(
-        opts.filters.venueTypes.map((v) => sql`${v}`),
-        sql`, `
-      )})`
+      sql`COALESCE(
+            (SELECT ov.type FROM venues ov WHERE ov.id = ${schema.occurrences.venueId}),
+            ${schema.venues.type}
+          ) IN (${sql.join(
+            opts.filters.venueTypes.map((v) => sql`${v}`),
+            sql`, `
+          )})`
     );
   }
   if (opts.filters.blocks.length > 0) {
@@ -466,7 +476,13 @@ function buildAgendaWhere(opts: {
     const needle = `%${opts.filters.q}%`;
     const combined = or(
       ilike(schema.events.title, needle),
-      ilike(schema.venues.name, needle),
+      // Zelfde reden als bij het type-filter: zoeken op "Kriterion"
+      // moet de film vinden die dáár draait, ook als het event onder
+      // een ander huis is binnengekomen.
+      sql`COALESCE(
+            (SELECT ov.name FROM venues ov WHERE ov.id = ${schema.occurrences.venueId}),
+            ${schema.venues.name}
+          ) ILIKE ${needle}`,
       ilike(schema.events.description, needle),
       sql`EXISTS(SELECT 1 FROM unnest(${schema.events.genres}) g WHERE g ILIKE ${needle})`
     );

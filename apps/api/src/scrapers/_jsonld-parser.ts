@@ -99,9 +99,24 @@ function pickImage(value: unknown): string | null {
   return null;
 }
 
+/** Hosts die als `offer.url` opduiken maar geen ticket verkopen —
+    Lofi zet z'n Brevo-nieuwsbriefformulier als offer naast de echte
+    weeztix-link. Eerste-offer-wint gaf dan een "koop tickets" die naar
+    een mailinglijst leidt. */
+const NON_TICKET_HOSTS = ['sibforms.com'];
+
+const isRealTicketUrl = (u: string) =>
+  !NON_TICKET_HOSTS.some((h) => u.includes(h));
+
 function pickTicketUrl(offers: unknown, fallback: string | null): string | null {
   if (!offers) return fallback;
   if (Array.isArray(offers)) {
+    // Twee passes: een echte ticketshop wint altijd van een formulier-
+    // host, ongeacht de volgorde in de feed.
+    for (const o of offers) {
+      const u = pickTicketUrl(o, null);
+      if (u && isRealTicketUrl(u)) return u;
+    }
     for (const o of offers) {
       const u = pickTicketUrl(o, null);
       if (u) return u;

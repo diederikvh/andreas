@@ -378,10 +378,18 @@ export default function Avond() {
         return false;
       }
       if (activeTypes.length > 0) {
-        // Venue zonder type valt buiten de filter — bewust strict
-        // zodat "alleen clubs" niet ineens venues zonder type mee­
-        // sleurt.
-        if (!e.venue.type || !activeTypes.includes(e.venue.type)) {
+        // Op de venue die de kaart óók toont, niet op die van het event.
+        // Bij films lopen die uiteen: `event.venue` is "wie scrapete dit
+        // het eerst" (soms Melkweg of Paradiso) terwijl de voorstelling
+        // in een bioscoop draait. Filteren op de event-venue leverde dan
+        // bioscoop-rijen op onder "Podium".
+        //
+        // Venue zonder type valt buiten de filter — bewust strict zodat
+        // "alleen clubs" niet ineens venues zonder type meesleurt.
+        const shownType = (e.nextOccurrenceVenue?.type ?? e.venue.type) as
+          | VenueType
+          | null;
+        if (!shownType || !activeTypes.includes(shownType)) {
           return false;
         }
       }
