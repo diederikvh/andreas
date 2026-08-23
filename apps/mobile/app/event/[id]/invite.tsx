@@ -218,28 +218,26 @@ export default function InviteModal() {
           },
         ]}
       >
-        {Platform.OS === 'ios' && (
-          // iOS pageSheet: drag-handle als affordance, swipe-down dismist
-          // native. De knop hieronder staat er sinds de account-muur ook
-          // op iOS bij — wie hier belandt zonder account krijgt een
-          // scherm zonder verdere actie, en dan is "veeg maar naar
-          // beneden" te veel gevraagd.
+        {Platform.OS === 'ios' ? (
+          // iOS pageSheet: enkel een visuele drag-handle bovenaan;
+          // swipe-down dismist sheet native.
           <View style={styles.dragHandleRow}>
             <View
               style={[styles.dragHandle, { backgroundColor: roles.bgChip }]}
             />
           </View>
+        ) : (
+          <Pressable
+            onPress={() => safeBack()}
+            hitSlop={8}
+            style={[
+              styles.closeBtn,
+              { backgroundColor: isNacht ? palette.noir2 : palette.paper2 },
+            ]}
+          >
+            <Cross size={14} thickness={2.6} color={roles.fg} />
+          </Pressable>
         )}
-        <Pressable
-          onPress={() => safeBack()}
-          hitSlop={8}
-          style={[
-            styles.closeBtn,
-            { backgroundColor: isNacht ? palette.noir2 : palette.paper2 },
-          ]}
-        >
-          <Cross size={14} thickness={2.6} color={roles.fg} />
-        </Pressable>
       </View>
 
       {!registered ? (
@@ -710,7 +708,6 @@ const styles = StyleSheet.create({
   topBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'flex-end',
     paddingHorizontal: 18,
     paddingBottom: 10,
     gap: 8,
@@ -730,12 +727,8 @@ const styles = StyleSheet.create({
     letterSpacing: -0.21,
     textAlign: 'center',
   },
-  // Absoluut, zodat de handle echt in het midden van de balk hangt en
-  // niet in de ruimte die overblijft naast de sluit-knop.
   dragHandleRow: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },
