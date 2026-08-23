@@ -9,7 +9,7 @@
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Pressable,
   RefreshControl,
@@ -23,6 +23,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQueryClient } from '@tanstack/react-query';
 
 import { AppHeader, HEADER_HEIGHT } from '@/components/AppHeader';
+import { SwipeableRow } from '@/components/SwipeableRow';
 import { FilterChip } from '@/components/FilterChip';
 import { EventListRow } from '@/components/EventListRow';
 import { RefreshBanner } from '@/components/RefreshBanner';
@@ -172,6 +173,55 @@ export default function NewScreen() {
     setRated((prev) => new Set(prev).add(eventId));
   }, []);
 
+  // Laatste oordeel, voor ongedaan maken. Vegen mist vaker dan tikken —
+  // je haalt 'm net te ver door terwijl je wilde scrollen — en een nee
+  // haalt het event permanent uit de lijst. Zonder uitweg is dat te
+  // definitief voor een gebaar dat je per ongeluk maakt.
+  const [lastRated, setLastRated] = useState<{
+    eventId: string;
+    occurrenceId: string;
+    kind: 'ja' | 'nee';
+    title: string;
+  } | null>(null);
+  const undoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const rememberForUndo = useCallback(
+    (entry: NonNullable<typeof lastRated>) => {
+      setLastRated(entry);
+      if (undoTimer.current) clearTimeout(undoTimer.current);
+      undoTimer.current = setTimeout(() => setLastRated(null), 6000);
+    },
+    []
+  );
+  useEffect(
+    () => () => {
+      if (undoTimer.current) clearTimeout(undoTimer.current);
+    },
+    []
+  );
+
+  const toggleSaveMut = useToggleSave();
+  const toggleDismissMut = useToggleDismiss();
+  const undoLast = useCallback(() => {
+    if (!lastRated) return;
+    softTap();
+    // Beide mutaties zijn togglers, dus nog een keer aanroepen draait 'm
+    // terug. De rij komt vanzelf weer boven water zodra 'ie uit `rated`
+    // is en de volgende fetch 'm niet meer wegfiltert.
+    if (lastRated.kind === 'ja')
+      toggleSaveMut.mutate({ occurrenceId: lastRated.occurrenceId, source: 'new' });
+    else
+      toggleDismissMut.mutate({
+        occurrenceId: lastRated.occurrenceId,
+        source: 'new',
+      });
+    setRated((prev) => {
+      const next = new Set(prev);
+      next.delete(lastRated.eventId);
+      return next;
+    });
+    setLastRated(null);
+  }, [lastRated, toggleSaveMut, toggleDismissMut]);
+
   // `total` telt vóór de cap: 15 in beeld, 47 achter de meer-knop. Min
   // wat je deze sessie al hebt weggetikt — de server weet daar pas van
   // bij de volgende fetch, en tot die tijd zou de teller stil blijven
@@ -313,7 +363,11 @@ export default function NewScreen() {
           sections={sections}
           keyExtractor={(e) => e.id}
           renderItem={({ item }) => (
-            <NewArrivalRow event={item} onRated={markRated} />
+            <NewArrivalRow
+              event={item}
+              onRated={markRated}
+              onRemember={rememberForUndo}
+            />
           )}
           renderSectionHeader={({ section }) =>
             showSectionHeaders && section.lane !== 'onbekend' ? (
@@ -466,6 +520,33 @@ export default function NewScreen() {
         hideAvatar
         rightSlot={closeBtn}
       />
+
+      {lastRated && (
+        <View
+          style={[
+            styles.undoBar,
+            {
+              bottom: insets.bottom + 24,
+              backgroundColor: isNacht ? palette.noir2 : palette.paper2,
+              borderColor: roles.bgChip,
+            },
+          ]}
+        >
+          <Text
+            numberOfLines={1}
+            style={[styles.undoText, { color: roles.fgMuted }]}
+          >
+            {lastRated.kind === 'ja'
+              ? t(`Bewaard: ${lastRated.title}`, `Saved: ${lastRated.title}`)
+              : t(`Weg: ${lastRated.title}`, `Dismissed: ${lastRated.title}`)}
+          </Text>
+          <Pressable onPress={undoLast} hitSlop={8}>
+            <Text style={[styles.undoAction, { color: roles.accent }]}>
+              {t('Ongedaan', 'Undo')}
+            </Text>
+          </Pressable>
+        </View>
+      )}
     </View>
   );
 }
@@ -498,9 +579,16 @@ function formatSinceLabel(date: Date, locale: ReturnType<typeof useLocale>): str
 function NewArrivalRow({
   event,
   onRated,
+  onRemember,
 }: {
   event: ApiEvent;
   onRated: (eventId: string) => void;
+  onRemember: (entry: {
+    eventId: string;
+    occurrenceId: string;
+    kind: 'ja' | 'nee';
+    title: string;
+  }) => void;
 }) {
   const locale = useLocale();
   const t = useT();
@@ -546,6 +634,12 @@ function NewArrivalRow({
     if (kind === 'ja') toggleSave.mutate({ occurrenceId: rateId, source: 'new' });
     else toggleDismiss.mutate({ occurrenceId: rateId, source: 'new' });
     onRated(event.id);
+    onRemember({
+      eventId: event.id,
+      occurrenceId: rateId,
+      kind,
+      title: event.title,
+    });
     useNewFilters.getState().bumpRated();
   };
 
@@ -571,6 +665,11 @@ function NewArrivalRow({
   ) : null;
 
   return (
+    <SwipeableRow
+      enabled={Boolean(rateId)}
+      onSwipeRight={() => rate('ja')}
+      onSwipeLeft={() => rate('nee')}
+    >
     <EventListRow
       actions={actions}
       thumb={eventImageUrl(event) ?? ''}
@@ -588,6 +687,7 @@ function NewArrivalRow({
         router.push(`/event/${event.id}?source=new` as never)
       }
     />
+    </SwipeableRow>
   );
 }
 
@@ -655,6 +755,23 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  // Zweeft boven de lijst, net boven de home-indicator. Zes seconden
+  // zichtbaar — lang genoeg om 'm te zien na een misveeg, kort genoeg
+  // dat 'ie niet in de weg blijft hangen.
+  undoBar: {
+    position: 'absolute',
+    left: 22,
+    right: 22,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    height: 48,
+    paddingHorizontal: 18,
+    borderRadius: 999,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  undoText: { flex: 1, fontFamily: fontFamily.body, fontSize: 13 },
+  undoAction: { fontFamily: fontFamily.displayBold, fontSize: 14 },
   nudge: {
     flexDirection: 'row',
     alignItems: 'center',
