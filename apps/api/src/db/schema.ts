@@ -377,24 +377,6 @@ export const venues = pgTable('venues', {
           staart nooit gecrawld worden. */
       headUrls?: number;
       tailWeekday?: number;
-      /** Alternatieve bron voor de show-URL-lijst: een Craft/Elasticsearch
-          GraphQL-endpoint dat alléén komende voorstellingen teruggeeft.
-          Vervangt de sitemap als deze gezet is; de pagina's worden daarna
-          net zo geparsed (JSON-LD voor tijden, description en beeld).
-
-          Concertgebouws sitemap somt élk concert ooit op: 4460 URLs voor
-          ~740 komende voorstellingen, inclusief alias-pagina's die de
-          JSON-LD van een ánder concert tonen en dode entries die 404'en.
-          Hun eigen agenda gebruikt deze API en levert 743 hits met
-          canonieke `url` en `eventDate` in één request — 437 unieke titels
-          op 743 datums, precies ons event/occurrence-model.
-
-          `token` is het publieke token uit hun agenda-pagina
-          (`elasticsearchGraphqlPublicToken`), dezelfde sleutel die de site
-          zelf in de browser meestuurt. Introspectie staat uit, dus het
-          schema is afgekeken van de agenda-requests: `elasticSearch(site,
-          section:"event", eventEndDateRange, orderBy)` met `hits{url}`. */
-      apiEventList?: { url: string; token: string; site: string };
     };
   }>(),
   /** Admin-toggle: false = verbergen uit publieke endpoints zonder

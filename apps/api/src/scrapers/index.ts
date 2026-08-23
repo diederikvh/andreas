@@ -84,6 +84,7 @@ import { scrapeShelter, type ShelterResult } from './shelter.js';
 import { scrapeSieraad, type SieraadResult } from './sieraad.js';
 import { scrapeStager, type StagerVenueResult } from './stager.js';
 import { scrapeSupper, type SupperResult } from './supper.js';
+import { scrapeConcertgebouw } from './concertgebouw.js';
 import { scrapeTheater, type TheaterVenueResult } from './theater.js';
 import { scrapeTicketmaster, type TicketmasterVenueResult } from './ticketmaster.js';
 import { scrapeVolkshotel, type VolkshotelVenueResult } from './volkshotel.js';
@@ -111,6 +112,7 @@ export const scrapers = {
   concertgemaal: scrapeConcertgemaal,
   ticketmaster: scrapeTicketmaster,
   theater: scrapeTheater,
+  concertgebouw: scrapeConcertgebouw,
   boomchicago: scrapeBoomChicago,
   bimhuis: scrapeBimhuis,
   ita: scrapeIta,
