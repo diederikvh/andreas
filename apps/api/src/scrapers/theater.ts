@@ -318,7 +318,55 @@ export async function scrapeTheater(options?: {
     // staan — zie de prune onderaan.
     const seenOcc = new Map<string, Set<string>>();
 
-    const allEntries = await fetchSitemap(cfg.sitemapUrl);
+    // Show-URLs: uit de API als die geconfigureerd is, anders de sitemap.
+    // De API geeft alleen komende voorstellingen met een canonieke url,
+    // wat bij Concertgebouw 4460 fetches terugbrengt naar ~740 én de
+    // alias- en 404-pagina's uit de lijst houdt.
+    let apiUrls: string[] | null = null;
+    if (cfg.apiEventList) {
+      const { url, token, site } = cfg.apiEventList;
+      const query =
+        'query($site:[String],$d:[String]){ elasticSearch(site:$site, section:"event", ' +
+        'eventEndDateRange:$d, orderBy:"eventDate ASC"){ count hits(limit:1024){ url } } }';
+      try {
+        const r = await fetch(url, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+          body: JSON.stringify({
+            query,
+            variables: { site, d: `gte ${new Date().toISOString()}` },
+          }),
+          signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+        });
+        const j = (await r.json()) as {
+          data?: { elasticSearch?: { count?: number; hits?: { url?: string }[] } };
+          errors?: unknown;
+        };
+        const urls = (j.data?.elasticSearch?.hits ?? [])
+          .map((h) => h.url)
+          .filter((u): u is string => !!u);
+        if (!urls.length) {
+          result.errors.push(
+            `apiEventList leeg${j.errors ? `: ${JSON.stringify(j.errors).slice(0, 160)}` : ''}`
+          );
+        } else {
+          apiUrls = [...new Set(urls)];
+          const total = j.data?.elasticSearch?.count ?? urls.length;
+          // hits(limit:1024) is een harde cap — niet stil afkappen.
+          if (total > urls.length) {
+            result.errors.push(`apiEventList: ${urls.length} van ${total} hits (limit bereikt)`);
+          }
+          console.log(`[theater] ${venue.id}: ${apiUrls.length} komende shows via apiEventList`);
+        }
+      } catch (e) {
+        result.errors.push(`apiEventList: ${(e as Error).message}`);
+      }
+      // Faalt de API, dan valt 'ie hieronder terug op de sitemap.
+    }
+
+    const allEntries = apiUrls
+      ? apiUrls.map((loc) => ({ loc, lastmod: null }))
+      : await fetchSitemap(cfg.sitemapUrl);
     const urlCutoff = Date.now() - SITEMAP_STALE_MS;
     const matching = allEntries.filter((e) => {
       if (!showRe.test(e.loc)) return false;
