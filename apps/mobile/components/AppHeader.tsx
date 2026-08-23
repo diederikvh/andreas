@@ -11,6 +11,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Cross } from '@/components/Cross';
 import { ProfileAvatar } from '@/components/ProfileAvatar';
 import { tinyTap } from '@/lib/haptics';
+import { useIsRegistered } from '@/lib/authClient';
 import { useMe } from '@/lib/queries';
 import { useMode, useRoles } from '@/store/mode';
 import { fontFamily, palette } from '@/theme/tokens';
@@ -202,6 +203,7 @@ function AvatarButton() {
   const roles = useRoles();
   const isNacht = mode === 'nacht';
   const { data: me } = useMe();
+  const registered = useIsRegistered();
 
   const onPress = () => {
     tinyTap();
@@ -211,7 +213,12 @@ function AvatarButton() {
   // Niet-ingelogd: een rustige stip (4px) — minimale hint dat hier
   // 'iets met jou' zit, zonder de visuele zwaarte van een
   // avatar-bolletje. Pas na log-in wordt 't een echte avatar.
-  if (!me) {
+  //
+  // Anoniem valt hier ook onder. De plugin geeft zulke users de naam
+  // "Anonymous", en daar een 'A' van maken suggereert een persoon die
+  // er niet is. De knop zélf blijft staan: /jij is de enige route naar
+  // je instellingen, en die heb je anoniem net zo goed nodig.
+  if (!me || !registered) {
     return (
       <Pressable
         accessibilityRole="button"

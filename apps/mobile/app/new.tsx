@@ -42,7 +42,6 @@ import { softTap } from '@/lib/haptics';
 import { useLocale, useT } from '@/lib/i18n';
 import {
   useNewArrivalsSince,
-  useRecentEvents,
   useToggleDismiss,
   useToggleSave,
 } from '@/lib/queries';
@@ -105,22 +104,40 @@ export default function NewScreen() {
     limit: expanded ? 200 : undefined,
   });
 
-  // Fallback: wanneer er sinds de vorige sessie 0 nieuwe items zijn (of
-  // wanneer er nog geen since is) draaien we 'n tweede query voor de
-  // laatste 10 recente events zodat de pagina nooit kaal blijft.
-  // Niet wanneer je zelf banen hebt weggeklikt — dan is "leeg" een
-  // antwoord op je filter, geen gebrek aan aanbod, en zou de fallback
-  // juist tonen wat je net wegfilterde.
+  // Fallback: geen sessiegrens (eerste keer) of niks nieuws sinds je
+  // vorige bezoek. Dan tonen we wat er vandáág is bijgekomen — een
+  // concreet venster in plaats van "de laatste tien, wanneer dan ook".
+  // Dat laatste toonde items van drie weken terug alsof ze nieuw waren.
+  //
+  // Niet wanneer je zelf banen hebt weggeklikt: dan is "leeg" een
+  // antwoord op je filter en zou de fallback tonen wat je net
+  // wegfilterde.
   const sinceEmpty =
     !since ||
     (arrivals !== undefined &&
       arrivals.total === 0 &&
       activeLanes.length === 0);
+  // Middernacht, niet de logische dag-grens van 06:00. Die 06:00-regel
+  // gaat over wannéér een event begint (een clubnacht om 02:00 hoort bij
+  // de avond ervoor) — niet over wanneer een record is aangemaakt. De
+  // scrape-cron draait om 02:00, dus met een 06:00-grens zou alles wat
+  // vannacht binnenkwam onder "gisteren" vallen en stond hier 's ochtends
+  // structureel nul.
+  const todayStart = useMemo(() => {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    return d;
+  }, []);
   const {
-    data: recent,
+    data: today,
     isLoading: loadingRecent,
     error: errorRecent,
-  } = useRecentEvents(10, { enabled: authed && sinceEmpty });
+  } = useNewArrivalsSince(todayStart, {
+    enabled: authed && sinceEmpty,
+    lanes: activeLanes,
+    limit: expanded ? 200 : undefined,
+  });
+  const recent = today?.events;
 
   const rawEvents =
     arrivals && arrivals.events.length > 0 ? arrivals.events : recent;
@@ -137,9 +154,11 @@ export default function NewScreen() {
   // wat je deze sessie al hebt weggetikt — de server weet daar pas van
   // bij de volgende fetch, en tot die tijd zou de teller stil blijven
   // staan terwijl de lijst onder je handen korter wordt.
-  const total = Math.max(0, (arrivals?.total ?? recent?.length ?? 0) - rated.size);
-  const shown = (arrivals?.events.length ?? recent?.length ?? 0) - rated.size;
-  const laneCounts = arrivals?.laneCounts;
+  // In de fallback is `today` de bron van waarheid, niet `arrivals`.
+  const active = arrivals && arrivals.events.length > 0 ? arrivals : today;
+  const total = Math.max(0, (active?.total ?? 0) - rated.size);
+  const shown = (active?.events.length ?? 0) - rated.size;
+  const laneCounts = active?.laneCounts;
   // Server geeft de lijst in createdAt-desc volgorde (meest recent
   // gescraped eerst). Visueel is dat verwarrend: gebruiker ziet de
   // event-datum naast elke kaart en die springt dan random rond. Hier
@@ -186,8 +205,9 @@ export default function NewScreen() {
     return out;
   }, [events]);
   const showSectionHeaders = sections.some((s) => s.lane !== 'onbekend');
-  const showingFallback =
-    sinceEmpty && (recent?.length ?? 0) > 0;
+  // Toont de lijst het "vandaag"-venster in plaats van "sinds je vorige
+  // bezoek"? Bepaalt de kop.
+  const showingFallback = sinceEmpty;
   const isLoading = (since && loadingSince) || (sinceEmpty && loadingRecent);
   const error = errorSince ?? errorRecent;
 
@@ -242,17 +262,17 @@ export default function NewScreen() {
         >
           <Ionicons name="flash-outline" size={48} color={roles.fgMuted} />
           <Text style={[styles.emptyTitle, { color: roles.fg }]}>
-            {t('Nog niks toegevoegd', 'Nothing added yet')}
+            {t('Je bent bij', 'You’re up to date')}
           </Text>
           <Text style={[styles.emptySub, { color: roles.fgMuted }]}>
-            {sinceLabel
+            {activeLanes.length > 0
               ? t(
-                  `Sinds ${sinceLabel} is er niks binnengekomen. Zodra de scrapers iets oppakken verschijnt 't hier.`,
-                  `Nothing has come in since ${sinceLabel}. As soon as scrapers pick something up it'll appear here.`
+                  'Niks nieuws in de banen die je hebt aangezet. Zet er eentje bij om breder te kijken.',
+                  'Nothing new in the lanes you picked. Turn one on to look wider.'
                 )
               : t(
-                  'Zodra er events worden binnengehaald verschijnen ze hier.',
-                  'Items will appear here as soon as events come in.'
+                  'Vandaag is er nog niks bijgekomen. Zodra de venues hun programma bijwerken staat het hier.',
+                  'Nothing added today yet. As soon as venues update their programme it shows up here.'
                 )}
           </Text>
         </View>
@@ -292,22 +312,33 @@ export default function NewScreen() {
             <View>
               <View style={styles.fallbackHint}>
                 <Text style={[styles.fallbackText, { color: roles.fg }]}>
-                  {sinceLabel
-                    ? showingFallback || !events || events.length === 0
+                  {showingFallback
+                    ? // Geen sessiegrens, of je bent bij. Dan is "vandaag"
+                      // het venster — geen datum uit het verleden noemen
+                      // die niks meer betekent.
+                      total === 0
                       ? t(
-                          `Niks nieuws sinds ${sinceLabel} — hier zie je de laatste ${events?.length ?? 0} aanwinsten.`,
-                          `Nothing new since ${sinceLabel} — here are the latest ${events?.length ?? 0} additions.`
+                          'Je bent bij. Vandaag is er nog niks bijgekomen.',
+                          'You’re up to date. Nothing added today yet.'
                         )
                       : shown < total
                         ? t(
-                            `${shown} van ${total} sinds je vorige bezoek (${sinceLabel}).`,
-                            `${shown} of ${total} since your last visit (${sinceLabel}).`
+                            `${shown} van ${total} vandaag toegevoegd.`,
+                            `${shown} of ${total} added today.`
                           )
                         : t(
-                            `${total} ${total === 1 ? 'aanwinst' : 'aanwinsten'} sinds je vorige bezoek (${sinceLabel}).`,
-                            `${total} ${total === 1 ? 'new addition' : 'new additions'} since your last visit (${sinceLabel}).`
+                            `${total} vandaag toegevoegd.`,
+                            `${total} added today.`
                           )
-                    : null}
+                    : shown < total
+                      ? t(
+                          `${shown} van ${total} sinds je vorige bezoek (${sinceLabel}).`,
+                          `${shown} of ${total} since your last visit (${sinceLabel}).`
+                        )
+                      : t(
+                          `${total} ${total === 1 ? 'aanwinst' : 'aanwinsten'} sinds je vorige bezoek (${sinceLabel}).`,
+                          `${total} ${total === 1 ? 'new addition' : 'new additions'} since your last visit (${sinceLabel}).`
+                        )}
                 </Text>
               </View>
               {laneCounts ? (

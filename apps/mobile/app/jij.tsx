@@ -244,6 +244,20 @@ export default function Jij() {
     setStageOverride(null);
   };
 
+  /**
+   * Inloggen afbreken. Je houdt je anonieme identiteit, dus alles wat je
+   * al bewaard hebt blijft staan — er valt niks te verliezen door hier
+   * weg te lopen. Kwam je via de avatar, dan ga je gewoon terug; kwam je
+   * hier direct binnen (deeplink), dan naar Vandaag.
+   */
+  const onCancelSignIn = () => {
+    setError(null);
+    setCode('');
+    setStageOverride(null);
+    if (router.canGoBack()) router.back();
+    else router.replace('/avond' as never);
+  };
+
   const [avatarUploading, setAvatarUploading] = useState(false);
   const onPickAvatar = async () => {
     if (avatarUploading) return;
@@ -337,8 +351,8 @@ export default function Jij() {
           {stage === 'phone' && (
             <Text style={[styles.lead, { color: roles.fgRead }]}>
               {t(
-                'Met een account heb je je eigen Andreas. Je bewaart je planning, voegt vrienden toe om samen op pad te gaan en volgt de venues die je niet wilt missen.',
-                'With an account you get your own Andreas. Save your plans, add friends to head out together, and follow the venues you don’t want to miss.'
+                'Ga samen op pad. Zie waar je vrienden heen gaan, nodig ze uit voor wat jij gevonden hebt, en neem je smaak mee als je van telefoon wisselt.',
+                'Head out together. See where your friends are going, invite them to what you found, and take your taste with you when you switch phones.'
               )}
             </Text>
           )}
@@ -442,9 +456,11 @@ export default function Jij() {
             </Text>
           </Pressable>
         </ScrollView>
-        {/* Geen close-btn in phone/code: zonder sessie is er geen plek
-            om naar 'terug' te gaan — sluit zou je naar /avond als anonymous
-            zetten. Re-login is de enige zinvolle exit. */}
+        {/* Sinds anoniem-eerst is stoppen wél een geldige uitkomst: je
+            houdt gewoon je anonieme identiteit en alles blijft werken.
+            Eerder was er zonder sessie nergens om heen te gaan, en toen
+            was afsluiten dus geen optie. */}
+        <ModalCloseBtn onPress={onCancelSignIn} fullScreen />
       </KeyboardAvoidingView>
     );
   }
@@ -863,12 +879,23 @@ function authFieldStyle(isNacht: boolean) {
  * rechtsboven; iOS-modals zitten al onder de status-bar (top: 12),
  * Android-modals moeten safe-area aanhouden (top: insets.top + 12).
  */
-function ModalCloseBtn({ onPress }: { onPress?: () => void }) {
+function ModalCloseBtn({
+  onPress,
+  fullScreen = false,
+}: {
+  onPress?: () => void;
+  /** Staat deze knop op een vol scherm in plaats van in een pageSheet?
+      Een pageSheet begint al ónder de statusbalk, een gepusht scherm
+      niet — daar moet de inset er wél bij, anders valt de knop achter
+      de klok. */
+  fullScreen?: boolean;
+}) {
   const mode = useMode();
   const roles = useRoles();
   const insets = useSafeAreaInsets();
   const isNacht = mode === 'nacht';
-  const top = (Platform.OS === 'android' ? insets.top : 0) + 12;
+  const top =
+    (fullScreen || Platform.OS === 'android' ? insets.top : 0) + 12;
   return (
     <Pressable
       accessibilityRole="button"
