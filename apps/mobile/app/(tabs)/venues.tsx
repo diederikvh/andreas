@@ -332,7 +332,25 @@ export default function Venues() {
           )
         }
       />
-      <AppHeader title={tx('Venues', 'Venues')}>
+      {/* Venues zit in de tabs-groep maar staat niet meer in de bar; je
+          komt er via Meer. Zonder sluit-knop is er dan geen weg terug
+          behalve een andere tab kiezen — dus dezelfde knop als /films,
+          /clubs en /theater, die precies zo onder Meer hangen. */}
+      <AppHeader
+        title={tx('Venues', 'Venues')}
+        rightSlot={
+          <Pressable
+            onPress={() => router.back()}
+            hitSlop={8}
+            style={[
+              styles.closeBtn,
+              { backgroundColor: isNacht ? palette.noir2 : palette.paper2 },
+            ]}
+          >
+            <Ionicons name="close" size={20} color={roles.fg} />
+          </Pressable>
+        }
+      >
         <ChipRow
           query={q}
           onQuery={setQ}
@@ -1287,6 +1305,13 @@ function toneText(hex: string, mode: 'nacht' | 'dag'): string {
 }
 
 const styles = StyleSheet.create({
+  closeBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   root: { flex: 1 },
 
 

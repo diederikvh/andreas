@@ -21,8 +21,14 @@ import {
 } from '@/components/icons/TabIcons';
 import { useSession } from '@/lib/authClient';
 import { tinyTap } from '@/lib/haptics';
-import { useFriendRequests, useInvitations } from '@/lib/queries';
+import {
+  useFriendRequests,
+  useInvitations,
+  useNewArrivalsSince,
+} from '@/lib/queries';
 import { useMode, useRoles } from '@/store/mode';
+import { useNewFilters } from '@/store/newFilters';
+import { useNewBadgeSince } from '@/store/sessionTimestamps';
 import { fontFamily, palette } from '@/theme/tokens';
 
 type IconCmp = ComponentType<{ color: string }>;
@@ -59,6 +65,15 @@ export function TabBar({ state, navigation }: BottomTabBarProps) {
   const isAuthed = Boolean(session?.user?.id);
   const { data: requests } = useFriendRequests({ enabled: isAuthed });
   const { data: invitations } = useInvitations({ enabled: isAuthed });
+  // Meer-badge: hoeveel staat er klaar om te beoordelen op /new, ná je
+  // baan-voorkeur. Zelfde bron als de teller op het scherm zelf.
+  const newSince = useNewBadgeSince();
+  const activeLanes = useNewFilters((s) => s.activeLanes);
+  const { data: arrivals } = useNewArrivalsSince(newSince, {
+    enabled: isAuthed,
+    lanes: activeLanes,
+  });
+  const newBadge = arrivals?.total ?? 0;
   // Tel alleen invitations waar ik écht moet beslissen: ingekomen
   // (niet door mij verstuurd) én nog pending. Een eigen verstuurde
   // pending invite (uitstaand bij iemand anders) telt niet als notif
@@ -210,9 +225,16 @@ export function TabBar({ state, navigation }: BottomTabBarProps) {
           }
         };
         // Geen badge op de actieve tab — je bent er al, count is dubbelop.
+        // Meer draagt de teller van /new: die zat eerder op een banner op
+        // de homepage, en die banners zijn weg. Zonder dit zie je nergens
+        // meer dát er iets te beoordelen is, en dat is precies waar de
+        // dagelijkse lus op draait.
+        const count = route.name === 'social' ? socialBadge : newBadge;
         const showBadge =
-          route.name === 'social' && socialBadge > 0 && !focused;
-        const badgeLabel = socialBadge > 9 ? '9+' : String(socialBadge);
+          (route.name === 'social' || route.name === 'meer') &&
+          count > 0 &&
+          !focused;
+        const badgeLabel = count > 9 ? '9+' : String(count);
         return (
           <Pressable
             key={route.key}
@@ -284,8 +306,11 @@ const styles = StyleSheet.create({
   },
   badge: {
     position: 'absolute',
-    top: -6,
-    right: -10,
+    // Vrij van het icoon geplaatst. Was -6/-10, wat prima werkte op de
+    // smalle ring van Social maar op het bredere Meer-icoon (drie
+    // stippen) bovenop de rechter stip landde.
+    top: -8,
+    right: -13,
     minWidth: 20,
     height: 20,
     paddingHorizontal: 5,
