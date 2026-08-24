@@ -233,7 +233,12 @@ export default function NewScreen() {
   // bij de volgende fetch, en tot die tijd zou de teller stil blijven
   // staan terwijl de lijst onder je handen korter wordt.
   // In de fallback is `today` de bron van waarheid, niet `arrivals`.
-  const active = arrivals && arrivals.events.length > 0 ? arrivals : today;
+  // `?? arrivals` want de fallback staat uit zodra je zelf banen hebt
+  // aangezet. Zonder dat vangnet was `active` undefined bij een lege
+  // baan en verdwenen de chips — precies wanneer je ze nodig hebt om
+  // een andere baan aan te zetten.
+  const active =
+    arrivals && arrivals.events.length > 0 ? arrivals : (today ?? arrivals);
   const total = Math.max(0, (active?.total ?? 0) - rated.size);
   const shown = (active?.events.length ?? 0) - rated.size;
   const laneCounts = active?.laneCounts;
@@ -335,32 +340,57 @@ export default function NewScreen() {
   const isEmpty =
     !isLoading && !error && (events?.length ?? 0) === 0;
 
+  // Staat zowel in de lijst-header als op het lege scherm. Daar is 'ie
+  // het hele punt: "zet er eentje bij om breder te kijken" is een
+  // doodlopende tekst als de knoppen om dat te doen weg zijn.
+  //
+  // Alle vijf banen, ook die op nul staan. Eerder verborgen we lege
+  // banen om de rij kort te houden, maar dan verdwijnt de uitweg
+  // precies wanneer je 'm zoekt: filter op theater, niks nieuws, en de
+  // andere labels zijn weg. Een nul is trouwens ook antwoord.
+  const chips = laneCounts ? (
+    <ScrollView
+      horizontal
+      style={styles.chipScroll}
+      showsHorizontalScrollIndicator={false}
+      contentContainerStyle={styles.chipRow}
+    >
+      {LANES.map((lane) => (
+        <FilterChip
+          key={lane}
+          label={laneLabel(lane, t)}
+          count={laneCounts[lane] ?? 0}
+          active={activeLanes.includes(lane)}
+          onPress={() => toggleLane(lane)}
+        />
+      ))}
+    </ScrollView>
+  ) : null;
+
   return (
     <View style={[styles.root, { backgroundColor: roles.bg }]}>
       <RefreshBanner visible={refreshing} topOffset={topInset + 8} />
 
       {isEmpty ? (
-        <View
-          style={[
-            styles.emptyCenter,
-            { paddingTop: topInset, paddingBottom: bottomInset },
-          ]}
-        >
-          <Ionicons name="flash-outline" size={48} color={roles.fgMuted} />
-          <Text style={[styles.emptyTitle, { color: roles.fg }]}>
-            {t('Je bent bij', 'You’re up to date')}
-          </Text>
-          <Text style={[styles.emptySub, { color: roles.fgMuted }]}>
-            {activeLanes.length > 0
-              ? t(
-                  'Niks nieuws in de banen die je hebt aangezet. Zet er eentje bij om breder te kijken.',
-                  'Nothing new in the lanes you picked. Turn one on to look wider.'
-                )
-              : t(
-                  'Vandaag is er nog niks bijgekomen. Zodra de venues hun programma bijwerken staat het hier.',
-                  'Nothing added today yet. As soon as venues update their programme it shows up here.'
-                )}
-          </Text>
+        <View style={{ flex: 1, paddingTop: topInset }}>
+          {chips}
+          <View style={[styles.emptyCenter, { paddingBottom: bottomInset }]}>
+            <Ionicons name="flash-outline" size={48} color={roles.fgMuted} />
+            <Text style={[styles.emptyTitle, { color: roles.fg }]}>
+              {t('Je bent bij', 'You’re up to date')}
+            </Text>
+            <Text style={[styles.emptySub, { color: roles.fgMuted }]}>
+              {activeLanes.length > 0
+                ? t(
+                    'Niks nieuws in de banen die je hebt aangezet. Zet er eentje bij om breder te kijken.',
+                    'Nothing new in the lanes you picked. Turn one on to look wider.'
+                  )
+                : t(
+                    'Vandaag is er nog niks bijgekomen. Zodra de venues hun programma bijwerken staat het hier.',
+                    'Nothing added today yet. As soon as venues update their programme it shows up here.'
+                  )}
+            </Text>
+          </View>
         </View>
       ) : isLoading ? (
         <View style={[styles.loadingWrap, { paddingTop: topInset }]}>
@@ -472,26 +502,7 @@ export default function NewScreen() {
                   </Pressable>
                 </View>
               )}
-              {laneCounts ? (
-                <ScrollView
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={styles.chipRow}
-                >
-                  {LANES.filter(
-                    (lane) =>
-                      (laneCounts[lane] ?? 0) > 0 || activeLanes.includes(lane)
-                  ).map((lane) => (
-                    <FilterChip
-                      key={lane}
-                      label={laneLabel(lane, t)}
-                      count={laneCounts[lane] ?? 0}
-                      active={activeLanes.includes(lane)}
-                      onPress={() => toggleLane(lane)}
-                    />
-                  ))}
-                </ScrollView>
-              ) : null}
+              {chips}
             </View>
           }
           ListFooterComponent={
@@ -771,6 +782,9 @@ const styles = StyleSheet.create({
   nudgeBody: { flex: 1, gap: 4 },
   nudgeText: { fontFamily: fontFamily.body, fontSize: 13, lineHeight: 18 },
   nudgeLink: { fontFamily: fontFamily.medium, fontSize: 13 },
+  // flexGrow:0 want in het lege scherm is de ouder een flex-kolom en
+  // rekt de ScrollView anders mee met de vrije ruimte.
+  chipScroll: { flexGrow: 0 },
   chipRow: {
     flexDirection: 'row',
     alignItems: 'center',
