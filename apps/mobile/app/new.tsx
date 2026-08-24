@@ -24,7 +24,7 @@ import { useQueryClient } from '@tanstack/react-query';
 
 import { AppHeader, HEADER_HEIGHT } from '@/components/AppHeader';
 import { SwipeableRow } from '@/components/SwipeableRow';
-import { FilterChip } from '@/components/FilterChip';
+import { FILTER_ROW_HEIGHT, FilterChip } from '@/components/FilterChip';
 import { EventListRow } from '@/components/EventListRow';
 import { RefreshBanner } from '@/components/RefreshBanner';
 import { SpinningCross } from '@/components/SpinningCross';
@@ -320,7 +320,9 @@ export default function NewScreen() {
     }
   }, [qc]);
 
-  const topInset = insets.top + HEADER_HEIGHT;
+  // De chip-rij zit vást in de header, dus de content moet er ook
+  // onder beginnen — zelfde rekensom als op /theater en /clubs.
+  const topInset = insets.top + HEADER_HEIGHT + FILTER_ROW_HEIGHT;
   const bottomInset = insets.bottom + 96;
 
   const closeBtn = (
@@ -348,22 +350,23 @@ export default function NewScreen() {
   // precies wanneer je 'm zoekt: filter op theater, niks nieuws, en de
   // andere labels zijn weg. Een nul is trouwens ook antwoord.
   const chips = laneCounts ? (
-    <ScrollView
-      horizontal
-      style={styles.chipScroll}
-      showsHorizontalScrollIndicator={false}
-      contentContainerStyle={styles.chipRow}
-    >
-      {LANES.map((lane) => (
-        <FilterChip
-          key={lane}
-          label={laneLabel(lane, t)}
-          count={laneCounts[lane] ?? 0}
-          active={activeLanes.includes(lane)}
-          onPress={() => toggleLane(lane)}
-        />
-      ))}
-    </ScrollView>
+    <View style={{ height: FILTER_ROW_HEIGHT }}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.chipRow}
+      >
+        {LANES.map((lane) => (
+          <FilterChip
+            key={lane}
+            label={laneLabel(lane, t)}
+            count={laneCounts[lane] ?? 0}
+            active={activeLanes.includes(lane)}
+            onPress={() => toggleLane(lane)}
+          />
+        ))}
+      </ScrollView>
+    </View>
   ) : null;
 
   return (
@@ -372,7 +375,6 @@ export default function NewScreen() {
 
       {isEmpty ? (
         <View style={{ flex: 1, paddingTop: topInset }}>
-          {chips}
           <View style={[styles.emptyCenter, { paddingBottom: bottomInset }]}>
             <Ionicons name="flash-outline" size={48} color={roles.fgMuted} />
             <Text style={[styles.emptyTitle, { color: roles.fg }]}>
@@ -430,12 +432,6 @@ export default function NewScreen() {
           stickySectionHeadersEnabled={false}
           ListHeaderComponent={
             <View>
-              {/* Chips vóór de zin, niet erna. De zin wisselt van tekst
-                  én van hoogte als je een baan aanzet; stonden de chips
-                  eronder, dan schoven ze bij elke wissel op en neer.
-                  Zo staan ze in beide takken op dezelfde plek onder de
-                  header. */}
-              {chips}
               <View style={styles.fallbackHint}>
                 <Text style={[styles.fallbackText, { color: roles.fg }]}>
                   {showingFallback
@@ -552,7 +548,9 @@ export default function NewScreen() {
         title={t('Nieuw', 'New')}
         hideAvatar
         rightSlot={closeBtn}
-      />
+      >
+        {chips}
+      </AppHeader>
 
       {lastRated && (
         <View
@@ -786,16 +784,14 @@ const styles = StyleSheet.create({
   nudgeBody: { flex: 1, gap: 4 },
   nudgeText: { fontFamily: fontFamily.body, fontSize: 13, lineHeight: 18 },
   nudgeLink: { fontFamily: fontFamily.medium, fontSize: 13 },
-  // flexGrow:0 want in het lege scherm is de ouder een flex-kolom en
-  // rekt de ScrollView anders mee met de vrije ruimte.
-  chipScroll: { flexGrow: 0 },
   chipRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
     paddingHorizontal: 22,
-    paddingTop: 8,
-    paddingBottom: 4,
+    // Vult de vaste rijhoogte in de header, net als op /theater — zo
+    // staan de chips verticaal gecentreerd zonder losse paddings.
+    height: '100%',
   },
   moreBtn: {
     marginHorizontal: 22,
