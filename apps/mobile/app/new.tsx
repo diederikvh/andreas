@@ -63,6 +63,9 @@ import {
 import { useMode, useRoles } from '@/store/mode';
 import { fontFamily, palette } from '@/theme/tokens';
 
+/** Eén baan-sectie in de lijst; `onbekend` is de restbak. */
+type LaneSection = { lane: Lane | 'onbekend'; data: ApiEvent[] };
+
 export default function NewScreen() {
   const roles = useRoles();
   const mode = useMode();
@@ -101,6 +104,17 @@ export default function NewScreen() {
   const activeLanes = useNewFilters((s) => s.activeLanes);
   const toggleLane = useNewFilters((s) => s.toggleLane);
   const resetLanes = useNewFilters((s) => s.reset);
+
+  // Na een chip-tik terug naar boven, net als op /theater. Anders kijk je
+  // na het filteren nog halverwege de vorige lijst — een andere baan met
+  // dezelfde scrollpositie leest als "er is niks veranderd".
+  // Via de scroll-responder en niet scrollToLocation: die laatste gooit
+  // als de nieuwe selectie nul secties oplevert.
+  const listRef = useRef<SectionList<ApiEvent, LaneSection>>(null);
+  const pickLane = useCallback((apply: () => void) => {
+    apply();
+    listRef.current?.getScrollResponder()?.scrollTo({ y: 0, animated: true });
+  }, []);
 
   // Eén keer, nadat je genoeg hebt beoordeeld om iets te verliezen te
   // hebben: melden dat je smaak lokaal staat. Niet omdat we een account
@@ -277,7 +291,7 @@ export default function NewScreen() {
 
   const sections = useMemo(() => {
     if (!events) return [];
-    const out: { lane: Lane | 'onbekend'; data: ApiEvent[] }[] = [];
+    const out: LaneSection[] = [];
     for (const lane of LANES) {
       const data = events.filter((e) => e.lane === lane);
       if (data.length > 0)
@@ -362,7 +376,7 @@ export default function NewScreen() {
           label={t('Alle', 'All')}
           count={LANES.reduce((n, l) => n + (laneCounts[l] ?? 0), 0)}
           active={activeLanes.length === 0}
-          onPress={resetLanes}
+          onPress={() => pickLane(resetLanes)}
         />
         {LANES.map((lane) => (
           <FilterChip
@@ -370,7 +384,7 @@ export default function NewScreen() {
             label={laneLabel(lane, t)}
             count={laneCounts[lane] ?? 0}
             active={activeLanes.includes(lane)}
-            onPress={() => toggleLane(lane)}
+            onPress={() => pickLane(() => toggleLane(lane))}
           />
         ))}
       </ScrollView>
@@ -413,6 +427,7 @@ export default function NewScreen() {
         </View>
       ) : (
         <SectionList
+          ref={listRef}
           sections={sections}
           keyExtractor={(e) => e.id}
           renderItem={({ item }) => (
@@ -440,8 +455,17 @@ export default function NewScreen() {
           stickySectionHeadersEnabled={false}
           ListHeaderComponent={
             <View>
-              <View style={styles.fallbackHint}>
+              <View
+                style={[
+                  styles.fallbackHint,
+                  { borderColor: roles.bgChip },
+                ]}
+              >
                 <Text style={[styles.fallbackText, { color: roles.fg }]}>
+                  {/* Alleen het totaal. Eerder stond hier "15 van 30",
+                      maar dat cijfer zegt niks dat je niet al ziet: wat
+                      er nog achter de cap zit staat als knop onderaan de
+                      lijst. */}
                   {showingFallback
                     ? // Geen sessiegrens, of je bent bij. Dan is "vandaag"
                       // het venster — geen datum uit het verleden noemen
@@ -451,24 +475,14 @@ export default function NewScreen() {
                           'Je bent bij. Vandaag is er nog niks bijgekomen.',
                           'You’re up to date. Nothing added today yet.'
                         )
-                      : shown < total
-                        ? t(
-                            `${shown} van ${total} vandaag toegevoegd.`,
-                            `${shown} of ${total} added today.`
-                          )
-                        : t(
-                            `${total} vandaag toegevoegd.`,
-                            `${total} added today.`
-                          )
-                    : shown < total
-                      ? t(
-                          `${shown} van ${total} sinds je vorige bezoek (${sinceLabel}).`,
-                          `${shown} of ${total} since your last visit (${sinceLabel}).`
-                        )
                       : t(
-                          `${total} ${total === 1 ? 'aanwinst' : 'aanwinsten'} sinds je vorige bezoek (${sinceLabel}).`,
-                          `${total} ${total === 1 ? 'new addition' : 'new additions'} since your last visit (${sinceLabel}).`
-                        )}
+                          `${total} vandaag toegevoegd.`,
+                          `${total} added today.`
+                        )
+                    : t(
+                        `${total} ${total === 1 ? 'aanwinst' : 'aanwinsten'} sinds je vorige bezoek (${sinceLabel}).`,
+                        `${total} ${total === 1 ? 'new addition' : 'new additions'} since your last visit (${sinceLabel}).`
+                      )}
                 </Text>
               </View>
               {showNudge && (
@@ -750,16 +764,24 @@ const styles = StyleSheet.create({
     fontFamily: fontFamily.body,
     fontSize: 13,
   },
+  // Regels boven en onder maken hier een eigen bandje van, in plaats van
+  // een losse regel die tussen de chips en de eerste sectiekop hangt.
+  // Randen tot de schermrand (geen inset) zodat 'ie leest als een
+  // scheiding en niet als een omlijnd blok.
   fallbackHint: {
     paddingHorizontal: 22,
-    paddingTop: 6,
-    paddingBottom: 4,
+    paddingVertical: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
   fallbackText: {
     fontFamily: fontFamily.body,
     fontSize: 15,
     lineHeight: 21,
     letterSpacing: -0.1,
+    // Gecentreerd: dit is een onderschrift over de lijst, geen rij ín de
+    // lijst. Links uitlijnen zou 'm laten meedoen met de sectiekoppen.
+    textAlign: 'center',
   },
   // Zweeft boven de lijst, net boven de home-indicator. Zes seconden
   // zichtbaar — lang genoeg om 'm te zien na een misveeg, kort genoeg
