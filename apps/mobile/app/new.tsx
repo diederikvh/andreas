@@ -100,6 +100,7 @@ export default function NewScreen() {
   // een persisted store, want dit is een voorkeur en geen sessie-filter.
   const activeLanes = useNewFilters((s) => s.activeLanes);
   const toggleLane = useNewFilters((s) => s.toggleLane);
+  const resetLanes = useNewFilters((s) => s.reset);
 
   // Eén keer, nadat je genoeg hebt beoordeeld om iets te verliezen te
   // hebben: melden dat je smaak lokaal staat. Niet omdat we een account
@@ -341,10 +342,6 @@ export default function NewScreen() {
   const isEmpty =
     !isLoading && !error && (events?.length ?? 0) === 0;
 
-  // Staat zowel in de lijst-header als op het lege scherm. Daar is 'ie
-  // het hele punt: "zet er eentje bij om breder te kijken" is een
-  // doodlopende tekst als de knoppen om dat te doen weg zijn.
-  //
   // Alle vijf banen, ook die op nul staan. Eerder verborgen we lege
   // banen om de rij kort te houden, maar dan verdwijnt de uitweg
   // precies wanneer je 'm zoekt: filter op theater, niks nieuws, en de
@@ -356,6 +353,17 @@ export default function NewScreen() {
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.chipRow}
       >
+        {/* "Alle" eerst, net als op /theater. Geen baan aangeklikt is
+            hier al alles, dus deze chip doet niets nieuws — hij maakt
+            zichtbaar dat je in de complete lijst kijkt, en geeft één tik
+            om uit een filter te stappen in plaats van elke aangezette
+            baan los uit te moeten tikken. */}
+        <FilterChip
+          label={t('Alle', 'All')}
+          count={LANES.reduce((n, l) => n + (laneCounts[l] ?? 0), 0)}
+          active={activeLanes.length === 0}
+          onPress={resetLanes}
+        />
         {LANES.map((lane) => (
           <FilterChip
             key={lane}
