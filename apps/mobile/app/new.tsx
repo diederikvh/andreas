@@ -132,14 +132,18 @@ export default function NewScreen() {
   // concreet venster in plaats van "de laatste tien, wanneer dan ook".
   // Dat laatste toonde items van drie weken terug alsof ze nieuw waren.
   //
-  // Niet wanneer je zelf banen hebt weggeklikt: dan is "leeg" een
-  // antwoord op je filter en zou de fallback tonen wat je net
-  // wegfilterde.
-  const sinceEmpty =
-    !since ||
-    (arrivals !== undefined &&
-      arrivals.total === 0 &&
-      activeLanes.length === 0);
+  // De keuze hangt aan het venster, niet aan je filter: `laneCounts`
+  // telt vóór het filteren, dus de som is wat er onbewerkt in zit.
+  // Eerder keek dit naar `arrivals.total` plus "geen banen aangezet",
+  // en dan zette de fallback zichzelf uit zodra je één baan aanklikte —
+  // in het "vandaag"-venster viel dus niet te filteren.
+  //
+  // Zit er wél iets in het venster maar niet in jouw baan, dan blijft
+  // dit false: dat is een antwoord op je filter, geen leeg venster.
+  const sinceUnfiltered = arrivals
+    ? Object.values(arrivals.laneCounts).reduce((a, b) => a + b, 0)
+    : undefined;
+  const sinceEmpty = !since || sinceUnfiltered === 0;
   // Middernacht, niet de logische dag-grens van 06:00. Die 06:00-regel
   // gaat over wannéér een event begint (een clubnacht om 02:00 hoort bij
   // de avond ervoor) — niet over wanneer een record is aangemaakt. De
@@ -160,10 +164,12 @@ export default function NewScreen() {
     lanes: activeLanes,
     limit: expanded ? 200 : undefined,
   });
-  const recent = today?.events;
-
-  const rawEvents =
-    arrivals && arrivals.events.length > 0 ? arrivals.events : recent;
+  // Eén bron voor de hele pagina: in de fallback is dat `today`, anders
+  // `arrivals`. Eerder koos elke afgeleide waarde apart op
+  // "heeft arrivals rijen?", en dan kon de lijst uit het ene venster
+  // komen en de teller uit het andere.
+  const active = sinceEmpty ? (today ?? arrivals) : arrivals;
+  const rawEvents = active?.events;
   // Wat je deze sessie al beoordeeld hebt. De server haalt beoordeelde
   // events er ook uit, maar pas bij de volgende fetch — deze set laat de
   // rij meteen verdwijnen zodat de lijst onder je handen leegloopt.
@@ -232,13 +238,6 @@ export default function NewScreen() {
   // wat je deze sessie al hebt weggetikt — de server weet daar pas van
   // bij de volgende fetch, en tot die tijd zou de teller stil blijven
   // staan terwijl de lijst onder je handen korter wordt.
-  // In de fallback is `today` de bron van waarheid, niet `arrivals`.
-  // `?? arrivals` want de fallback staat uit zodra je zelf banen hebt
-  // aangezet. Zonder dat vangnet was `active` undefined bij een lege
-  // baan en verdwenen de chips — precies wanneer je ze nodig hebt om
-  // een andere baan aan te zetten.
-  const active =
-    arrivals && arrivals.events.length > 0 ? arrivals : (today ?? arrivals);
   const total = Math.max(0, (active?.total ?? 0) - rated.size);
   const shown = (active?.events.length ?? 0) - rated.size;
   const laneCounts = active?.laneCounts;
@@ -431,6 +430,12 @@ export default function NewScreen() {
           stickySectionHeadersEnabled={false}
           ListHeaderComponent={
             <View>
+              {/* Chips vóór de zin, niet erna. De zin wisselt van tekst
+                  én van hoogte als je een baan aanzet; stonden de chips
+                  eronder, dan schoven ze bij elke wissel op en neer.
+                  Zo staan ze in beide takken op dezelfde plek onder de
+                  header. */}
+              {chips}
               <View style={styles.fallbackHint}>
                 <Text style={[styles.fallbackText, { color: roles.fg }]}>
                   {showingFallback
@@ -502,7 +507,6 @@ export default function NewScreen() {
                   </Pressable>
                 </View>
               )}
-              {chips}
             </View>
           }
           ListFooterComponent={

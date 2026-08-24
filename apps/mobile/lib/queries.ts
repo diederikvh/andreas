@@ -1,4 +1,5 @@
 import {
+  keepPreviousData,
   useInfiniteQuery,
   useMutation,
   useQuery,
@@ -182,6 +183,11 @@ export function useNewArrivalsSince(
     enabled: (opts.enabled ?? true) && Boolean(since),
     staleTime: 5 * 60_000,
     refetchOnWindowFocus: true,
+    // Een baan aan- of uitzetten verandert de query-key, dus zonder dit
+    // is `data` even undefined en klapt /new naar de spinner-tak: zwart
+    // scherm, dan opnieuw opbouwen. Met de vorige data blijven staan
+    // ververst het scherm in plaats van dat het leegloopt.
+    placeholderData: keepPreviousData,
   });
 }
 
