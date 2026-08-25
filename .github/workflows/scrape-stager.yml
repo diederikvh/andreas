@@ -44,13 +44,32 @@ jobs:
           # tegen 9 min aanlopen; ruim genoeg houden voorkomt valse
           # falen. Individuele fetch-timeouts in de scrapers
           # voorkomen dat één hangende venue alles blokkeert.
-          HTTP=$(curl --silent --show-error --max-time 1500 \
-            -X POST "https://api.andreas.amsterdam/admin/api/scrapers/run/${{ matrix.scraper }}" \
-            -H "Authorization: Bearer ${{ secrets.ANDREAS_ADMIN_API_KEY }}" \
-            -H "Content-Type: application/json" \
-            -o response.json \
-            -w "%{http_code}")
-          echo "── HTTP $HTTP ──"
+          #
+          # Retry op 5xx: als de Fly-machine tijdens de sweep omvalt of
+          # door auto-stop wordt neergezet, krijgen álle op dat moment
+          # lopende requests synchroon een 502 — dan is de scraper zelf
+          # niets aan te rekenen. Op 25 aug 02:32:34 sneuvelden operaballet
+          # en themovies zo binnen 42 ms van elkaar, allebei ruim vóór hun
+          # normale duur (4,7 van 7,4 min en 1,4 van 3,5 min).
+          #
+          # Retryen mag omdat de scrapers idempotent zijn: ze upserten op
+          # een stabiele id, dus een tweede poging schrijft hetzelfde.
+          # Alleen op 5xx — een 4xx (verlopen key, onbekende scraper) is
+          # een echte fout en moet meteen falen.
+          for attempt in 1 2 3; do
+            HTTP=$(curl --silent --show-error --max-time 1500 \
+              -X POST "https://api.andreas.amsterdam/admin/api/scrapers/run/${{ matrix.scraper }}" \
+              -H "Authorization: Bearer ${{ secrets.ANDREAS_ADMIN_API_KEY }}" \
+              -H "Content-Type: application/json" \
+              -o response.json \
+              -w "%{http_code}")
+            echo "── poging $attempt: HTTP $HTTP ──"
+            if [ "$HTTP" -lt 500 ]; then break; fi
+            if [ "$attempt" -lt 3 ]; then
+              echo "   5xx — API even weg, opnieuw over 30s"
+              sleep 30
+            fi
+          done
           python3 -m json.tool < response.json 2>/dev/null || cat response.json
           [ "$HTTP" -ge 400 ] && exit 1 || exit 0
 
