@@ -45,12 +45,21 @@ jobs:
           # falen. Individuele fetch-timeouts in de scrapers
           # voorkomen dat één hangende venue alles blokkeert.
           #
-          # Retry op 5xx: als de Fly-machine tijdens de sweep omvalt of
-          # door auto-stop wordt neergezet, krijgen álle op dat moment
-          # lopende requests synchroon een 502 — dan is de scraper zelf
-          # niets aan te rekenen. Op 25 aug 02:32:34 sneuvelden operaballet
-          # en themovies zo binnen 42 ms van elkaar, allebei ruim vóór hun
-          # normale duur (4,7 van 7,4 min en 1,4 van 3,5 min).
+          # Retry op 5xx. Oorzaak, vastgesteld uit Fly's metrics (die gaan
+          # verder terug dan de logs): de proxy zet tijdens de sweep een
+          # machine neer die nog langlopende requests bedient, en die
+          # krijgen dan synchroon een 502. Op 25 aug 02:32:34 sneuvelden
+          # operaballet en themovies zo binnen 42 ms van elkaar, allebei
+          # ruim vóór hun normale duur (4,7 van 7,4 min en 1,4 van 3,5
+          # min). Geheugen was op dat moment 327 MB van 1024 en de metrics
+          # van die machine stoppen bij 02:33 — geen OOM dus, maar
+          # `auto_stop_machines = "stop"` met `min_machines_running = 0`,
+          # en de API heeft geen SIGTERM-handler die requests laat
+          # aflopen.
+          #
+          # Structureel alternatief is auto-stop uitzetten, maar dan
+          # draaien beide machines continu doorbetaald. Deze retry kost
+          # niets en levert alleen het werk van die ene scraper opnieuw op.
           #
           # Retryen mag omdat de scrapers idempotent zijn: ze upserten op
           # een stabiele id, dus een tweede poging schrijft hetzelfde.
