@@ -25,12 +25,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppHeader, HEADER_HEIGHT } from '@/components/AppHeader';
 import { FILTER_CHIP_HEIGHT } from '@/components/FilterChip';
 import { Cross } from '@/components/Cross';
-import {
-  RAIL_CARD_IMG_HEIGHT,
-  RAIL_CARD_WIDTH,
-  Rail,
-  useRailCardStyles,
-} from '@/components/Rail';
+import { Rail, useRailCardStyles } from '@/components/Rail';
 import { FilmRailCard, FILM_CARD_WIDTH } from '@/components/FilmRailCard';
 import { RailEventCard } from '@/components/RailEventCard';
 import {
@@ -239,6 +234,12 @@ export default function Avond() {
   // hoeveel hij daadwerkelijk ging. Vrienden vind je in de social-feed;
   // deze rail is puur jouw agenda.
   const { data: going } = useMyGoing({ enabled: authed });
+  // Drie kaarten in beeld plus een zichtbaar stukje van de vierde: een
+  // volle agenda moet er vól uitzien, anders lijkt 'ie af terwijl er nog
+  // vier avonden achter zitten. Afgeleid van de schermbreedte zodat het
+  // op elke telefoon klopt — 22 leading pad, 10 gap, ~34 peek.
+  const { width: screenW } = useWindowDimensions();
+  const goingCardW = Math.floor((screenW - 22 - 2 * 10 - 34) / 3);
   const agendaRail = useMemo(() => {
     if (!authed) return [];
     const now = Date.now();
@@ -763,14 +764,19 @@ export default function Avond() {
             makkelijk dat je over drie weken al ergens heen gaat. Eerst
             wat je al hebt afgesproken, dan pas het aanbod. */}
         {agendaRail.length > 0 && (
-          <View style={{ marginTop: 4 }}>
+          <View style={{ marginTop: 4, backgroundColor: roles.bgLift, paddingBottom: 14 }}>
             <Rail
               kicker={t('Waar je heen gaat', "Where you're going")}
               moreLabel={t('Alles →', 'See all →')}
               onMore={() => router.push('/going' as never)}
+              cardWidth={goingCardW}
             >
               {agendaRail.map((g) => (
-                <GoingRailCard key={g.occurrenceId} entry={g} />
+                <GoingRailCard
+                  key={g.occurrenceId}
+                  entry={g}
+                  width={goingCardW}
+                />
               ))}
             </Rail>
           </View>
@@ -1131,7 +1137,13 @@ function ListState({
  * datum is hier de reden dat je kijkt, dus die moet je zien voordat je
  * de titel leest.
  */
-function GoingRailCard({ entry }: { entry: SavedApiEvent }) {
+function GoingRailCard({
+  entry,
+  width,
+}: {
+  entry: SavedApiEvent;
+  width: number;
+}) {
   const roles = useRoles();
   const locale = useLocale();
   const { surface } = useRailCardStyles();
@@ -1149,10 +1161,15 @@ function GoingRailCard({ entry }: { entry: SavedApiEvent }) {
           `/event/${entry.id}?o=${entry.occurrenceId}&source=avond` as never
         )
       }
-      style={goingCardStyles.card}
+      style={[goingCardStyles.card, { width }]}
     >
       <View
-        style={[goingCardStyles.imgWrap, { backgroundColor: surface.fallback }]}
+        style={[
+          goingCardStyles.imgWrap,
+          // Vierkant: op deze breedte leest een liggende crop als een
+          // strookje, en een agenda-tegel mag een tegel zijn.
+          { height: width, backgroundColor: surface.fallback },
+        ]}
       >
         {thumb ? (
           <Image
@@ -1193,10 +1210,10 @@ function GoingRailCard({ entry }: { entry: SavedApiEvent }) {
 }
 
 const goingCardStyles = StyleSheet.create({
-  card: { width: RAIL_CARD_WIDTH },
+  // Breedte en beeldhoogte komen van de caller — zie `goingCardW`.
+  card: {},
   imgWrap: {
     width: '100%',
-    height: RAIL_CARD_IMG_HEIGHT,
     borderRadius: 10,
     overflow: 'hidden',
   },
@@ -1206,37 +1223,36 @@ const goingCardStyles = StyleSheet.create({
   // van in plaats van een liggend strookje.
   badge: {
     position: 'absolute',
-    left: 8,
-    bottom: 8,
-    minWidth: 54,
-    paddingHorizontal: 8,
-    paddingVertical: 6,
-    borderRadius: 8,
+    left: 6,
+    bottom: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 4,
+    borderRadius: 7,
     alignItems: 'center',
   },
   badgeDate: {
     fontFamily: fontFamily.bold,
-    fontSize: 13,
-    lineHeight: 16,
+    fontSize: 12,
+    lineHeight: 15,
     letterSpacing: -0.2,
   },
   badgeTime: {
     fontFamily: fontFamily.mono,
-    fontSize: 11,
-    lineHeight: 14,
+    fontSize: 10,
+    lineHeight: 13,
     letterSpacing: 0.2,
   },
-  body: { paddingTop: 8, gap: 4 },
+  body: { paddingTop: 7, gap: 3 },
   title: {
     fontFamily: fontFamily.bold,
-    fontSize: 14,
-    letterSpacing: -0.21,
-    lineHeight: 18,
+    fontSize: 12.5,
+    letterSpacing: -0.15,
+    lineHeight: 16,
   },
   venue: {
     fontFamily: fontFamily.mono,
-    fontSize: 10,
-    letterSpacing: 0.6,
+    fontSize: 9,
+    letterSpacing: 0.5,
     textTransform: 'uppercase',
   },
 });
