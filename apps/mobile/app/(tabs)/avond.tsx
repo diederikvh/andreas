@@ -62,7 +62,6 @@ import { softTap, tinyTap } from '@/lib/haptics';
 import { useLocale, useT, type Locale } from '@/lib/i18n';
 import {
   useEvents,
-  useForYouEvents,
   useMyGoing,
   useVenues,
   useSeriesList,
@@ -188,15 +187,6 @@ export default function Avond() {
     from: todayWindow.from,
     lean: true,
   });
-  // "Voor jou" — gepersonaliseerde aanbevelingen op basis van je save-
-  // historie + gevolgde venues + vrienden-saves. Rail toont alleen
-  // komende 7 dagen; de "more"-knop leidt naar `/voor-jou` met de
-  // volle chronologische feed (infinite scroll). Lege array voor
-  // uitgelogde users of users zonder profiel-input.
-  const { data: forYouEvents } = useForYouEvents({ weekOnly: true });
-  // Proactieve "Jouw avond vanavond"-curatie (alleen events binnen de
-  // logische avond/nacht, gepersonaliseerd).
-  const { data: tonightEvents } = useForYouEvents({ tonight: true });
   // Series + exhibitions delen één "Loopt nu"-strook bovenaan.
   const { data: seriesList } = useSeriesList();
   // Alle venues die de gebruiker volgt — onafhankelijk van wat er
@@ -499,35 +489,6 @@ export default function Avond() {
   // van vandaag, gefilterd op user-state). Per rail aanvullende
   // filter-criterium. Lege rails worden door de Rail-component
   // gewoonweg niet gerenderd.
-  // "Voor jou" rail — eerste occurrence per event, score-volgorde
-  // behouden (backend retourneert al op score gesorteerd).
-  const railForYou = useMemo<OccurrenceRow[]>(() => {
-    if (!forYouEvents || forYouEvents.length === 0) return [];
-    const rows: OccurrenceRow[] = [];
-    for (const event of forYouEvents) {
-      const occ = event.occurrencesInRange?.[0];
-      if (!occ) continue;
-      rows.push({ id: `${event.id}::${occ.id}`, event, occurrence: occ });
-    }
-    return rows;
-  }, [forYouEvents]);
-
-  const tonightRows = useMemo<OccurrenceRow[]>(() => {
-    if (!tonightEvents || tonightEvents.length === 0) return [];
-    const rows: OccurrenceRow[] = [];
-    for (const event of tonightEvents) {
-      const occ = event.occurrencesInRange?.[0];
-      if (!occ) continue;
-      rows.push({ id: `${event.id}::${occ.id}`, event, occurrence: occ });
-    }
-    return rows;
-  }, [tonightEvents]);
-
-  // Eén gepersonaliseerde rail: "Jouw avond vanavond" zodra er ≥3 picks
-  // voor vanavond zijn, anders de bredere "Voor jou · deze week".
-  const showTonight = tonightRows.length >= 3;
-  const personalRows = showTonight ? tonightRows : railForYou;
-
   const railClubs = useMemo(
     () => filtered.filter((r) => r.event.venue.type === 'club'),
     [filtered]
@@ -790,40 +751,13 @@ export default function Avond() {
             Alles staat nu onder de Meer-tab; zoeken zit rechtsboven in
             de header. Zie `app/(tabs)/meer.tsx`. */}
 
-        {/* Eén gepersonaliseerde rail: "Jouw avond · vanavond" (uit-modus,
-            ≥3 picks) óf de bredere "Voor jou · deze week". "Meer →" opent
-            /voor-jou met de volle chronologische feed. Verbergt zich bij
-            lege data. */}
-        {!isLoading && !error && personalRows.length > 0 && (
-          <View style={{ marginTop: -12 }}>
-          <Rail
-            kicker={
-              showTonight
-                ? t('Jouw avond · vanavond', 'Your night · tonight')
-                : t('Voor jou · deze week', 'For you · this week')
-            }
-            moreLabel={t('Meer →', 'More →')}
-            onMore={() => router.push('/voor-jou' as never)}
-          >
-            {personalRows.map((r) => (
-              <RailEventCard
-                key={r.id}
-                event={r.event}
-                occurrenceId={
-                  r.occurrence.id.endsWith('::next')
-                    ? undefined
-                    : r.occurrence.id
-                }
-                occurrenceStartsAt={r.occurrence.startsAt}
-                occurrenceEndsAt={r.occurrence.endsAt}
-                occurrenceVenueName={r.occurrence.venue?.name ?? null}
-                showDate={!showTonight}
-                reason={r.event.reason}
-              />
-            ))}
-          </Rail>
-          </View>
-        )}
+        {/* Hier stond "Jouw avond · vanavond" / "Voor jou · deze week".
+            Eruit gehaald: die rail raadt aan op basis van je hartjes,
+            en dat is nou net wat /voor-jou al doet — bereikbaar via
+            Aanbevolen in het Meer-menu. Op de homepage botste 'ie met
+            de agenda-rail erboven: twee persoonlijke blokken direct
+            onder elkaar, waarvan één over afspraken gaat en één over
+            suggesties. */}
 
         {/* Jouw favoriete venues — direct onder de Voor jou-rail zodat je
             volg-lijst snel bereikbaar is (was voorheen onderaan Vandaag). */}
