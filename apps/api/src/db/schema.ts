@@ -662,6 +662,48 @@ export const dismisses = pgTable(
   ]
 );
 
+/**
+ * "Ik ga hierheen" — intentie, los van het hartje.
+ *
+ * Drie treden die oplopen in wat ze van je vragen: een save is
+ * interesse, deze rij is intentie, en een invitation is intentie plus
+ * mensen. Bewust géén status-kolom met `maybe`: dat is precies wat een
+ * save al betekent, en met twee manieren om "misschien" te zeggen weet
+ * niemand meer wat een hartje is. Rij bestaat = je gaat.
+ *
+ * Los van `invitation_responses`, dat alleen bestaat als iemand jou (of
+ * jij iemand) heeft uitgenodigd. Wie in z'n eentje naar een film gaat
+ * had daar geen plek: dát is wat deze tabel oplost.
+ *
+ * "Geweest" leiden we af uit de tijd — de occurrence heeft een
+ * `startsAt`, dus een rij in het verleden ís geschiedenis. Alleen "ik
+ * zei ja maar ging uiteindelijk niet" valt daarbuiten, en dat weet je
+ * niet zonder het te vragen.
+ */
+export const attendance = pgTable(
+  'attendance',
+  {
+    userId: text()
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    /** Occurrence-niveau, net als saves en invitations: je gaat op een
+        datum, niet naar een titel. */
+    occurrenceId: text()
+      .notNull()
+      .references(() => occurrences.id, { onDelete: 'cascade' }),
+    createdAt: timestamp({ withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+    /** Vanaf welk scherm zei je ja? Zelfde enum als saves zodat de
+        discovery-trail op de spiegel beide kan tellen. */
+    source: saveSource(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.userId, t.occurrenceId] }),
+    index('attendance_occurrence_idx').on(t.occurrenceId),
+  ]
+);
+
 export const invites = pgTable(
   'invites',
   {

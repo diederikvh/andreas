@@ -1073,6 +1073,28 @@ export async function toggleSave(
   });
 }
 
+/**
+ * Waar ik heen ga. Zelfde rij-vorm als /saves, dus `EventListRow` en de
+ * rails kunnen 'm zonder vertaling renderen. Server mergt hier al mijn
+ * eigen "ik ga"-markeringen met de uitnodigingen waar ik ja op zei.
+ */
+export async function getMyGoing(): Promise<SavedApiEvent[]> {
+  const { events } = await authedRequest<{ events: SavedApiEvent[] }>(
+    '/going'
+  );
+  return events;
+}
+
+export async function toggleGoing(
+  occurrenceId: string,
+  source?: SaveSource | null
+): Promise<{ going: boolean }> {
+  return await authedRequest<{ going: boolean }>('/going', {
+    method: 'POST',
+    body: JSON.stringify({ occurrenceId, source: source ?? undefined }),
+  });
+}
+
 export async function toggleDismiss(
   occurrenceId: string,
   source?: SaveSource | null

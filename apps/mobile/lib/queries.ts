@@ -32,6 +32,7 @@ import {
   getInvitations,
   getMe,
   getOutgoingFriendRequests,
+  getMyGoing,
   getMySaves,
   getSeries,
   getSeriesList,
@@ -54,6 +55,7 @@ import {
   sendInvitations,
   setVenueFollow,
   toggleDismiss,
+  toggleGoing,
   toggleSave,
   unmuteGroup,
   getMirrorByHandle,
@@ -118,6 +120,7 @@ export const queryKeys = {
   seriesList: (input: { q?: string; category?: string } = {}) =>
     ['series-list', input.q ?? '', input.category ?? ''] as const,
   saves: () => ['saves'] as const,
+  going: () => ['going'] as const,
   friends: () => ['friends'] as const,
   friendRequests: () => ['friend-requests'] as const,
   outgoingFriendRequests: () => ['outgoing-friend-requests'] as const,
@@ -519,6 +522,52 @@ export function useToggleSave() {
       // de lijst van vóór je oordeel, en staat je weggetikte event er
       // gewoon weer — dat leest als "mijn nee is niet aangekomen".
       qc.invalidateQueries({ queryKey: ['events', 'new'] });
+    },
+  });
+}
+
+/**
+ * Waar ik heen ga — mijn eigen "ik ga"-markeringen plus de uitnodigingen
+ * waar ik ja op zei, door de server al samengevoegd.
+ */
+export function useMyGoing(opts: { enabled?: boolean } = {}) {
+  return useQuery({
+    queryKey: queryKeys.going(),
+    queryFn: () => getMyGoing(),
+    enabled: opts.enabled ?? true,
+  });
+}
+
+type ToggleGoingInput = { occurrenceId: string; source?: SaveSource | null };
+
+export function useToggleGoing() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: ToggleGoingInput) =>
+      toggleGoing(input.occurrenceId, input.source),
+    // Optimistisch alleen de weg-kant: het volledige event-object hebben
+    // we hier niet, dus toevoegen kan pas na de refetch. Zelfde afweging
+    // als bij useToggleSave.
+    onMutate: async ({ occurrenceId }) => {
+      await qc.cancelQueries({ queryKey: queryKeys.going() });
+      const prev = qc.getQueryData<SavedApiEvent[]>(queryKeys.going());
+      if (prev) {
+        qc.setQueryData<SavedApiEvent[]>(
+          queryKeys.going(),
+          prev.filter((e) => e.occurrenceId !== occurrenceId)
+        );
+      }
+      return { prev };
+    },
+    onError: (_err, _input, ctx) => {
+      if (ctx?.prev) qc.setQueryData(queryKeys.going(), ctx.prev);
+    },
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.going() });
+      // Gaan telt zwaarder mee dan een hartje, dus de smaak-afgeleiden
+      // moeten opnieuw.
+      qc.invalidateQueries({ queryKey: queryKeys.mirror() });
+      qc.invalidateQueries({ queryKey: queryKeys.forYou() });
     },
   });
 }

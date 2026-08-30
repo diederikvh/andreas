@@ -635,12 +635,15 @@ export async function buildTasteProfile(
     wijk: schema.venues.wijk,
   };
 
-  const [likes, dislikes] = await Promise.all([
+  const NOT_INTENT = sql<boolean>`false`;
+
+  const [saved, going, dislikes] = await Promise.all([
     db
       .select({
         ...columns,
         source: schema.saves.source,
         at: schema.saves.createdAt,
+        intent: NOT_INTENT,
       })
       .from(schema.saves)
       .innerJoin(
@@ -650,11 +653,30 @@ export async function buildTasteProfile(
       .innerJoin(schema.events, eq(schema.occurrences.eventId, schema.events.id))
       .innerJoin(schema.venues, eq(schema.events.venueId, schema.venues.id))
       .where(eq(schema.saves.userId, userId)),
+    // "Ik ga" telt zwaarder dan een hartje — zie GOING_WEIGHT. Wie ook
+    // hartje én ga aanzet telt twee keer, en dat klopt: dat is interesse
+    // plus intentie.
+    db
+      .select({
+        ...columns,
+        source: schema.attendance.source,
+        at: schema.attendance.createdAt,
+        intent: sql<boolean>`true`,
+      })
+      .from(schema.attendance)
+      .innerJoin(
+        schema.occurrences,
+        eq(schema.attendance.occurrenceId, schema.occurrences.id)
+      )
+      .innerJoin(schema.events, eq(schema.occurrences.eventId, schema.events.id))
+      .innerJoin(schema.venues, eq(schema.events.venueId, schema.venues.id))
+      .where(eq(schema.attendance.userId, userId)),
     db
       .select({
         ...columns,
         source: schema.dismisses.source,
         at: schema.dismisses.createdAt,
+        intent: NOT_INTENT,
       })
       .from(schema.dismisses)
       .innerJoin(
@@ -665,6 +687,7 @@ export async function buildTasteProfile(
       .innerJoin(schema.venues, eq(schema.events.venueId, schema.venues.id))
       .where(eq(schema.dismisses.userId, userId)),
   ]);
+  const likes = [...saved, ...going];
 
   const nowMs = Date.now();
   const tally = (
@@ -677,7 +700,8 @@ export async function buildTasteProfile(
     for (const r of rows) {
       const ageMs = Math.max(0, nowMs - new Date(r.at).getTime());
       const recency = Math.pow(0.5, ageMs / TASTE_HALF_LIFE_MS);
-      const w = recency * (r.source && ACTIVE_SOURCES.has(r.source) ? 1.3 : 1.0);
+      const active = r.source && ACTIVE_SOURCES.has(r.source) ? 1.3 : 1.0;
+      const w = recency * active * (r.intent ? GOING_WEIGHT : 1);
       for (const g of r.genres ?? []) {
         const key = g.trim().toLowerCase();
         if (key) genre.set(key, (genre.get(key) ?? 0) + w);
@@ -713,10 +737,81 @@ export async function buildTasteProfile(
  * genre. En omdat we geen impressies tellen, mag één druk programmerende
  * venue zichzelf niet wegdrukken; vandaar ook de caps.
  */
+/**
+ * Hoe zwaar "ik ga" telt ten opzichte van een hartje. Een hartje is
+ * "leuk"; hier heb je een avond voor vrijgemaakt. Twee is genoeg om
+ * het te laten meewegen zonder dat één bezoek je hele profiel kapert —
+ * de recency-halvering doet de rest.
+ */
+export const GOING_WEIGHT = 2;
+
 export const DISLIKE_WEIGHT = 0.6;
 export const MAX_DISLIKE_PENALTY = 4;
 
 /** Negatieve bijdrage van één dimensie, gedempt en gecapt. */
 export function dislikePenalty(raw: number, factor = 1): number {
   return Math.min(MAX_DISLIKE_PENALTY, DISLIKE_WEIGHT * factor * raw);
+}
+
+/**
+ * Occurrence-kaarten voor een setje occurrence-ids, in exact de vorm die
+ * `EventListRow` en de rails op de client verwachten (event + occurrence
+ * + venue plat naast elkaar).
+ *
+ * Bestond al als de select in `/saves`; hier uitgetrokken zodat /going
+ * dezelfde vorm levert zonder 'm over te schrijven. Ongesorteerd —
+ * bellers bepalen zelf de volgorde, want /saves wil iets anders dan
+ * /going.
+ */
+export async function fetchOccurrenceCards(occurrenceIds: string[]) {
+  if (occurrenceIds.length === 0) return [];
+  return db
+    .select({
+      id: schema.events.id,
+      title: schema.events.title,
+      description: schema.events.description,
+      kind: schema.events.kind,
+      imageUrl: schema.events.imageUrl,
+      category: schema.events.category,
+      featured: schema.events.featured,
+      occurrenceId: schema.occurrences.id,
+      startsAt: schema.occurrences.startsAt,
+      endsAt: schema.occurrences.endsAt,
+      priceCents: schema.occurrences.priceCents,
+      priceNote: schema.occurrences.priceNote,
+      ticketUrl: schema.occurrences.ticketUrl,
+      room: schema.occurrences.room,
+      lineup: schema.occurrences.lineup,
+      status: schema.occurrences.status,
+      venue: {
+        id: schema.venues.id,
+        slug: schema.venues.slug,
+        name: schema.venues.name,
+        address: schema.venues.address,
+        lat: schema.venues.lat,
+        lng: schema.venues.lng,
+        type: schema.venues.type,
+        wijk: schema.venues.wijk,
+        imageUrl: schema.venues.imageUrl,
+        priceNote: schema.venues.priceNote,
+      },
+    })
+    .from(schema.occurrences)
+    .innerJoin(schema.events, eq(schema.occurrences.eventId, schema.events.id))
+    // Films draaien in meerdere bioscopen: join op de occurrence-venue en
+    // val terug op de event-venue voor rijen zonder eigen venueId.
+    .innerJoin(
+      schema.venues,
+      eq(
+        schema.venues.id,
+        sql`COALESCE(${schema.occurrences.venueId}, ${schema.events.venueId})`
+      )
+    )
+    .where(
+      and(
+        inArray(schema.occurrences.id, occurrenceIds),
+        eq(schema.events.published, true),
+        eq(schema.venues.published, true)
+      )
+    );
 }

@@ -61,8 +61,10 @@ import {
   useEvent,
   useInvitations,
   useMe,
+  useMyGoing,
   useMySaves,
   useRespondInvitation,
+  useToggleGoing,
   useToggleSave,
 } from '@/lib/queries';
 import type { ApiInvitation, InvitationStatus } from '@/lib/api';
@@ -849,14 +851,22 @@ function CrewAndInvite({
   ]);
 
   const hasCrew = rows.length > 0;
+  // Synthetische "::next"-occurrences hebben geen echte id, dus daar valt
+  // niks op te markeren.
+  const canMarkGoing = Boolean(
+    selectedOccurrence && !selectedOccurrence.id.endsWith('::next')
+  );
   const borderColor = isNacht ? '#232327' : palette.paper;
   const innerBorderColor = isNacht ? '#1d1d20' : palette.paper;
   const surface = isNacht ? '#101012' : palette.paper2;
 
   return (
     <>
+      {/* Niet "Vrienden": onder deze kop staat eerst of jij gaat, en pas
+          daarna wie er nog meer bij zijn. Eén container, twee keuzes —
+          ik ga, en ik neem iemand mee. */}
       <Text style={[styles.crewHeading, { color: roles.fg }]}>
-        {t('Vrienden', 'Friends')}
+        {t('Jouw plan', 'Your plan')}
       </Text>
       <View
         style={[
@@ -867,13 +877,20 @@ function CrewAndInvite({
           },
         ]}
       >
+        {canMarkGoing && (
+          <GoingRow
+            occurrenceId={selectedOccurrence!.id}
+            surface={surface}
+            innerBorderColor={innerBorderColor}
+          />
+        )}
         {hasCrew && (
           <View>
             {rows.map((row, i) => (
               <CrewRowItem
                 key={row.user.id}
                 row={row}
-                first={i === 0}
+                first={i === 0 && !canMarkGoing}
                 eventId={event.id}
               />
             ))}
@@ -884,7 +901,7 @@ function CrewAndInvite({
           style={[
             styles.crewInviteCta,
             { backgroundColor: surface },
-            hasCrew && {
+            (hasCrew || canMarkGoing) && {
               borderTopColor: innerBorderColor,
               borderTopWidth: StyleSheet.hairlineWidth,
             },
@@ -900,6 +917,68 @@ function CrewAndInvite({
         </Pressable>
       </View>
     </>
+  );
+}
+
+/**
+ * "Ik ga hierheen" — de trede tussen een hartje en een uitnodiging.
+ *
+ * Zit in dezelfde container als de crew en de invite-knop: onder één kop
+ * kies je of jij gaat en wie je meeneemt. Bewust geen vijfde icoontje in
+ * de actie-rij bovenaan — een hartje leest iedereen, een glyph voor
+ * intentie niet.
+ */
+function GoingRow({
+  occurrenceId,
+  surface,
+  innerBorderColor,
+}: {
+  occurrenceId: string;
+  surface: string;
+  innerBorderColor: string;
+}) {
+  const roles = useRoles();
+  const t = useT();
+  const { data: session } = useSession();
+  const authed = Boolean(session?.user?.id);
+  const { data: going } = useMyGoing({ enabled: authed });
+  const toggle = useToggleGoing();
+
+  const isGoing = Boolean(going?.some((g) => g.occurrenceId === occurrenceId));
+
+  return (
+    <Pressable
+      onPress={() => {
+        Haptics.impactAsync(
+          isGoing
+            ? Haptics.ImpactFeedbackStyle.Light
+            : Haptics.ImpactFeedbackStyle.Medium
+        );
+        toggle.mutate({ occurrenceId, source: 'other' });
+      }}
+      style={[
+        styles.crewInviteCta,
+        {
+          backgroundColor: surface,
+          borderBottomColor: innerBorderColor,
+          borderBottomWidth: StyleSheet.hairlineWidth,
+        },
+      ]}
+    >
+      <Ionicons
+        name={isGoing ? 'checkmark-circle' : 'checkmark-circle-outline'}
+        size={20}
+        color={isGoing ? roles.accent : roles.fg}
+      />
+      <Text
+        style={[
+          styles.inviteText,
+          { color: isGoing ? roles.accent : roles.fg },
+        ]}
+      >
+        {isGoing ? t('Je gaat hierheen', "You're going") : t('Ik ga hierheen', "I'm going")}
+      </Text>
+    </Pressable>
   );
 }
 

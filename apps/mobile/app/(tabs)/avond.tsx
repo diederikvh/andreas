@@ -25,7 +25,12 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppHeader, HEADER_HEIGHT } from '@/components/AppHeader';
 import { FILTER_CHIP_HEIGHT } from '@/components/FilterChip';
 import { Cross } from '@/components/Cross';
-import { Rail, useRailCardStyles } from '@/components/Rail';
+import {
+  RAIL_CARD_IMG_HEIGHT,
+  RAIL_CARD_WIDTH,
+  Rail,
+  useRailCardStyles,
+} from '@/components/Rail';
 import { FilmRailCard, FILM_CARD_WIDTH } from '@/components/FilmRailCard';
 import { RailEventCard } from '@/components/RailEventCard';
 import {
@@ -35,15 +40,15 @@ import {
 import { RefreshBanner } from '@/components/RefreshBanner';
 import { RunningStrip } from '@/components/RunningStrip';
 import { SpinningCross } from '@/components/SpinningCross';
-import type { ApiEvent, ApiFeedEvent, SavedApiEvent, VenueType } from '@/lib/api';
+import type { ApiEvent, SavedApiEvent, VenueType } from '@/lib/api';
 import {
   eventImageUrl,
   CATEGORY_TICK,
   eventBelongsToMode,
   isDaytimeOccurrence,
   getVenueTypeChips,
-  dowMixed,
   dowUpper,
+  isAllDayRange,
   monthShort,
   effectiveEndsAtMs,
   expandToOccurrenceRows,
@@ -63,9 +68,7 @@ import { useLocale, useT, type Locale } from '@/lib/i18n';
 import {
   useEvents,
   useForYouEvents,
-  useMe,
-  useMySaves,
-  useSocialFeed,
+  useMyGoing,
   useVenues,
   useSeriesList,
 } from '@/lib/queries';
@@ -227,78 +230,25 @@ export default function Avond() {
   const activeTypes = useVandaagFilters((s) => s.activeTypes);
   const { data: session } = useSession();
   const authed = Boolean(session?.user?.id);
-  // Eigen saves + social-feed: input voor de "Planning"-rail onderaan
-  // de pagina. Beide queries zijn al elders in de app actief, hier
-  // herbenoemen we de cache zodat we mergen op occurrenceId.
-  const { data: me } = useMe();
-  const { data: mySaves } = useMySaves({ enabled: authed });
-  const { data: socialFeed } = useSocialFeed({ enabled: authed });
-
-  // Combined planning: eigen saves + saves van vrienden, gemerged per
-  // occurrence. Per item komt jezelf voorop in de avatar-stack zodat het
-  // direct duidelijk is dat je 'm zelf hebt gesaved. Toekomstige events
-  // alleen, oudste eerst.
-  const planningRail = useMemo(() => {
+  // Waar jij binnenkort heen gaat — je eigen "ik ga"-markeringen plus de
+  // uitnodigingen waar je ja op zei, door de server al samengevoegd.
+  //
+  // Stond hier eerder als "Jij en je vrienden", gevoed door saves. Maar
+  // een hartje is interesse, geen afspraak: bij de zwaarste gebruiker
+  // stonden 12 toekomstige saves in die rail waarvan onbekend was naar
+  // hoeveel hij daadwerkelijk ging. Vrienden vind je in de social-feed;
+  // deze rail is puur jouw agenda.
+  const { data: going } = useMyGoing({ enabled: authed });
+  const agendaRail = useMemo(() => {
     if (!authed) return [];
-    const myFirst = (me?.name?.split(' ')[0] || 'Jij').trim() || 'Jij';
-    const map = new Map<
-      string,
-      {
-        eventId: string;
-        occurrenceId: string;
-        event: SavedApiEvent | ApiFeedEvent;
-        startsAt: string;
-        endsAt: string | null;
-        friends: { name: string; avatar: string | null }[];
-      }
-    >();
-    for (const s of mySaves ?? []) {
-      map.set(s.occurrenceId, {
-        eventId: s.id,
-        occurrenceId: s.occurrenceId,
-        event: s,
-        startsAt: s.startsAt,
-        endsAt: s.endsAt,
-        friends: [{ name: myFirst, avatar: me?.avatarUrl ?? null }],
-      });
-    }
-    for (const f of socialFeed ?? []) {
-      const startsAtStr =
-        typeof f.occurrence.startsAt === 'string'
-          ? f.occurrence.startsAt
-          : new Date(f.occurrence.startsAt as unknown as string).toISOString();
-      const endsAtStr =
-        f.occurrence.endsAt == null
-          ? null
-          : typeof f.occurrence.endsAt === 'string'
-            ? f.occurrence.endsAt
-            : new Date(f.occurrence.endsAt as unknown as string).toISOString();
-      const friendBadges = f.friendsSaved.map((fr) => ({
-        name: fr.name,
-        avatar: fr.avatarUrl,
-      }));
-      const existing = map.get(f.occurrence.id);
-      if (existing) {
-        existing.friends.push(...friendBadges);
-      } else {
-        map.set(f.occurrence.id, {
-          eventId: f.eventId,
-          occurrenceId: f.occurrence.id,
-          event: f,
-          startsAt: startsAtStr,
-          endsAt: endsAtStr,
-          friends: friendBadges,
-        });
-      }
-    }
     const now = Date.now();
-    return Array.from(map.values())
-      .filter((m) => new Date(m.endsAt ?? m.startsAt).getTime() >= now)
+    return (going ?? [])
+      .filter((g) => new Date(g.endsAt ?? g.startsAt).getTime() >= now)
       .sort(
         (a, b) =>
           new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime()
       );
-  }, [authed, me, mySaves, socialFeed]);
+  }, [authed, going]);
 
   // Pull-to-refresh: invalideert events-cache zodat de huidige
   // window-query opnieuw fetched. Voor wanneer de gebruiker denkt
@@ -808,6 +758,24 @@ export default function Avond() {
           </View>
         )}
 
+        {/* Direct onder de feature-card, vóór alle andere rails: je
+            scrollt hier langs op zoek naar iets nieuws en vergeet dan
+            makkelijk dat je over drie weken al ergens heen gaat. Eerst
+            wat je al hebt afgesproken, dan pas het aanbod. */}
+        {agendaRail.length > 0 && (
+          <View style={{ marginTop: 4 }}>
+            <Rail
+              kicker={t('Waar je heen gaat', "Where you're going")}
+              moreLabel={t('Alles →', 'See all →')}
+              onMore={() => router.push('/going' as never)}
+            >
+              {agendaRail.map((g) => (
+                <GoingRailCard key={g.occurrenceId} entry={g} />
+              ))}
+            </Rail>
+          </View>
+        )}
+
         {/* Hier stonden twee rijen ingangen: vier grote banners (gids,
             voor jou, net binnen, zoek) plus zeven kleine icoonknopjes
             (films, clubs, live, theater, kaart, friends, vibes). Elf
@@ -1113,22 +1081,6 @@ export default function Avond() {
             buiten de "vandaag"-bubbel valt en als hub voor je
             volg-lijst dient (tap → venue-pagina met volledige
             programmering). */}
-        {/* Jouw + vrienden-planning — events waar jij of een vriend(in)
-            naartoe wil. Eigen saves + social-feed gemerged per occurrence.
-            Per kaart toont de avatar-stack wie 'm geliked heeft. Boven
-            de venues-rail want planning is persoonlijker en relevanter. */}
-        {planningRail.length > 0 && (
-          <Rail
-            kicker={t('Jij en je vrienden', 'You and friends')}
-            moreLabel={t('Alles →', 'See all →')}
-            onMore={() => router.push('/going' as never)}
-          >
-            {planningRail.map((m) => (
-              <PlanningRailCard key={m.occurrenceId} entry={m} />
-            ))}
-          </Rail>
-        )}
-
       </ScrollView>
       <AppHeader title={t('Vandaag', 'Today')} />
     </View>
@@ -1171,237 +1123,105 @@ function ListState({
 }
 
 /**
- * Card voor de "Op de planning"-rail onderaan Avond. Eén tegel per
- * occurrence: hero-image bovenaan, datum + tijd, titel, venue, en een
- * avatar-stack onderaan met "Jij + Roos & Milan +2"-style label. Tap
- * navigeert naar event-detail met de juiste occurrence-target.
+ * Kaart voor de "Waar je heen gaat"-rail bovenaan Vandaag.
+ *
+ * Zelfde maat en opbouw als `RailEventCard`, zodat de rail niet als een
+ * vreemde eend tussen de andere staat. Het enige verschil is het
+ * datum-label in accent over de afbeelding — een agenda-sticker. De
+ * datum is hier de reden dat je kijkt, dus die moet je zien voordat je
+ * de titel leest.
  */
-function PlanningRailCard({
-  entry,
-}: {
-  entry: {
-    eventId: string;
-    occurrenceId: string;
-    event: SavedApiEvent | ApiFeedEvent;
-    startsAt: string;
-    endsAt: string | null;
-    friends: { name: string; avatar: string | null }[];
-  };
-}) {
+function GoingRailCard({ entry }: { entry: SavedApiEvent }) {
   const roles = useRoles();
   const locale = useLocale();
   const { surface } = useRailCardStyles();
-  const e = entry.event;
-  // SavedApiEvent en ApiFeedEvent hebben beide `imageUrl` + `venue.{name,imageUrl}`.
-  const eventImage = (e as { imageUrl?: string | null }).imageUrl ?? null;
-  const venueRef = (
-    e as { venue?: { name?: string; imageUrl?: string | null } }
-  ).venue;
-  const venueName = venueRef?.name ?? '';
-  const thumb =
-    eventImage ??
-    venueRef?.imageUrl ??
-    null;
+  const thumb = eventImageUrl(entry) ?? entry.venue?.imageUrl ?? null;
   const d = new Date(entry.startsAt);
-  const dateLabel = `${dowMixed(d.getDay(), locale)} ${d.getDate()} ${monthShort(d.getMonth(), locale).toLowerCase()}`;
-  const time = rowTimeLabel(entry.startsAt, entry.endsAt, locale);
-
-  const visible = entry.friends.slice(0, 3);
-  const overflow = Math.max(0, entry.friends.length - visible.length);
-  const totalTiles = visible.length + (overflow > 0 ? 1 : 0);
-  const nameLabel = (() => {
-    if (entry.friends.length === 0) return '';
-    if (entry.friends.length === 1) return entry.friends[0].name;
-    if (entry.friends.length === 2)
-      return `${entry.friends[0].name} & ${entry.friends[1].name}`;
-    return `${entry.friends[0].name} +${entry.friends.length - 1}`;
-  })();
+  const dateLabel = `${d.getDate()} ${monthShort(d.getMonth(), locale).toLowerCase()}`;
+  const time = isAllDayRange(entry.startsAt, entry.endsAt)
+    ? null
+    : rowTimeLabel(entry.startsAt, entry.endsAt, locale);
 
   return (
     <Pressable
       onPress={() =>
         router.push(
-          `/event/${entry.eventId}?o=${entry.occurrenceId}&source=avond` as never
+          `/event/${entry.id}?o=${entry.occurrenceId}&source=avond` as never
         )
       }
-      style={planningCardStyles.card}
+      style={goingCardStyles.card}
     >
       <View
-        style={[
-          planningCardStyles.imgWrap,
-          { backgroundColor: surface.fallback },
-        ]}
+        style={[goingCardStyles.imgWrap, { backgroundColor: surface.fallback }]}
       >
         {thumb ? (
           <Image
             source={{ uri: thumb }}
-            style={planningCardStyles.img}
+            style={goingCardStyles.img}
             contentFit="cover"
           />
         ) : null}
-      </View>
-      <View style={planningCardStyles.body}>
-        <Text
-          numberOfLines={1}
-          style={[planningCardStyles.kicker, { color: roles.accent }]}
+        <View
+          style={[goingCardStyles.badge, { backgroundColor: roles.accent }]}
         >
-          {`${dateLabel} · ${time}`}
-        </Text>
+          <Text style={[goingCardStyles.badgeText, { color: roles.onAccent }]}>
+            {time ? `${dateLabel} · ${time}` : dateLabel}
+          </Text>
+        </View>
+      </View>
+      <View style={goingCardStyles.body}>
         <Text
           numberOfLines={2}
-          style={[planningCardStyles.title, { color: roles.fg }]}
+          style={[goingCardStyles.title, { color: roles.fg }]}
         >
-          {e.title}
+          {entry.title}
         </Text>
         <Text
           numberOfLines={1}
-          style={[planningCardStyles.venue, { color: roles.fgMuted }]}
+          style={[goingCardStyles.venue, { color: roles.fgMuted }]}
         >
-          {venueName}
+          {entry.venue?.name ?? ''}
         </Text>
-        {entry.friends.length > 0 && (
-          <View style={planningCardStyles.friendsRow}>
-            <View style={planningCardStyles.stack}>
-              {visible.map((f, i) => (
-                <View
-                  key={`${f.name}-${i}`}
-                  style={[
-                    planningCardStyles.avatar,
-                    {
-                      left: i * 12,
-                      zIndex: totalTiles - i,
-                      borderColor: roles.bg,
-                      backgroundColor: roles.bg,
-                    },
-                  ]}
-                >
-                  {f.avatar ? (
-                    <Image
-                      source={{ uri: f.avatar }}
-                      style={planningCardStyles.avatarImg}
-                      contentFit="cover"
-                    />
-                  ) : (
-                    <Text
-                      style={[
-                        planningCardStyles.avatarInitial,
-                        { color: roles.fgMuted },
-                      ]}
-                    >
-                      {(f.name.trim()[0] ?? '?').toUpperCase()}
-                    </Text>
-                  )}
-                </View>
-              ))}
-              {overflow > 0 && (
-                <View
-                  style={[
-                    planningCardStyles.avatar,
-                    {
-                      left: visible.length * 12,
-                      zIndex: 0,
-                      borderColor: surface.bg,
-                      backgroundColor: roles.bg,
-                    },
-                  ]}
-                >
-                  <Text
-                    style={[
-                      planningCardStyles.avatarInitial,
-                      { color: roles.fgMuted },
-                    ]}
-                  >
-                    +{overflow}
-                  </Text>
-                </View>
-              )}
-            </View>
-            <Text
-              numberOfLines={1}
-              style={[planningCardStyles.friendsLabel, { color: roles.fgMuted }]}
-            >
-              {nameLabel}
-            </Text>
-          </View>
-        )}
       </View>
     </Pressable>
   );
 }
 
-const planningCardStyles = StyleSheet.create({
-  card: {
-    width: 220,
-  },
+const goingCardStyles = StyleSheet.create({
+  card: { width: RAIL_CARD_WIDTH },
   imgWrap: {
     width: '100%',
-    height: 130,
+    height: RAIL_CARD_IMG_HEIGHT,
     borderRadius: 10,
     overflow: 'hidden',
   },
-  img: {
-    width: '100%',
-    height: '100%',
+  img: { width: '100%', height: '100%' },
+  // Linksonder in de afbeelding, zoals een sticker op een agenda-blad.
+  badge: {
+    position: 'absolute',
+    left: 8,
+    bottom: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
   },
-  body: {
-    paddingTop: 8,
-    gap: 4,
-  },
-  kicker: {
+  badgeText: {
     fontFamily: fontFamily.bold,
-    fontSize: 11,
-    letterSpacing: -0.1,
+    fontSize: 12,
+    letterSpacing: -0.2,
   },
+  body: { paddingTop: 8, gap: 4 },
   title: {
     fontFamily: fontFamily.bold,
     fontSize: 14,
     letterSpacing: -0.21,
     lineHeight: 18,
-    marginTop: 2,
   },
   venue: {
     fontFamily: fontFamily.mono,
     fontSize: 10,
     letterSpacing: 0.6,
     textTransform: 'uppercase',
-  },
-  friendsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginTop: 8,
-  },
-  stack: {
-    height: 24,
-    minWidth: 24,
-    position: 'relative',
-  },
-  avatar: {
-    position: 'absolute',
-    top: 0,
-    width: 24,
-    height: 24,
-    borderRadius: 999,
-    borderWidth: 2,
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'hidden',
-  },
-  avatarImg: {
-    width: '100%',
-    height: '100%',
-  },
-  avatarInitial: {
-    fontFamily: fontFamily.bold,
-    fontSize: 10,
-    letterSpacing: -0.1,
-  },
-  friendsLabel: {
-    fontFamily: fontFamily.mono,
-    fontSize: 9.5,
-    letterSpacing: 0.6,
-    textTransform: 'uppercase',
-    flexShrink: 1,
   },
 });
 
