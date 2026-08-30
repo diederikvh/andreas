@@ -83,6 +83,15 @@ export default function MeerScreen() {
         ]
       : []),
     {
+      // Sinds /going over jouw eigen "ik ga" gaat en niet meer over
+      // vrienden, hoort 'ie hier en niet in de vrienden-groep.
+      key: 'going',
+      icon: <Ionicons name="checkmark-circle-outline" size={22} color={roles.accent} />,
+      label: t('Waar je heen gaat', "Where you're going"),
+      hint: t('Je eigen agenda', 'Your own agenda'),
+      onPress: go('/going'),
+    },
+    {
       key: 'new',
       icon: <Ionicons name="flash-outline" size={22} color={roles.accent} />,
       label: t('Nieuwe aanwinsten', 'New additions'),
@@ -106,12 +115,6 @@ export default function MeerScreen() {
       label: t('Vrienden', 'Friends'),
       badge: socialCount,
       onPress: go('/social'),
-    },
-    {
-      key: 'going',
-      icon: <Ionicons name="footsteps-outline" size={22} color={roles.accent} />,
-      label: t('Wie gaat waarheen', "Who's going where"),
-      onPress: go('/going'),
     },
   ];
 

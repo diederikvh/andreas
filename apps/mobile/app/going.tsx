@@ -22,16 +22,12 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQueryClient } from '@tanstack/react-query';
 
-import { AccountWall } from '@/components/AccountWall';
 import { AppHeader, HEADER_HEIGHT } from '@/components/AppHeader';
 import { EventListRow } from '@/components/EventListRow';
 import { RefreshBanner } from '@/components/RefreshBanner';
 import { SpinningCross } from '@/components/SpinningCross';
-import { useSession, useIsRegistered } from '@/lib/authClient';
-import {
-  type ApiFeedEvent,
-  type SavedApiEvent,
-} from '@/lib/api';
+import { useSession } from '@/lib/authClient';
+import { type SavedApiEvent } from '@/lib/api';
 import {
   CATEGORY_TICK,
   VENUE_TYPE_TICK,
@@ -42,20 +38,11 @@ import {
   translateCategory,
 } from '@/lib/eventDisplay';
 import { useT, useLocale } from '@/lib/i18n';
-import { useMe, useMySaves, useSocialFeed } from '@/lib/queries';
+import { useMyGoing } from '@/lib/queries';
 import type { BadgeTone } from '@/lib/types';
 import { useMode, useRoles } from '@/store/mode';
 import { fontFamily, palette } from '@/theme/tokens';
 
-type Merged = {
-  eventId: string;
-  occurrenceId: string;
-  event: SavedApiEvent | ApiFeedEvent;
-  startsAt: string;
-  endsAt: string | null;
-  mine: boolean;
-  friends: { name: string; avatar: string | null }[];
-};
 
 export default function GoingScreen() {
   const roles = useRoles();
@@ -65,24 +52,20 @@ export default function GoingScreen() {
   const t = useT();
   const qc = useQueryClient();
 
+  // Anoniem mag: dit scherm gaat over jouw eigen agenda, niet over
+  // andere mensen. Stond eerder achter `useIsRegistered()` toen het nog
+  // "wie gaat waarheen" was — dat maakte de "Alles →"-knop op de
+  // homepage-rail een doodlopende weg, want die rail werkt anoniem.
   const { data: session } = useSession();
-  // Anonieme sessie telt niet: dit scherm gaat over andere mensen.
-  const authed = useIsRegistered();
-  const { data: me } = useMe();
-  const { data: saves, isLoading: savesLoading, error: savesError } =
-    useMySaves({ enabled: authed });
-  const { data: feed, isLoading: feedLoading, error: feedError } =
-    useSocialFeed({ enabled: authed });
+  const authed = Boolean(session?.user?.id);
+  const { data: going, isLoading, error } = useMyGoing({ enabled: authed });
 
   const [refreshing, setRefreshing] = useState(false);
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     const start = Date.now();
     try {
-      await Promise.all([
-        qc.invalidateQueries({ queryKey: ['saves'] }),
-        qc.invalidateQueries({ queryKey: ['social-feed'] }),
-      ]);
+      await qc.invalidateQueries({ queryKey: ['going'] });
     } finally {
       const elapsed = Date.now() - start;
       if (elapsed < 700) await new Promise((r) => setTimeout(r, 700 - elapsed));
@@ -93,91 +76,30 @@ export default function GoingScreen() {
   const topInset = insets.top + HEADER_HEIGHT;
   const bottomInset = insets.bottom + 96;
 
-  const myAvatarUrl = me?.avatarUrl ?? null;
-  const myName = me?.name ?? '';
-
-  // Merge: één rij per unieke occurrence. Eigen saves voegen "jij" toe
-  // aan de friend-stack; friend-feed voegt de friend-avatars toe.
-  const merged = useMemo<Merged[]>(() => {
-    const map = new Map<string, Merged>();
-    const myFirst = (myName.split(' ')[0] || 'Jij').trim() || 'Jij';
-
-    for (const s of saves ?? []) {
-      const key = s.occurrenceId;
-      map.set(key, {
-        eventId: s.id,
-        occurrenceId: s.occurrenceId,
-        event: s,
-        startsAt: s.startsAt,
-        endsAt: s.endsAt,
-        mine: true,
-        friends: [{ name: myFirst, avatar: myAvatarUrl }],
-      });
-    }
-    for (const f of feed ?? []) {
-      const key = f.occurrence.id;
-      const existing = map.get(key);
-      const friendBadges = f.friendsSaved.map((fr) => ({
-        name: fr.name,
-        avatar: fr.avatarUrl,
-      }));
-      if (existing) {
-        existing.friends.push(...friendBadges);
-      } else {
-        map.set(key, {
-          eventId: f.eventId,
-          occurrenceId: f.occurrence.id,
-          event: f,
-          startsAt:
-            typeof f.occurrence.startsAt === 'string'
-              ? f.occurrence.startsAt
-              : new Date(f.occurrence.startsAt as unknown as string).toISOString(),
-          endsAt:
-            f.occurrence.endsAt == null
-              ? null
-              : typeof f.occurrence.endsAt === 'string'
-                ? f.occurrence.endsAt
-                : new Date(f.occurrence.endsAt as unknown as string).toISOString(),
-          mine: false,
-          friends: friendBadges,
-        });
-      }
-    }
-    return Array.from(map.values());
-  }, [saves, feed, myAvatarUrl, myName]);
-
+  // Server geeft de lijst al gesorteerd (toekomst eerst), maar we
+  // splitsen 'm hier alsnog: het verleden krijgt z'n eigen sectie met
+  // een anker, en wordt gecapt op 7 dagen. "Oh ja, daar waren we vorige
+  // week" is leuk; vorig jaar laat de lijst alleen groeien.
   const now = Date.now();
   const upcoming = useMemo(
     () =>
-      merged
-        .filter((m) => new Date(m.endsAt ?? m.startsAt).getTime() >= now)
-        .sort(
-          (a, b) =>
-            new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime()
-        ),
+      (going ?? []).filter(
+        (g) => new Date(g.endsAt ?? g.startsAt).getTime() >= now
+      ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [merged]
+    [going]
   );
-  // History wordt gecapt op 7 dagen terug. "Oh ja, daar waren we vorige
-  // week" is leuk; vorig jaar voegt niks toe en laat de lijst onnodig
-  // groeien.
   const past = useMemo(() => {
     const weekAgo = now - 7 * 24 * 3600 * 1000;
-    return merged
-      .filter((m) => {
-        const end = new Date(m.endsAt ?? m.startsAt).getTime();
-        return end < now && end >= weekAgo;
-      })
-      .sort(
-        (a, b) =>
-          new Date(b.startsAt).getTime() - new Date(a.startsAt).getTime()
-      );
+    return (going ?? []).filter((g) => {
+      const end = new Date(g.endsAt ?? g.startsAt).getTime();
+      return end < now && end >= weekAgo;
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [merged]);
+  }, [going]);
 
-  const isLoading = savesLoading || feedLoading;
-  const error = savesError ?? feedError;
-  const isEmpty = authed && !isLoading && !error && merged.length === 0;
+  const isEmpty =
+    authed && !isLoading && !error && (going?.length ?? 0) === 0;
 
   const closeBtn = (
     <Pressable
@@ -196,32 +118,25 @@ export default function GoingScreen() {
     <View style={[styles.root, { backgroundColor: roles.bg }]}>
       <RefreshBanner visible={refreshing} topOffset={topInset + 8} />
 
-      {!authed ? (
-        <View style={{ flex: 1, paddingTop: topInset, paddingBottom: bottomInset }}>
-          <AccountWall
-            icon="footsteps-outline"
-            title={t('Zie wie waarheen gaat', 'See who’s going where')}
-            body={t(
-              'Met vrienden erbij zie je hier wat zij hebben gepland, en kun je ze meevragen naar wat jij hebt gevonden.',
-              'With friends added you see what they’ve planned here, and you can bring them along to what you found.'
-            )}
-          />
-        </View>
-      ) : isEmpty ? (
+      {isEmpty ? (
         <View
           style={[
             styles.emptyCenter,
             { paddingTop: topInset, paddingBottom: bottomInset },
           ]}
         >
-          <Ionicons name="heart-outline" size={48} color={roles.fgMuted} />
+          <Ionicons
+            name="checkmark-circle-outline"
+            size={48}
+            color={roles.fgMuted}
+          />
           <Text style={[styles.emptyTitle, { color: roles.fg }]}>
             {t('Nog niks op de planning.', 'Nothing planned yet.')}
           </Text>
           <Text style={[styles.emptySub, { color: roles.fgMuted }]}>
             {t(
-              'Hier komen events waar jij of je vrienden naartoe gaan. Tik bij een event op het hartje om hem op te slaan.',
-              'Events you or your friends are going to show up here. Tap the heart on an event to save it.'
+              'Zet bij een event "Ik ga hierheen" aan, dan staat het hier — en op je homepage.',
+              'Turn on "I\u2019m going" at an event and it shows up here, and on your homepage.'
             )}
           </Text>
         </View>
@@ -245,7 +160,7 @@ export default function GoingScreen() {
           ]}
           keyExtractor={(item, idx) => `${idx}-${item.occurrenceId}`}
           renderItem={({ item, section }) => (
-            <MergedRow entry={item} dim={section.isPast} />
+            <GoingRow entry={item} dim={section.isPast} />
           )}
           renderSectionHeader={({ section }) =>
             section.isPast ? <PastAnchor count={section.data.length} /> : null
@@ -281,12 +196,16 @@ export default function GoingScreen() {
   );
 }
 
-function MergedRow({ entry, dim = false }: { entry: Merged; dim?: boolean }) {
+function GoingRow({
+  entry,
+  dim = false,
+}: {
+  entry: SavedApiEvent;
+  dim?: boolean;
+}) {
   const locale = useLocale();
-  const e = entry.event as ApiFeedEvent &
-    Partial<SavedApiEvent> & { venue?: SavedApiEvent['venue'] };
-  const venue: { name: string; type?: string | null; imageUrl?: string | null } =
-    (entry.event as SavedApiEvent).venue ?? (entry.event as ApiFeedEvent).venue;
+  const e = entry;
+  const venue = entry.venue;
   const venueTone =
     venue.type && (VENUE_TYPE_TICK as Record<string, BadgeTone>)[venue.type]
       ? (VENUE_TYPE_TICK as Record<string, BadgeTone>)[venue.type]
@@ -320,11 +239,10 @@ function MergedRow({ entry, dim = false }: { entry: Merged; dim?: boolean }) {
         tags={[{ label: translateCategory(e.category, locale), tone }]}
         seriesLabel={undefined}
         genreLabel={(e.genres ?? [])[0]}
-        friends={entry.friends.length > 0 ? entry.friends : undefined}
         tick={tone}
         onPress={() =>
           router.push(
-            `/event/${entry.eventId}?source=going&o=${entry.occurrenceId}`
+            `/event/${entry.id}?source=going&o=${entry.occurrenceId}`
           )
         }
       />

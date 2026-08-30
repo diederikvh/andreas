@@ -1164,9 +1164,14 @@ function GoingRailCard({ entry }: { entry: SavedApiEvent }) {
         <View
           style={[goingCardStyles.badge, { backgroundColor: roles.accent }]}
         >
-          <Text style={[goingCardStyles.badgeText, { color: roles.onAccent }]}>
-            {time ? `${dateLabel} · ${time}` : dateLabel}
+          <Text style={[goingCardStyles.badgeDate, { color: roles.onAccent }]}>
+            {dateLabel}
           </Text>
+          {time ? (
+            <Text style={[goingCardStyles.badgeTime, { color: roles.onAccent }]}>
+              {time}
+            </Text>
+          ) : null}
         </View>
       </View>
       <View style={goingCardStyles.body}>
@@ -1197,18 +1202,29 @@ const goingCardStyles = StyleSheet.create({
   },
   img: { width: '100%', height: '100%' },
   // Linksonder in de afbeelding, zoals een sticker op een agenda-blad.
+  // Datum boven, tijd eronder — twee korte regels maken er een blokje
+  // van in plaats van een liggend strookje.
   badge: {
     position: 'absolute',
     left: 8,
     bottom: 8,
+    minWidth: 54,
     paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
+    paddingVertical: 6,
+    borderRadius: 8,
+    alignItems: 'center',
   },
-  badgeText: {
+  badgeDate: {
     fontFamily: fontFamily.bold,
-    fontSize: 12,
+    fontSize: 13,
+    lineHeight: 16,
     letterSpacing: -0.2,
+  },
+  badgeTime: {
+    fontFamily: fontFamily.mono,
+    fontSize: 11,
+    lineHeight: 14,
+    letterSpacing: 0.2,
   },
   body: { paddingTop: 8, gap: 4 },
   title: {
