@@ -728,23 +728,24 @@ export default function Avond() {
             scrollt hier langs op zoek naar iets nieuws en vergeet dan
             makkelijk dat je over drie weken al ergens heen gaat. Eerst
             wat je al hebt afgesproken, dan pas het aanbod. */}
+        {/* Geen eigen marge: `Rail` brengt al 22 mee (14 padding + 8 op
+            de kop). Met een extra 20 erbovenop hing de aanwinsten-strook
+            in een gat van veertig-en-nog-wat. */}
         {agendaRail.length > 0 && (
-          <View style={{ marginTop: 20 }}>
-            <Rail
-              kicker={t('Jouw plannen', 'Your plans')}
-              moreLabel={t('Alles →', 'See all →')}
-              onMore={() => router.push('/going' as never)}
-              cardWidth={goingCardW}
-            >
-              {agendaRail.map((g) => (
-                <GoingRailCard
-                  key={g.occurrenceId}
-                  entry={g}
-                  width={goingCardW}
-                />
-              ))}
-            </Rail>
-          </View>
+          <Rail
+            kicker={t('Jouw plannen', 'Your plans')}
+            moreLabel={t('Alles →', 'See all →')}
+            onMore={() => router.push('/going' as never)}
+            cardWidth={goingCardW}
+          >
+            {agendaRail.map((g) => (
+              <GoingRailCard
+                key={g.occurrenceId}
+                entry={g}
+                width={goingCardW}
+              />
+            ))}
+          </Rail>
         )}
 
         {/* Hier stonden twee rijen ingangen: vier grote banners (gids,
@@ -1921,9 +1922,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 14,
-    // Geen eigen marge boven: `featuredWrap` geeft er al 20 mee. De
-    // agenda-rail eronder zet dezelfde 20, zodat de strook precies
-    // midden tussen de feature-card en het liftvlak hangt.
+    // Geen eigen marge: `featuredWrap` brengt al 20 mee en `Rail`
+    // eronder 22 (14 padding + 8 op de kop). Nagemeten komt dat uit op
+    // 32 boven en 31 onder — de strook hangt er precies tussenin.
     paddingHorizontal: 22,
     paddingVertical: 4,
   },
