@@ -65,6 +65,7 @@ import {
   useEvents,
   useMyGoing,
   useVenues,
+  useForYouEvents,
   useNewArrivals,
   useSeriesList,
 } from '@/lib/queries';
@@ -113,6 +114,9 @@ const CATEGORIES_ORDER: ApiEvent['category'][] = [
   'Film',
 ];
 
+
+/** Eén hero-kaart plus waaróm 'ie er staat — dat verschilt per bron. */
+type Lead = OccurrenceRow & { kicker: string };
 
 export default function Avond() {
   const mode = useMode();
@@ -225,6 +229,15 @@ export default function Avond() {
   // stonden 12 toekomstige saves in die rail waarvan onbekend was naar
   // hoeveel hij daadwerkelijk ging. Vrienden vind je in de social-feed;
   // deze rail is puur jouw agenda.
+  // Voedt de hero, niet meer een eigen rail. `/for-you` scoort al op
+  // precies wat de hero nodig heeft: een gevolgde venue telt +5, daar
+  // bovenop genre, scene, wijk en vrienden, en sinds de attendance-tabel
+  // weegt "ik ga" dubbel mee. Zeven dagen horizon, zodat de carousel ook
+  // op een dooie dinsdag drie kaarten heeft.
+  const { data: forYouEvents } = useForYouEvents({
+    enabled: authed,
+    weekOnly: true,
+  });
   const { data: going } = useMyGoing({ enabled: authed });
   // Drie kaarten in beeld plus een zichtbaar stukje van de vierde: een
   // volle agenda moet er vól uitzien, anders lijkt 'ie af terwijl er nog
@@ -406,55 +419,53 @@ export default function Avond() {
       );
   }, [events, allRows, now]);
 
-  // Featured leads: probeer eerst vandaag's featured-events. Geen
-  // featured vandaag? Pak een RANDOM item uit de rails-pool (rotert
-  // elke pull-to-refresh, zodat je telkens iets anders ziet als hero
-  // i.p.v. monotoom hetzelfde eerste event). Idem voor de upcoming-
-  // fallback wanneer vandaag leeg is.
-  const leads = useMemo<OccurrenceRow[]>(() => {
-    if (leadsPool.length === 0 && featuredFallbackPool.length === 0) return [];
-    const todayMs = todayWindow.toMs;
-    const todayRows = leadsPool.filter(
-      (r) => new Date(r.occurrence.startsAt).getTime() < todayMs
-    );
-    const todayFallback = featuredFallbackPool.filter(
-      (r) => new Date(r.occurrence.startsAt).getTime() < todayMs
-    );
-    const dedupe = (rows: OccurrenceRow[]) => {
-      const seen = new Set<string>();
-      return rows.filter((r) => {
-        if (seen.has(r.event.id)) return false;
-        seen.add(r.event.id);
-        return true;
-      });
+  // Drie hero-kaarten, in vaste volgorde van herkomst:
+  //
+  //   1. Eén redactionele keuze — `featured` in de admin. De curator
+  //      krijgt de eerste plek, maar niet alle drie: dan zou de rest van
+  //      de carousel op een goed geprogrammeerde dag nooit persoonlijk
+  //      zijn.
+  //   2. Twee uit `/for-you`, dat gevolgde venues en je smaakprofiel al
+  //      tegen elkaar afweegt.
+  //   3. Aanvullen uit de gewone pool als die twee niks opleveren — een
+  //      verse gebruiker heeft nog geen profiel en volgt nog niks.
+  //
+  // Was eerder een cascade die meestal op één kaart uitkwam (en bij
+  // "niks featured vandaag" op een random pick). Vandaar ook dat het
+  // venster niet meer op vandaag zit: drie kaarten haal je op een
+  // rustige dag alleen uit de dagen erna.
+  const leads = useMemo<Lead[]>(() => {
+    const out: Lead[] = [];
+    const seen = new Set<string>();
+    const push = (row: OccurrenceRow, kicker: string) => {
+      if (out.length >= 3 || seen.has(row.event.id)) return;
+      seen.add(row.event.id);
+      out.push({ ...row, kicker });
     };
-    const pickRandom = (rows: OccurrenceRow[]) => {
-      const unique = dedupe(rows);
-      if (unique.length === 0) return [];
-      const idx =
-        ((featuredSeed % unique.length) + unique.length) % unique.length;
-      return [unique[idx]];
-    };
-    if (todayRows.length > 0) {
-      const todayFeatured = todayRows.filter((r) => r.event.featured);
-      if (todayFeatured.length > 0) return dedupe(todayFeatured);
+
+    const editorial = leadsPool.find((r) => r.event.featured);
+    if (editorial) push(editorial, t('Onze keuze', 'Our pick'));
+
+    for (const ev of forYouEvents ?? []) {
+      const occ = ev.occurrencesInRange?.[0];
+      if (!occ) continue;
+      push(
+        { id: `${ev.id}::${occ.id}`, event: ev, occurrence: occ },
+        ev.venueFollowed
+          ? t('Jouw venue', 'Your venue')
+          : t('Voor jou', 'For you')
+      );
     }
-    // Geen vandaag-featured maar wel vandaag-content (incl. lopende
-    // exhibitions) → random pick.
-    if (todayFallback.length > 0) return pickRandom(todayFallback);
-    // Vandaag is leeg — kijk vooruit. Featured eerst, anders random
-    // uit de upcoming-pool (incl. exhibitions).
-    const upcomingFeatured = leadsPool.filter((r) => r.event.featured);
-    if (upcomingFeatured.length > 0) {
-      return dedupe(upcomingFeatured).slice(0, 5);
+
+    // Aanvullen vanaf een roterend startpunt zodat pull-to-refresh iets
+    // anders oplevert in plaats van steeds hetzelfde eerstvolgende event.
+    const rest = featuredFallbackPool.filter((r) => !seen.has(r.event.id));
+    for (let i = 0; i < rest.length && out.length < 3; i++) {
+      const idx = (((featuredSeed + i) % rest.length) + rest.length) % rest.length;
+      push(rest[idx], t('Uitgelicht', 'Featured'));
     }
-    return pickRandom(featuredFallbackPool);
-  }, [
-    leadsPool,
-    featuredFallbackPool,
-    todayWindow.toMs,
-    featuredSeed,
-  ]);
+    return out;
+  }, [leadsPool, featuredFallbackPool, forYouEvents, featuredSeed, t]);
 
   // Voor 'expo'-rails: events-pool die exhibitions wél meeneemt.
   // Filtering: mode-mapping (cat ∈ expo), overrule via expliciete cats,
@@ -714,11 +725,7 @@ export default function Avond() {
         {/* Hoofd-artikelen: alle featured events uit vandaag-events. */}
         {leads.length > 0 && (
           <View style={{ marginTop: 8 }}>
-            <FeaturedCarousel
-              leads={leads}
-              kicker={t('Onze keuze', 'Our pick')}
-              locale={locale}
-            />
+            <FeaturedCarousel leads={leads} locale={locale} />
           </View>
         )}
 
@@ -1329,11 +1336,9 @@ function EmptyResults({
  */
 function FeaturedCarousel({
   leads,
-  kicker,
   locale,
 }: {
-  leads: OccurrenceRow[];
-  kicker: string;
+  leads: Lead[];
   locale: Locale;
 }) {
   const { width } = useWindowDimensions();
@@ -1363,7 +1368,7 @@ function FeaturedCarousel({
     return (
       <Pressable onPress={() => router.push(eventPathFor(lead) as never)}>
         <FeaturedCard
-          kicker={kicker}
+          kicker={lead.kicker}
           title={lead.event.title}
           meta={formatMetaForRow(lead, locale)}
           photo={eventImageUrl(lead.event) ?? undefined}
@@ -1393,7 +1398,7 @@ function FeaturedCarousel({
               onPress={() => router.push(eventPathFor(lead) as never)}
             >
               <FeaturedCard
-                kicker={kicker}
+                kicker={lead.kicker}
                 title={lead.event.title}
                 meta={formatMetaForRow(lead, locale)}
                 photo={eventImageUrl(lead.event) ?? undefined}
