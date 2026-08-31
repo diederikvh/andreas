@@ -60,13 +60,12 @@ import {
 } from '@/lib/eventDisplay';
 import { softTap, tinyTap } from '@/lib/haptics';
 import { useNewFilters } from '@/store/newFilters';
-import { useNewBadgeSince } from '@/store/sessionTimestamps';
 import { useLocale, useT, type Locale } from '@/lib/i18n';
 import {
   useEvents,
   useMyGoing,
   useVenues,
-  useNewArrivalsSince,
+  useNewArrivals,
   useSeriesList,
 } from '@/lib/queries';
 import { useSession } from '@/lib/authClient';
@@ -1095,12 +1094,12 @@ function NewArrivalsAlert() {
   const t = useT();
   const { data: session } = useSession();
   const authed = Boolean(session?.user?.id);
-  const since = useNewBadgeSince();
   const activeLanes = useNewFilters((s) => s.activeLanes);
-  const { data } = useNewArrivalsSince(since, {
-    enabled: authed,
-    lanes: activeLanes,
-  });
+  // Zelfde venster als de pagina zelf, inclusief de "vandaag"-terugval.
+  // Hing eerder aan `useNewBadgeSince()`, maar dat is een ongelezen-
+  // teller: die zakt naar nul zodra je /new hebt geopend, en dan
+  // verdween deze strook terwijl er nog van alles op de pagina stond.
+  const { data } = useNewArrivals({ enabled: authed, lanes: activeLanes });
 
   const total = data?.total ?? 0;
   const thumbs = (data?.events ?? [])

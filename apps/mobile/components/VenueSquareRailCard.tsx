@@ -17,10 +17,15 @@ import { useRailCardStyles } from '@/components/Rail';
 import { useRoles } from '@/store/mode';
 import { fontFamily } from '@/theme/tokens';
 
-// 3-op-een-rij in een 393px iPhone-viewport: 393 - 44 (rail-padding
-// 22×2) = 349, minus 2 gaps van 10 = 329, /3 ≈ 109 → 108 voor wat
-// adem.
-export const SQUARE_CARD_WIDTH = 108;
+// Vier op een rij plus een randje van de vijfde. Op een 402px-viewport:
+// 22 leading pad + 4×80 + 4 gaps van 10 = 382, dus 20 over als peek. Op
+// de smalste iPhone (375) valt de vierde net iets buiten beeld, maar
+// blijft 'ie voor ruim negentig procent zichtbaar.
+//
+// Was 108 (drie op een rij). Vier past beter bij een volg-lijst: die
+// groeit, en met drie kaarten lijkt 'ie af terwijl er nog tien achter
+// zitten.
+export const SQUARE_CARD_WIDTH = 80;
 
 export function VenueSquareRailCard({
   slug,
@@ -77,8 +82,8 @@ const styles = StyleSheet.create({
   cardName: {
     paddingTop: 6,
     fontFamily: fontFamily.bold,
-    fontSize: 12,
-    lineHeight: 15,
-    letterSpacing: -0.17,
+    fontSize: 11,
+    lineHeight: 14,
+    letterSpacing: -0.12,
   },
 });

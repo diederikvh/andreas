@@ -1,3 +1,5 @@
+import { useMemo } from 'react';
+
 import {
   keepPreviousData,
   useInfiniteQuery,
@@ -73,6 +75,7 @@ import {
   type VenueType,
 } from '@/lib/api';
 import { useSession } from '@/lib/authClient';
+import { useNewWindowStart } from '@/store/sessionTimestamps';
 
 export const queryKeys = {
   events: (filter: EventsFilter = {}) => ['events', filter] as const,
@@ -192,6 +195,72 @@ export function useNewArrivalsSince(
     // ververst het scherm in plaats van dat het leegloopt.
     placeholderData: keepPreviousData,
   });
+}
+
+/**
+ * Wat er nú op /new te vinden is, inclusief de "vandaag"-terugval.
+ *
+ * Eén bron voor twee plekken: de pagina zelf en de aanwinsten-strook op
+ * Vandaag. Die strook hing eerder aan `useNewBadgeSince()` — dat is een
+ * ongelezen-teller, die naar nul zakt zodra je /new hebt geopend. Gevolg:
+ * de strook verdween terwijl er nog van alles op de pagina stond.
+ *
+ * De keuze fallback-of-niet hangt aan het venster en niet aan je filter:
+ * `laneCounts` telt vóór het filteren, dus de som is wat er onbewerkt in
+ * zit. Zit er wél iets maar niet in jouw baan, dan blijft dat een
+ * antwoord op je filter en geen leeg venster.
+ */
+export function useNewArrivals(
+  opts: { enabled?: boolean; lanes?: Lane[]; limit?: number } = {}
+) {
+  const enabled = opts.enabled ?? true;
+  const since = useNewWindowStart();
+
+  const {
+    data: arrivals,
+    isLoading: loadingSince,
+    error: errorSince,
+  } = useNewArrivalsSince(since, {
+    enabled,
+    lanes: opts.lanes,
+    limit: opts.limit,
+  });
+
+  const sinceUnfiltered = arrivals
+    ? Object.values(arrivals.laneCounts).reduce((a, b) => a + b, 0)
+    : undefined;
+  const showingFallback = !since || sinceUnfiltered === 0;
+
+  // Middernacht, niet de logische dag-grens van 06:00. Die 06:00-regel
+  // gaat over wannéér een event begint — niet over wanneer een record is
+  // aangemaakt. De scrape-cron draait om 02:00, dus met 06:00 zou alles
+  // wat vannacht binnenkwam onder "gisteren" vallen en stond hier
+  // 's ochtends structureel nul.
+  const todayStart = useMemo(() => {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    return d;
+  }, []);
+  const {
+    data: today,
+    isLoading: loadingToday,
+    error: errorToday,
+  } = useNewArrivalsSince(todayStart, {
+    enabled: enabled && showingFallback,
+    lanes: opts.lanes,
+    limit: opts.limit,
+  });
+
+  const data = showingFallback ? (today ?? arrivals) : arrivals;
+  return {
+    data,
+    /** Toont dit het "vandaag"-venster in plaats van "sinds je vorige bezoek"? */
+    showingFallback,
+    /** Sessiegrens, voor de datum in de kop. Null bij de eerste launch. */
+    since,
+    isLoading: (since ? loadingSince : false) || (showingFallback && loadingToday),
+    error: errorSince ?? errorToday,
+  };
 }
 
 /**

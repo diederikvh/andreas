@@ -47,7 +47,7 @@ import {
 import { softTap } from '@/lib/haptics';
 import { useLocale, useT } from '@/lib/i18n';
 import {
-  useNewArrivalsSince,
+  useNewArrivals,
   useToggleDismiss,
   useToggleSave,
 } from '@/lib/queries';
@@ -56,10 +56,7 @@ import {
   TASTE_NUDGE_THRESHOLD,
   useNewFilters,
 } from '@/store/newFilters';
-import {
-  useNewWindowStart,
-  useSessionTimestamps,
-} from '@/store/sessionTimestamps';
+import { useSessionTimestamps } from '@/store/sessionTimestamps';
 import { useMode, useRoles } from '@/store/mode';
 import { fontFamily, palette } from '@/theme/tokens';
 
@@ -77,13 +74,6 @@ export default function NewScreen() {
   const { data: session } = useSession();
   const authed = Boolean(session?.user?.id);
   const registered = useIsRegistered();
-  // De lijst ankert op de sessie-grens (`previous`), niet op je
-  // laatste bezoek. Daardoor blijft 'ie de hele sessie dezelfde "nieuw
-  // sinds je vorige bezoek"-lijst tonen — wegstappen en terugkomen
-  // verandert er niks aan. Pas een nieuwe sessie (>30min weg) schuift
-  // het venster door.
-  const since = useNewWindowStart();
-
   // Bij BLUR (= je verlaat /new): markeer de pagina als gezien zodat de
   // badge-teller op /avond naar 0 zakt. Raakt de lijst hierboven niet —
   // die hangt aan `previous`, niet aan dit bezoek-moment.
@@ -129,61 +119,20 @@ export default function NewScreen() {
   // klapt uit; dat is een tweede request, geen client-side slice.
   const [expanded, setExpanded] = useState(false);
 
-  // Primair: alles dat sinds de vorige sessie is toegevoegd — nieuwe
-  // events én nieuwe datums bij bestaande events. Pauzeert wanneer
-  // since=null (eerste-ooit-launch).
+  // Wat er nu te vinden is, uit één gedeelde hook — dezelfde die de
+  // aanwinsten-strook op Vandaag voedt. Die twee mogen niet uit elkaar
+  // lopen: als de strook iets belooft moet deze pagina 't ook tonen.
   const {
-    data: arrivals,
-    isLoading: loadingSince,
-    error: errorSince,
-  } = useNewArrivalsSince(since, {
+    data: active,
+    showingFallback,
+    since,
+    isLoading,
+    error,
+  } = useNewArrivals({
     enabled: authed,
     lanes: activeLanes,
     limit: expanded ? 200 : undefined,
   });
-
-  // Fallback: geen sessiegrens (eerste keer) of niks nieuws sinds je
-  // vorige bezoek. Dan tonen we wat er vandáág is bijgekomen — een
-  // concreet venster in plaats van "de laatste tien, wanneer dan ook".
-  // Dat laatste toonde items van drie weken terug alsof ze nieuw waren.
-  //
-  // De keuze hangt aan het venster, niet aan je filter: `laneCounts`
-  // telt vóór het filteren, dus de som is wat er onbewerkt in zit.
-  // Eerder keek dit naar `arrivals.total` plus "geen banen aangezet",
-  // en dan zette de fallback zichzelf uit zodra je één baan aanklikte —
-  // in het "vandaag"-venster viel dus niet te filteren.
-  //
-  // Zit er wél iets in het venster maar niet in jouw baan, dan blijft
-  // dit false: dat is een antwoord op je filter, geen leeg venster.
-  const sinceUnfiltered = arrivals
-    ? Object.values(arrivals.laneCounts).reduce((a, b) => a + b, 0)
-    : undefined;
-  const sinceEmpty = !since || sinceUnfiltered === 0;
-  // Middernacht, niet de logische dag-grens van 06:00. Die 06:00-regel
-  // gaat over wannéér een event begint (een clubnacht om 02:00 hoort bij
-  // de avond ervoor) — niet over wanneer een record is aangemaakt. De
-  // scrape-cron draait om 02:00, dus met een 06:00-grens zou alles wat
-  // vannacht binnenkwam onder "gisteren" vallen en stond hier 's ochtends
-  // structureel nul.
-  const todayStart = useMemo(() => {
-    const d = new Date();
-    d.setHours(0, 0, 0, 0);
-    return d;
-  }, []);
-  const {
-    data: today,
-    isLoading: loadingRecent,
-    error: errorRecent,
-  } = useNewArrivalsSince(todayStart, {
-    enabled: authed && sinceEmpty,
-    lanes: activeLanes,
-    limit: expanded ? 200 : undefined,
-  });
-  // Eén bron voor de hele pagina: in de fallback is dat `today`, anders
-  // `arrivals`. Eerder koos elke afgeleide waarde apart op
-  // "heeft arrivals rijen?", en dan kon de lijst uit het ene venster
-  // komen en de teller uit het andere.
-  const active = sinceEmpty ? (today ?? arrivals) : arrivals;
   const rawEvents = active?.events;
   // Wat je deze sessie al beoordeeld hebt. De server haalt beoordeelde
   // events er ook uit, maar pas bij de volgende fetch — deze set laat de
@@ -310,11 +259,6 @@ export default function NewScreen() {
     return out;
   }, [events]);
   const showSectionHeaders = sections.some((s) => s.lane !== 'onbekend');
-  // Toont de lijst het "vandaag"-venster in plaats van "sinds je vorige
-  // bezoek"? Bepaalt de kop.
-  const showingFallback = sinceEmpty;
-  const isLoading = (since && loadingSince) || (sinceEmpty && loadingRecent);
-  const error = errorSince ?? errorRecent;
 
   // "24 mei" / "May 24" (+ jaartal bij andere jaren). Concrete datum in
   // de intro maakt expliciet vanaf wanneer we 'nieuw' definiëren — bv.
