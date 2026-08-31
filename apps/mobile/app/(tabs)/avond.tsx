@@ -1130,8 +1130,14 @@ function NewArrivalsAlert() {
         ))}
       </View>
       <View style={styles.newAlertBody}>
+        {/* Alleen het getal in accent — dat is wat verandert. Zelfde
+            gebaar als de rails, die hun tijd in accent zetten en de rest
+            in wit. De posters dragen de aandacht al; een hele regel geel
+            zou een derde accent worden tussen "Onze keuze" erboven en
+            het datum-blokje eronder. */}
         <Text style={[styles.newAlertTitle, { color: roles.fg }]}>
-          {t(`${total} nieuw`, `${total} new`)}
+          <Text style={{ color: roles.accent }}>{total}</Text>
+          {t(' nieuw', ' new')}
         </Text>
         <Text style={[styles.newAlertSub, { color: roles.fgMuted }]}>
           {t('Bekijk wat er bij kwam', 'See what came in')}
