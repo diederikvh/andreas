@@ -730,9 +730,17 @@ export default function Avond() {
             makkelijk dat je over drie weken al ergens heen gaat. Eerst
             wat je al hebt afgesproken, dan pas het aanbod. */}
         {agendaRail.length > 0 && (
-          <View style={{ marginTop: 4, backgroundColor: roles.bgLift, paddingBottom: 14 }}>
+          <View
+            style={{
+              // Ruimer dan de andere blokken: de strook erboven zou anders
+              // tegen de rand van dit lichtere vlak aan plakken.
+              marginTop: 20,
+              backgroundColor: roles.bgLift,
+              paddingBottom: 14,
+            }}
+          >
             <Rail
-              kicker={t('Waar je heen gaat', "Where you're going")}
+              kicker={t('Jouw plannen', 'Your plans')}
               moreLabel={t('Alles →', 'See all →')}
               onMore={() => router.push('/going' as never)}
               cardWidth={goingCardW}
@@ -1108,7 +1116,7 @@ function NewArrivalsAlert() {
         tinyTap();
         router.push('/new' as never);
       }}
-      style={[styles.newAlert, { borderColor: roles.bgChip }]}
+      style={styles.newAlert}
     >
       <View style={styles.newAlertStack}>
         {thumbs.map((uri, i) => (
@@ -1128,10 +1136,10 @@ function NewArrivalsAlert() {
           {t(`${total} nieuw`, `${total} new`)}
         </Text>
         <Text style={[styles.newAlertSub, { color: roles.fgMuted }]}>
-          {t('Beoordeel wat er bij kwam', 'Rate what came in')}
+          {t('Bekijk wat er bij kwam', 'See what came in')}
         </Text>
       </View>
-      <Ionicons name="chevron-forward" size={16} color={roles.fgPlaceholder} />
+      <Text style={[styles.newAlertMore, { color: roles.fgMuted }]}>→</Text>
     </Pressable>
   );
 }
@@ -1898,19 +1906,18 @@ function SheetChip({
 }
 
 const styles = StyleSheet.create({
-  // Omlijnd en niet gevuld: de agenda-rail er direct onder is een
-  // bgLift-vlak, en twee vlakken op elkaar lopen in elkaar over. Een
-  // rand houdt dit een losse strook.
+  // Geen rand en geen kader: op 22 padding lijnt de tekst uit met de
+  // kickers van de rails eronder, en dan leest 'ie als onderdeel van
+  // dezelfde kolom in plaats van als een los kaartje.
   newAlert: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 14,
-    marginTop: 14,
-    marginHorizontal: 22,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    borderRadius: 14,
-    borderWidth: StyleSheet.hairlineWidth,
+    // Geen eigen marge boven: `featuredWrap` geeft er al 20 mee. De
+    // agenda-rail eronder zet dezelfde 20, zodat de strook precies
+    // midden tussen de feature-card en het liftvlak hangt.
+    paddingHorizontal: 22,
+    paddingVertical: 4,
   },
   // Overlappende stapel: drie posters op 22px uit elkaar, dus je ziet
   // van elk een strookje. Breedte is 2 × offset + thumb.
@@ -1932,6 +1939,13 @@ const styles = StyleSheet.create({
     letterSpacing: -0.3,
   },
   newAlertSub: { fontFamily: fontFamily.body, fontSize: 13 },
+  // Zelfde behandeling als de "MEER →"-links in de rail-koppen, zodat
+  // alle doorklik-pijlen op deze pagina hetzelfde gebaar zijn.
+  newAlertMore: {
+    fontFamily: fontFamily.mono,
+    fontSize: 10,
+    letterSpacing: 1,
+  },
 
   root: { flex: 1 },
 
