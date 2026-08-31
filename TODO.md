@@ -2,7 +2,7 @@
 
 Live status van het project. Cross-checken met `HANDOFF.md` voor de oorspronkelijke briefing en met de huidige codebase voor de waarheid. Per open punt staat genoeg context om een agent zelfstandig te laten werken.
 
-Laatste sync: 2026-08-23 · branch `main`.
+Laatste sync: 2026-08-30 · branch `main`.
 
 ## Stand
 
@@ -141,7 +141,9 @@ Laatste sync: 2026-08-23 · branch `main`.
 
 - ⬜ **"Voor jou" op Agenda** — copy van Avond-rail of natuurlijker geïntegreerd in tijdslijn. Plan noemde "/avond of /agenda".
 - ⬜ **"Omdat je X volgt..."-venue-suggesties** — light collaborative filtering op venue-follows (welke venues hebben overlap met jouw save-patroon). Apart endpoint `/venues/for-you` of als sectie op Avond/Jij.
-- ⬜ **Swipen op `/new`** (eerstvolgende) — links wegvegen = niet leuk, rechts = leuk, zoals je je inbox opruimt. De knoppen doen dit al; het gebaar moet erbij omdat je dan door een lijst van vijftien héén veegt in plaats van vijftien keer te mikken. Aandachtspunten: horizontale pan mag niet vechten met de verticale SectionList (`activeOffsetX` op de gesture), en een mis-swipe is waarschijnlijker dan een mis-tap — dus een undo erbij, want een dismiss haalt het hele event permanent uit de lijst. `react-native-gesture-handler` + Reanimated staan al in het project en `/op-gevoel` heeft de swipe-mechaniek al.
+- ✅ **Swipen op `/new`** — links = niks voor mij, rechts = interessant, met 6-seconden undo omdat een mis-veeg waarschijnlijker is dan een mis-tap en een nee het event permanent uit de lijst haalt. `SwipeableRow` regelt drie dingen die stuk voor stuk een bug waren: `activeOffsetX`/`failOffsetY` zodat de pan niet vecht met de verticale SectionList, `Gesture.Exclusive(pan, tap)` zodat een halve veeg niet alsnog het detail opent, en géén `removeClippedSubviews` op de lijst want geclipte rijen kregen op iOS geen touches (alleen de eerste zeven waren veegbaar). De knoppen zijn eruit; de eerste rij wiebelt één keer bij openen als aanwijzing.
+- ✅ **"Ik ga hierheen" + agenda-rail** (30 aug 2026) — derde signaal naast het hartje en de uitnodiging. `attendance(userId, occurrenceId)`, migratie 0051, bewust zónder status-kolom: een `maybe` is precies wat een save al betekent en met twee manieren om "misschien" te zeggen weet niemand meer wat een hartje is. `GET /going` mergt je eigen markeringen met de uitnodigingen waar je ja op zei — zonder die merge moest je na het accepteren van een invite nog een tweede keer bevestigen. Weegt 2× een hartje in `buildTasteProfile` (`GOING_WEIGHT`). Op het event-detail als eerste rij in de crew-container onder de kop "Jouw plan". `/going` is daarmee jouw agenda geworden in plaats van de sociale "wie gaat waarheen" — accountmuur eruit, want er staat niks van andere mensen meer op. "Geweest" blijft afgeleid uit de tijd.
+- ✅ **Homepage opnieuw geordend** (30 aug 2026) — feature-card → aanwinsten-strook → "Jouw plannen" → per soort. De strook met drie posters uit `/new` verving het bolletje op de Meer-tab: een getal op een menu-icoon zegt dát er iets is, niet wát, en `/new` is de dagelijkse lus die niet twee tikken diep hoort. Deelt de query met de TabBar dus kost geen extra request, en verbergt zich bij nul. "Jouw avond · vanavond" is van de homepage af — die raadde aan op je hartjes en dat doet `/voor-jou` al, bereikbaar via Aanbevolen in het Meer-menu.
 - ⬜ **Dagelijkse push naar `/new`** (afgesproken: oppakken vanaf ~29 aug 2026) — cron die één keer per dag kijkt of er ná baan-filtering iets overblijft, en alleen dán pusht. Stilte bij nul is expliciet onderdeel van het ontwerp: een digest die elke dag móet vullen wordt ruis. Endpoint en pagina staan al (`/events/new` + `/new`), `push_tokens` ook; wat ontbreekt is de scheduler en een per-user voorkeur voor het tijdstip. Let op het volume: nieuwe events per dag schommelde in aug tussen 3 en 150, dus de cap van 15 is wat de push waarmaakt.
 - ⬜ **Wijzigingen los van nieuws** — "je zaterdag is verplaatst/afgelast" is service en urgent, "12 nieuwe dingen" is ontdekking en dat niet. Meng je ze, dan negeer je de ene en mis je de andere. Vraagt een `updatedAt` op `occurrences` (nu alleen `createdAt`).
 - ⬜ **Push voor matches** — match-logic + scheduler. Alleen voor events die hoog scoren tegen jouw profiel, en alleen bij gevolgde venues of genres met N≥3 saves. Géén "deze week speelt er..."-broadcast. `push_tokens` tabel bestaat al.
@@ -357,7 +359,7 @@ Niet allemaal akkoord, niet allemaal nu — vóór bouw eerst beslissen. Georden
 
 ### Hoge impact, kleine bouw
 1. **Artist-follow + "op tour"-push** — `artist_follows` tabel + knop op `/artist/[slug]`. Push wanneer een gevolgde artist een nieuwe occurrence krijgt (via scrape). Sluit Spotify-loopje: save show → vanzelf artist gevolgd → push 6 maanden later. Schat: 0.5 dag.
-2. **"Geweest"-marker** — na event-datum lichte prompt "ben je geweest?" → 1-tap toggle. Powert echte timeline + verrijkt spiegel (intentie ↔ aanwezigheid) + maakt social-feed signaal sterker ("Roos GING" > "Roos saved"). Schat: 1 dag (schema-kolom + UI-prompt + mirror-aanpassing).
+2. **"Geweest"-marker** — de intentie-helft is sinds 30 aug gebouwd (`attendance`, zie fase 9), en "geweest" leiden we af uit de tijd. Wat nog ontbreekt is het verschil tussen "ik zei ja" en "ik wás er": een lichte prompt de dag erna, 1-tap. Alleen dán wordt het signaal in de spiegel echt aanwezigheid in plaats van plan. Schat: 0.5 dag (prompt + één kolom).
 3. **Donderdag-digest push** — scheduler: donderdag 17:00 voor users met ≥1 save in komend weekend. "Vanavond + dit weekend: X, Y, Z in jouw saves/gevolgde venues". Habit-former, geen nieuwe data nodig. Schat: 0.5 dag.
 
 ### Medium impact
