@@ -1033,7 +1033,12 @@ export default function Avond() {
             volg-lijst dient (tap → venue-pagina met volledige
             programmering). */}
       </ScrollView>
-      <AppHeader title={t('Vandaag', 'Today')} />
+      {/* Geen titel: dit is de thuisbasis, niet één onderwerp. "Vandaag"
+          dekte de vlag niet meer sinds de strook met aanwinsten en je
+          plannen erboven staan — die gaan over volgende week en over
+          november. Elk ander scherm houdt wél z'n label, en dat maakt
+          dit scherm juist herkenbaar als home. */}
+      <AppHeader />
     </View>
   );
 }
