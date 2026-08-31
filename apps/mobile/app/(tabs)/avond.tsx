@@ -729,15 +729,7 @@ export default function Avond() {
             makkelijk dat je over drie weken al ergens heen gaat. Eerst
             wat je al hebt afgesproken, dan pas het aanbod. */}
         {agendaRail.length > 0 && (
-          <View
-            style={{
-              // Ruimer dan de andere blokken: de strook erboven zou anders
-              // tegen de rand van dit lichtere vlak aan plakken.
-              marginTop: 20,
-              backgroundColor: roles.bgLift,
-              paddingBottom: 14,
-            }}
-          >
+          <View style={{ marginTop: 20 }}>
             <Rail
               kicker={t('Jouw plannen', 'Your plans')}
               moreLabel={t('Alles →', 'See all →')}
@@ -790,6 +782,12 @@ export default function Avond() {
             ))}
           </Rail>
         )}
+
+        {/* Grens tussen wat van jou is (aanwinsten, je plannen, je
+            venues) en het algemene aanbod van vandaag. Zonder streep
+            lopen die twee in elkaar over en lijkt alles even
+            persoonlijk. */}
+        <View style={[styles.sectionRule, { backgroundColor: roles.bgChip }]} />
 
         {/* Festivals/series in 'uit', doorlopende tentoonstellingen in
             'expo'. Tussen Hero en cat-rails. Geen kop-label —
@@ -1905,6 +1903,17 @@ function SheetChip({
 }
 
 const styles = StyleSheet.create({
+  // Over de volle breedte, want dit scheidt twee soorten inhoud en niet
+  // twee blokken binnen dezelfde soort.
+  sectionRule: {
+    height: StyleSheet.hairlineWidth,
+    // Dicht onder het laatste eigen blok: de streep hoort bij wat
+    // erboven staat en sluit dat af. De lucht eronder komt van de
+    // volgende rail zelf, en dat is precies de goede verhouding —
+    // afsluiten kort, openen ruim.
+    marginTop: 8,
+  },
+
   // Geen rand en geen kader: op 22 padding lijnt de tekst uit met de
   // kickers van de rails eronder, en dan leest 'ie als onderdeel van
   // dezelfde kolom in plaats van als een los kaartje.
