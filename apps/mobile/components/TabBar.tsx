@@ -21,11 +21,9 @@ import {
 } from '@/components/icons/TabIcons';
 import { useSession } from '@/lib/authClient';
 import { tinyTap } from '@/lib/haptics';
-import { useNewArrivalsSince, useSocialBadgeCount } from '@/lib/queries';
+import { useSocialBadgeCount } from '@/lib/queries';
 import { useMode, useRoles } from '@/store/mode';
 import { useZoekStore } from '@/store/zoek';
-import { useNewFilters } from '@/store/newFilters';
-import { useNewBadgeSince } from '@/store/sessionTimestamps';
 import { fontFamily, palette } from '@/theme/tokens';
 
 type IconCmp = ComponentType<{ color: string }>;
@@ -61,17 +59,12 @@ export function TabBar({ state, navigation }: BottomTabBarProps) {
   // de welkom-flow te vermijden.
   const { data: session } = useSession();
   const isAuthed = Boolean(session?.user?.id);
-  // Meer draagt twee tellers samen: wat er te beoordelen staat op /new
-  // (ná je baan-voorkeur) plus je openstaande vriend-verzoeken en
-  // uitnodigingen. Eén getal op de bar, uitgesplitst per rij zodra je
-  // Meer opent — anders weet je wel dát er iets is maar niet wát.
-  const newSince = useNewBadgeSince();
-  const activeLanes = useNewFilters((s) => s.activeLanes);
-  const { data: arrivals } = useNewArrivalsSince(newSince, {
-    enabled: isAuthed,
-    lanes: activeLanes,
-  });
-  const meerBadge = (arrivals?.total ?? 0) + useSocialBadgeCount(isAuthed);
+  // Alleen nog vriend-verzoeken en uitnodigingen. Wat er op /new klaar
+  // staat telde hier ook in mee, maar dat heeft nu een eigen strook op
+  // de homepage met de posters erbij — een getal op een menu-icoon zegt
+  // dát er iets is, niet wát. Wat hier overblijft gaat wél écht over
+  // dingen die achter dit menu wonen.
+  const meerBadge = useSocialBadgeCount(isAuthed);
 
   // Op Android leverde expo-blur weinig effect, dus tint extra
   // opaque om de pill nog leesbaar te houden boven scrollende content.

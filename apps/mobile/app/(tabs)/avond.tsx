@@ -59,11 +59,14 @@ import {
   useTimeBlocks,
 } from '@/lib/eventDisplay';
 import { softTap, tinyTap } from '@/lib/haptics';
+import { useNewFilters } from '@/store/newFilters';
+import { useNewBadgeSince } from '@/store/sessionTimestamps';
 import { useLocale, useT, type Locale } from '@/lib/i18n';
 import {
   useEvents,
   useMyGoing,
   useVenues,
+  useNewArrivalsSince,
   useSeriesList,
 } from '@/lib/queries';
 import { useSession } from '@/lib/authClient';
@@ -720,6 +723,8 @@ export default function Avond() {
           </View>
         )}
 
+        <NewArrivalsAlert />
+
         {/* Direct onder de feature-card, vóór alle andere rails: je
             scrollt hier langs op zoek naar iets nieuws en vergeet dan
             makkelijk dat je over drie weken al ergens heen gaat. Eerst
@@ -1059,6 +1064,75 @@ function ListState({
         {text}
       </Text>
     </View>
+  );
+}
+
+/**
+ * Wat er sinds je vorige bezoek is bijgekomen, als strook onder de
+ * feature-card.
+ *
+ * Verving het bolletje op de Meer-tab. Een getal op een menu-icoon zegt
+ * dát er iets is, niet wát — en `/new` is de dagelijkse lus, die hoort
+ * niet twee tikken diep achter een menu. Drie posters doen het werk dat
+ * "9+" niet kan.
+ *
+ * Verbergt zichzelf bij nul: geen "er is niks nieuws"-strook. Stilte bij
+ * nul is het uitgangspunt van deze hele lus.
+ *
+ * Deelt de query met de TabBar (zelfde `since` + banen), dus dit kost
+ * geen extra request — de cache is al warm tegen de tijd dat dit rendert.
+ */
+function NewArrivalsAlert() {
+  const roles = useRoles();
+  const t = useT();
+  const { data: session } = useSession();
+  const authed = Boolean(session?.user?.id);
+  const since = useNewBadgeSince();
+  const activeLanes = useNewFilters((s) => s.activeLanes);
+  const { data } = useNewArrivalsSince(since, {
+    enabled: authed,
+    lanes: activeLanes,
+  });
+
+  const total = data?.total ?? 0;
+  const thumbs = (data?.events ?? [])
+    .map((e) => eventImageUrl(e))
+    .filter((u): u is string => Boolean(u))
+    .slice(0, 3);
+
+  if (total === 0) return null;
+
+  return (
+    <Pressable
+      onPress={() => {
+        tinyTap();
+        router.push('/new' as never);
+      }}
+      style={[styles.newAlert, { borderColor: roles.bgChip }]}
+    >
+      <View style={styles.newAlertStack}>
+        {thumbs.map((uri, i) => (
+          <View
+            key={uri}
+            style={[
+              styles.newAlertThumb,
+              { left: i * 22, zIndex: thumbs.length - i, borderColor: roles.bg },
+            ]}
+          >
+            <Image source={{ uri }} style={styles.newAlertImg} contentFit="cover" />
+          </View>
+        ))}
+      </View>
+      <View style={styles.newAlertBody}>
+        <Text style={[styles.newAlertTitle, { color: roles.fg }]}>
+          {t(`${total} nieuw`, `${total} new`)}
+        </Text>
+        <Text style={[styles.newAlertSub, { color: roles.fgMuted }]}>
+          {t('Beoordeel wat er bij kwam', 'Rate what came in')}
+        </Text>
+      </View>
+      <Ionicons name="chevron-forward" size={16} color={roles.fgPlaceholder} />
+    </Pressable>
   );
 }
 
@@ -1824,6 +1898,41 @@ function SheetChip({
 }
 
 const styles = StyleSheet.create({
+  // Omlijnd en niet gevuld: de agenda-rail er direct onder is een
+  // bgLift-vlak, en twee vlakken op elkaar lopen in elkaar over. Een
+  // rand houdt dit een losse strook.
+  newAlert: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    marginTop: 14,
+    marginHorizontal: 22,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderRadius: 14,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  // Overlappende stapel: drie posters op 22px uit elkaar, dus je ziet
+  // van elk een strookje. Breedte is 2 × offset + thumb.
+  newAlertStack: { width: 44 + 40, height: 40, position: 'relative' },
+  newAlertThumb: {
+    position: 'absolute',
+    top: 0,
+    width: 40,
+    height: 40,
+    borderRadius: 8,
+    borderWidth: 2,
+    overflow: 'hidden',
+  },
+  newAlertImg: { width: '100%', height: '100%' },
+  newAlertBody: { flex: 1, gap: 2 },
+  newAlertTitle: {
+    fontFamily: fontFamily.displayBold,
+    fontSize: 16,
+    letterSpacing: -0.3,
+  },
+  newAlertSub: { fontFamily: fontFamily.body, fontSize: 13 },
+
   root: { flex: 1 },
 
   // Hero — divider + "{dag} {datum} op de agenda" in display-font,
