@@ -8,6 +8,7 @@ import {
   enrichGenresFromKeywords,
 } from '../../scrapers/_genre-enrich.js';
 import { enrichLineupArtists } from '../../scrapers/_artists-enrich.js';
+import { sendDailyNewPush } from '../../jobs/daily-new-push.js';
 import { recomputeEffectiveGenres } from '../../scrapers/_effective-genres.js';
 import { recomputeCancellations } from '../../scrapers/_cancellations.js';
 import { enrichFilmsFromOmdb } from '../../scrapers/_omdb-enrich.js';
@@ -805,6 +806,27 @@ adminApi.delete('/series/:id/events/:eventId', async (c) => {
 // runs vanuit de admin webview als voor cron (Fly Machine schedule of
 // een externe poke). Returns een rapport per venue zodat je kan zien
 // hoeveel events nieuw waren, geüpdatet, of geskipt vanwege errors.
+
+/**
+ * Dagelijkse aanwinsten-push. Bedoeld voor een externe scheduler die 'm
+ * om 10:00 Amsterdamse tijd aanroept — hetzelfde patroon als de
+ * scrapers, want de Fly-machine slaapt tussen requests door
+ * (`min_machines_running = 0`) en een in-process cron zou dus niet
+ * betrouwbaar afgaan.
+ *
+ * Veilig om opnieuw aan te roepen: `users.lastDailyPushAt` houdt bij wie
+ * vandaag al iets kreeg. `?dry=1` telt alleen en verstuurt niets.
+ */
+adminApi.post('/push/daily-new', async (c) => {
+  const dryRun = c.req.query('dry') === '1';
+  const startedAt = Date.now();
+  const result = await sendDailyNewPush({ dryRun });
+  return c.json({
+    dryRun,
+    durationMs: Date.now() - startedAt,
+    ...result,
+  });
+});
 
 adminApi.post('/scrapers/run/:name', async (c) => {
   const name = c.req.param('name') as ScraperName;

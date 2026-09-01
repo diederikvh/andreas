@@ -195,6 +195,11 @@ export const users = pgTable(
         een nieuwe telefoon. Op de user-rij reist 'ie mee — een van de
         concrete voordelen van een account boven anoniem. */
     lastSeenNewAt: timestamp({ withTimezone: true }),
+    /** Wanneer de dagelijkse aanwinsten-push voor het laatst naar deze
+        user ging. Puur een dubbel-verzend-slot: de cron kan meerdere
+        keren draaien (retry, handmatige trigger) en mag dan niet nóg
+        een keer pushen. */
+    lastDailyPushAt: timestamp({ withTimezone: true }),
   },
   (t) => [
     uniqueIndex('users_phone_number_idx').on(t.phoneNumber),
