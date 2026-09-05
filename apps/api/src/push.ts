@@ -149,11 +149,16 @@ async function sendToTokens(
 }
 
 /**
- * Wachttijden per poging. Expo heeft tijd nodig voordat een receipt
- * klaarstaat; één keer na vijftien seconden vragen levert meestal nog
- * niets op, en dan weet je nog niets.
+ * Wachttijden per poging, oplopend tot een halfuur.
+ *
+ * Ruim bemeten omdat APNs een bericht vasthoudt zolang het toestel
+ * slecht bereikbaar is of in energiebesparing staat. In productie zagen
+ * we een push die er 33 minuten over deed; met een venster van drie
+ * minuten stond er dan "zonder uitslag" in de log terwijl hij gewoon
+ * onderweg was — en, erger, werd een écht dood token nooit opgeruimd
+ * omdat we al gestopt waren met kijken.
  */
-const RECEIPT_ATTEMPTS_MS = [15_000, 45_000, 120_000];
+const RECEIPT_ATTEMPTS_MS = [30_000, 120_000, 600_000, 1_800_000];
 
 /**
  * Haalt de bezorgstatus op van wat Expo heeft aangenomen. Dit is de
