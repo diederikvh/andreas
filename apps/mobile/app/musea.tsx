@@ -183,20 +183,24 @@ function MuseumCard({
             <Ionicons name="bookmark" size={11} color={roles.onAccent} />
           </View>
         )}
+        {/* Titel als accent-blok ín de foto, net als het datum-blokje op
+            de agenda-kaarten op Vandaag. Onder de foto viel 'ie weg
+            tegen de museumnaam, terwijl juist die titel bepaalt of je
+            gaat — de naam van het gebouw wist je al. */}
+        {first ? (
+          <View style={[styles.titleBadge, { backgroundColor: roles.accent }]}>
+            <Text
+              numberOfLines={3}
+              style={[styles.titleBadgeText, { color: roles.onAccent }]}
+            >
+              {first.title}
+            </Text>
+          </View>
+        ) : null}
       </View>
-      {/* Museum boven, tentoonstelling eronder — dat is de volgorde
-          waarin je de vraag stelt. */}
       <Text numberOfLines={1} style={[styles.venueName, { color: roles.fg }]}>
         {venue.name}
       </Text>
-      {first ? (
-        <Text
-          numberOfLines={2}
-          style={[styles.showTitle, { color: roles.fgMuted }]}
-        >
-          {first.title}
-        </Text>
-      ) : null}
       <Text style={[styles.meta, { color: roles.fgPlaceholder }]}>
         {extra > 0
           ? t(`+${extra} meer · `, `+${extra} more · `)
@@ -230,17 +234,28 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  // Linksonder, met ruimte rechts zodat 'ie niet de hele breedte vult —
+  // een blok dat tot de rand loopt leest als een balk, niet als label.
+  titleBadge: {
+    position: 'absolute',
+    left: 8,
+    right: 14,
+    bottom: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderRadius: 7,
+  },
+  titleBadgeText: {
+    fontFamily: fontFamily.bold,
+    fontSize: 13,
+    lineHeight: 16,
+    letterSpacing: -0.2,
+  },
   venueName: {
     marginTop: 8,
     fontFamily: fontFamily.displayBold,
     fontSize: 14,
     letterSpacing: -0.24,
-  },
-  showTitle: {
-    marginTop: 2,
-    fontFamily: fontFamily.body,
-    fontSize: 12.5,
-    lineHeight: 16,
   },
   meta: {
     marginTop: 3,
