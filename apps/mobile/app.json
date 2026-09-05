@@ -111,7 +111,13 @@
           "recordAudioAndroid": false
         }
       ],
-      "expo-notifications",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/notification-icon.png",
+          "color": "#caff00"
+        }
+      ],
       "expo-localization",
       "@maplibre/maplibre-react-native",
       [
