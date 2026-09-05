@@ -19,8 +19,8 @@ import { PUBLIC_BASE_URL } from './_seo.js';
  */
 export const legalRoute = new Hono();
 
-const LAST_UPDATED_NL = '3 mei 2026';
-const LAST_UPDATED_EN = '3 May 2026';
+const LAST_UPDATED_NL = '5 september 2026';
+const LAST_UPDATED_EN = '5 September 2026';
 const CONTACT_EMAIL = 'wij@andreas.amsterdam';
 
 type LegalPage = 'privacy' | 'terms' | 'copyright';
@@ -230,7 +230,7 @@ const PRIVACY_BODY = `
 <ul>
   <li><strong>Camera</strong> — alleen actief wanneer je via de friends-functie een vriend-QR-code scant. De camera-stream wordt lokaal op je toestel verwerkt om de code te decoderen; er gaan geen foto's of beelden naar onze servers.</li>
   <li><strong>Foto-bibliotheek</strong> — alleen wanneer je een avatar-foto kiest. De gekozen foto wordt geüpload naar Bunny (zie sub-verwerkers); andere foto's blijven op je toestel.</li>
-  <li><strong>Notificaties</strong> — alleen wanneer je expliciet toestemt. Gebruikt voor herinneringen aan opgeslagen events en updates van gevolgde venues.</li>
+  <li><strong>Notificaties</strong> — alleen wanneer je expliciet toestemt. Gebruikt voor uitnodigingen van vrienden, wijzigingen in je groepen, nieuwe events die bij je smaak passen, en herinneringen aan opgeslagen events. Zo'n melding kan de naam van een vriend, een groepsnaam of een event-titel bevatten, en gaat als leesbare tekst langs de bezorgdiensten in de tabel hieronder.</li>
 </ul>
 
 <h2>Wat we niet opslaan</h2>
@@ -249,8 +249,9 @@ const PRIVACY_BODY = `
 
 <h2>Waar het staat</h2>
 <p>
-  Andreas gebruikt de volgende sub-verwerkers, alle binnen de Europese
-  Economische Ruimte:
+  Andreas gebruikt de volgende sub-verwerkers. Je gegevens worden
+  opgeslagen binnen de Europese Economische Ruimte; alleen het bezorgen
+  van push-notificaties loopt via partijen daarbuiten.
 </p>
 <table class="subprocs">
   <thead>
@@ -262,12 +263,17 @@ const PRIVACY_BODY = `
     <tr><td>Image-opslag (avatars, foto's)</td><td>BunnyWay d.o.o.</td><td>Ljubljana (Slovenië)</td></tr>
     <tr><td>SMS / inlog-code</td><td>Bird B.V. (voorheen MessageBird)</td><td>Amsterdam</td></tr>
     <tr><td>App-distributie</td><td>Apple Distribution International</td><td>Ierland (App Store-publicatie)</td></tr>
+    <tr><td>Push-notificaties (verzending)</td><td>650 Industries, Inc. (Expo)</td><td>Verenigde Staten</td></tr>
+    <tr><td>Push-notificaties (bezorging Android)</td><td>Google Ireland Ltd. (Firebase Cloud Messaging)</td><td>Ierland, met verwerking in de VS</td></tr>
+    <tr><td>Push-notificaties (bezorging iOS)</td><td>Apple Distribution International</td><td>Ierland, met verwerking in de VS</td></tr>
   </tbody>
 </table>
 <p style="font-size:13px;opacity:0.75;">
   Met Fly.io en Neon (US-bedrijven met EU-regio's) hebben we een
-  verwerkers-overeenkomst gesloten op basis van de Standard
-  Contractual Clauses.
+  verwerkers-overeenkomst gesloten op basis van de Standard Contractual
+  Clauses. Voor Google geldt de Cloud Data Processing Addendum, met
+  doorgifte onder het EU-US Data Privacy Framework en aanvullende
+  Standard Contractual Clauses.
 </p>
 
 <h2>Hoe lang we het bewaren</h2>
@@ -525,7 +531,7 @@ const PRIVACY_BODY_EN = `
 <ul>
   <li><strong>Camera</strong> — only active when you scan a friend's QR code via the friends feature. The camera stream is processed locally on your device to decode the code; no photos or imagery is sent to our servers.</li>
   <li><strong>Photo library</strong> — only when you pick an avatar photo. The chosen photo is uploaded to Bunny (see sub-processors); other photos remain on your device.</li>
-  <li><strong>Notifications</strong> — only when you explicitly opt in. Used for reminders of saved events and updates from venues you follow.</li>
+  <li><strong>Notifications</strong> — only when you explicitly opt in. Used for invitations from friends, changes to your groups, new events matching your taste, and reminders of saved events. Such a notification may contain a friend's name, a group name or an event title, and travels as readable text through the delivery services listed in the table below.</li>
 </ul>
 
 <h2>What we don't store</h2>
@@ -544,8 +550,9 @@ const PRIVACY_BODY_EN = `
 
 <h2>Where it lives</h2>
 <p>
-  Andreas uses the following sub-processors, all within the European
-  Economic Area:
+  Andreas uses the following sub-processors. Your data is stored within
+  the European Economic Area; only the delivery of push notifications
+  routes through parties outside it.
 </p>
 <table class="subprocs">
   <thead>
@@ -557,11 +564,17 @@ const PRIVACY_BODY_EN = `
     <tr><td>Image storage (avatars, photos)</td><td>BunnyWay d.o.o.</td><td>Ljubljana (Slovenia)</td></tr>
     <tr><td>SMS / login code</td><td>Bird B.V. (formerly MessageBird)</td><td>Amsterdam</td></tr>
     <tr><td>App distribution</td><td>Apple Distribution International</td><td>Ireland (App Store publication)</td></tr>
+    <tr><td>Push notifications (dispatch)</td><td>650 Industries, Inc. (Expo)</td><td>United States</td></tr>
+    <tr><td>Push notifications (Android delivery)</td><td>Google Ireland Ltd. (Firebase Cloud Messaging)</td><td>Ireland, processed in the US</td></tr>
+    <tr><td>Push notifications (iOS delivery)</td><td>Apple Distribution International</td><td>Ireland, processed in the US</td></tr>
   </tbody>
 </table>
 <p style="font-size:13px;opacity:0.75;">
   With Fly.io and Neon (US companies with EU regions) we've signed a
   data-processing agreement based on the Standard Contractual Clauses.
+  For Google the Cloud Data Processing Addendum applies, with transfers
+  under the EU-US Data Privacy Framework and supplementary Standard
+  Contractual Clauses.
 </p>
 
 <h2>How long we keep it</h2>
