@@ -377,9 +377,7 @@ const VOORWAARDEN_BODY = `
 
 <h2>Wijzigingen</h2>
 <p>
-  Wijzigingen aan deze voorwaarden worden in de app aangekondigd
-  voordat zij in werking treden. De datum bovenaan vermeldt de
-  laatste versie.
+  De datum bovenaan vermeldt de laatste versie.
 </p>
 
 <h2>Toepasselijk recht</h2>
@@ -671,7 +669,6 @@ const TERMS_BODY_EN = `
 
 <h2>Changes</h2>
 <p>
-  Changes to these terms are announced in the app before they take effect.
   The date at the top reflects the latest version.
 </p>
 
