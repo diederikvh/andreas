@@ -59,8 +59,22 @@ export async function registerForPushNotificationsAsync(): Promise<string | null
     return null;
   }
 
-  const tokenData = await Notifications.getExpoPushTokenAsync({ projectId });
-  const token = tokenData.data;
+  // Deze gooit op Android zolang er geen FCM-credentials aan het project
+  // hangen (geen google-services.json, niets geüpload naar Expo). De
+  // caller doet `void register…()`, dus zonder deze vangst werd het een
+  // stille unhandled rejection: geen token, geen melding, en niemand die
+  // doorhad dat Android nooit een push kon krijgen.
+  let token: string | null = null;
+  try {
+    const tokenData = await Notifications.getExpoPushTokenAsync({ projectId });
+    token = tokenData.data ?? null;
+  } catch (err) {
+    console.warn(
+      `[push] geen token op ${Platform.OS} — op Android betekent dit meestal dat FCM nog niet is ingesteld`,
+      err
+    );
+    return null;
+  }
   if (!token) return null;
 
   // Deze sessie al aangemeld? Skip de extra round-trip.
