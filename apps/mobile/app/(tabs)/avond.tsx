@@ -25,6 +25,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppHeader, HEADER_HEIGHT } from '@/components/AppHeader';
 import { FILTER_CHIP_HEIGHT } from '@/components/FilterChip';
 import { Cross } from '@/components/Cross';
+import { MuseumCard } from '@/components/MuseumCard';
 import { Rail, useRailCardStyles } from '@/components/Rail';
 import { FilmRailCard, FILM_CARD_WIDTH } from '@/components/FilmRailCard';
 import { RailEventCard } from '@/components/RailEventCard';
@@ -66,6 +67,7 @@ import {
   useMyGoing,
   useVenues,
   useForYouEvents,
+  useMusea,
   useNewArrivals,
   useSeriesList,
 } from '@/lib/queries';
@@ -114,6 +116,13 @@ const CATEGORIES_ORDER: ApiEvent['category'][] = [
   'Film',
 ];
 
+
+/**
+ * Museum-tegels in de rail zijn smaller dan de gewone rail-kaart: het is
+ * een 3:4-poster, en op 220 breed wordt die zo hoog dat 'ie de halve
+ * pagina vult. 130 is dezelfde maat als de film-posters ernaast.
+ */
+const MUSEUM_RAIL_CARD_WIDTH = 130;
 
 /** Eén hero-kaart plus waaróm 'ie er staat — dat verschilt per bron. */
 type Lead = OccurrenceRow & { kicker: string };
@@ -194,6 +203,10 @@ export default function Avond() {
     lean: true,
   });
   // Series + exhibitions delen één "Loopt nu"-strook bovenaan.
+  // Musea als instellingen, niet als losse tentoonstellingen — voedt de
+  // museum-rail in expo-modus. Zelfde query als /musea, dus wie daar
+  // langs is geweest heeft 'm al in de cache.
+  const { data: musea } = useMusea();
   const { data: seriesList } = useSeriesList();
   // Alle venues die de gebruiker volgt — onafhankelijk van wat er
   // vandaag speelt. Voor de "Jouw favorieten"-rail onder de
@@ -524,28 +537,20 @@ export default function Avond() {
   );
   // Expo-mode "Overdag"-rail: alle single-day events vandaag die
   // helemaal in het dag-venster vallen (start < 18:00 én eindt
-  // < 20:00 dezelfde dag). Cat-agnostisch maar excl. Film — films-
-  // matinees krijgen hun eigen rail (zie railFilmOverdag) zodat ze
-  // niet ook hier verschijnen (anders dubbelroken op één pagina).
+  // < 20:00 dezelfde dag).
+  //
+  // Film en Literatuur eruit, want die hebben allebei een eigen rail op
+  // deze pagina en zouden hier anders een tweede keer staan. Kunst
+  // blijft: losse kunst-events (openingen, rondleidingen) zijn er nul
+  // tot één per dag en de museum-rail toont tentoonstellingen, niet
+  // die eenmalige dingen — zonder deze rail vallen ze van de pagina.
   const railOverdag = useMemo(
     () =>
       filtered.filter(
         (r) =>
           r.event.category !== 'Film' &&
+          r.event.category !== 'Literatuur' &&
           isDaytimeOccurrence(r.occurrence.startsAt, r.occurrence.endsAt)
-      ),
-    [filtered]
-  );
-  // "Vandaag te bezoeken" in expo-mode: alleen Kunst + Literatuur
-  // single-day items (openingen, lezingen) — geen tijd-cutoff, want
-  // een 19:00 art-opening hoort ook hier. Tweede mental model dan
-  // "Overdag" (een tentoonstelling/lezing bezoeken ≠ een matinee
-  // bijwonen).
-  const railVandaagKunstLit = useMemo(
-    () =>
-      filtered.filter(
-        (r) =>
-          r.event.category === 'Kunst' || r.event.category === 'Literatuur'
       ),
     [filtered]
   );
@@ -579,11 +584,6 @@ export default function Avond() {
   // instelling-rail. De 'Vandaag te bezoeken'-rail valt buiten dit
   // patroon: dat is `filtered` in cmode='expo' (zelfde today-window-
   // logic als 'uit'-mode, alleen mode-cats wijzen op Kunst/Literatuur).
-  const isFotoOrMediaMuseum = (e: ApiEvent): boolean => {
-    const sub = e.venue.subtype ?? [];
-    return sub.includes('fotografie') || sub.includes('media');
-  };
-
   // "Op view vandaag": event-window overlapt met het vandaag-window.
   // Dwz. het event is begonnen of begint vandaag (startsAt < morgen 00:00)
   // én is nog niet afgelopen (endsAt ≥ vandaag 00:00). Hierdoor:
@@ -625,32 +625,9 @@ export default function Avond() {
   // zodat een daytime concert of literatuur-event in een museum-venue
   // niet per ongeluk hier landt (sinds Muziek/Theater nu óók in
   // expo-cats zitten voor de overdag-rails).
-  const railMuseaMain = useMemo<ApiEvent[]>(
-    () =>
-      expoEventsToday
-        .filter(
-          (e) =>
-            e.category === 'Kunst' &&
-            e.venue.type === 'museum' &&
-            !isFotoOrMediaMuseum(e)
-        )
-        .sort(sortByStartsAt),
-    [expoEventsToday]
-  );
-
-  const railMuseaFoto = useMemo<ApiEvent[]>(
-    () =>
-      expoEventsToday
-        .filter(
-          (e) =>
-            e.category === 'Kunst' &&
-            e.venue.type === 'museum' &&
-            isFotoOrMediaMuseum(e)
-        )
-        .sort(sortByStartsAt),
-    [expoEventsToday]
-  );
-
+  //
+  // De twee museum-rails die hier stonden zijn vervangen door één rail
+  // op instelling-niveau; zie `musea` hierboven.
   const railGalleriesHedendaags = useMemo<ApiEvent[]>(
     () =>
       expoEventsToday
@@ -938,47 +915,28 @@ export default function Avond() {
                 />
               ))}
             </Rail>
+            {/* Eén museum-rail in plaats van "Grote kunstmusea" en
+                "Foto & media musea" apart. Die twee stonden vol losse
+                tentoonstellingen, en dan moet je zelf uitpuzzelen welke
+                bij welk museum hoort. Bij een tentoonstelling is het
+                gebouw de constante — dus één tegel per museum, zelfde
+                kaart als op /musea. */}
             <Rail
-              kicker={t('Vandaag te bezoeken', 'Today on view')}
-              moreLabel={t('Meer →', 'More →')}
-              onMore={() =>
-                router.push({ pathname: '/agenda', params: { cat: 'Kunst' } })
-              }
+              kicker={t('Musea', 'Museums')}
+              moreLabel={t('Alle musea →', 'All museums →')}
+              onMore={() => router.push('/musea' as never)}
+              cardWidth={MUSEUM_RAIL_CARD_WIDTH}
             >
-              {railVandaagKunstLit.map((r) => (
-                <RailEventCard
-                  key={r.id}
-                  event={r.event}
-                  occurrenceId={
-                    r.occurrence.id.endsWith('::next') ? undefined : r.occurrence.id
-                  }
-                  occurrenceStartsAt={r.occurrence.startsAt}
-                  occurrenceEndsAt={r.occurrence.endsAt}
-                  occurrenceVenueName={r.occurrence.venue?.name ?? null}
-                />
-              ))}
-            </Rail>
-            <Rail
-              kicker={t('Grote kunstmusea', 'Major art museums')}
-              moreLabel={t('Meer →', 'More →')}
-              onMore={() =>
-                router.push({ pathname: '/agenda', params: { cat: 'Kunst' } })
-              }
-            >
-              {railMuseaMain.map((e) => (
-                <RailEventCard key={e.id} event={e} />
-              ))}
-            </Rail>
-            <Rail
-              kicker={t('Foto & media musea', 'Photo & media museums')}
-              moreLabel={t('Meer →', 'More →')}
-              onMore={() =>
-                router.push({ pathname: '/agenda', params: { cat: 'Kunst' } })
-              }
-            >
-              {railMuseaFoto.map((e) => (
-                <RailEventCard key={e.id} event={e} />
-              ))}
+              {(musea ?? [])
+                .filter((v) => v.type === 'museum')
+                .map((v) => (
+                  <MuseumCard
+                    key={v.id}
+                    venue={v}
+                    width={MUSEUM_RAIL_CARD_WIDTH}
+                    source="avond"
+                  />
+                ))}
             </Rail>
             <Rail
               kicker={t('Hedendaagse galleries', 'Contemporary galleries')}

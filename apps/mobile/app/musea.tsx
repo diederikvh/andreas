@@ -15,7 +15,6 @@
  * venue-pagina toont het volledige programma toch al.
  */
 import { Ionicons } from '@expo/vector-icons';
-import { Image } from 'expo-image';
 import { router } from 'expo-router';
 import { useCallback, useState } from 'react';
 import {
@@ -32,10 +31,8 @@ import { useQueryClient } from '@tanstack/react-query';
 
 import { AppHeader, HEADER_HEIGHT } from '@/components/AppHeader';
 import { RefreshBanner } from '@/components/RefreshBanner';
+import { MuseumCard } from '@/components/MuseumCard';
 import { SpinningCross } from '@/components/SpinningCross';
-import type { MuseumVenue } from '@/lib/api';
-import { formatWijk } from '@/lib/eventDisplay';
-import { softTap } from '@/lib/haptics';
 import { useT } from '@/lib/i18n';
 import { useMusea } from '@/lib/queries';
 import { useMode, useRoles } from '@/store/mode';
@@ -79,7 +76,7 @@ export default function Musea() {
         keyExtractor={(v) => v.id}
         numColumns={2}
         renderItem={({ item }) => (
-          <MuseumCard venue={item} width={cardWidth} t={t} />
+          <MuseumCard venue={item} width={cardWidth} source="musea" />
         )}
         columnWrapperStyle={
           (venues?.length ?? 0) > 0 ? styles.gridRow : undefined
@@ -141,129 +138,9 @@ export default function Musea() {
   );
 }
 
-function MuseumCard({
-  venue,
-  width,
-  t,
-}: {
-  venue: MuseumVenue;
-  width: number;
-  t: ReturnType<typeof useT>;
-}) {
-  const roles = useRoles();
-  const first = venue.exhibitions[0];
-  const extra = venue.exhibitions.length - 1;
-  // Beeld van de tentoonstelling, niet van het gebouw: een gevel zegt
-  // niks over of je er nú heen wilt. De venue-foto is de terugval.
-  const image = first?.imageUrl ?? venue.imageUrl;
-
-  return (
-    <Pressable
-      onPress={() => {
-        softTap();
-        router.push(`/venue/${venue.slug}?source=musea` as never);
-      }}
-      style={{ width }}
-    >
-      <View
-        style={[
-          styles.poster,
-          { backgroundColor: roles.bgLift, borderColor: roles.bgChip },
-        ]}
-      >
-        {image ? (
-          <Image
-            source={{ uri: image }}
-            style={styles.posterImg}
-            contentFit="cover"
-          />
-        ) : null}
-        {venue.followed && (
-          <View style={[styles.followTick, { backgroundColor: roles.accent }]}>
-            <Ionicons name="bookmark" size={11} color={roles.onAccent} />
-          </View>
-        )}
-        {/* Titel als accent-blok ín de foto, net als het datum-blokje op
-            de agenda-kaarten op Vandaag. Onder de foto viel 'ie weg
-            tegen de museumnaam, terwijl juist die titel bepaalt of je
-            gaat — de naam van het gebouw wist je al. */}
-        {first ? (
-          <View style={[styles.titleBadge, { backgroundColor: roles.accent }]}>
-            <Text
-              numberOfLines={3}
-              style={[styles.titleBadgeText, { color: roles.onAccent }]}
-            >
-              {first.title}
-            </Text>
-          </View>
-        ) : null}
-      </View>
-      <Text numberOfLines={1} style={[styles.venueName, { color: roles.fg }]}>
-        {venue.name}
-      </Text>
-      <Text style={[styles.meta, { color: roles.fgPlaceholder }]}>
-        {extra > 0
-          ? t(`+${extra} meer · `, `+${extra} more · `)
-          : ''}
-        {venue.wijk ? formatWijk(venue.wijk) : ''}
-      </Text>
-    </Pressable>
-  );
-}
-
 const styles = StyleSheet.create({
   root: { flex: 1 },
   gridRow: { gap: GRID_GAP, marginBottom: 18 },
-  poster: {
-    width: '100%',
-    aspectRatio: 3 / 4,
-    borderRadius: 10,
-    borderWidth: StyleSheet.hairlineWidth,
-    overflow: 'hidden',
-  },
-  posterImg: { width: '100%', height: '100%' },
-  // Klein vlaggetje op de hoek voor venues die je volgt — die staan al
-  // bovenaan, dit maakt zichtbaar wáárom.
-  followTick: {
-    position: 'absolute',
-    top: 8,
-    left: 8,
-    width: 22,
-    height: 22,
-    borderRadius: 999,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  // Linksonder, met ruimte rechts zodat 'ie niet de hele breedte vult —
-  // een blok dat tot de rand loopt leest als een balk, niet als label.
-  titleBadge: {
-    position: 'absolute',
-    left: 8,
-    right: 14,
-    bottom: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 6,
-    borderRadius: 7,
-  },
-  titleBadgeText: {
-    fontFamily: fontFamily.bold,
-    fontSize: 13,
-    lineHeight: 16,
-    letterSpacing: -0.2,
-  },
-  venueName: {
-    marginTop: 8,
-    fontFamily: fontFamily.displayBold,
-    fontSize: 14,
-    letterSpacing: -0.24,
-  },
-  meta: {
-    marginTop: 3,
-    fontFamily: fontFamily.mono,
-    fontSize: 9.5,
-    letterSpacing: 0.5,
-    textTransform: 'uppercase',
-  },
   centerWrap: { paddingHorizontal: HORIZONTAL_PADDING, paddingVertical: 60 },
   dim: { fontFamily: fontFamily.body, fontSize: 14, textAlign: 'center' },
   closeBtn: {
