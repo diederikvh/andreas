@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "840546192625",
+    "project_id": "andreas-app-notifications",
+    "storage_bucket": "andreas-app-notifications.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:840546192625:android:50fa3703c5e54e7d08ed50",
+        "android_client_info": {
+          "package_name": "amsterdam.andreas.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAwRh4gbWpRY-TCSFasrJq6tqeoIp8mRtw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
