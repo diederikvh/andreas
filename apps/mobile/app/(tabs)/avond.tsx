@@ -511,10 +511,17 @@ export default function Avond() {
     });
   }, [events, allRows, activeCats, onlyFriends, onlyFavorites, query]);
 
-  // Rails voor 'uit'-mode — gebaseerd op `filtered` (OccurrenceRow[]
-  // van vandaag, gefilterd op user-state). Per rail aanvullende
-  // filter-criterium. Lege rails worden door de Rail-component
-  // gewoonweg niet gerenderd.
+  // Categorie-rails, gebaseerd op `filtered` (OccurrenceRow[] van
+  // vandaag, gefilterd op user-state). Lege rails worden door de
+  // Rail-component gewoonweg niet gerenderd — dát bepaalt wat je door de
+  // dag heen ziet, niet de dag/nacht-schakelaar.
+  //
+  // Die schakelaar stuurde hier ooit twee verschillende rail-sets aan
+  // ('uit' tegenover 'expo'). Dat is er allang uit: `mode` wordt op deze
+  // pagina nergens meer gelezen en alle rails renderen altijd. De namen
+  // spraken nog wél van vanavond en vannacht, en beloofden daarmee een
+  // onderscheid dat de pagina niet maakt. Nu heten ze naar hun
+  // categorie.
   const railClubs = useMemo(
     () => filtered.filter((r) => r.event.venue.type === 'club'),
     [filtered]
@@ -535,7 +542,7 @@ export default function Avond() {
     () => filtered.filter((r) => r.event.category === 'Film'),
     [filtered]
   );
-  // Expo-mode "Overdag"-rail: alle single-day events vandaag die
+  // "Overdag"-rail: alle single-day events vandaag die
   // helemaal in het dag-venster vallen (start < 18:00 én eindt
   // < 20:00 dezelfde dag).
   //
@@ -576,7 +583,7 @@ export default function Avond() {
       return true;
     });
   }, [events, allRows, now, tomorrowWindow.fromMs, tomorrowWindow.toMs]);
-  // Rails voor 'expo'-mode — gebaseerd op `expoEvents` (ApiEvent[]).
+  // Kunst- en literatuur-rails — gebaseerd op `expoEvents` (ApiEvent[]).
   // Doorlopende exhibitions worden gegroepeerd per type instelling
   // (musea per genre, galleries per scene) i.p.v. op tijd-framing —
   // omdat exhibitions weken/maanden lopen is een tijd-rail ('nieuw
@@ -798,7 +805,7 @@ export default function Avond() {
         {!isLoading && !error && (
           <>
             <Rail
-              kicker={t('Vannacht in de clubs', 'Tonight in the clubs')}
+              kicker={t('Clubs', 'Clubs')}
               moreLabel={t('Meer →', 'More →')}
               onMore={() => router.push('/clubs' as never)}
             >
@@ -816,7 +823,7 @@ export default function Avond() {
               ))}
             </Rail>
             <Rail
-              kicker={t('Live op de podia', 'Live on stage')}
+              kicker={t('Live muziek', 'Live music')}
               moreLabel={t('Meer →', 'More →')}
               onMore={() => router.push('/live' as never)}
             >
@@ -852,7 +859,7 @@ export default function Avond() {
               ))}
             </Rail>
             <Rail
-              kicker={t('Film vanavond', 'Film tonight')}
+              kicker={t('Films', 'Films')}
               moreLabel={t('Meer →', 'More →')}
               onMore={() => router.push('/films' as never)}
               cardWidth={FILM_CARD_WIDTH}
