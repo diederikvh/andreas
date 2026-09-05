@@ -301,8 +301,7 @@ const PRIVACY_BODY = `
 <h2>Wijzigingen</h2>
 <p>
   Als we deze tekst aanpassen vermelden we dat met een nieuwe datum
-  bovenaan. Materiële wijzigingen (nieuwe verwerker, ander doel) melden
-  we ook in de app.
+  bovenaan.
 </p>
 
 <h2>Contact</h2>
@@ -600,8 +599,7 @@ const PRIVACY_BODY_EN = `
 
 <h2>Changes</h2>
 <p>
-  When we update this text we mark it with a new date at the top. Material
-  changes (new processor, different purpose) are also announced in the app.
+  When we update this text we mark it with a new date at the top.
 </p>
 
 <h2>Contact</h2>
