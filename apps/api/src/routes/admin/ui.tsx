@@ -27,7 +27,10 @@ import {
   publishTikTokInbox,
   publishTikTokPhotos,
 } from '../../social/tiktok.js';
-import { sendDailyNewPush } from '../../jobs/daily-new-push.js';
+import {
+  sendDailyNewPush,
+  sendNewPushToUserIds,
+} from '../../jobs/daily-new-push.js';
 import { uploadToBunny } from '../../storage/bunny.js';
 import {
   THEMES,
@@ -3533,7 +3536,12 @@ adminUi.get('/users', async (c) => {
   const q = (c.req.query('q') ?? '').trim();
   const needle = `%${q}%`;
 
-  const rows = await db
+  // `push`: alles | kan | kan-niet. "Kan ontvangen" = er staat minstens
+  // één device-token op deze user; zonder token komt er niets aan, hoe
+  // graag je ook wilt.
+  const pushFilter = c.req.query('push') ?? 'alles';
+
+  const rowsRaw = await db
     .select({
       id: schema.users.id,
       handle: schema.users.handle,
@@ -3561,6 +3569,48 @@ adminUi.get('/users', async (c) => {
     )
     .orderBy(desc(schema.users.guideEnabled), desc(schema.users.createdAt))
     .limit(100);
+
+  // Uitkomst van een selectie-push, teruggegeven via de redirect.
+  const pushParam = c.req.query('push');
+  const pushResult = pushParam
+    ? {
+        dryRun: pushParam === 'dry',
+        people: Number(c.req.query('people') ?? 0),
+        picked: Number(c.req.query('picked') ?? 0),
+        range: (() => {
+          const min = Number(c.req.query('min') ?? 0);
+          const max = Number(c.req.query('max') ?? 0);
+          return min === max
+            ? `${min} nieuwe aanwinsten per persoon`
+            : `${min} tot ${max} nieuwe aanwinsten per persoon`;
+        })(),
+      }
+    : null;
+
+  // Device-tokens apart ophalen en in JS koppelen. Als gecorreleerde
+  // subquery in de select kwam de waarde er niet doorheen — één losse
+  // gegroepeerde query is net zo goedkoop en laat geen twijfel bestaan.
+  const tokenRows = await db
+    .select({
+      userId: schema.pushTokens.userId,
+      n: count(),
+    })
+    .from(schema.pushTokens)
+    .groupBy(schema.pushTokens.userId);
+  const tokensByUser = new Map(tokenRows.map((r) => [r.userId, Number(r.n)]));
+  const rows = rowsRaw.map((u) => ({
+    ...u,
+    tokens: tokensByUser.get(u.id) ?? 0,
+  }));
+
+  const visible = rows.filter((u) =>
+    pushFilter === 'kan'
+      ? u.tokens > 0
+      : pushFilter === 'kan-niet'
+        ? u.tokens === 0
+        : true
+  );
+  const canReceive = rows.filter((u) => u.tokens > 0).length;
 
   const [enabledCount] = await db
     .select({ n: count() })
@@ -3604,7 +3654,7 @@ adminUi.get('/users', async (c) => {
         </div>
       </div>
 
-      <form method="get" action="/admin/users" style="margin:1.5rem 0 1rem;">
+      <form method="get" action="/admin/users" style="margin:1.5rem 0 0.5rem;">
         <input
           type="search"
           name="q"
@@ -3612,55 +3662,171 @@ adminUi.get('/users', async (c) => {
           placeholder="Zoek op handle, naam of telefoonnummer…"
           aria-label="Zoek gebruikers"
         />
+        {pushFilter !== 'alles' ? (
+          <input type="hidden" name="push" value={pushFilter} />
+        ) : null}
       </form>
 
-      <table>
-        <thead>
-          <tr>
-            <th>Gebruiker</th>
-            <th>Telefoon</th>
-            <th>Gids</th>
-            <th>Actie</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((u) => (
+      {pushResult ? (
+        <article style="padding:12px 16px;">
+          <strong>
+            {pushResult.people === 0
+              ? `Niemand van de ${pushResult.picked} aangevinkten komt in aanmerking`
+              : pushResult.dryRun
+                ? `Droog: ${pushResult.people} van ${pushResult.picked} zouden er één krijgen`
+                : `Verstuurd naar ${pushResult.people} van ${pushResult.picked}`}
+          </strong>
+          <div style="font-size:13px;opacity:0.75;margin-top:6px;">
+            {pushResult.people === 0
+              ? 'Voor niemand staat er iets nieuws klaar dat nog niet beoordeeld is.'
+              : pushResult.range}
+          </div>
+        </article>
+      ) : null}
+
+      {/* Filter op wie überhaupt bereikbaar is. Zonder device-token komt
+          er niets aan, dus dat onderscheid staat los van of iemand nu
+          iets nieuws heeft. */}
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:1rem;font-size:14px;">
+        {(
+          [
+            ['alles', `Alles (${rows.length})`],
+            ['kan', `Kan push krijgen (${canReceive})`],
+            ['kan-niet', `Geen device (${rows.length - canReceive})`],
+          ] as const
+        ).map(([key, label]) => (
+          <a
+            href={`/admin/users?${new URLSearchParams({ ...(q ? { q } : {}), push: key }).toString()}`}
+            role="button"
+            class={pushFilter === key ? '' : 'outline secondary'}
+            style="padding:4px 12px;font-size:13px;"
+          >
+            {label}
+          </a>
+        ))}
+      </div>
+
+      {/* Eén form om de tabel heen: de vinkjes en de verzendknop zitten
+          in dezelfde submit. */}
+      <form method="post" action="/admin/push/selection">
+        <table>
+          <thead>
             <tr>
-              <td>
-                <strong>{u.handle ? `@${u.handle}` : u.name || '—'}</strong>
-                {u.handle && u.name ? (
-                  <span style="opacity:0.6;"> · {u.name}</span>
-                ) : null}
-              </td>
-              <td>{u.phoneNumber}</td>
-              <td>
-                <span class={`pill ${u.guideEnabled ? 'pill-pub' : 'pill-unpub'}`}>
-                  {u.guideEnabled ? 'aan' : 'uit'}
-                </span>
-              </td>
-              <td class="actions">
-                <form
-                  method="post"
-                  action={`/admin/users/${encodeURIComponent(u.id)}/toggle-guide`}
-                >
-                  <button type="submit" class={u.guideEnabled ? 'secondary outline' : ''}>
+              <th style="width:36px;"></th>
+              <th>Gebruiker</th>
+              <th>Telefoon</th>
+              <th>Push</th>
+              <th>Gids</th>
+              <th>Actie</th>
+            </tr>
+          </thead>
+          <tbody>
+            {visible.map((u) => (
+              <tr>
+                <td>
+                  <input
+                    type="checkbox"
+                    name="userId"
+                    value={u.id}
+                    disabled={u.tokens === 0}
+                    aria-label={`Selecteer ${u.handle ?? u.name ?? u.id}`}
+                  />
+                </td>
+                <td>
+                  <strong>{u.handle ? `@${u.handle}` : u.name || '—'}</strong>
+                  {u.handle && u.name ? (
+                    <span style="opacity:0.6;"> · {u.name}</span>
+                  ) : null}
+                </td>
+                <td>{u.phoneNumber}</td>
+                <td>
+                  <span class={`pill ${u.tokens > 0 ? 'pill-pub' : 'pill-unpub'}`}>
+                    {u.tokens > 0 ? `${u.tokens} device` : 'geen'}
+                  </span>
+                </td>
+                <td>
+                  <span class={`pill ${u.guideEnabled ? 'pill-pub' : 'pill-unpub'}`}>
+                    {u.guideEnabled ? 'aan' : 'uit'}
+                  </span>
+                </td>
+                <td class="actions">
+                  {/* `formaction` in plaats van een eigen form: nested
+                      forms mogen niet in HTML en deze rij zit al in het
+                      selectie-form. De vinkjes gaan mee in de POST maar
+                      de toggle-handler negeert ze. */}
+                  <button
+                    type="submit"
+                    formaction={`/admin/users/${encodeURIComponent(u.id)}/toggle-guide`}
+                    formnovalidate
+                    class={u.guideEnabled ? 'secondary outline' : 'outline'}
+                    style="font-size:12px;padding:4px 10px;"
+                  >
                     {u.guideEnabled ? 'Toegang intrekken' : 'Toegang geven'}
                   </button>
-                </form>
-              </td>
-            </tr>
-          ))}
-          {rows.length === 0 ? (
-            <tr>
-              <td colspan={4} style="opacity:0.6;">
-                Geen gebruikers gevonden{q ? ` voor “${q}”` : ''}.
-              </td>
-            </tr>
-          ) : null}
-        </tbody>
-      </table>
+                </td>
+              </tr>
+            ))}
+            {visible.length === 0 ? (
+              <tr>
+                <td colspan={6} style="opacity:0.6;">
+                  Geen gebruikers gevonden{q ? ` voor “${q}”` : ''}.
+                </td>
+              </tr>
+            ) : null}
+          </tbody>
+        </table>
+
+        <div style="display:flex;gap:10px;align-items:center;margin-top:12px;">
+          <button
+            type="submit"
+            formaction="/admin/push/selection?dry=1"
+            class="secondary"
+          >
+            Droog draaien voor selectie
+          </button>
+          <button
+            type="submit"
+            onclick="return confirm('Push versturen naar de aangevinkte gebruikers?')"
+          >
+            Push naar selectie
+          </button>
+          <span style="font-size:13px;opacity:0.7;">
+            Alleen wie iets nieuws heeft krijgt 'm — de rest valt vanzelf af.
+          </span>
+        </div>
+      </form>
     </Layout>
   );
+});
+
+/**
+ * Push naar een aangevinkte selectie. Andere ingang dan de dagelijkse
+ * knop op het dashboard: hier tellen "app vandaag al open gehad" en
+ * "vandaag al gepusht" niet mee, want jij kiest expliciet wie. Wat wél
+ * blijft: wie niks nieuws heeft krijgt niks.
+ */
+adminUi.post('/push/selection', async (c) => {
+  const dryRun = c.req.query('dry') === '1';
+  // `formData().getAll()` en niet `parseBody`: die laatste geeft bij
+  // herhaalde velden zonder `[]`-suffix alleen de laatste terug, dus
+  // kwam er van drie vinkjes één (of nul) aan.
+  // Een request zonder form-body laat `formData()` gooien, en dat gaf
+  // een 500 op de admin in plaats van "niemand geselecteerd".
+  const userIds = await c.req
+    .formData()
+    .then((f) => f.getAll('userId').map(String).filter(Boolean))
+    .catch(() => [] as string[]);
+
+  const result = await sendNewPushToUserIds(userIds, { dryRun });
+  const counts = result.counts.map((x) => x.newCount);
+  const qs = new URLSearchParams({
+    push: dryRun ? 'dry' : 'sent',
+    people: String(counts.length),
+    min: String(counts.length ? Math.min(...counts) : 0),
+    max: String(counts.length ? Math.max(...counts) : 0),
+    picked: String(userIds.length),
+  });
+  return c.redirect(`/admin/users?${qs.toString()}`);
 });
 
 adminUi.post('/users/:id/toggle-guide', async (c) => {

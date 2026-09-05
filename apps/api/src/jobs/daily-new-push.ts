@@ -72,10 +72,49 @@ function amsterdamDayStart(): Date {
   return new Date(ams.getTime() + offsetMs);
 }
 
+/**
+ * Handmatig naar een gekozen setje mensen sturen, vanuit de admin.
+ *
+ * Twee van de drie dagelijkse regels vervallen hier bewust: of iemand de
+ * app vandaag al open had en of er vandaag al een push uitging, doen er
+ * niet toe als jij expliciet vinkjes zet. De derde blijft wél staan —
+ * wie niks nieuws heeft krijgt niks, want "0 nieuwe aanwinsten" is geen
+ * bericht.
+ *
+ * `lastDailyPushAt` gaat wel mee omhoog, zodat de planner van 10:00
+ * dezelfde mensen niet nog een keer aanschrijft.
+ */
+export async function sendNewPushToUserIds(
+  userIds: string[],
+  opts: { dryRun?: boolean } = {}
+): Promise<DailyPushResult> {
+  if (userIds.length === 0) return { sent: 0, skippedEmpty: 0, counts: [] };
+  return runNewPush({ userIds, respectDailyGates: false, dryRun: opts.dryRun });
+}
+
 export async function sendDailyNewPush(
   opts: { dryRun?: boolean } = {}
 ): Promise<DailyPushResult> {
+  return runNewPush({ respectDailyGates: true, dryRun: opts.dryRun });
+}
+
+/**
+ * De eigenlijke motor achter beide ingangen. `respectDailyGates` zet de
+ * twee dagelijkse sloten aan of uit; `userIds` beperkt tot een selectie.
+ */
+async function runNewPush(opts: {
+  userIds?: string[];
+  respectDailyGates: boolean;
+  dryRun?: boolean;
+}): Promise<DailyPushResult> {
   const dayStart = amsterdamDayStart();
+  const gates = opts.respectDailyGates
+    ? sql`AND (u.last_seen_at IS NULL OR u.last_seen_at < ${dayStart})
+          AND (u.last_daily_push_at IS NULL OR u.last_daily_push_at < ${dayStart})`
+    : sql``;
+  const selection = opts.userIds
+    ? sql`AND u.id IN ${opts.userIds}`
+    : sql``;
 
   // Kandidaten + telling in één keer. De telling spiegelt `/events/new`:
   // occurrences die ná jouw venster zijn aangemaakt, alleen wat nog komt,
@@ -99,8 +138,9 @@ export async function sendDailyNewPush(
          )
     JOIN events e ON e.id = o.event_id AND e.published
     JOIN venues v ON v.id = COALESCE(o.venue_id, e.venue_id) AND v.published
-    WHERE (u.last_seen_at IS NULL OR u.last_seen_at < ${dayStart})
-      AND (u.last_daily_push_at IS NULL OR u.last_daily_push_at < ${dayStart})
+    WHERE TRUE
+      ${gates}
+      ${selection}
       AND COALESCE(
             o.ends_at,
             o.starts_at + CASE WHEN e.category = 'Muziek'
