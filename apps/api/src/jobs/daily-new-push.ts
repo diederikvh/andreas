@@ -8,9 +8,11 @@
  * Drie regels bepalen wie er een push krijgt:
  *
  *  1. **Stilte bij nul.** Is er sinds jouw laatste bezoek aan /new niets
- *     bijgekomen dat je nog niet beoordeeld hebt, dan gebeurt er niets.
- *     Een digest die élke dag moet vullen wordt ruis, en dan zet je 'm
- *     uit — waarna de dagen dat er wél iets is ook niet meer aankomen.
+ *     bijgekomen bij een venue die je volgt en dat je nog niet beoordeeld
+ *     hebt, dan gebeurt er niets. Een digest die élke dag moet vullen
+ *     wordt ruis, en dan zet je 'm uit — waarna de dagen dat er wél iets
+ *     is ook niet meer aankomen. Volg je helemaal geen venues, dan is dat
+ *     dus permanent stil; dat is de bedoeling.
  *  2. **Niet als je de app vandaag al open had.** Dan heb je de strook
  *     op Vandaag al gezien en is de push een herhaling.
  *  3. **Eén per dag.** `lastDailyPushAt` is het slot; de cron mag dus
@@ -20,13 +22,14 @@
  * de hele users-tabel tegelijk, zodat dit ook bij duizenden gebruikers
  * één round-trip blijft.
  *
- * **Bekende beperking**: de baan-voorkeur (film/theater/live/club/kunst)
- * staat in AsyncStorage op het toestel, niet op de user-rij. De server
- * kan er dus niet op filteren en het getal in de push telt álle banen.
- * Wie z'n lijst tot theater heeft beperkt kan "12 nieuw" lezen en er
- * drie aantreffen. Op te lossen door die voorkeur mee te sturen naar
- * `PATCH /me`; nu nog niet gedaan omdat het filter een paar dagen oud is
- * en vrijwel niemand 'm heeft aangezet.
+ * **Bekende beperking**: het getal hier en de lijst op /new tellen niet
+ * hetzelfde. Deze telling kijkt alleen naar gevolgde venues, /new toont
+ * alles; en de baan-voorkeur (film/theater/live/club/kunst) staat in
+ * AsyncStorage op het toestel in plaats van op de user-rij, dus daar kan
+ * de server sowieso niet op filteren. Je leest dus "9 nieuw" en treft er
+ * 172 aan. De body zegt daarom expliciet "bij venues die je volgt", zodat
+ * het getal tenminste uitlegbaar is. Echt opgelost is het pas als /new
+ * hetzelfde filter kent — of als de voorkeur via `PATCH /me` meekomt.
  */
 import { inArray, sql } from 'drizzle-orm';
 
@@ -157,6 +160,15 @@ async function runNewPush(opts: {
         JOIN occurrences dobj ON dobj.id = d.occurrence_id
         WHERE d.user_id = u.id AND dobj.event_id = o.event_id
       )
+      -- Alleen wat er bij een venue die je volgt bij kwam. Wie niks
+      -- volgt houdt nul over en valt op de HAVING af, dus die krijgt
+      -- vanzelf geen bericht.
+      AND EXISTS (
+        SELECT 1 FROM venue_follows vf
+        WHERE vf.user_id = u.id
+          AND vf.venue_id = v.id
+          AND vf.state = 'volgen'
+      )
     GROUP BY u.id
     HAVING COUNT(DISTINCT o.event_id) > 0
   `);
@@ -192,7 +204,10 @@ async function runNewPush(opts: {
       // Geen titels in de body: welk event bovenaan staat hangt van je
       // smaakprofiel af en dat rekenen we hier niet uit. "Kijk even" is
       // eerlijker dan één willekeurige naam die misschien niks voor je is.
-      body: 'Kijk even wat er bij kwam.',
+      body:
+        n === 1
+          ? 'Bij een venue die je volgt.'
+          : 'Bij venues die je volgt.',
       data: { url: '/new' },
       // Zelfde getal als in de titel: het app-icoon toont wat er te
       // beoordelen staat. De app zet 'm daarna zelf bij elke wijziging
