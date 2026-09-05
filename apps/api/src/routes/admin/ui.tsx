@@ -3791,7 +3791,9 @@ adminUi.get('/users', async (c) => {
             Push naar selectie
           </button>
           <span style="font-size:13px;opacity:0.7;">
-            Alleen wie iets nieuws heeft krijgt 'm — de rest valt vanzelf af.
+            Kijkt 24 uur terug, ongeacht wanneer iemand voor het laatst in
+            de app was. Alleen wie in die periode iets nieuws heeft bij een
+            venue die hij volgt krijgt 'm — de rest valt vanzelf af.
           </span>
         </div>
       </form>
@@ -3801,9 +3803,12 @@ adminUi.get('/users', async (c) => {
 
 /**
  * Push naar een aangevinkte selectie. Andere ingang dan de dagelijkse
- * knop op het dashboard: hier tellen "app vandaag al open gehad" en
- * "vandaag al gepusht" niet mee, want jij kiest expliciet wie. Wat wél
- * blijft: wie niks nieuws heeft krijgt niks.
+ * knop op het dashboard: hier tellen "app vandaag al open gehad",
+ * "vandaag al gepusht" én het persoonlijke venster niet mee, want jij
+ * kiest expliciet wie. Dat laatste is wat deze knop bruikbaar maakt —
+ * met het gewone venster levert iedereen die net in de app keek nul op.
+ * Wat wél blijft: het moet bij een gevolgde venue zijn, en er moet iets
+ * zijn.
  */
 adminUi.post('/push/selection', async (c) => {
   const dryRun = c.req.query('dry') === '1';

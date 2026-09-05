@@ -78,11 +78,15 @@ function amsterdamDayStart(): Date {
 /**
  * Handmatig naar een gekozen setje mensen sturen, vanuit de admin.
  *
- * Twee van de drie dagelijkse regels vervallen hier bewust: of iemand de
- * app vandaag al open had en of er vandaag al een push uitging, doen er
- * niet toe als jij expliciet vinkjes zet. De derde blijft wél staan —
- * wie niks nieuws heeft krijgt niks, want "0 nieuwe aanwinsten" is geen
- * bericht.
+ * Alle drie de dagelijkse sloten vervallen hier, want jij zet expliciet
+ * vinkjes. Of iemand de app vandaag al open had en of er vandaag al een
+ * push uitging doen niet ter zake, en ook het persoonlijke venster gaat
+ * eraf: normaal telt alleen wat er ná jouw laatste bezoek bij kwam, maar
+ * wie net in de app keek houdt dan niets over en is dus niet te testen.
+ * Vanaf hier is "nieuw" simpelweg de laatste 24 uur.
+ *
+ * Wat wél blijft: het moet bij een venue zijn die de ontvanger volgt, en
+ * er moet iets zijn. "0 nieuwe aanwinsten" is geen bericht.
  *
  * `lastDailyPushAt` gaat wel mee omhoog, zodat de planner van 10:00
  * dezelfde mensen niet nog een keer aanschrijft.
@@ -92,7 +96,12 @@ export async function sendNewPushToUserIds(
   opts: { dryRun?: boolean } = {}
 ): Promise<DailyPushResult> {
   if (userIds.length === 0) return { sent: 0, skippedEmpty: 0, counts: [] };
-  return runNewPush({ userIds, respectDailyGates: false, dryRun: opts.dryRun });
+  return runNewPush({
+    userIds,
+    respectDailyGates: false,
+    ignoreVisitWindow: true,
+    dryRun: opts.dryRun,
+  });
 }
 
 export async function sendDailyNewPush(
@@ -108,9 +117,29 @@ export async function sendDailyNewPush(
 async function runNewPush(opts: {
   userIds?: string[];
   respectDailyGates: boolean;
+  /**
+   * Negeer het persoonlijke venster en kijk gewoon 24 uur terug. Alleen
+   * voor handmatig versturen: anders kun je niemand bereiken die de app
+   * vandaag al open had, en dat is nou juist wie je wil testen.
+   */
+  ignoreVisitWindow?: boolean;
   dryRun?: boolean;
 }): Promise<DailyPushResult> {
   const dayStart = amsterdamDayStart();
+  const lookback = sql`NOW() - INTERVAL '${sql.raw(String(MAX_LOOKBACK_DAYS))} days'`;
+  // "Nieuw" = sinds je hier voor het laatst iets van meekreeg. Drie
+  // momenten tellen mee en de laatste wint: je bezoek aan /new, de
+  // vorige push, en je laatste app-opening (dan zag je de strook op
+  // Vandaag). Zonder dat laatste zou iemand die dagelijks de app opent
+  // bij z'n eerste gemiste dag ineens weken opgeteld krijgen.
+  const windowStart = opts.ignoreVisitWindow
+    ? lookback
+    : sql`GREATEST(
+           COALESCE(u.last_seen_new_at, '-infinity'::timestamptz),
+           COALESCE(u.last_daily_push_at, '-infinity'::timestamptz),
+           COALESCE(u.last_seen_at, '-infinity'::timestamptz),
+           ${lookback}
+         )`;
   const gates = opts.respectDailyGates
     ? sql`AND (u.last_seen_at IS NULL OR u.last_seen_at < ${dayStart})
           AND (u.last_daily_push_at IS NULL OR u.last_daily_push_at < ${dayStart})`
@@ -127,18 +156,7 @@ async function runNewPush(opts: {
     SELECT u.id AS user_id, COUNT(DISTINCT o.event_id)::int AS new_count
     FROM users u
     JOIN push_tokens pt ON pt.user_id = u.id
-    JOIN occurrences o
-      -- "Nieuw" = sinds je hier voor het laatst iets van meekreeg. Drie
-      -- momenten tellen mee en de laatste wint: je bezoek aan /new, de
-      -- vorige push, en je laatste app-opening (dan zag je de strook op
-      -- Vandaag). Zonder dat laatste zou iemand die dagelijks de app
-      -- opent bij z'n eerste gemiste dag ineens weken opgeteld krijgen.
-      ON o.created_at > GREATEST(
-           COALESCE(u.last_seen_new_at, '-infinity'::timestamptz),
-           COALESCE(u.last_daily_push_at, '-infinity'::timestamptz),
-           COALESCE(u.last_seen_at, '-infinity'::timestamptz),
-           NOW() - INTERVAL '${sql.raw(String(MAX_LOOKBACK_DAYS))} days'
-         )
+    JOIN occurrences o ON o.created_at > ${windowStart}
     JOIN events e ON e.id = o.event_id AND e.published
     JOIN venues v ON v.id = COALESCE(o.venue_id, e.venue_id) AND v.published
     WHERE TRUE
