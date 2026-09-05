@@ -4,6 +4,7 @@ import { useEffect, useRef } from 'react';
 import { AppState } from 'react-native';
 
 import { useSession } from '@/lib/authClient';
+import { useNewArrivals } from '@/lib/queries';
 import { useInboxToast } from '@/components/InboxToast';
 import {
   Notifications,
@@ -62,6 +63,22 @@ export function PushManager() {
     });
     return () => sub.remove();
   }, []);
+
+  // Getal op het app-icoon: wat er op /new te beoordelen staat.
+  //
+  // De dagelijkse push zet 'm ook mee, maar iOS wist een badge nooit uit
+  // zichzelf — zonder deze sync bleef "97" staan tot je 'm handmatig
+  // wegveegde. Hier hangt 'ie aan dezelfde query als de strook op
+  // Vandaag, dus hij zakt vanzelf mee terwijl je de lijst afwerkt en
+  // staat op nul zodra je klaar bent.
+  const { data: arrivals } = useNewArrivals({ enabled: Boolean(userId) });
+  const newCount = arrivals?.total ?? 0;
+  useEffect(() => {
+    if (!userId) return;
+    void Notifications.setBadgeCountAsync(newCount).catch(() => {
+      // Sommige Android-launchers kennen geen badge. Geen ramp, geen log.
+    });
+  }, [userId, newCount]);
 
   // Inbox-cache fris houden. Triggers:
   //  - binnengekomen push (foreground of background)

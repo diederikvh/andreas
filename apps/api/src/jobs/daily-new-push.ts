@@ -154,6 +154,10 @@ export async function sendDailyNewPush(
       // eerlijker dan één willekeurige naam die misschien niks voor je is.
       body: 'Kijk even wat er bij kwam.',
       data: { url: '/new' },
+      // Zelfde getal als in de titel: het app-icoon toont wat er te
+      // beoordelen staat. De app zet 'm daarna zelf bij elke wijziging
+      // opnieuw, dus hij loopt mee naar nul terwijl je de lijst afwerkt.
+      badge: n,
     });
   }
 

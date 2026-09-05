@@ -33,6 +33,12 @@ export type PushPayload = {
    * Geen secrets — verschijnt op het lockscreen-payload.
    */
   data?: Record<string, unknown>;
+  /**
+   * Getal op het app-icoon. Zet 'm op wat er te doen staat, niet op het
+   * aantal berichten — iOS wist 'm niet vanzelf, dus een teller die
+   * oploopt per push blijft staan tot de app 'm terugzet.
+   */
+  badge?: number;
 };
 
 /**
@@ -86,6 +92,7 @@ async function sendToTokens(
     title: payload.title,
     body: payload.body,
     data: payload.data ?? {},
+    badge: payload.badge,
     // iOS-specific: standaard channelId voor consistente prioriteit.
     priority: 'high',
   }));

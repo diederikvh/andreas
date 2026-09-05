@@ -23,6 +23,7 @@ import { legalRoute } from './routes/legal.js';
 import { dismissesRoute, mirrorRoute } from './routes/mirror.js';
 import { shareInvitesRoute } from './routes/share-invites.js';
 import { pushRoute } from './routes/push.js';
+import { startScheduler } from './jobs/scheduler.js';
 import { goingRoute } from './routes/going.js';
 import { savesRoute } from './routes/saves.js';
 import { seoFeedsRoute } from './routes/seo-feeds.js';
@@ -376,3 +377,7 @@ const port = Number(process.env.PORT ?? 8787);
 // 0.0.0.0 zodat het container-network 'm vindt.
 serve({ fetch: app.fetch, port, hostname: '0.0.0.0' });
 console.log(`andreas-api listening on 0.0.0.0:${port}`);
+
+// In-process planner voor de dagelijkse aanwinsten-push. Vereist dat de
+// machine blijft draaien — zie de toelichting in jobs/scheduler.ts.
+startScheduler();
