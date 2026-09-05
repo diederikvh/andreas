@@ -104,6 +104,10 @@ async function sendToTokens(
     priority: 'high',
   }));
 
+  console.log(
+    `[push] verstuur naar ${valid.length} token(s): "${payload.title}"`
+  );
+
   const dead: string[] = [];
   const accepted: { id: string; token: string }[] = [];
 
@@ -144,39 +148,61 @@ async function sendToTokens(
   }
 }
 
-/** Hoe lang we Expo geven voordat we de uitslag opvragen. */
-const RECEIPT_DELAY_MS = 15_000;
+/**
+ * Wachttijden per poging. Expo heeft tijd nodig voordat een receipt
+ * klaarstaat; één keer na vijftien seconden vragen levert meestal nog
+ * niets op, en dan weet je nog niets.
+ */
+const RECEIPT_ATTEMPTS_MS = [15_000, 45_000, 120_000];
 
 /**
  * Haalt de bezorgstatus op van wat Expo heeft aangenomen. Dit is de
  * enige plek waar we leren dat een push níét is aangekomen.
+ *
+ * Let op het verschil tussen de drie uitkomsten. Een id dat niet in het
+ * antwoord voorkomt heeft nog géén uitslag — dat is niet hetzelfde als
+ * geslaagd, en precies die verwarring maakte de vorige versie van deze
+ * functie waardeloos: die rekende alles zonder foutmelding als bezorgd
+ * en meldde dus "1/1 bezorgd" terwijl er niets verstuurd bleek.
  */
 async function checkReceipts(
   sent: { id: string; token: string }[]
 ): Promise<void> {
-  await new Promise((r) => setTimeout(r, RECEIPT_DELAY_MS));
-
   const tokenById = new Map(sent.map((s) => [s.id, s.token]));
+  const open = new Set(tokenById.keys());
   const dead: string[] = [];
+  let delivered = 0;
   let failed = 0;
 
-  for (const ids of expo.chunkPushNotificationReceiptIds([...tokenById.keys()])) {
-    const receipts = await expo.getPushNotificationReceiptsAsync(ids);
-    for (const [id, receipt] of Object.entries(receipts)) {
-      if (receipt.status === 'ok') continue;
-      failed++;
-      console.error(
-        `[push] niet bezorgd: ${receipt.details?.error ?? 'onbekend'} — ${receipt.message}`
-      );
-      const token = tokenById.get(id);
-      if (receipt.details?.error === 'DeviceNotRegistered' && token) {
-        dead.push(token);
+  for (const wait of RECEIPT_ATTEMPTS_MS) {
+    if (open.size === 0) break;
+    await new Promise((r) => setTimeout(r, wait));
+    for (const ids of expo.chunkPushNotificationReceiptIds([...open])) {
+      const receipts = await expo.getPushNotificationReceiptsAsync(ids);
+      for (const [id, receipt] of Object.entries(receipts)) {
+        open.delete(id);
+        if (receipt.status === 'ok') {
+          delivered++;
+          continue;
+        }
+        failed++;
+        console.error(
+          `[push] niet bezorgd (${id}): ${receipt.details?.error ?? 'onbekend'} — ${receipt.message}`
+        );
+        const token = tokenById.get(id);
+        if (receipt.details?.error === 'DeviceNotRegistered' && token) {
+          dead.push(token);
+        }
       }
     }
   }
 
+  // Ticket-ids erbij zolang het er weinig zijn: daarmee kun je een
+  // verzending terugvinden in het Expo-dashboard.
+  const refs =
+    sent.length <= 5 ? ` — tickets ${sent.map((s) => s.id).join(', ')}` : '';
   console.log(
-    `[push] ${sent.length - failed}/${sent.length} bezorgd`
+    `[push] uitslag: ${delivered} bezorgd, ${failed} mislukt, ${open.size} zonder uitslag${refs}`
   );
   if (dead.length > 0) await removeTokens(dead);
 }
