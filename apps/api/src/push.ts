@@ -1,4 +1,4 @@
-import { Expo, type ExpoPushMessage, type ExpoPushTicket } from 'expo-server-sdk';
+import { Expo, type ExpoPushMessage } from 'expo-server-sdk';
 import { eq, inArray } from 'drizzle-orm';
 
 import { db, schema } from './db/index.js';
@@ -8,11 +8,18 @@ import { db, schema } from './db/index.js';
  * sends in chunks van 100 zoals Expo wil. APNS- en FCM-credentials
  * zijn EAS-managed — wij praten alleen tegen de Expo push-service.
  *
+ * Verzenden gaat in twee stappen, en dat is geen detail. Een *ticket*
+ * zegt alleen dat Expo het bericht heeft aangenomen; of APNs of FCM het
+ * daadwerkelijk accepteerde staat in de *receipt* die je daarna moet
+ * ophalen. Juist daar komt `DeviceNotRegistered` meestal pas naar boven.
+ * Wie alleen naar tickets kijkt ziet dus overal "verstuurd" staan terwijl
+ * er niets aankomt, en houdt dode tokens eeuwig in de tabel.
+ *
  * Failure-modes die we afhandelen:
- *  - `DeviceNotRegistered` → token verwijderen (gebruiker heeft de app
- *    de-installed of notifications uitgezet).
- *  - Andere errors loggen we maar negeren; één kapot device mag de
- *    rest van de batch niet stuk maken.
+ *  - `DeviceNotRegistered`, in ticket of receipt → token verwijderen
+ *    (app verwijderd, opnieuw geïnstalleerd, of meldingen uitgezet).
+ *  - Al het andere loggen we met de foutcode erbij en laten we verder
+ *    lopen; één kapot device mag de rest van de batch niet stuk maken.
  */
 const expo = new Expo({
   accessToken: process.env.EXPO_ACCESS_TOKEN,
@@ -97,36 +104,86 @@ async function sendToTokens(
     priority: 'high',
   }));
 
-  const chunks = expo.chunkPushNotifications(messages);
-  const tickets: ExpoPushTicket[] = [];
-  for (const chunk of chunks) {
+  const dead: string[] = [];
+  const accepted: { id: string; token: string }[] = [];
+
+  for (const chunk of expo.chunkPushNotifications(messages)) {
+    let tickets;
     try {
-      const chunkTickets = await expo.sendPushNotificationsAsync(chunk);
-      tickets.push(...chunkTickets);
+      tickets = await expo.sendPushNotificationsAsync(chunk);
     } catch (err) {
-      console.error('[push] chunk send failed', err);
+      console.error('[push] chunk mislukt', err);
+      continue;
+    }
+    // Ticket terug op token via de `to` van hetzelfde bericht, niet via
+    // een lopende index over alle chunks: die schuift scheef zodra er
+    // één chunk faalt, en dan verwijder je het token van iemand anders.
+    tickets.forEach((ticket, i) => {
+      const to = chunk[i]?.to;
+      const token = typeof to === 'string' ? to : undefined;
+      if (ticket.status === 'ok') {
+        if (token) accepted.push({ id: ticket.id, token });
+        return;
+      }
+      console.error(
+        `[push] geweigerd: ${ticket.details?.error ?? 'onbekend'} — ${ticket.message}`
+      );
+      if (ticket.details?.error === 'DeviceNotRegistered' && token) {
+        dead.push(token);
+      }
+    });
+  }
+
+  if (dead.length > 0) await removeTokens(dead);
+  // Losgekoppeld: de aanroeper hoeft niet te wachten tot Expo z'n
+  // receipts klaar heeft staan.
+  if (accepted.length > 0) {
+    void checkReceipts(accepted).catch((err) =>
+      console.error('[push] receipt-check mislukt', err)
+    );
+  }
+}
+
+/** Hoe lang we Expo geven voordat we de uitslag opvragen. */
+const RECEIPT_DELAY_MS = 15_000;
+
+/**
+ * Haalt de bezorgstatus op van wat Expo heeft aangenomen. Dit is de
+ * enige plek waar we leren dat een push níét is aangekomen.
+ */
+async function checkReceipts(
+  sent: { id: string; token: string }[]
+): Promise<void> {
+  await new Promise((r) => setTimeout(r, RECEIPT_DELAY_MS));
+
+  const tokenById = new Map(sent.map((s) => [s.id, s.token]));
+  const dead: string[] = [];
+  let failed = 0;
+
+  for (const ids of expo.chunkPushNotificationReceiptIds([...tokenById.keys()])) {
+    const receipts = await expo.getPushNotificationReceiptsAsync(ids);
+    for (const [id, receipt] of Object.entries(receipts)) {
+      if (receipt.status === 'ok') continue;
+      failed++;
+      console.error(
+        `[push] niet bezorgd: ${receipt.details?.error ?? 'onbekend'} — ${receipt.message}`
+      );
+      const token = tokenById.get(id);
+      if (receipt.details?.error === 'DeviceNotRegistered' && token) {
+        dead.push(token);
+      }
     }
   }
 
-  // Tickets die `error: DeviceNotRegistered` teruggeven betekent dat
-  // het token dood is — verwijderen zodat we het niet blijven proberen.
-  // We mappen tickets terug op tokens via index-volgorde (Expo houdt
-  // de volgorde aan binnen de chunk).
-  const dead: string[] = [];
-  let i = 0;
-  for (const ticket of tickets) {
-    const token = valid[i++];
-    if (
-      ticket.status === 'error' &&
-      ticket.details?.error === 'DeviceNotRegistered' &&
-      token
-    ) {
-      dead.push(token);
-    }
-  }
-  if (dead.length > 0) {
-    await db
-      .delete(schema.pushTokens)
-      .where(inArray(schema.pushTokens.token, dead));
-  }
+  console.log(
+    `[push] ${sent.length - failed}/${sent.length} bezorgd`
+  );
+  if (dead.length > 0) await removeTokens(dead);
+}
+
+async function removeTokens(tokens: string[]): Promise<void> {
+  await db
+    .delete(schema.pushTokens)
+    .where(inArray(schema.pushTokens.token, tokens));
+  console.warn(`[push] ${tokens.length} dood token verwijderd`);
 }
