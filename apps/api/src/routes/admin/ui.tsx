@@ -27,6 +27,7 @@ import {
   publishTikTokInbox,
   publishTikTokPhotos,
 } from '../../social/tiktok.js';
+import { sendDailyNewPush } from '../../jobs/daily-new-push.js';
 import { uploadToBunny } from '../../storage/bunny.js';
 import {
   THEMES,
@@ -298,6 +299,28 @@ adminUi.get('/', async (c) => {
     .select({ n: count() })
     .from(schema.users);
 
+  // Uitkomst van een handmatige trigger, teruggegeven via de redirect.
+  const pushParam = c.req.query('push');
+  const pushResult = (() => {
+    if (!pushParam) return null;
+    // `people` en niet `sent`: bij een droge run is er per definitie
+    // niks verstuurd, maar wil je juist weten hoeveel mensen 'm zouden
+    // krijgen.
+    const people = Number(c.req.query('people') ?? 0);
+    const min = Number(c.req.query('min') ?? 0);
+    const max = Number(c.req.query('max') ?? 0);
+    return {
+      dryRun: pushParam === 'dry',
+      people,
+      range:
+        people === 0
+          ? ''
+          : min === max
+            ? `${min} nieuwe aanwinsten per persoon`
+            : `${min} tot ${max} nieuwe aanwinsten per persoon`,
+    };
+  })();
+
   return c.html(
     <Layout title="Overzicht" active="home">
       <h2>Overzicht</h2>
@@ -326,8 +349,71 @@ adminUi.get('/', async (c) => {
           <strong>{savesTotal.n}</strong>
         </div>
       </div>
+
+      <h3 style="margin-top:32px;">Dagelijkse aanwinsten-push</h3>
+      <p style="opacity:0.7;font-size:14px;margin-top:-8px;">
+        Gaat elke ochtend om 10:00 automatisch. Alleen naar wie de app
+        vandaag nog niet open had én voor wie er iets nieuws klaarstaat;
+        één keer per dag per persoon. Droog draaien telt wie 'm zou
+        krijgen zonder iets te versturen.
+      </p>
+      {pushResult ? (
+        <article style="padding:12px 16px;">
+          <strong>
+            {pushResult.people === 0
+              ? 'Niemand komt in aanmerking'
+              : pushResult.dryRun
+                ? `Droog: ${pushResult.people} zouden er één krijgen`
+                : `Verstuurd naar ${pushResult.people}`}
+          </strong>
+          <div style="font-size:13px;opacity:0.75;margin-top:6px;">
+            {pushResult.people === 0
+              ? 'Er staat voor niemand iets nieuws klaar, of iedereen had de app vandaag al open.'
+              : pushResult.range}
+          </div>
+        </article>
+      ) : null}
+      <div style="display:flex;gap:10px;">
+        <form method="post" action="/admin/push/daily-new?dry=1">
+          <button class="secondary" type="submit">
+            Droog draaien
+          </button>
+        </form>
+        <form
+          method="post"
+          action="/admin/push/daily-new"
+          onsubmit="return confirm('Nu echt versturen naar iedereen die in aanmerking komt?')"
+        >
+          <button type="submit">Nu versturen</button>
+        </form>
+      </div>
     </Layout>
   );
+});
+
+/**
+ * Handmatige trigger vanuit het dashboard. Dezelfde job als de planner
+ * om 10:00 draait, dus dit is ook de manier om 'm na een storing alsnog
+ * de deur uit te krijgen — `lastDailyPushAt` voorkomt dubbel verzenden.
+ *
+ * Het resultaat komt via een redirect terug als query-params in plaats
+ * van een eigen resultaatpagina: dan blijf je op het dashboard en is een
+ * refresh geen tweede verzending.
+ */
+adminUi.post('/push/daily-new', async (c) => {
+  const dryRun = c.req.query('dry') === '1';
+  const result = await sendDailyNewPush({ dryRun });
+  // Alleen de samenvatting mee, niet elke telling: met duizend
+  // gebruikers zou de URL kilobytes lang worden en afkappen.
+  const counts = result.counts.map((x) => x.newCount);
+  const qs = new URLSearchParams({
+    push: dryRun ? 'dry' : 'sent',
+    people: String(counts.length),
+    min: String(counts.length ? Math.min(...counts) : 0),
+    max: String(counts.length ? Math.max(...counts) : 0),
+  });
+  // Zonder slash: `/admin/` bestaat niet als route en geeft 404.
+  return c.redirect(`/admin?${qs.toString()}`);
 });
 
 // ─── Events ─────────────────────────────────────────────────────────────
