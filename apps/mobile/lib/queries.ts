@@ -34,6 +34,7 @@ import {
   getInvitations,
   getMe,
   getOutgoingFriendRequests,
+  getMusea,
   getMyGoing,
   getMySaves,
   getSeries,
@@ -124,6 +125,7 @@ export const queryKeys = {
     ['series-list', input.q ?? '', input.category ?? ''] as const,
   saves: () => ['saves'] as const,
   going: () => ['going'] as const,
+  musea: () => ['musea'] as const,
   friends: () => ['friends'] as const,
   friendRequests: () => ['friend-requests'] as const,
   outgoingFriendRequests: () => ['outgoing-friend-requests'] as const,
@@ -604,6 +606,16 @@ export function useMyGoing(opts: { enabled?: boolean } = {}) {
     queryKey: queryKeys.going(),
     queryFn: () => getMyGoing(),
     enabled: opts.enabled ?? true,
+  });
+}
+
+export function useMusea(opts: { enabled?: boolean } = {}) {
+  return useQuery({
+    queryKey: queryKeys.musea(),
+    queryFn: () => getMusea(),
+    enabled: opts.enabled ?? true,
+    // Tentoonstellingen lopen weken tot maanden; dit hoeft niet vers.
+    staleTime: 30 * 60_000,
   });
 }
 

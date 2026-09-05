@@ -1078,6 +1078,35 @@ export async function toggleSave(
  * rails kunnen 'm zonder vertaling renderen. Server mergt hier al mijn
  * eigen "ik ga"-markeringen met de uitnodigingen waar ik ja op zei.
  */
+/**
+ * Een museum of galerie met wat er nu te zien is. De eenheid is hier de
+ * venue en niet het event — bij een tentoonstelling is het gebouw de
+ * constante en wisselt de inhoud, andersom dan bij film.
+ */
+export type MuseumVenue = {
+  id: string;
+  slug: string;
+  name: string;
+  type: string | null;
+  wijk: string | null;
+  imageUrl: string | null;
+  followed: boolean;
+  exhibitions: {
+    id: string;
+    title: string;
+    imageUrl: string | null;
+    startsAt: string;
+    endsAt: string | null;
+  }[];
+};
+
+export async function getMusea(): Promise<MuseumVenue[]> {
+  const { venues } = await authedRequest<{ venues: MuseumVenue[] }>(
+    '/venues/musea'
+  );
+  return venues;
+}
+
 export async function getMyGoing(): Promise<SavedApiEvent[]> {
   const { events } = await authedRequest<{ events: SavedApiEvent[] }>(
     '/going'

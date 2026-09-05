@@ -152,6 +152,12 @@ export default function MeerScreen() {
       onPress: go('/films'),
     },
     {
+      key: 'musea',
+      icon: <Ionicons name="image-outline" size={22} color={roles.accent} />,
+      label: t('Musea', 'Museums'),
+      onPress: go('/musea'),
+    },
+    {
       key: 'kaart',
       icon: <Ionicons name="map-outline" size={22} color={roles.accent} />,
       label: t('Kaart', 'Map'),

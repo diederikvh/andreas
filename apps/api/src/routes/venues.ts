@@ -17,6 +17,7 @@ import {
 import { Hono } from 'hono';
 
 import { auth } from '../auth.js';
+import { getFollowedVenueIds } from './venue-follows.js';
 import { db, displayGenres, schema } from '../db/index.js';
 import {
   buildFriendsByOccurrence,
@@ -210,6 +211,138 @@ venuesRoute.get('/subtypes', async (c) => {
     count: Number(r.n),
   }));
   return c.json({ subtypes });
+});
+
+/**
+ * Musea en galeries met wat er nú te zien is.
+ *
+ * Eigen endpoint omdat de eenheid hier de venue is en niet het event.
+ * Bij film is de film de hoofdzaak en de bioscoop bijzaak — daar vraag
+ * je "waar draait dit". Bij een museum is het omgekeerd: je vraagt "wat
+ * hangt er in het Stedelijk", en het gebouw is de constante. `/venues`
+ * levert geen programma mee en `/events?category=Kunst` zet de
+ * tentoonstelling voorop, dus geen van beide past.
+ *
+ * Alleen venues met minstens één lopende tentoonstelling. De helft van
+ * de galeries in de database heeft er geen — die zouden anders als lege
+ * tegels het raster vullen.
+ */
+venuesRoute.get('/musea', async (c) => {
+  const session = await auth.api.getSession({ headers: c.req.raw.headers });
+  const me = session?.user.id ?? null;
+
+  const rows = await db
+    .select({
+      id: schema.venues.id,
+      slug: schema.venues.slug,
+      name: schema.venues.name,
+      type: schema.venues.type,
+      wijk: schema.venues.wijk,
+      venueImageUrl: schema.venues.imageUrl,
+      eventId: schema.events.id,
+      eventTitle: schema.events.title,
+      eventImageUrl: schema.events.imageUrl,
+      startsAt: schema.occurrences.startsAt,
+      endsAt: schema.occurrences.endsAt,
+    })
+    .from(schema.venues)
+    .innerJoin(
+      schema.events,
+      and(
+        eq(schema.events.venueId, schema.venues.id),
+        eq(schema.events.published, true),
+        eq(schema.events.kind, 'exhibition')
+      )
+    )
+    .innerJoin(
+      schema.occurrences,
+      eq(schema.occurrences.eventId, schema.events.id)
+    )
+    .where(
+      and(
+        eq(schema.venues.published, true),
+        inArray(schema.venues.type, ['museum', 'galerie']),
+        // Loopt nu of komt nog: een tentoonstelling die vorige maand
+        // sloot hoort niet in "wat is er te zien".
+        gte(
+          sql`COALESCE(${schema.occurrences.endsAt}, ${schema.occurrences.startsAt})`,
+          sql`NOW()`
+        )
+      )
+    )
+    .orderBy(asc(schema.occurrences.startsAt));
+
+  type Show = {
+    id: string;
+    title: string;
+    imageUrl: string | null;
+    startsAt: Date;
+    endsAt: Date | null;
+  };
+  type VenueGroup = {
+    id: string;
+    slug: string;
+    name: string;
+    type: string | null;
+    wijk: string | null;
+    imageUrl: string | null;
+    exhibitions: Show[];
+  };
+  const byVenue = new Map<string, VenueGroup>();
+  for (const r of rows) {
+    let v = byVenue.get(r.id);
+    if (!v) {
+      v = {
+        id: r.id,
+        slug: r.slug,
+        name: r.name,
+        type: r.type ?? null,
+        wijk: r.wijk ?? null,
+        imageUrl: r.venueImageUrl,
+        exhibitions: [],
+      };
+      byVenue.set(r.id, v);
+    }
+    // Eén rij per tentoonstelling: een expositie met meerdere
+    // occurrences (zeldzaam, maar het model staat 't toe) telt één keer.
+    if (v.exhibitions.some((e) => e.id === r.eventId)) continue;
+    v.exhibitions.push({
+      id: r.eventId,
+      title: r.eventTitle,
+      imageUrl: r.eventImageUrl,
+      startsAt: r.startsAt,
+      endsAt: r.endsAt,
+    });
+  }
+
+  // Binnen een museum: wat nú loopt eerst, en daarbinnen het laatst
+  // geopende. De eerste tentoonstelling is het beeld op de tegel, en dan
+  // wil je niet de langstlopende zien — dat is meestal de vaste
+  // opstelling of een mededeling, niet de reden om te gaan.
+  const nowMs = Date.now();
+  for (const v of byVenue.values()) {
+    v.exhibitions.sort((a, b) => {
+      const aRunning = new Date(a.startsAt).getTime() <= nowMs;
+      const bRunning = new Date(b.startsAt).getTime() <= nowMs;
+      if (aRunning !== bRunning) return aRunning ? -1 : 1;
+      return new Date(b.startsAt).getTime() - new Date(a.startsAt).getTime();
+    });
+  }
+
+  const followed = me ? new Set(await getFollowedVenueIds(me)) : new Set<string>();
+  const venues = [...byVenue.values()]
+    .map((v) => ({ ...v, followed: followed.has(v.id) }))
+    // Wat jij volgt bovenaan; daarna wie het meest te zien heeft. Een
+    // museum met acht tentoonstellingen is nu eenmaal een grotere
+    // aanleiding om te gaan dan een galerie met één.
+    .sort(
+      (a, b) =>
+        Number(b.followed) - Number(a.followed) ||
+        b.exhibitions.length - a.exhibitions.length ||
+        a.name.localeCompare(b.name)
+    );
+
+  return c.json({ venues });
 });
 
 const VENUE_TYPE_VALUES = [
