@@ -24,7 +24,10 @@ failed=()
 for s in ${*:-$DEFAULT}; do
   start=$(date +%s)
   if out=$(pnpm -s scrape "$s" 2>&1); then
-    echo "ok    $s  $(( $(date +%s) - start ))s  $(echo "$out" | grep -o '{.*}' | tail -1)"
+    # run-scraper print de totalen op de regel vóór de per-venue-regels.
+    # De laatste JSON pakken geeft dus één venue: paradiso las als
+    # `fetched: 1` (Doka) terwijl het er 430 waren over vier venues.
+    echo "ok    $s  $(( $(date +%s) - start ))s  $(sed -n 's/.*done in [0-9]*ms: //p' <<<"$out")"
   else
     echo "FOUT  $s  $(( $(date +%s) - start ))s"
     echo "$out" | tail -5 | sed 's/^/      /'
