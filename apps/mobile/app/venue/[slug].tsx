@@ -393,7 +393,10 @@ export default function VenueDetail() {
         onScroll={onScroll}
         scrollEventThrottle={16}
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: insets.bottom + 40 }}
+        contentContainerStyle={{
+          paddingBottom: insets.bottom + 40,
+          flexGrow: 1,
+        }}
         onViewableItemsChanged={onViewableItemsChanged}
         viewabilityConfig={viewabilityConfig}
         onScrollBeginDrag={onScrollBeginDrag}
@@ -402,10 +405,17 @@ export default function VenueDetail() {
         initialNumToRender={12}
         removeClippedSubviews
         ListFooterComponent={
-          // Vult de ruimte onder de laatste event-row + de bottom-
-          // padding met de bg-kleur, anders schemert de heroPinned
-          // erdoorheen voor venues met weinig events.
-          <View style={{ backgroundColor: roles.bg, minHeight: 400 }} />
+          // Vult de ruimte onder de laatste event-row met de bg-kleur,
+          // anders schemert de vastgepinde hero erdoorheen bij venues
+          // met weinig events.
+          //
+          // `flex: 1` in plaats van een vaste `minHeight: 400`: samen met
+          // de `flexGrow` op de contentContainer pakt 'ie precies wat er
+          // aan viewport overblijft, en niks als het programma al langer
+          // is dan het scherm. Die 400 stond er onvoorwaardelijk en gaf
+          // elk museum met een vol programma vierhonderd punten dood
+          // gat onderaan.
+          <View style={{ backgroundColor: roles.bg, flex: 1 }} />
         }
         refreshControl={
           <RefreshControl
