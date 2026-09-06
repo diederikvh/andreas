@@ -74,11 +74,18 @@ export default function NewScreen() {
   const { data: session } = useSession();
   const authed = Boolean(session?.user?.id);
   const registered = useIsRegistered();
-  // Bij BLUR (= je verlaat /new): markeer de pagina als gezien zodat de
-  // badge-teller op /avond naar 0 zakt. Raakt de lijst hierboven niet —
-  // die hangt aan `previous`, niet aan dit bezoek-moment.
+  // Markeer de pagina als gezien, zodat de teller op het app-icoon en de
+  // stip in het Meer-menu naar nul zakken. Raakt de lijst hierboven niet
+  // — die hangt aan `previous`, niet aan dit bezoek-moment.
+  //
+  // Bij focus én bij blur. Focus omdat kíjken genoeg is: het icoon hoort
+  // niet nog een getal te tonen terwijl je de pagina open hebt. Blur
+  // omdat de grens daarmee opschuift naar het moment dat je wegging, en
+  // niet naar dat je binnenkwam.
   useFocusEffect(
     useCallback(() => {
+      useSessionTimestamps.getState().markNewSeen();
+      if (registered) void markNewSeenOnServer();
       return () => {
         useSessionTimestamps.getState().markNewSeen();
         // Ook serverkant, zodat het venster een nieuwe telefoon

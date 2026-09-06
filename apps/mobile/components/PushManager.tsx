@@ -4,7 +4,8 @@ import { useEffect, useRef } from 'react';
 import { AppState } from 'react-native';
 
 import { useSession } from '@/lib/authClient';
-import { useNewArrivals } from '@/lib/queries';
+import { useNewArrivalsSince } from '@/lib/queries';
+import { useNewBadgeSince } from '@/store/sessionTimestamps';
 import { useInboxToast } from '@/components/InboxToast';
 import {
   Notifications,
@@ -64,15 +65,22 @@ export function PushManager() {
     return () => sub.remove();
   }, []);
 
-  // Getal op het app-icoon: wat er op /new te beoordelen staat.
+  // Getal op het app-icoon: wat er bij is gekomen sinds je /new zag.
   //
-  // De dagelijkse push zet 'm ook mee, maar iOS wist een badge nooit uit
-  // zichzelf — zonder deze sync bleef "97" staan tot je 'm handmatig
-  // wegveegde. Hier hangt 'ie aan dezelfde query als de strook op
-  // Vandaag, dus hij zakt vanzelf mee terwijl je de lijst afwerkt en
-  // staat op nul zodra je klaar bent.
-  const { data: arrivals } = useNewArrivals({ enabled: Boolean(userId) });
-  const newCount = arrivals?.total ?? 0;
+  // De dagelijkse push zet 'm mee, maar iOS wist een badge nooit uit
+  // zichzelf — zonder deze sync bleef het getal staan tot je 'm
+  // handmatig wegveegde.
+  //
+  // Bewust `useNewBadgeSince` en niet het venster van de lijst zelf. Dat
+  // laatste is de sessiegrens en die schuift pas na een half uur weg;
+  // het icoon bleef daardoor een getal tonen terwijl je de pagina net
+  // open had gehad. Deze grens neemt ook je bezoek aan /new mee, dus
+  // kijken is genoeg om 'm op nul te zetten.
+  const badgeSince = useNewBadgeSince();
+  const { data: arrivals } = useNewArrivalsSince(badgeSince, {
+    enabled: Boolean(userId),
+  });
+  const newCount = badgeSince ? (arrivals?.total ?? 0) : 0;
   useEffect(() => {
     if (!userId) return;
     void Notifications.setBadgeCountAsync(newCount).catch(() => {
