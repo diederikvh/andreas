@@ -307,6 +307,20 @@ export default function NewScreen() {
   const isEmpty =
     !isLoading && !error && (events?.length ?? 0) === 0;
 
+  // Leeg door jouw filter, of leeg omdat er niets is? Dat verschil moet
+  // de tekst maken. "Je bent bij" terwijl er 23 films klaarstaan die je
+  // wegfiltert is onwaar, en laat je bovendien zoeken naar iets wat één
+  // tik verderop staat. Banen met inhoud die jij niet hebt aanstaan,
+  // grootste eerst.
+  const elsewhere = laneCounts
+    ? LANES.filter(
+        (l) => !activeLanes.includes(l) && (laneCounts[l] ?? 0) > 0
+      ).sort((a, b) => (laneCounts[b] ?? 0) - (laneCounts[a] ?? 0))
+    : [];
+  const elsewhereLane = elsewhere[0];
+  const elsewhereCount = elsewhereLane ? (laneCounts?.[elsewhereLane] ?? 0) : 0;
+  const activeNames = activeLanes.map((l) => laneLabel(l, t));
+
   // Alle vijf banen, ook die op nul staan. Eerder verborgen we lege
   // banen om de rij kort te houden, maar dan verdwijnt de uitweg
   // precies wanneer je 'm zoekt: filter op theater, niks nieuws, en de
@@ -351,13 +365,15 @@ export default function NewScreen() {
           <View style={[styles.emptyCenter, { paddingBottom: bottomInset }]}>
             <Ionicons name="flash-outline" size={48} color={roles.fgMuted} />
             <Text style={[styles.emptyTitle, { color: roles.fg }]}>
-              {t('Je bent bij', 'You’re up to date')}
+              {elsewhereLane
+                ? t('Niks in deze baan', 'Nothing in this lane')
+                : t('Je bent bij', 'You’re up to date')}
             </Text>
             <Text style={[styles.emptySub, { color: roles.fgMuted }]}>
-              {activeLanes.length > 0
+              {elsewhereLane
                 ? t(
-                    'Niks nieuws in de banen die je hebt aangezet. Zet er eentje bij om breder te kijken.',
-                    'Nothing new in the lanes you picked. Turn one on to look wider.'
+                    `Niks nieuws in ${activeNames.join(' en ')}. Wel ${elsewhereCount} in ${laneLabel(elsewhereLane, t)} — tik die baan hierboven aan.`,
+                    `Nothing new in ${activeNames.join(' and ')}. But ${elsewhereCount} in ${laneLabel(elsewhereLane, t)} — tap that lane above.`
                   )
                 : t(
                     'Vandaag is er nog niks bijgekomen. Zodra de venues hun programma bijwerken staat het hier.',
