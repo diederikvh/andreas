@@ -82,11 +82,32 @@ export default function PendingEventScreen() {
       : '—';
 
   const onRemove = () => {
+    // Hangt je ticket hieraan, dan is dit de enige plek waar je er nog bij
+    // kan: er is geen losse ticketlijst. Het plan weghalen zou het ticket
+    // onbereikbaar maken terwijl het bestand er nog staat. Zelfde regel
+    // als bij een echt event waar "ik ga" een ticket draagt.
+    if (tickets.length > 0) {
+      Alert.alert(
+        t('Je ticket hangt hieraan', 'Your ticket is attached to this'),
+        t(
+          'Dit is de enige plek waar je er nog bij kan. Verwijder eerst je ticket als je dit plan wil weghalen.',
+          'This is the only place you can still reach it. Remove your ticket first if you want to remove this plan.',
+        ),
+        [
+          { text: t('Laat staan', 'Keep it'), style: 'cancel' },
+          {
+            text: t('Ticket bekijken', 'View ticket'),
+            onPress: () => router.push(`/ticket/${id}` as never),
+          },
+        ],
+      );
+      return;
+    }
     Alert.alert(
       t('Uit je plannen halen?', 'Remove from your plans?'),
       t(
-        'Je ticket blijft op je toestel staan.',
-        'Your ticket stays on your device.',
+        'De aanmelding blijft staan, jij gaat er alleen niet meer heen.',
+        'The submission stays, you just stop going.',
       ),
       [
         { text: t('Laat staan', 'Keep it'), style: 'cancel' },
