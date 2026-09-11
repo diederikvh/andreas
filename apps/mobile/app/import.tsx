@@ -139,28 +139,38 @@ export default function ImportScreen() {
   // Op stap 2 met een gekozen event is de foto de kop: geen bovenmarge.
   const overHero = step === 'act' && !selfAdd;
 
-  // Typen in het formulier: de dock gaat weg zolang het keyboard er is.
+  // Typen in het formulier: de balk onderaan schuift boven het keyboard.
   //
-  // Hier zat eerst een KeyboardAvoidingView. Die tilde de dock netjes op,
+  // Hier zat eerst een KeyboardAvoidingView. Die tilde de balk netjes op,
   // maar dáárdoor overlapte het keyboard de scrollview niet meer — en dan
   // doet `automaticallyAdjustKeyboardInsets` niets, dus scrolde het veld
   // waarin je typt niet in beeld. Precies de valkuil die in CLAUDE.md
-  // staat. Zonder die wrapper doet iOS het scrollen zelf; en een knop
-  // "Terug" naast een open keyboard hoeft niet — het keyboard heeft z'n
-  // eigen Klaar.
-  const [keyboardUp, setKeyboardUp] = useState(false);
+  // staat. Nu tillen we alleen de balk zelf op, met de gemeten
+  // keyboardhoogte, en laat de scrollview z'n eigen werk doen.
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const keyboardUp = keyboardHeight > 0;
   useEffect(() => {
-    const show = Keyboard.addListener('keyboardWillShow', () =>
-      setKeyboardUp(true),
+    const show = Keyboard.addListener('keyboardWillShow', (e) =>
+      setKeyboardHeight(e.endCoordinates.height),
     );
     const hide = Keyboard.addListener('keyboardWillHide', () =>
-      setKeyboardUp(false),
+      setKeyboardHeight(0),
     );
     return () => {
       show.remove();
       hide.remove();
     };
   }, []);
+
+  // De actie van het onderste balkje. Op het formulier voor zelf
+  // toevoegen is dat "Aanmelden": die knop stond in de scroll en zat dus
+  // achter het keyboard, terwijl het het enige is wat je daarna nog wil.
+  // SharePreview meldt 'm hier aan zodra dat scherm er staat.
+  const [dockAction, setDockAction] = useState<{
+    label: string;
+    disabled: boolean;
+    run: () => void;
+  } | null>(null);
 
   return (
     <View
@@ -182,7 +192,10 @@ export default function ImportScreen() {
           // dat loopt tot tegen de bovenrand.
           contentContainerStyle={{
             paddingTop: overHero ? 0 : headerTop + 12,
-            paddingBottom: insets.bottom + 40,
+            // Terwijl je typt staat de balk óver de content; die hoogte
+            // erbij, anders kan het onderste veld er niet vrij van
+            // scrollen.
+            paddingBottom: insets.bottom + 40 + (keyboardUp ? 76 : 0),
           }}
         >
           {pending ? (
@@ -193,6 +206,7 @@ export default function ImportScreen() {
               selfAdd={selfAdd}
               acted={acted}
               onActed={() => setActed(true)}
+              onDockAction={setDockAction}
               onPickCandidate={toStep2}
             />
           ) : (
@@ -218,33 +232,38 @@ export default function ImportScreen() {
           )}
         </ScrollView>
 
-        {keyboardUp ? null : (
-          <View
-            style={[
-              styles.dock,
-              {
-                // Op Android is de systeembalk een rij echte knoppen; dan
-                // wil je ruimte tússen onze knop en die van het toestel,
-                // niet alleen de inset. Op iOS is het een streepje en zit
-                // die lucht al in de inset.
-                paddingBottom:
-                  Platform.OS === 'android'
-                    ? insets.bottom + 14
-                    : Math.max(insets.bottom, 12),
-                backgroundColor: roles.bg,
-                borderTopColor: roles.bgChip,
-              },
-            ]}
-          >
-            {/* Eén knop, twee betekenissen: halverwege stap 2 brengt hij je
-            terug naar de keuze, en op stap 1 sluit hij het scherm. Zo hoef
-            je niet naar de linkerbovenhoek voor iets wat je met je duim
-            doet. Ben je klaar, dan is er niets om naar terug te gaan — een
-            save draai je hier niet ongedaan — dus dan sluit hij weer. */}
+        <View
+          style={[
+            styles.dock,
+            {
+              // Boven het keyboard, niet erachter: de knop die je nodig
+              // hebt hoort zichtbaar te blijven terwijl je typt.
+              marginBottom: keyboardHeight,
+              // Op Android is de systeembalk een rij echte knoppen; dan
+              // wil je ruimte tússen onze knop en die van het toestel,
+              // niet alleen de inset. Op iOS is het een streepje en zit
+              // die lucht al in de inset. Ligt de balk op het keyboard,
+              // dan is die ruimte er al.
+              paddingBottom: keyboardUp
+                ? 10
+                : Platform.OS === 'android'
+                  ? insets.bottom + 14
+                  : Math.max(insets.bottom, 12),
+              backgroundColor: roles.bg,
+              borderTopColor: roles.bgChip,
+            },
+          ]}
+        >
+          <View style={styles.dockRow}>
+            {/* Eén knop, twee betekenissen: halverwege stap 2 brengt hij
+                je terug naar de keuze, en op stap 1 sluit hij het scherm.
+                Ben je klaar, dan is er niets om naar terug te gaan — een
+                save draai je hier niet ongedaan — dus dan sluit hij. */}
             <Pressable
               onPress={step === 'act' && !acted ? backToStep1 : onClose}
               style={[
                 styles.close,
+                dockAction ? styles.closeNarrow : styles.closeWide,
                 { backgroundColor: isNacht ? palette.noir2 : palette.paper2 },
               ]}
             >
@@ -254,8 +273,27 @@ export default function ImportScreen() {
                   : t('Sluiten', 'Close')}
               </Text>
             </Pressable>
+
+            {dockAction ? (
+              <Pressable
+                onPress={dockAction.run}
+                disabled={dockAction.disabled}
+                style={[
+                  styles.close,
+                  styles.closeWide,
+                  {
+                    backgroundColor: roles.accent,
+                    opacity: dockAction.disabled ? 0.45 : 1,
+                  },
+                ]}
+              >
+                <Text style={[styles.closeText, { color: roles.onAccent }]}>
+                  {dockAction.label}
+                </Text>
+              </Pressable>
+            ) : null}
           </View>
-        )}
+        </View>
       </View>
 
       {/* Greepje bovenaan. Zelf getekend: UIKit tekent er alleen één bij
@@ -346,6 +384,7 @@ function SharePreview({
   selfAdd,
   acted,
   onActed,
+  onDockAction,
   onPickCandidate,
 }: {
   share: PendingShare;
@@ -354,6 +393,11 @@ function SharePreview({
   selfAdd: boolean;
   acted: boolean;
   onActed: () => void;
+  /** Meldt de hoofdactie aan bij de balk onderaan. `null` = alleen de
+      terug/sluit-knop. */
+  onDockAction: (
+    action: { label: string; disabled: boolean; run: () => void } | null,
+  ) => void;
   /** `null` = "geen van deze" → zelf toevoegen. */
   onPickCandidate: (id: string | null) => void;
 }) {
@@ -688,6 +732,29 @@ function SharePreview({
       });
     }
   }
+
+  // Op het formulier voor zelf toevoegen is "Aanmelden" de hoofdactie, en
+  // die hoort in de balk onderaan te staan: daar blijft hij zichtbaar met
+  // een open keyboard. In de scroll zat hij erachter.
+  const canSubmit = isMatchable(safe);
+  useEffect(() => {
+    if (!selfAdd || step !== 'act' || submitState === 'done') {
+      onDockAction(null);
+      return;
+    }
+    onDockAction({
+      label:
+        submitState === 'sending'
+          ? t('Aanmelden…', 'Submitting…')
+          : t('Aanmelden', 'Submit'),
+      disabled: !canSubmit || submitState === 'sending',
+      run: submitUnknown,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selfAdd, step, submitState, canSubmit, locale]);
+
+  // De balk hoort bij dit scherm: laat 'm niet achter als we weg zijn.
+  useEffect(() => () => onDockAction(null), [onDockAction]);
 
   const storedTicket = useTicketFor(occurrenceId);
   const storedTicketCount = useTicketsFor(occurrenceId).length;
@@ -1296,32 +1363,9 @@ function SelfAddStep({
         />
       ) : null}
 
-      <Pressable
-        onPress={onSubmitUnknown}
-        disabled={!canSubmit || submitState === 'sending'}
-        style={[
-          styles.primaryBtn,
-          {
-            backgroundColor: roles.accent,
-            opacity: !canSubmit || submitState === 'sending' ? 0.45 : 1,
-          },
-        ]}
-      >
-        <Ionicons name="add" size={18} color={roles.onAccent} />
-        <Text style={[styles.primaryBtnText, { color: roles.onAccent }]}>
-          {submitState === 'sending'
-            ? t('Aanmelden…', 'Submitting…')
-            : t('Aanmelden bij Andreas', 'Submit to Andreas')}
-        </Text>
-      </Pressable>
-      {!canSubmit ? (
-        <Text style={[styles.stepLead, { color: roles.fgMuted }]}>
-          {t(
-            'Vul minstens een titel of een venue in.',
-            'Fill in at least a title or a venue.',
-          )}
-        </Text>
-      ) : null}
+      {/* De knop "Aanmelden" staat in de balk onderaan: daar blijft hij
+          zichtbaar terwijl je typt. Hier stond hij in de scroll, en dus
+          achter het keyboard precies op het moment dat je 'm zocht. */}
       {submitState === 'failed' ? (
         <Text style={[styles.stepLead, { color: roles.fgMuted }]}>
           {t(
@@ -2337,6 +2381,9 @@ const styles = StyleSheet.create({
     lineHeight: 17,
     textAlign: 'center',
   },
+  dockRow: { flexDirection: 'row', gap: 8 },
+  closeNarrow: { flex: 0, paddingHorizontal: 26 },
+  closeWide: { flex: 1 },
   close: {
     height: 48,
     borderRadius: 999,

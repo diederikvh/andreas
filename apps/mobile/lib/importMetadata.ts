@@ -304,9 +304,15 @@ function parseSupport(lines: Line[]): string[] {
 function findLocationLine(
   lines: Line[]
 ): { venue: string | null; city: string | null; index: number } | null {
-  // NL: 1017 SG · BE: 2140 · DE: 10178
-  const POSTCODE = /\b(\d{4}\s?[A-Z]{2}|\d{4,5})\b/;
-  const STREET = /\b[a-z]{3,}\s+\d+([-–]\d+)?\b/i;
+  // NL: 1017 SG Amsterdam · BE: 2140 Borgerhout · DE: 10178 Berlin.
+  // De stad is wat ná de postcode komt; die eruit knippen en de rest
+  // houden gaf het hele adres terug ("Turnhoutsebaan 286 - Borgerhout").
+  const CITY_AFTER_POSTCODE =
+    /\b(?:\d{4}\s?[A-Z]{2}|\d{4,5})\s+([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ'’ -]{1,38})\s*$/;
+  const STREET = /\b[a-zà-ÿ]{3,}\s+\d+([-–]\d+)?\b/i;
+  // OCR levert wisselende streepjes: hyphen, en dash, em dash, minus,
+  // soms een bullet. Allemaal hetzelfde scheidingsteken.
+  const SEPARATOR = /\s+[-–—‒−•·]\s+|,\s*/;
 
   for (let i = 0; i < lines.length; i++) {
     const text = lines[i].text;
@@ -314,23 +320,29 @@ function findLocationLine(
     // is straat-plus-nummer en 2027 is een geldige postcode. Datumregels
     // gaan er dus eerst uit.
     if (isMostlyDate(text)) continue;
+    if (!STREET.test(text)) continue;
+
     const parts = text
-      .split(/\s+[-–]\s+|,/)
+      .split(SEPARATOR)
       .map((p) => p.trim())
       .filter((p) => p.length > 0);
     if (parts.length < 2) continue;
-    if (!STREET.test(text)) continue;
 
-    const postPart = parts.find((p) => POSTCODE.test(p));
-    if (!postPart) continue;
+    // Stad: het laatste segment dat op "postcode + naam" eindigt. Zit die
+    // vorm er niet in, dan laten we de stad leeg — een gok op basis van
+    // "het laatste woord" levert een straatnaam op.
+    let city: string | null = null;
+    for (const part of [...parts].reverse()) {
+      const m = part.match(CITY_AFTER_POSTCODE);
+      if (m) {
+        city = m[1].trim();
+        break;
+      }
+    }
 
-    // Stad = wat er na de postcode staat. "2140 Borgerhout" → Borgerhout.
-    const city =
-      postPart.replace(POSTCODE, '').trim().replace(/^[,\s]+/, '') || null;
-    // Venue = het eerste segment zonder cijfers. Staat er geen naam voor
-    // het adres, dan laten we 'm leeg in plaats van de straat te pakken.
-    const first = parts[0];
-    const venue = /\d/.test(first) ? null : first;
+    // Venue: het eerste segment zonder cijfers. Staat er geen naam voor
+    // het adres, dan blijft dit leeg in plaats van de straat te pakken.
+    const venue = /\d/.test(parts[0]) ? null : parts[0];
     if (!venue && !city) continue;
     return { venue, city, index: i };
   }

@@ -217,3 +217,34 @@ test('poster: zonder ticket-signalen wint de grootste regel nog steeds', () => {
   assert.equal(draft.venue, 'Paradiso');
   assert.equal(draft.city, 'Amsterdam');
 });
+
+test('adresregel: stad is wat na de postcode staat, niet de hele regel', () => {
+  // Zelfde kaartje, maar met een andere streepjes-glyph dan de eerste —
+  // OCR wisselt daar in. De stad moet "Borgerhout" zijn, niet
+  // "Turnhoutsebaan 286 - Borgerhout".
+  const draft = extractEventDraft(
+    ocr([
+      [180, 'Bma'],
+      [34, 'Roosbeef'],
+      [24, 'zaterdag 03 april 2027 - 20u00'],
+      [20, 'De Roma − Turnhoutsebaan 286 − 2140 Borgerhout'],
+    ]),
+    { venueNames: [], today: TODAY, isTicket: true }
+  );
+  assert.equal(draft.venue, 'De Roma');
+  assert.equal(draft.city, 'Borgerhout');
+  assert.equal(draft.title, 'Roosbeef');
+});
+
+test('adresregel zonder postcode laat de stad leeg in plaats van te gokken', () => {
+  const draft = extractEventDraft(
+    ocr([
+      [40, 'Iets Leuks'],
+      [20, 'zaterdag 03 april 2027 - 20u00'],
+      [18, 'Ergens - Eenstraat 12'],
+    ]),
+    { venueNames: [], today: TODAY, isTicket: true }
+  );
+  assert.equal(draft.venue, 'Ergens');
+  assert.equal(draft.city, null);
+});
