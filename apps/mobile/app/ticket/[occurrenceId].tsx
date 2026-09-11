@@ -14,21 +14,24 @@ import {
 } from '@/lib/importPdf';
 import { safeBack } from '@/lib/navigation';
 import { useSheetTop } from '@/lib/sheetInset';
+import { useRoles } from '@/store/mode';
 import { useTickets, useTicketsFor } from '@/store/tickets';
-import { fontFamily, palette } from '@/theme/tokens';
+import { fontFamily } from '@/theme/tokens';
 
 /**
  * Jouw ticket, zo groot mogelijk.
  *
- * Twee dingen wijken hier bewust af van de rest van de app:
+ * Wat hier bewust afwijkt van de rest van de app: **we tonen het originele
+ * bestand, geen nagemaakte QR.** Andreas leest de inhoud van de code niet uit
+ * (zie `lib/importBarcode.ts`), dus we kunnen hem niet reconstrueren — en dat
+ * is precies de bedoeling. Wat je ziet is het bestand dat je zelf gaf.
  *
- *  1. **Altijd wit, nooit nacht-modus.** Een scanner aan de deur leest een
- *     code van een scherm; donkergrijs met een lichte code erop maakt dat
- *     alleen moeilijker. Dit scherm is gereedschap, geen sfeer.
- *  2. **We tonen het originele bestand, geen nagemaakte QR.** Andreas leest
- *     de inhoud van de code niet uit (zie `lib/importBarcode.ts`), dus we
- *     kunnen hem niet reconstrueren — en dat is precies de bedoeling. Wat
- *     je ziet is het bestand dat je zelf gaf.
+ * De omlijsting volgt wél de modus. Dit scherm stond een tijd hardcoded op
+ * wit, met het idee dat een scanner een code beter leest van een licht
+ * scherm. Wat die scanner leest is het bestand zelf — zwart op wit, binnen
+ * de afbeelding — en niet de rand eromheen; wit chroom om een witte pagina
+ * gaf alleen zwarte balken boven en onder. Helderheid is het enige dat wél
+ * uitmaakt, en dat is een aparte knop (expo-brightness), geen kleur.
  *
  * Het bestand staat in `Documents/import/` en gaat nergens naartoe. Een PDF
  * wordt bij het openen lokaal naar een afbeelding gerenderd en die render
@@ -46,6 +49,7 @@ export default function TicketScreen() {
   }>();
   const occurrenceId = raw ?? '';
   const insets = useSafeAreaInsets();
+  const roles = useRoles();
   // Dit scherm gaat ook open vanuit het importsheet; daar zit je al onder
   // de notch en is de safe-area-inset dubbelop.
   const { top, onLayout } = useSheetTop(8);
@@ -129,21 +133,24 @@ export default function TicketScreen() {
   };
 
   return (
-    <View onLayout={onLayout} style={[styles.root, { paddingTop: top }]}>
+    <View
+      onLayout={onLayout}
+      style={[styles.root, { paddingTop: top, backgroundColor: roles.bg }]}
+    >
       <View style={styles.header}>
         <Pressable onPress={() => safeBack()} hitSlop={10} style={styles.close}>
-          <Ionicons name="close" size={22} color={palette.noir} />
+          <Ionicons name="close" size={22} color={roles.fg} />
         </Pressable>
-        <Text style={styles.title} numberOfLines={1}>
+        <Text style={[styles.title, { color: roles.fg }]} numberOfLines={1}>
           {ticket?.eventTitle ?? t('Je ticket', 'Your ticket')}
         </Text>
         <Pressable onPress={onDelete} hitSlop={10} style={styles.close}>
-          <Ionicons name="trash-outline" size={20} color={palette.noir} />
+          <Ionicons name="trash-outline" size={20} color={roles.fg} />
         </Pressable>
       </View>
 
       {!ticket ? (
-        <Text style={styles.note}>
+        <Text style={[styles.note, { color: roles.fgMuted }]}>
           {t('Dit ticket is er niet meer.', 'This ticket is gone.')}
         </Text>
       ) : pages.length > 0 ? (
@@ -154,10 +161,11 @@ export default function TicketScreen() {
               width: p.width || null,
               height: p.height || null,
             }))}
+            background={roles.bg}
           />
         </View>
       ) : failed ? (
-        <Text style={styles.note}>
+        <Text style={[styles.note, { color: roles.fgMuted }]}>
           {t(
             'Kon dit bestand niet openen. Het staat nog wel op je toestel.',
             'Could not open this file. It is still on your device.',
@@ -165,11 +173,16 @@ export default function TicketScreen() {
         </Text>
       ) : (
         <View style={styles.loading}>
-          <SpinningCross size={24} color={palette.noir} />
+          <SpinningCross size={24} color={roles.fgMuted} />
         </View>
       )}
 
-      <Text style={[styles.note, { paddingBottom: insets.bottom + 12 }]}>
+      <Text
+        style={[
+          styles.note,
+          { color: roles.fgMuted, paddingBottom: insets.bottom + 12 },
+        ]}
+      >
         {tickets.some((x) => x.barcodeTypes.length > 0)
           ? t(
               'Houd de code voor de scanner. Zet je helderheid hoog.',
@@ -182,8 +195,7 @@ export default function TicketScreen() {
 }
 
 const styles = StyleSheet.create({
-  // Hardcoded wit: dit scherm volgt bewust niet de nacht/dag-modus.
-  root: { flex: 1, backgroundColor: '#ffffff' },
+  root: { flex: 1 },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -203,11 +215,7 @@ const styles = StyleSheet.create({
     fontSize: 17,
     letterSpacing: -0.34,
     textAlign: 'center',
-    color: palette.noir,
   },
-  // De viewer brengt z'n eigen (zwarte) vlak mee: op een donkere
-  // ondergrond leest een gescande code beter, en het scheelt de scanner
-  // een rand wit eromheen.
   ticket: { flex: 1, width: '100%', overflow: 'hidden' },
   loading: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   note: {
@@ -217,6 +225,5 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     paddingHorizontal: 24,
     paddingTop: 12,
-    color: '#6b6b70',
   },
 });
