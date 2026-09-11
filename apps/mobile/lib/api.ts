@@ -1050,18 +1050,71 @@ export async function getMySaves(): Promise<SavedApiEvent[]> {
 /** Bron-attributie voor een save — welk scherm of route leverde 'm op.
     Backend heeft een matching enum (`save_source`); waarden moeten 1-op-1
     overeenkomen. Voedt de discovery-trail op de persoonlijke spiegel. */
-export type SaveSource =
-  | 'venue'
-  | 'friend'
-  | 'search'
-  | 'op-gevoel'
-  | 'avond'
-  | 'agenda'
-  | 'kaart'
-  | 'series'
-  | 'gered'
-  | 'new'
-  | 'other';
+/**
+ * Waar een save/going vandaan kwam. Voedt de discovery-trail op de
+ * persoonlijke spiegel ("via welke route vond je dit?").
+ *
+ * Eén lijst, want er stonden er twee: deze union én een `VALID_SAVE_SOURCES`
+ * in het event-detail-scherm, waar `'new'` in ontbrak — een link met
+ * `?source=new` verloor daardoor stil z'n attributie. `isSaveSource()`
+ * hieronder is nu de enige runtime-check.
+ *
+ * `'share'` en `'scan'` horen bij de import-flow (share-sheet en straks de
+ * poster-scanner). Let op: de server kent ze pas na de migratie in
+ * `apps/api/src/db/migrations/0000_save_source_share_scan.sql` — tot die
+ * tijd slaat hij een onbekende source op als `null`, dus meesturen is
+ * veilig maar de attributie blijft leeg.
+ */
+export const SAVE_SOURCES = [
+  'venue',
+  'friend',
+  'search',
+  'op-gevoel',
+  'avond',
+  'agenda',
+  'kaart',
+  'series',
+  'gered',
+  'new',
+  'share',
+  'scan',
+  // De plannen-lijst stuurde dit al mee terwijl de waarde nergens bestond.
+  'going',
+  'other',
+] as const;
+
+/**
+ * Een event aanmelden dat Andreas nog niet kent (fase 6 van
+ * docs/share-naar-andreas.md). Landt in `event_submissions` en wacht op
+ * een mens in de admin — het wordt dus géén event tot iemand ernaar kijkt.
+ *
+ * Geef hier **altijd** de output van `toServerMetadata()` mee, nooit een
+ * ruw OCR-object: dit is de tweede en laatste plek waar iets van een
+ * import de deur uit gaat.
+ */
+export async function submitUnknownEvent(input: {
+  title: string | null;
+  artists: string[];
+  venue: string | null;
+  date: string | null;
+  time: string | null;
+  city: string | null;
+  source: 'share' | 'scan';
+}): Promise<{ id: string }> {
+  return await authedRequest<{ id: string }>('/submissions', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+export type SaveSource = (typeof SAVE_SOURCES)[number];
+
+export function isSaveSource(raw: unknown): raw is SaveSource {
+  return (
+    typeof raw === 'string' &&
+    (SAVE_SOURCES as readonly string[]).includes(raw)
+  );
+}
 
 export async function toggleSave(
   occurrenceId: string,

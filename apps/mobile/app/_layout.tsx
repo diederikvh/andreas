@@ -17,11 +17,12 @@ import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client
 import { isRunningInExpoGo } from 'expo';
 import Constants from 'expo-constants';
 import { Stack } from 'expo-router';
+import { ShareIntentProvider } from 'expo-share-intent';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import * as Updates from 'expo-updates';
 import { useEffect, useState } from 'react';
-import { AppState } from 'react-native';
+import { AppState, Platform } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
@@ -30,6 +31,7 @@ import { useMe } from '@/lib/queries';
 import { ModeCurtain } from '@/components/ModeCurtain';
 import { PushManager } from '@/components/PushManager';
 import { SentryUserBinder } from '@/components/SentryUserBinder';
+import { ShareImportCapture } from '@/components/ShareImportCapture';
 import { ShareInviteClaimer } from '@/components/ShareInviteClaimer';
 import { UpdateBanner } from '@/components/UpdateBanner';
 import { ZoomLayerProvider } from '@/components/ZoomLayer';
@@ -51,6 +53,16 @@ Sentry.init({
   dist: Updates.updateId ?? undefined,
   tracesSampleRate: 0.05,
   sendDefaultPii: false,
+  // Gedeelde content mag het toestel niet verlaten — ook niet als
+  // bijlage van een crashreport. `sendDefaultPii: false` dekt dat niet:
+  // console-breadcrumbs nemen gewoon over wat er gelogd is, en een
+  // OCR-dump of ticketpad is daarmee zo onderweg naar Sentry. Alles wat
+  // de import-map of de share-extension noemt gooien we weg.
+  beforeBreadcrumb: (breadcrumb) => {
+    const haystack = `${breadcrumb.message ?? ''} ${JSON.stringify(breadcrumb.data ?? {})}`;
+    if (/\/import\/|dataUrl=|ShareIntent/i.test(haystack)) return null;
+    return breadcrumb;
+  },
 });
 
 SplashScreen.preventAutoHideAsync();
@@ -97,44 +109,64 @@ function RootLayout() {
   // SplashScreen staan.
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <PersistQueryClientProvider
-        client={queryClient}
-        onSuccess={() => setQueryCacheRestored(true)}
-        persistOptions={{
-          persister: queryPersister,
-          // Bump deze key wanneer de query-shape kapot-changed (bv.
-          // ApiEvent.venue.type added) — zo gooi je oude cache weg
-          // bij upgrade en voorkom je client-side parse-fouten.
-          buster: 'v2-venue-type',
-          // Persist alleen succesvolle queries (geen error-states).
-          dehydrateOptions: {
-            shouldDehydrateQuery: (q) => q.state.status === 'success',
-          },
-        }}
-      >
-        {ready && (
-          <SafeAreaProvider>
-            <ZoomLayerProvider>
-              <InboxToastProvider>
-                <Stack screenOptions={{ headerShown: false }}>
-                  <Stack.Screen
-                    name="event/[id]/invite"
-                    options={{ presentation: 'modal' }}
-                  />
-                </Stack>
-                <ModeCurtain />
-                <PushManager />
-                <InboxNotifier />
-                <SentryUserBinder />
-                <SeenWindowSync />
-                <ShareInviteClaimer />
-                <UpdateBanner />
-                <StatusBar style={mode === 'nacht' ? 'light' : 'dark'} />
-              </InboxToastProvider>
-            </ZoomLayerProvider>
-          </SafeAreaProvider>
-        )}
-      </PersistQueryClientProvider>
+      {/* Moet boven de andere providers staan — de share-extension
+          levert z'n payload via de deeplink-URL, en die wil je opvangen
+          voordat er iets anders mee gebeurt. */}
+      <ShareIntentProvider>
+        <PersistQueryClientProvider
+          client={queryClient}
+          onSuccess={() => setQueryCacheRestored(true)}
+          persistOptions={{
+            persister: queryPersister,
+            // Bump deze key wanneer de query-shape kapot-changed (bv.
+            // ApiEvent.venue.type added) — zo gooi je oude cache weg
+            // bij upgrade en voorkom je client-side parse-fouten.
+            buster: 'v2-venue-type',
+            // Persist alleen succesvolle queries (geen error-states).
+            dehydrateOptions: {
+              shouldDehydrateQuery: (q) => q.state.status === 'success',
+            },
+          }}
+        >
+          {ready && (
+            <SafeAreaProvider>
+              <ZoomLayerProvider>
+                <InboxToastProvider>
+                  <Stack screenOptions={{ headerShown: false }}>
+                    <Stack.Screen
+                      name="event/[id]/invite"
+                      options={{ presentation: 'modal' }}
+                    />
+                    <Stack.Screen
+                      name="import"
+                      options={{
+                        // formSheet en niet modal: alleen een formSheet
+                        // krijgt van UIKit het greepje bovenaan, en dat
+                        // greepje sleept ook echt (een zelfgetekend
+                        // balkje is een plaatje). Android houdt de
+                        // gewone modal — daar is formSheet een
+                        // bottom-sheet en dat is een ander scherm.
+                        presentation:
+                          Platform.OS === 'ios' ? 'formSheet' : 'modal',
+                        sheetGrabberVisible: true,
+                      }}
+                    />
+                  </Stack>
+                  <ModeCurtain />
+                  <PushManager />
+                  <InboxNotifier />
+                  <SentryUserBinder />
+                  <SeenWindowSync />
+                  <ShareInviteClaimer />
+                  <ShareImportCapture />
+                  <UpdateBanner />
+                  <StatusBar style={mode === 'nacht' ? 'light' : 'dark'} />
+                </InboxToastProvider>
+              </ZoomLayerProvider>
+            </SafeAreaProvider>
+          )}
+        </PersistQueryClientProvider>
+      </ShareIntentProvider>
     </GestureHandlerRootView>
   );
 }
