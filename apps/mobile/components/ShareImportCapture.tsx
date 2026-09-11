@@ -5,6 +5,7 @@ import { useEffect } from 'react';
 import {
   normalizeShareIntent,
   pruneImportDir,
+  shareFileUris,
   usePendingShare,
 } from '@/lib/pendingShare';
 
@@ -47,7 +48,7 @@ export function ShareImportCapture() {
         if (pathname !== '/import') router.push('/import');
       }
     }
-    pruneImportDir(usePendingShare.getState().pending?.fileUri ?? null);
+    pruneImportDir(shareFileUris(usePendingShare.getState().pending));
   }, [isReady, hasShareIntent, shareIntent, resetShareIntent, pathname]);
 
   return null;

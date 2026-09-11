@@ -54,7 +54,11 @@ import {
 } from '@/lib/importPdf';
 import { safeBack } from '@/lib/navigation';
 import { useSheetTop } from '@/lib/sheetInset';
-import { usePendingShare, type PendingShare } from '@/lib/pendingShare';
+import {
+  shareFileUris,
+  usePendingShare,
+  type PendingShare,
+} from '@/lib/pendingShare';
 import {
   useEvent,
   useMyGoing,
@@ -457,15 +461,20 @@ function SharePreview({
   const meta = KIND_META[share.kind];
   const cardBg = isNacht ? palette.noir2 : palette.paper2;
   const heroUrl = detail ? eventStillUrl(detail) : null;
+  // Deelde je meer dan één bestand, dan is het aantal het enige dat je
+  // hier wil lezen: één naam noemen suggereert dat de rest niet meekomt.
+  const sharedCount = shareFileUris(share).length;
   const sourceLabel =
-    share.title ??
-    (share.kind === 'url'
-      ? share.url
-      : share.kind === 'text'
-        ? share.text
-        : share.kind === 'image'
-          ? null
-          : share.fileName);
+    sharedCount > 1
+      ? t(`${sharedCount} bestanden`, `${sharedCount} files`)
+      : (share.title ??
+        (share.kind === 'url'
+          ? share.url
+          : share.kind === 'text'
+            ? share.text
+            : share.kind === 'image'
+              ? null
+              : share.fileName));
   const thumbUri =
     share.kind === 'image' ? share.fileUri : (pdfCover?.uri ?? null);
   const showThumb = Boolean(thumbUri) && !imageFailed;
@@ -1073,6 +1082,7 @@ function IntentStep({
   const toggleSave = useToggleSave();
   const toggleGoing = useToggleGoing();
 
+  const fileCount = shareFileUris(share).length;
   const [keepAsTicket, setKeepAsTicket] = useState<boolean | null>(null);
   // Er mag er meer dan één bij: met z'n tweeën heb je twee bestanden, en
   // soms stuurt de venue een vervanger. Alleen hetzelfde bestand nog een
@@ -1136,17 +1146,34 @@ function IntentStep({
   // Vanaf hier is de store de eigenaar van het bestand: het opruimen laat
   // het staan (zie `isTicketFile` in store/tickets.ts).
   function attachTicket() {
-    if (!occurrenceId || !share.fileUri) return;
-    useTickets.getState().attach({
-      occurrenceId,
-      eventId: candidate.id,
-      eventTitle: candidate.title,
-      fileUri: share.fileUri,
-      fileName: share.fileName ?? null,
-      mimeType: share.mimeType ?? null,
-      barcodeTypes: verdict.signals.includes('barcode') ? ['qr'] : [],
-      addedAt: Date.now(),
-    });
+    if (!occurrenceId) return;
+    // Alles uit deze share gaat mee: drie kaartjes uit één aankoop zijn
+    // drie bestanden en horen aan dezelfde avond. De codetypes komen uit
+    // de herkenning van het eerste bestand — we scannen de rest niet, die
+    // hoeft alleen bewaard te worden.
+    const files = share.extraFiles ?? [];
+    const all = share.fileUri
+      ? [
+          {
+            fileUri: share.fileUri,
+            fileName: share.fileName ?? null,
+            mimeType: share.mimeType ?? null,
+          },
+          ...files,
+        ]
+      : files;
+    for (const file of all) {
+      useTickets.getState().attach({
+        occurrenceId,
+        eventId: candidate.id,
+        eventTitle: candidate.title,
+        fileUri: file.fileUri,
+        fileName: file.fileName,
+        mimeType: file.mimeType,
+        barcodeTypes: verdict.signals.includes('barcode') ? ['qr'] : [],
+        addedAt: Date.now(),
+      });
+    }
   }
 
   return (
@@ -1211,8 +1238,15 @@ function IntentStep({
                 {storedTicket
                   ? t('Deze er ook bij?', 'Keep this one too?')
                   : verdict.isTicket
-                    ? t('Dit lijkt je ticket', 'This looks like your ticket')
-                    : t('Bewaren als ticket?', 'Keep as your ticket?')}
+                    ? fileCount > 1
+                      ? t(
+                          'Dit lijken je tickets',
+                          'These look like your tickets',
+                        )
+                      : t('Dit lijkt je ticket', 'This looks like your ticket')
+                    : fileCount > 1
+                      ? t('Bewaren als tickets?', 'Keep as your tickets?')
+                      : t('Bewaren als ticket?', 'Keep as your ticket?')}
               </Text>
               <Text style={[styles.ticketCardBody, { color: roles.fgMuted }]}>
                 {willKeep
@@ -1300,8 +1334,21 @@ function IntentStep({
                 ]}
               >
                 {willKeep
-                  ? t('Ticket wordt bewaard', 'Ticket will be saved')
-                  : t('Ticket wordt niet bewaard', 'Ticket will not be saved')}
+                  ? fileCount > 1
+                    ? t(
+                        `${fileCount} tickets worden bewaard`,
+                        `${fileCount} tickets will be saved`,
+                      )
+                    : t('Ticket wordt bewaard', 'Ticket will be saved')
+                  : fileCount > 1
+                    ? t(
+                        'Tickets worden niet bewaard',
+                        'Tickets will not be saved',
+                      )
+                    : t(
+                        'Ticket wordt niet bewaard',
+                        'Ticket will not be saved',
+                      )}
               </Text>
             ) : null}
           </View>

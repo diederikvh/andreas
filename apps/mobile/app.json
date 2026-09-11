@@ -124,12 +124,16 @@
           "iosActivationRules": {
             "NSExtensionActivationSupportsWebURLWithMaxCount": 1,
             "NSExtensionActivationSupportsWebPageWithMaxCount": 1,
-            "NSExtensionActivationSupportsImageWithMaxCount": 1,
-            "NSExtensionActivationSupportsFileWithMaxCount": 1,
+            "NSExtensionActivationSupportsImageWithMaxCount": 6,
+            "NSExtensionActivationSupportsFileWithMaxCount": 6,
             "NSExtensionActivationSupportsText": true
           },
           "androidIntentFilters": [
             "text/*",
+            "image/*",
+            "application/pdf"
+          ],
+          "androidMultiIntentFilters": [
             "image/*",
             "application/pdf"
           ]

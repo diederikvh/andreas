@@ -28,6 +28,20 @@ import { isTicketFile } from '@/store/tickets';
 
 export type PendingShareKind = 'url' | 'text' | 'image' | 'pdf' | 'file';
 
+/** Een meegedeeld bestand dat al in onze eigen map staat. */
+export type SharedFile = {
+  fileUri: string;
+  fileName: string | null;
+  mimeType: string | null;
+  size: number | null;
+};
+
+/** Meer dan dit in één keer is geen ticketaankoop meer maar een
+    fotoalbum. ponytail: harde grens, geen instelling — koopt iemand ooit
+    acht kaartjes los, dan zien we dat in de praktijk eerder dan in een
+    setting. */
+const MAX_FILES = 6;
+
 export type PendingShare = {
   kind: PendingShareKind;
   /** Ruwe tekst bij `text`, of de tekst waar de URL uit kwam. */
@@ -43,8 +57,20 @@ export type PendingShare = {
   size?: number | null;
   width?: number | null;
   height?: number | null;
+  /** De overige bestanden uit dezelfde share. Eén aankoop levert soms
+      losse PDF's op — twee kaartjes, twee bestanden. De herkenning draait
+      op het eerste bestand (het is één avond), maar bij het koppelen gaan
+      ze allemaal mee. */
+  extraFiles?: SharedFile[];
   receivedAt: number;
 };
+
+/** Alle bestanden van deze share, het eerste vooraan. */
+export function shareFileUris(share: PendingShare | null): string[] {
+  if (!share) return [];
+  const extra = (share.extraFiles ?? []).map((f) => f.fileUri);
+  return share.fileUri ? [share.fileUri, ...extra] : extra;
+}
 
 /** Waar geïmporteerde bestanden landen. Buiten de cache-dir, want die
     mag het systeem weggooien — een ticket wil je niet kwijt zijn. */
@@ -67,13 +93,13 @@ const IMPORT_DIR = 'import';
  * Bestanden die aan een bewaard ticket hangen blijven staan: die zijn
  * geen restafval maar precies het tegenovergestelde.
  */
-export function pruneImportDir(keepUri: string | null): void {
+export function pruneImportDir(keepUris: string[]): void {
   try {
     const dir = new Directory(Paths.document, IMPORT_DIR);
     if (!dir.exists) return;
     for (const entry of dir.list()) {
       if (entry instanceof Directory) continue;
-      if (keepUri && entry.uri === keepUri) continue;
+      if (keepUris.includes(entry.uri)) continue;
       if (isTicketFile(entry.uri)) continue;
       try {
         entry.delete();
@@ -122,14 +148,14 @@ function kindForMime(mimeType: string | undefined): PendingShareKind {
 function copyIntoImportDir(
   sourceUri: string,
   fileName: string | undefined,
-  mimeType: string | undefined
+  mimeType: string | undefined,
 ): { uri: string; size: number | null } | null {
   try {
     const source = new File(sourceUri);
     if (!source.exists) return null;
     const target = new File(
       importDirectory(),
-      `${Date.now()}-${safeFileName(fileName, extFromMime(mimeType))}`
+      `${Date.now()}-${safeFileName(fileName, extFromMime(mimeType))}`,
     );
     source.copy(target);
     return { uri: target.uri, size: target.size ?? null };
@@ -145,16 +171,30 @@ function copyIntoImportDir(
  * splitsen media/file verder op mimetype, want een PDF-ticket en een
  * poster-screenshot gaan straks door een andere pipeline.
  *
- * Meerdere bestanden in één share: we nemen de eerste. Eén poster of één
- * ticket is het geval waar dit voor bestaat; multi-select kan later.
+ * Meerdere bestanden in één share horen bij elkaar: je koopt drie
+ * kaartjes en krijgt drie PDF's. Het eerste bestand is waar de herkenning
+ * op draait, de rest gaat mee als `extraFiles` en wordt bij hetzelfde
+ * event bewaard.
  */
 export function normalizeShareIntent(intent: ShareIntent): PendingShare | null {
   const receivedAt = Date.now();
   const title = intent.meta?.title ?? null;
 
-  const file = intent.files?.[0];
+  const shared = (intent.files ?? []).filter((f) => f.path).slice(0, MAX_FILES);
+  const [file, ...rest] = shared;
   if (file) {
     const copied = copyIntoImportDir(file.path, file.fileName, file.mimeType);
+    const extraFiles: SharedFile[] = [];
+    for (const other of rest) {
+      const c = copyIntoImportDir(other.path, other.fileName, other.mimeType);
+      if (!c) continue;
+      extraFiles.push({
+        fileUri: c.uri,
+        fileName: other.fileName ?? null,
+        mimeType: other.mimeType ?? null,
+        size: c.size ?? other.size ?? null,
+      });
+    }
     return {
       kind: kindForMime(file.mimeType),
       title,
@@ -164,6 +204,7 @@ export function normalizeShareIntent(intent: ShareIntent): PendingShare | null {
       size: copied?.size ?? file.size ?? null,
       width: file.width ?? null,
       height: file.height ?? null,
+      extraFiles: extraFiles.length > 0 ? extraFiles : undefined,
       receivedAt,
     };
   }
@@ -201,10 +242,10 @@ export const usePendingShare = create<State>()(
       hydrated: false,
       setPending: (share) => set({ pending: share }),
       clearPending: ({ keepFile = false } = {}) => {
-        const uri = get().pending?.fileUri;
         // Het ticket van de gebruiker wissen omdat hij een scherm sluit is
         // precies het verkeerde. De store is de eigenaar zodra hij hangt.
-        if (uri && !keepFile && !isTicketFile(uri)) {
+        for (const uri of shareFileUris(get().pending)) {
+          if (keepFile || isTicketFile(uri)) continue;
           try {
             const f = new File(uri);
             if (f.exists) f.delete();
@@ -222,6 +263,6 @@ export const usePendingShare = create<State>()(
       onRehydrateStorage: () => (state) => {
         if (state) state.hydrated = true;
       },
-    }
-  )
+    },
+  ),
 );
