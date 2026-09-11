@@ -569,10 +569,31 @@ adminUi.get('/events/new', async (c) => {
     .select({ id: schema.venues.id, name: schema.venues.name })
     .from(schema.venues)
     .orderBy(asc(schema.venues.name));
+  // Kom je hier vanaf een aanmelding, dan staan titel, venue, datum en
+  // tijd al ingevuld — die heeft de gebruiker al een keer getypt. `sub`
+  // reist mee zodat opslaan de aanmelding meteen koppelt.
+  const sub = c.req.query('sub');
+  const date = c.req.query('date');
+  const time = c.req.query('time');
+  const prefill = sub
+    ? {
+        sub,
+        title: c.req.query('title') ?? undefined,
+        venueId: c.req.query('venueId') ?? undefined,
+        startsAt: date ? `${date}T${time ?? '20:00'}` : undefined,
+      }
+    : undefined;
   return c.html(
     <Layout title="Nieuw event" active="events">
       <h2>Nieuw event</h2>
-      <EventForm venues={venues} />
+      {sub ? (
+        <p style="opacity:0.7">
+          Uit een aanmelding van een gebruiker. Opslaan koppelt de
+          aanmelding aan dit event en zet het bij iedereen die erop wacht
+          in de plannen.
+        </p>
+      ) : null}
+      <EventForm venues={venues} prefill={prefill} />
     </Layout>
   );
 });
@@ -622,6 +643,13 @@ adminUi.post('/events/new', async (c) => {
       }))
     );
   });
+  // Kwam dit event uit een aanmelding? Dan is dat nu geen aanmelding meer
+  // maar een event, en verhuist iedereen die erop wachtte mee.
+  const sub = String(form.sub ?? '').trim();
+  if (sub) {
+    await linkSubmissionToEvent(sub, id);
+    return c.redirect('/admin/aanmeldingen');
+  }
   return c.redirect(`/admin/events/${encodeURIComponent(id)}`);
 });
 
@@ -842,10 +870,22 @@ function EventForm({
   event,
   occurrences,
   venues,
+  prefill,
 }: {
   event?: typeof schema.events.$inferSelect;
   occurrences?: (typeof schema.occurrences.$inferSelect)[];
   venues: { id: string; name: string }[];
+  /** Voorgevulde waarden bij een nieuw event. Komt van een aanmelding uit
+      de app: de gebruiker heeft titel, venue, datum en tijd al ingevuld,
+      en die twee keer intypen is precies het werk dat je niet wil. `sub`
+      reist mee als hidden veld zodat het opslaan de aanmelding meteen aan
+      het nieuwe event hangt. */
+  prefill?: {
+    sub?: string;
+    title?: string;
+    venueId?: string;
+    startsAt?: string;
+  };
 }) {
   const action = event ? `/admin/events/${encodeURIComponent(event.id)}` : '/admin/events/new';
   // Bij nieuw event: één lege occurrence-rij. Bij bestaand event: alle
@@ -856,14 +896,24 @@ function EventForm({
     <form method="post" action={action}>
       <label>
         Titel
-        <input type="text" name="title" required value={event?.title ?? ''} />
+        <input
+          type="text"
+          name="title"
+          required
+          value={event?.title ?? prefill?.title ?? ''}
+        />
       </label>
       <div class="grid-2">
         <label>
           Venue
           <select name="venueId" required>
             {venues.map((v) => (
-              <option value={v.id} selected={event?.venueId === v.id}>{v.name}</option>
+              <option
+                value={v.id}
+                selected={(event?.venueId ?? prefill?.venueId) === v.id}
+              >
+                {v.name}
+              </option>
             ))}
           </select>
         </label>
@@ -938,7 +988,11 @@ function EventForm({
         </header>
         <div id="occurrences">
           {initialOcc.map((occ, i) => (
-            <OccurrenceRow occ={occ} index={i} />
+            <OccurrenceRow
+              occ={occ}
+              index={i}
+              startsAt={i === 0 ? prefill?.startsAt : undefined}
+            />
           ))}
         </div>
         <button
@@ -950,6 +1004,9 @@ function EventForm({
         </button>
       </article>
 
+      {prefill?.sub ? (
+        <input type="hidden" name="sub" value={prefill.sub} />
+      ) : null}
       <button type="submit">{event ? 'Opslaan' : 'Event aanmaken'}</button>
 
       <script
@@ -977,9 +1034,13 @@ function EventForm({
 function OccurrenceRow({
   occ,
   index,
+  startsAt,
 }: {
   occ: typeof schema.occurrences.$inferSelect | null;
   index: number;
+  /** Voorgevulde starttijd (`YYYY-MM-DDTHH:MM`) bij een nieuw event uit
+      een aanmelding. */
+  startsAt?: string;
 }) {
   const prefix = `occurrences[${index}].`;
   return (
@@ -995,7 +1056,7 @@ function OccurrenceRow({
             type="datetime-local"
             name={`${prefix}startsAt`}
             required
-            value={toDateTimeLocal(occ?.startsAt ?? null)}
+            value={occ ? toDateTimeLocal(occ.startsAt) : (startsAt ?? '')}
           />
         </label>
         <label>
@@ -1447,14 +1508,25 @@ adminUi.get('/venues', async (c) => {
   );
 });
 
-adminUi.get('/venues/new', (c) =>
-  c.html(
+adminUi.get('/venues/new', (c) => {
+  // `?name=` komt vanaf een aanmelding waarvan we de venue niet kenden.
+  const name = c.req.query('name');
+  const city = c.req.query('city');
+  return c.html(
     <Layout title="Nieuwe venue" active="venues">
       <h2>Nieuwe venue</h2>
-      <VenueForm />
+      {name ? (
+        <p style="opacity:0.7">
+          Uit een aanmelding: <strong>{name}</strong>
+          {city ? ` (${city})` : ''}. Vul adres en coördinaten aan, daarna
+          kan je het event aanmaken op{' '}
+          <a href="/admin/aanmeldingen">Aanmeldingen</a>.
+        </p>
+      ) : null}
+      <VenueForm prefillName={name} />
     </Layout>
-  )
-);
+  );
+});
 
 adminUi.post('/venues/new', async (c) => {
   const form = await c.req.parseBody();
@@ -1727,8 +1799,12 @@ adminUi.post('/venues/:id/delete', async (c) => {
 
 function VenueForm({
   venue,
+  prefillName,
 }: {
   venue?: typeof schema.venues.$inferSelect;
+  /** Naam zoals een gebruiker 'm invulde bij een aanmelding. Die naam
+      nog een keer typen is het soort werk dat niemand hoort te doen. */
+  prefillName?: string;
 }) {
   const action = venue ? `/admin/venues/${encodeURIComponent(venue.id)}` : '/admin/venues/new';
   return (
@@ -1736,7 +1812,12 @@ function VenueForm({
       <div class="grid-2">
         <label>
           Naam
-          <input type="text" name="name" required value={venue?.name ?? ''} />
+          <input
+            type="text"
+            name="name"
+            required
+            value={venue?.name ?? prefillName ?? ''}
+          />
         </label>
         <label>
           Slug (URL)
@@ -2269,17 +2350,6 @@ adminUi.get('/import', async (c) => {
     .where(inArray(schema.venues.type, ['museum', 'galerie']))
     .orderBy(asc(schema.venues.name));
 
-  function fmtRelative(d: Date | null): string {
-    if (!d) return 'nooit';
-    const ms = Date.now() - d.getTime();
-    const days = Math.floor(ms / (24 * 3600_000));
-    if (days < 1) return 'vandaag';
-    if (days < 7) return `${days}d geleden`;
-    if (days < 30) return `${Math.floor(days / 7)}w geleden`;
-    if (days < 365) return `${Math.floor(days / 30)}m geleden`;
-    return `${Math.floor(days / 365)}j geleden`;
-  }
-
   // Querystring-prefill: ?venueId=…&url=… (komt vanaf venue-pagina).
   const preselectedId = c.req.query('venueId') ?? '';
   const preselectedUrl = c.req.query('url') ?? '';
@@ -2514,18 +2584,104 @@ form.addEventListener('submit', async (e) => {
 
       <hr />
 
-      <h2>
-        Aangemeld door gebruikers{' '}
-        {openCount > 0 ? <mark>{openCount} open</mark> : null}
-      </h2>
-      <p style="opacity:0.7;max-width:60ch">
-        Events die iemand via de share-sheet of de poster-scanner aanmeldde
-        omdat Andreas ze nog niet kende. Dit zijn <em>aanmeldingen</em>, geen
-        events: alleen de velden die de privacygrens doorkomen (titel,
-        artiest, venue, datum, tijd, stad). Het gedeelde bestand en de
-        OCR-tekst blijven op het toestel van de gebruiker.
+      <p style="opacity:0.7">
+        Wat gebruikers zelf aanmelden heeft z'n eigen pagina:{' '}
+        <a href="/admin/aanmeldingen">Aanmeldingen</a>.
       </p>
-      {submissions.length === 0 ? (
+    </Layout>,
+  );
+});
+
+/**
+ * Aanmelding afvinken. Twee statussen: `handled` (event aangemaakt of
+ * anders afgedaan) en `rejected` (geen event). Meer smaken heeft dit niet
+ * nodig — de lijst is een werkvoorraad, geen administratie.
+ */
+/** "3d geleden" — stond eerst binnen de import-handler, maar de
+    aanmeldingen-pagina heeft 'm ook nodig. */
+function fmtRelative(d: Date | null): string {
+  if (!d) return 'nooit';
+  const days = Math.floor((Date.now() - d.getTime()) / (24 * 3600_000));
+  if (days < 1) return 'vandaag';
+  if (days < 7) return `${days}d geleden`;
+  if (days < 30) return `${Math.floor(days / 7)}w geleden`;
+  if (days < 365) return `${Math.floor(days / 30)}m geleden`;
+  return `${Math.floor(days / 365)}j geleden`;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+ * /admin/aanmeldingen — wat gebruikers zelf aanmeldden
+ * ═══════════════════════════════════════════════════════════════════ */
+
+/**
+ * Events die iemand via de share-sheet of de poster-scanner aanmeldde
+ * omdat Andreas ze nog niet kende.
+ *
+ * Dit is een werkvoorraad, geen administratie: openstaande bovenaan, en
+ * per rij de drie dingen die je kan doen. "Maak event" is de hoofdweg en
+ * neemt alles mee wat de gebruiker al invulde — opslaan koppelt de
+ * aanmelding en zet het event bij iedereen die erop wacht in de plannen.
+ *
+ * Kennen we de venue niet, dan staat dat er, met een knop die 'm alvast
+ * voorgevuld aanmaakt. Zonder venue kan je namelijk geen event opslaan.
+ */
+adminUi.get('/aanmeldingen', async (c) => {
+  const rows = await db
+    .select({
+      id: schema.eventSubmissions.id,
+      title: schema.eventSubmissions.title,
+      artists: schema.eventSubmissions.artists,
+      venueName: schema.eventSubmissions.venueName,
+      venueId: schema.eventSubmissions.venueId,
+      date: schema.eventSubmissions.date,
+      time: schema.eventSubmissions.time,
+      city: schema.eventSubmissions.city,
+      source: schema.eventSubmissions.source,
+      status: schema.eventSubmissions.status,
+      eventId: schema.eventSubmissions.eventId,
+      createdAt: schema.eventSubmissions.createdAt,
+      waiting: sql<number>`(
+        select count(*)::int from submission_going
+        where submission_going.submission_id = ${schema.eventSubmissions.id}
+      )`,
+    })
+    .from(schema.eventSubmissions)
+    .orderBy(
+      sql`case when ${schema.eventSubmissions.status} = 'new' then 0 else 1 end`,
+      desc(schema.eventSubmissions.createdAt)
+    )
+    .limit(100);
+  const open = rows.filter((r) => r.status === 'new').length;
+  const fout = c.req.query('fout');
+
+  return c.html(
+    <Layout title="Aanmeldingen" active="aanmeldingen">
+      <div class="toolbar">
+        <h2>
+          Aanmeldingen {open > 0 ? <mark>{open} open</mark> : null}
+        </h2>
+      </div>
+      <p style="opacity:0.7;max-width:70ch">
+        Events die gebruikers zelf toevoegden omdat Andreas ze nog niet
+        kende. Dit zijn <em>aanmeldingen</em>, geen events: alleen de velden
+        die de privacygrens doorkomen (titel, artiest, venue, datum, tijd,
+        stad). Het gedeelde bestand en de OCR-tekst blijven op het toestel
+        van de gebruiker — hun ticket zien wij dus nooit.
+      </p>
+      <p style="opacity:0.7;max-width:70ch">
+        Wie een aanmelding deed heeft die avond <strong>al in z'n
+        plannen</strong> staan, met z'n ticket eraan. Maak je er een event
+        van, dan verhuist dat plan mee naar een echte voorstelling. Wijs je
+        het af, dan verdwijnt het uit hun agenda — doe dat dus alleen als
+        het echt geen event is.
+      </p>
+      {fout === 'event' ? (
+        <p>
+          <mark>Dat event-id bestaat niet.</mark>
+        </p>
+      ) : null}
+
+      {rows.length === 0 ? (
         <p style="opacity:0.6">Nog niets aangemeld.</p>
       ) : (
         <table>
@@ -2539,155 +2695,153 @@ form.addEventListener('submit', async (e) => {
             </tr>
           </thead>
           <tbody>
-            {submissions.map((sub) => (
-              <tr style={sub.status === 'new' ? '' : 'opacity:0.45'}>
-                <td>
-                  <strong>{sub.title ?? '—'}</strong>
-                  {sub.artists.length > 0 ? (
-                    <>
-                      <br />
-                      <small style="opacity:0.7">
-                        {sub.artists.join(', ')}
+            {rows.map((sub) => {
+              const newEventUrl =
+                `/admin/events/new?sub=${encodeURIComponent(sub.id)}` +
+                `&title=${encodeURIComponent(sub.title ?? '')}` +
+                `&venueId=${encodeURIComponent(sub.venueId ?? '')}` +
+                `&date=${encodeURIComponent(sub.date ?? '')}` +
+                `&time=${encodeURIComponent(sub.time ?? '')}`;
+              const newVenueUrl =
+                `/admin/venues/new?name=${encodeURIComponent(sub.venueName ?? '')}` +
+                `&city=${encodeURIComponent(sub.city ?? '')}`;
+              return (
+                <tr style={sub.status === 'new' ? '' : 'opacity:0.45'}>
+                  <td>
+                    <strong>{sub.title ?? '—'}</strong>
+                    {sub.artists.length > 0 ? (
+                      <>
+                        <br />
+                        <small style="opacity:0.7">
+                          {sub.artists.join(', ')}
+                        </small>
+                      </>
+                    ) : null}
+                  </td>
+                  <td>
+                    {sub.venueName ?? '—'}
+                    <br />
+                    {sub.venueId ? (
+                      <small style="opacity:0.6">bekende venue ✓</small>
+                    ) : sub.venueName ? (
+                      <small>
+                        <mark>onbekend</mark>{' '}
+                        <a href={newVenueUrl}>venue aanmaken →</a>
                       </small>
-                    </>
-                  ) : null}
-                </td>
-                <td>
-                  {sub.venueName ?? '—'}
-                  {sub.venueId ? (
-                    <>
-                      {' '}
-                      <small title="naam matchte op een bekende venue">✓</small>
-                    </>
-                  ) : null}
-                  {sub.city ? (
-                    <>
-                      <br />
-                      <small style="opacity:0.7">{sub.city}</small>
-                    </>
-                  ) : null}
-                </td>
-                <td>
-                  {sub.date ?? '—'}
-                  {sub.time ? ` · ${sub.time}` : ''}
-                  <br />
-                  <small style="opacity:0.6">{fmtRelative(sub.createdAt)}</small>
-                </td>
-                <td>
-                  <small>{sub.source ?? '—'}</small>
-                  {sub.waiting > 0 ? (
-                    <>
-                      <br />
-                      <small style="opacity:0.6">
-                        {sub.waiting} {sub.waiting === 1 ? 'wachtende' : 'wachtenden'}
-                      </small>
-                    </>
-                  ) : null}
-                </td>
-                <td style="white-space:nowrap;text-align:right">
-                  {sub.status === 'new' ? (
-                    <>
+                    ) : (
+                      <small style="opacity:0.6">geen venue ingevuld</small>
+                    )}
+                    {sub.city ? (
+                      <>
+                        <br />
+                        <small style="opacity:0.7">{sub.city}</small>
+                      </>
+                    ) : null}
+                  </td>
+                  <td>
+                    {sub.date ?? '—'}
+                    {sub.time ? ` · ${sub.time}` : ''}
+                    <br />
+                    <small style="opacity:0.6">
+                      {fmtRelative(sub.createdAt)}
+                    </small>
+                  </td>
+                  <td>
+                    <small>{sub.source ?? '—'}</small>
+                    {sub.waiting > 0 ? (
+                      <>
+                        <br />
+                        <small style="opacity:0.6">
+                          {sub.waiting}{' '}
+                          {sub.waiting === 1 ? 'wachtende' : 'wachtenden'}
+                        </small>
+                      </>
+                    ) : null}
+                  </td>
+                  <td style="white-space:nowrap;text-align:right">
+                    {sub.status === 'new' ? (
+                      <>
+                        <a
+                          href={newEventUrl}
+                          role="button"
+                          style="padding:2px 8px;font-size:0.8em"
+                        >
+                          Maak event
+                        </a>{' '}
+                        <form
+                          method="post"
+                          action={`/admin/aanmeldingen/${encodeURIComponent(sub.id)}/link`}
+                          style="display:inline"
+                        >
+                          <input
+                            type="text"
+                            name="eventId"
+                            placeholder="bestaand event-id"
+                            required
+                            style="display:inline-block;width:11em;padding:2px 6px;font-size:0.8em;margin:0"
+                          />{' '}
+                          <button
+                            type="submit"
+                            class="outline"
+                            style="padding:2px 8px;font-size:0.8em"
+                          >
+                            Koppel
+                          </button>
+                        </form>{' '}
+                        <form
+                          method="post"
+                          action={`/admin/aanmeldingen/${encodeURIComponent(sub.id)}/rejected`}
+                          style="display:inline"
+                        >
+                          <button
+                            type="submit"
+                            class="outline secondary"
+                            style="padding:2px 8px;font-size:0.8em"
+                          >
+                            Geen event
+                          </button>
+                        </form>
+                      </>
+                    ) : sub.eventId ? (
                       <a
-                        href="/admin/events/new"
-                        role="button"
-                        class="outline"
-                        style="padding:2px 8px;font-size:0.8em"
+                        href={`/admin/events/${encodeURIComponent(sub.eventId)}`}
                       >
-                        Maak event
-                      </a>{' '}
-                      <form
-                        method="post"
-                        action={`/admin/import/submissions/${encodeURIComponent(sub.id)}/link`}
-                        style="display:inline"
-                      >
-                        <input
-                          type="text"
-                          name="eventId"
-                          placeholder="event-id"
-                          required
-                          style="display:inline-block;width:11em;padding:2px 6px;font-size:0.8em;margin:0"
-                        />{' '}
-                        <button
-                          type="submit"
-                          style="padding:2px 8px;font-size:0.8em"
-                        >
-                          Koppelen
-                        </button>
-                      </form>{' '}
-                      <form
-                        method="post"
-                        action={`/admin/import/submissions/${encodeURIComponent(sub.id)}/handled`}
-                        style="display:inline"
-                      >
-                        <button
-                          type="submit"
-                          class="outline"
-                          style="padding:2px 8px;font-size:0.8em"
-                        >
-                          Afgehandeld
-                        </button>
-                      </form>{' '}
-                      <form
-                        method="post"
-                        action={`/admin/import/submissions/${encodeURIComponent(sub.id)}/rejected`}
-                        style="display:inline"
-                      >
-                        <button
-                          type="submit"
-                          class="outline secondary"
-                          style="padding:2px 8px;font-size:0.8em"
-                        >
-                          Geen event
-                        </button>
-                      </form>
-                    </>
-                  ) : (
-                    <small style="opacity:0.6">{sub.status}</small>
-                  )}
-                </td>
-              </tr>
-            ))}
+                        <small>naar event →</small>
+                      </a>
+                    ) : (
+                      <small style="opacity:0.6">{sub.status}</small>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       )}
-    </Layout>,
+    </Layout>
   );
 });
 
-/**
- * Aanmelding afvinken. Twee statussen: `handled` (event aangemaakt of
- * anders afgedaan) en `rejected` (geen event). Meer smaken heeft dit niet
- * nodig — de lijst is een werkvoorraad, geen administratie.
- */
 /**
  * Koppel een aanmelding aan een echt event.
  *
  * Dit is de brug uit de wachtkamer: iedereen die "ik ga" op de aanmelding
  * had, krijgt een echte `attendance`-rij op de eerstvolgende voorstelling
- * van dat event. Zonder deze stap blijft hun plan voor altijd op
- * "wacht op Andreas" staan, en dat is precies de belofte die we niet
+ * van dat event. Zonder deze stap blijft hun plan voor altijd staan op iets
+ * dat nooit een event wordt, en dat is precies de belofte die we niet
  * willen breken.
  */
-adminUi.post('/import/submissions/:id/link', async (c) => {
-  const id = c.req.param('id');
-  const form = await c.req.parseBody();
-  const key = typeof form.eventId === 'string' ? form.eventId.trim() : '';
-  if (!key) return c.redirect('/admin/import');
-
-  const [event] = await db
-    .select({ id: schema.events.id })
-    .from(schema.events)
-    .where(eq(schema.events.id, key))
-    .limit(1);
-  if (!event) return c.redirect('/admin/import?linkError=1');
-
+async function linkSubmissionToEvent(
+  submissionId: string,
+  eventId: string
+): Promise<void> {
   // De eerstvolgende voorstelling; is alles geweest, dan de laatste. Een
   // aanmelding gaat over één avond, maar wélke weet alleen een mens — en
   // die heeft net het event aangemaakt.
   const occurrences = await db
     .select({ id: schema.occurrences.id, startsAt: schema.occurrences.startsAt })
     .from(schema.occurrences)
-    .where(eq(schema.occurrences.eventId, event.id))
+    .where(eq(schema.occurrences.eventId, eventId))
     .orderBy(schema.occurrences.startsAt);
   const now = Date.now();
   const target =
@@ -2696,42 +2850,56 @@ adminUi.post('/import/submissions/:id/link', async (c) => {
 
   await db
     .update(schema.eventSubmissions)
-    .set({ status: 'handled', handledAt: new Date(), eventId: event.id })
-    .where(eq(schema.eventSubmissions.id, id));
+    .set({ status: 'handled', handledAt: new Date(), eventId })
+    .where(eq(schema.eventSubmissions.id, submissionId));
 
-  if (target) {
-    const waiting = await db
-      .select({ userId: schema.submissionGoing.userId })
-      .from(schema.submissionGoing)
-      .where(eq(schema.submissionGoing.submissionId, id));
-    if (waiting.length > 0) {
-      await db
-        .insert(schema.attendance)
-        .values(
-          waiting.map((w) => ({
-            userId: w.userId,
-            occurrenceId: target.id,
-            source: 'share' as const,
-          }))
-        )
-        .onConflictDoNothing();
-    }
-  }
+  if (!target) return;
+  const waiting = await db
+    .select({ userId: schema.submissionGoing.userId })
+    .from(schema.submissionGoing)
+    .where(eq(schema.submissionGoing.submissionId, submissionId));
+  if (waiting.length === 0) return;
+  await db
+    .insert(schema.attendance)
+    .values(
+      waiting.map((w) => ({
+        userId: w.userId,
+        occurrenceId: target.id,
+        source: 'share' as const,
+      }))
+    )
+    .onConflictDoNothing();
+}
 
-  return c.redirect('/admin/import');
+/** Koppelen op een event-id dat je zelf intypt of plakt. */
+adminUi.post('/aanmeldingen/:id/link', async (c) => {
+  const id = c.req.param('id');
+  const form = await c.req.parseBody();
+  const key = typeof form.eventId === 'string' ? form.eventId.trim() : '';
+  if (!key) return c.redirect('/admin/aanmeldingen');
+
+  const [event] = await db
+    .select({ id: schema.events.id })
+    .from(schema.events)
+    .where(eq(schema.events.id, key))
+    .limit(1);
+  if (!event) return c.redirect('/admin/aanmeldingen?fout=event');
+
+  await linkSubmissionToEvent(id, event.id);
+  return c.redirect('/admin/aanmeldingen');
 });
 
-adminUi.post('/import/submissions/:id/:status', async (c) => {
+adminUi.post('/aanmeldingen/:id/:status', async (c) => {
   const id = c.req.param('id');
   const status = c.req.param('status');
   if (status !== 'handled' && status !== 'rejected') {
-    return c.redirect('/admin/import');
+    return c.redirect('/admin/aanmeldingen');
   }
   await db
     .update(schema.eventSubmissions)
     .set({ status, handledAt: new Date() })
     .where(eq(schema.eventSubmissions.id, id));
-  return c.redirect('/admin/import');
+  return c.redirect('/admin/aanmeldingen');
 });
 
 /* ═══════════════════════════════════════════════════════════════════════
