@@ -3,7 +3,11 @@ import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
-import { keepPreviousData, useQuery } from '@tanstack/react-query';
+import {
+  keepPreviousData,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
@@ -67,7 +71,13 @@ import {
   useVenues,
 } from '@/lib/queries';
 import { useSession } from '@/lib/authClient';
-import { search, submitUnknownEvent } from '@/lib/api';
+import {
+  matchPendingEvents,
+  search,
+  setPendingGoing,
+  submitUnknownEvent,
+  type PendingEvent,
+} from '@/lib/api';
 import * as Haptics from 'expo-haptics';
 import { useMode, useRoles } from '@/store/mode';
 import { useTicketFor, useTickets, useTicketsFor } from '@/store/tickets';
@@ -416,6 +426,22 @@ function SharePreview({
     placeholderData: keepPreviousData,
   });
 
+  // Heeft iemand anders dit al aangemeld? Dan moet je daaraan kunnen
+  // hangen in plaats van een tweede aanmelding te maken. Zelfde gate als
+  // de event-zoekopdracht, dus geen extra request bij te weinig gegevens.
+  const { data: pendingMatches } = useQuery({
+    queryKey: ['pending-match', safe.title, safe.venue, safe.date],
+    queryFn: () =>
+      matchPendingEvents({
+        title: safe.title,
+        venue: safe.venue,
+        date: safe.date,
+      }),
+    enabled: expectsMatch,
+    staleTime: 60_000,
+    placeholderData: keepPreviousData,
+  });
+
   // Ticket of poster? Bepaalt welke intentie we voorstellen. Bij een link
   // of losse tekst is er geen OCR, dan is de gedeelde tekst de input.
   const verdict: TicketVerdict = useMemo(
@@ -503,19 +529,80 @@ function SharePreview({
   const [submitState, setSubmitState] = useState<
     'idle' | 'sending' | 'done' | 'failed'
   >('idle');
+  const [submitted, setSubmitted] = useState<{
+    id: string;
+    going: boolean;
+    ticket: boolean;
+  } | null>(null);
+  const qc = useQueryClient();
 
-  // Aanmelden stuurt exact wat de whitelist doorlaat — dezelfde `safe` die
-  // de matcher gebruikte, geen ruwe OCR. Zie fase 1.7.
+  /**
+   * Aanmelden stuurt exact wat de whitelist doorlaat — dezelfde `safe` die
+   * de matcher gebruikte, geen ruwe OCR. Zie fase 1.7.
+   *
+   * Daarna staat het meteen in je plannen (de server zet de going-rij
+   * erbij) en hangt je ticket eraan. Wachten op een review is de verkeerde
+   * beloning voor iemand die zelf het formulier invulde.
+   */
   const submitUnknown = async () => {
     if (!isMatchable(safe)) return;
     setSubmitState('sending');
     try {
-      await submitUnknownEvent({ ...safe, source: 'share' });
+      const res = await submitUnknownEvent({ ...safe, source: 'share' });
+      const keepTicket = Boolean(share.fileUri) && verdict.isTicket;
+      if (keepTicket) attachToPending(res.id);
+      setSubmitted({ id: res.id, going: res.going, ticket: keepTicket });
+      void qc.invalidateQueries({ queryKey: ['pending-events'] });
       setSubmitState('done');
     } catch {
       setSubmitState('failed');
     }
   };
+
+  /** Ga ook naar een aanmelding van iemand anders. */
+  const joinPending = async (id: string) => {
+    setSubmitState('sending');
+    try {
+      await setPendingGoing(id, true);
+      const keepTicket = Boolean(share.fileUri) && verdict.isTicket;
+      if (keepTicket) attachToPending(id);
+      setSubmitted({ id, going: true, ticket: keepTicket });
+      void qc.invalidateQueries({ queryKey: ['pending-events'] });
+      setSubmitState('done');
+    } catch {
+      setSubmitState('failed');
+    }
+  };
+
+  /** De ticketstore sleutelt op een string; een `sub-…`-id werkt daar net
+      zo goed als een occurrence-id. Zodra de aanmelding een echt event
+      wordt verhuist het plan mee — het ticket blijft dan hier hangen en
+      dat is een los puntje voor later (fase 6.2 in het werkdocument). */
+  function attachToPending(id: string) {
+    const files = share.extraFiles ?? [];
+    const all = share.fileUri
+      ? [
+          {
+            fileUri: share.fileUri,
+            fileName: share.fileName ?? null,
+            mimeType: share.mimeType ?? null,
+          },
+          ...files,
+        ]
+      : files;
+    for (const file of all) {
+      useTickets.getState().attach({
+        occurrenceId: id,
+        eventId: id,
+        eventTitle: safe.title ?? null,
+        fileUri: file.fileUri,
+        fileName: file.fileName,
+        mimeType: file.mimeType,
+        barcodeTypes: verdict.signals.includes('barcode') ? ['qr'] : [],
+        addedAt: Date.now(),
+      });
+    }
+  }
 
   const storedTicket = useTicketFor(occurrenceId);
   const storedTicketCount = useTicketsFor(occurrenceId).length;
@@ -547,7 +634,9 @@ function SharePreview({
     scan.status === 'done' &&
     !draft &&
     scan.ocr.blocks.length > 0;
-  const searching = expectsMatch && (matching || matches === undefined);
+  const searching =
+    expectsMatch &&
+    (matching || matches === undefined || pendingMatches === undefined);
   const busy = scanning || extracting || searching;
 
   return (
@@ -595,6 +684,8 @@ function SharePreview({
             match={match}
             draftTitle={draft?.title ?? null}
             hasFile={Boolean(share.fileUri)}
+            pendingMatch={pendingMatches?.[0] ?? null}
+            onJoinPending={joinPending}
             onPick={onPickCandidate}
           />
         </Animated.View>
@@ -608,6 +699,7 @@ function SharePreview({
               draft={draft}
               canSubmit={isMatchable(safe)}
               submitState={submitState}
+              submitted={submitted}
               onSubmitUnknown={submitUnknown}
               onChangeDraft={updateDraft}
             />
@@ -778,12 +870,17 @@ function ChooseStep({
   match,
   draftTitle,
   hasFile,
+  pendingMatch,
+  onJoinPending,
   onPick,
 }: {
   busy: boolean;
   match: MatchResult | null;
   draftTitle: string | null;
   hasFile: boolean;
+  /** Dezelfde avond, al aangemeld door iemand anders. */
+  pendingMatch: PendingEvent | null;
+  onJoinPending: (id: string) => void;
   onPick: (id: string | null) => void;
 }) {
   const roles = useRoles();
@@ -861,6 +958,37 @@ function ChooseStep({
           </Text>
         )}
 
+        {/* Iemand was je voor. Dan hang je aan zijn aanmelding in plaats
+            van er een tweede te maken — anders staan er straks vier keer
+            dezelfde avond in de wachtkamer. */}
+        {pendingMatch ? (
+          <Pressable
+            onPress={() => onJoinPending(pendingMatch.id)}
+            style={[
+              styles.option,
+              {
+                backgroundColor: isNacht ? palette.noir2 : palette.paper2,
+                borderColor: 'transparent',
+              },
+            ]}
+          >
+            <View style={{ flex: 1, gap: 3 }}>
+              <Text style={[styles.optionTitle, { color: roles.fg }]}>
+                {pendingMatch.title ??
+                  pendingMatch.artists[0] ??
+                  t('Deze avond', 'This night')}
+              </Text>
+              <Text style={[styles.optionMeta, { color: roles.fgMuted }]}>
+                {t(
+                  'Al aangemeld — zet in mijn plannen',
+                  'Already submitted — add to my plans',
+                )}
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={16} color={roles.fgMuted} />
+          </Pressable>
+        ) : null}
+
         <Pressable
           onPress={() => onPick(null)}
           style={[
@@ -897,12 +1025,16 @@ function SelfAddStep({
   draft,
   canSubmit,
   submitState,
+  submitted,
   onSubmitUnknown,
   onChangeDraft,
 }: {
   draft: EventDraft | null;
   canSubmit: boolean;
   submitState: 'idle' | 'sending' | 'done' | 'failed';
+  /** Wat er na het aanmelden gebeurde: staat het in je plannen, en hangt
+      je ticket eraan. `null` zolang er niets verstuurd is. */
+  submitted: { id: string; going: boolean; ticket: boolean } | null;
   onSubmitUnknown: () => void;
   onChangeDraft: (patch: Partial<EventDraft>) => void;
 }) {
@@ -912,15 +1044,33 @@ function SelfAddStep({
   if (submitState === 'done') {
     return (
       <View style={styles.stepBlock}>
-        <Text style={[styles.stepQuestion, { color: roles.fg }]}>
-          {t('Aangemeld — dank je', 'Submitted — thank you')}
-        </Text>
-        <Text style={[styles.stepLead, { color: roles.fgMuted }]}>
-          {t(
-            'We kijken ernaar en zetten het in Andreas.',
-            'We will look at it and add it to Andreas.',
-          )}
-        </Text>
+        <View style={styles.doneHead}>
+          <Ionicons name="checkmark-circle" size={30} color={roles.accent} />
+          <Text
+            style={[styles.stepQuestion, styles.centered, { color: roles.fg }]}
+          >
+            {submitted?.going
+              ? t('Staat in je plannen', 'Added to your plans')
+              : t('Aangemeld — dank je', 'Submitted — thank you')}
+          </Text>
+          <Text
+            style={[styles.stepLead, styles.centered, { color: roles.fgMuted }]}
+          >
+            {submitted?.going
+              ? t(
+                  submitted.ticket
+                    ? 'Je ticket hangt eraan. Andreas kijkt er nog naar, dan wordt het een echt event.'
+                    : 'Andreas kijkt er nog naar, dan wordt het een echt event.',
+                  submitted.ticket
+                    ? 'Your ticket is attached. Andreas still has to look at it before it becomes a real event.'
+                    : 'Andreas still has to look at it before it becomes a real event.',
+                )
+              : t(
+                  'We kijken ernaar en zetten het in Andreas.',
+                  'We will look at it and add it to Andreas.',
+                )}
+          </Text>
+        </View>
       </View>
     );
   }

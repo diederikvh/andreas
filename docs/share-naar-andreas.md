@@ -592,6 +592,26 @@ zelfde privacygrens. Alleen de vraagstelling.
       *Maak event* / *Afgehandeld* / *Geen event*.
       **Niet gedaan:** de velden voorvullen in het event-formulier. Dat is de
       volgende stap als het handmatig overtypen gaat irriteren.
+- [x] **6.2 — Direct in je eigen plannen, zonder te wachten op de review.**
+      Een aanmelding blijft een aanmelding (niet `events.published = false`:
+      136 selects op `schema.events`, inclusief de MCP-gids en de
+      social-posts — één vergeten filter en iemands typefout staat in een
+      Instagram-post). Maar je kan er "ik ga" op hebben:
+      `submission_going` (migratie 0055) plus `event_id` op de aanmelding.
+      - `POST /submissions` zet de going-rij er meteen bij als je een account
+        hebt, en koppelt je ticket aan `sub-…` (de ticketstore sleutelt op
+        een string).
+      - `GET /submissions/mine` voedt het groepje "Wacht op Andreas" bovenaan
+        `/going`. Afgewezen aanmeldingen vallen eruit.
+      - `GET /submissions/match` laat de volgende die hetzelfde affiche scant
+        aan dezelfde aanmelding hangen in plaats van een tweede te maken.
+      - De admin heeft een **Koppelen**-veld: event-id invullen → status
+        `handled`, `event_id` gezet, en iedereen die aan de aanmelding hing
+        krijgt een echte `attendance`-rij op de eerstvolgende voorstelling.
+        Zonder die stap blijft hun plan voor altijd in de wachtkamer staan.
+      - Openstaand: het ticket blijft na die verhuizing op de `sub-…`-sleutel
+        hangen in plaats van op de occurrence. Het bestand is niet weg, maar
+        de eventpagina laat 'm niet zien tot dat is omgezet.
 - [ ] **6.3 — Community-data** ("Op je poster staat Library Card als support.
       Toevoegen?"). Nog niet: dat hangt aan een bestáand event en is een eigen slice.
 

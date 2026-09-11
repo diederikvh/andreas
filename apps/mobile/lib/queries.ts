@@ -74,6 +74,8 @@ import {
   type VenueCategory,
   type VenueFollowState,
   type VenueType,
+  myPendingEvents,
+  setPendingGoing,
 } from '@/lib/api';
 import { useSession } from '@/lib/authClient';
 import { useNewWindowStart } from '@/store/sessionTimestamps';
@@ -90,8 +92,17 @@ export const queryKeys = {
   // achter de schermen een refetch fired.
   agendaDays: (input: { filters: AgendaFilters }) =>
     ['agenda-days', input.filters] as const,
-  agendaDay: (input: { date: string; toDate?: string; filters: AgendaFilters }) =>
-    ['agenda-day', input.date, input.toDate ?? input.date, input.filters] as const,
+  agendaDay: (input: {
+    date: string;
+    toDate?: string;
+    filters: AgendaFilters;
+  }) =>
+    [
+      'agenda-day',
+      input.date,
+      input.toDate ?? input.date,
+      input.filters,
+    ] as const,
   mirror: () => ['mirror', 'me'] as const,
   forYou: (opts: { weekOnly?: boolean; tonight?: boolean } = {}) =>
     [
@@ -108,13 +119,9 @@ export const queryKeys = {
         ? [...categories].sort().join(',')
         : 'all',
     ] as const,
-  newArrivalsSince: (
-    sinceIso: string | null,
-    lanes: string,
-    limit: number
-  ) => ['events', 'new', 'since', sinceIso ?? 'pending', lanes, limit] as const,
-  recentEvents: (limit: number) =>
-    ['events', 'new', 'recent', limit] as const,
+  newArrivalsSince: (sinceIso: string | null, lanes: string, limit: number) =>
+    ['events', 'new', 'since', sinceIso ?? 'pending', lanes, limit] as const,
+  recentEvents: (limit: number) => ['events', 'new', 'recent', limit] as const,
   dismisses: () => ['dismisses'] as const,
   artist: (slug: string) => ['artist', slug] as const,
   venue: (slug: string) => ['venue', slug] as const,
@@ -125,6 +132,7 @@ export const queryKeys = {
     ['series-list', input.q ?? '', input.category ?? ''] as const,
   saves: () => ['saves'] as const,
   going: () => ['going'] as const,
+  pendingEvents: () => ['pending-events'] as const,
   musea: () => ['musea'] as const,
   friends: () => ['friends'] as const,
   friendRequests: () => ['friend-requests'] as const,
@@ -179,7 +187,7 @@ export function useEvents(filter: EventsFilter = {}) {
  */
 export function useNewArrivalsSince(
   since: Date | null,
-  opts: { enabled?: boolean; lanes?: Lane[]; limit?: number } = {}
+  opts: { enabled?: boolean; lanes?: Lane[]; limit?: number } = {},
 ) {
   const sinceIso = since ? since.toISOString() : null;
   const lanes = opts.lanes ?? [];
@@ -213,7 +221,7 @@ export function useNewArrivalsSince(
  * antwoord op je filter en geen leeg venster.
  */
 export function useNewArrivals(
-  opts: { enabled?: boolean; lanes?: Lane[]; limit?: number } = {}
+  opts: { enabled?: boolean; lanes?: Lane[]; limit?: number } = {},
 ) {
   const enabled = opts.enabled ?? true;
   const since = useNewWindowStart();
@@ -260,7 +268,8 @@ export function useNewArrivals(
     showingFallback,
     /** Sessiegrens, voor de datum in de kop. Null bij de eerste launch. */
     since,
-    isLoading: (since ? loadingSince : false) || (showingFallback && loadingToday),
+    isLoading:
+      (since ? loadingSince : false) || (showingFallback && loadingToday),
     error: errorSince ?? errorToday,
   };
 }
@@ -270,10 +279,7 @@ export function useNewArrivals(
  * Mounten met enabled=true alleen wanneer de since-query leeg is —
  * anders verspil je een round-trip.
  */
-export function useRecentEvents(
-  limit = 10,
-  opts: { enabled?: boolean } = {}
-) {
+export function useRecentEvents(limit = 10, opts: { enabled?: boolean } = {}) {
   return useQuery({
     queryKey: queryKeys.recentEvents(limit),
     queryFn: () => getRecentEvents(limit),
@@ -287,7 +293,10 @@ export function useForYouEvents(
   opts: { enabled?: boolean; weekOnly?: boolean; tonight?: boolean } = {},
 ) {
   return useQuery({
-    queryKey: queryKeys.forYou({ weekOnly: opts.weekOnly, tonight: opts.tonight }),
+    queryKey: queryKeys.forYou({
+      weekOnly: opts.weekOnly,
+      tonight: opts.tonight,
+    }),
     queryFn: () =>
       getForYouEvents({ weekOnly: opts.weekOnly, tonight: opts.tonight }),
     enabled: opts.enabled ?? true,
@@ -318,7 +327,9 @@ export function useBootstrapSuggestions(input: {
         flavor: input.flavor!,
       }),
     enabled:
-      (input.enabled ?? true) && input.scenes.length > 0 && Boolean(input.flavor),
+      (input.enabled ?? true) &&
+      input.scenes.length > 0 &&
+      Boolean(input.flavor),
     staleTime: 60_000,
   });
 }
@@ -443,11 +454,7 @@ export function useAgendaDay(input: {
 
 export function useAgendaDayPrefetch() {
   const qc = useQueryClient();
-  return (input: {
-    date: string;
-    from?: string;
-    filters: AgendaFilters;
-  }) =>
+  return (input: { date: string; from?: string; filters: AgendaFilters }) =>
     qc.prefetchQuery({
       queryKey: queryKeys.agendaDay({
         date: input.date,
@@ -493,20 +500,23 @@ export function useVenueSubtypes(types?: VenueType[]) {
   });
 }
 
-export function useVenues(input: {
-  q?: string;
-  category?: 'Muziek' | 'Theater' | 'Literatuur' | 'Film' | 'Kunst' | 'Lezing';
-  type?:
-    | 'galerie'
-    | 'museum'
-    | 'podium'
-    | 'club'
-    | 'film'
-    | 'ruimte'
-    | 'boekhandel-cafe';
-  dayNight?: 'day' | 'night' | 'both';
-  scene?: 'mainstream' | 'alternatief' | 'underground' | 'fringe';
-} = {}) {
+export function useVenues(
+  input: {
+    q?: string;
+    category?:
+      'Muziek' | 'Theater' | 'Literatuur' | 'Film' | 'Kunst' | 'Lezing';
+    type?:
+      | 'galerie'
+      | 'museum'
+      | 'podium'
+      | 'club'
+      | 'film'
+      | 'ruimte'
+      | 'boekhandel-cafe';
+    dayNight?: 'day' | 'night' | 'both';
+    scene?: 'mainstream' | 'alternatief' | 'underground' | 'fringe';
+  } = {},
+) {
   return useQuery({
     queryKey: [
       'venues',
@@ -535,7 +545,7 @@ export function useSeries(slug: string) {
 }
 
 export function useSeriesList(
-  input: { q?: string; category?: VenueCategory; enabled?: boolean } = {}
+  input: { q?: string; category?: VenueCategory; enabled?: boolean } = {},
 ) {
   return useQuery({
     queryKey: queryKeys.seriesList({ q: input.q, category: input.category }),
@@ -576,7 +586,7 @@ export function useToggleSave() {
       if (prev) {
         qc.setQueryData<SavedApiEvent[]>(
           queryKeys.saves(),
-          prev.filter((e) => e.occurrenceId !== occurrenceId)
+          prev.filter((e) => e.occurrenceId !== occurrenceId),
         );
       }
       return { prev };
@@ -609,6 +619,35 @@ export function useMyGoing(opts: { enabled?: boolean } = {}) {
   });
 }
 
+/**
+ * Aangemelde events waar je heen gaat, maar die nog op een mens wachten.
+ *
+ * Staan in je plannen als eigen groepje: je hebt ze zelf ingevuld (of
+ * iemand anders scande hetzelfde affiche), dus ze horen in je agenda —
+ * maar ze zijn nog geen event, en dat mag je zien.
+ */
+export function usePendingEvents(opts: { enabled?: boolean } = {}) {
+  return useQuery({
+    queryKey: queryKeys.pendingEvents(),
+    queryFn: () => myPendingEvents(),
+    enabled: opts.enabled ?? true,
+  });
+}
+
+/** Ga wel/niet naar een aanmelding. Vernieuwt ook de plannenlijst, want
+    zodra een aanmelding een echt event wordt verhuist hij daarheen. */
+export function useTogglePendingGoing() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, going }: { id: string; going: boolean }) =>
+      setPendingGoing(id, going),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: queryKeys.pendingEvents() });
+      void qc.invalidateQueries({ queryKey: queryKeys.going() });
+    },
+  });
+}
+
 export function useMusea(opts: { enabled?: boolean } = {}) {
   return useQuery({
     queryKey: queryKeys.musea(),
@@ -635,7 +674,7 @@ export function useToggleGoing() {
       if (prev) {
         qc.setQueryData<SavedApiEvent[]>(
           queryKeys.going(),
-          prev.filter((e) => e.occurrenceId !== occurrenceId)
+          prev.filter((e) => e.occurrenceId !== occurrenceId),
         );
       }
       return { prev };
@@ -710,7 +749,7 @@ export function useMyMirror(opts: { enabled?: boolean } = {}) {
 
 export function useMirrorByHandle(
   handle: string | null | undefined,
-  opts: { enabled?: boolean } = {}
+  opts: { enabled?: boolean } = {},
 ) {
   return useQuery({
     queryKey: ['mirror', 'u', handle ?? ''] as const,
@@ -937,8 +976,11 @@ export function useRespondInvitation() {
 export function useRemindInvitation() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (input: { invitationId: string; userId: string; eventId?: string }) =>
-      remindInvitation(input.invitationId, input.userId),
+    mutationFn: (input: {
+      invitationId: string;
+      userId: string;
+      eventId?: string;
+    }) => remindInvitation(input.invitationId, input.userId),
     onSettled: (_data, _err, vars) => {
       qc.invalidateQueries({ queryKey: queryKeys.invitations() });
       if (vars.eventId) {
@@ -1091,7 +1133,6 @@ export function useSetVenueFollow() {
     },
   });
 }
-
 
 /**
  * Openstaande sociale notificaties: vriendschapsverzoeken plus

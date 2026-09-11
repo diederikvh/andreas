@@ -1288,6 +1288,9 @@ export const eventSubmissions = pgTable(
     /** `new` → nog niets mee gedaan, `handled` → event aangemaakt of
         anders afgedaan, `rejected` → geen event. */
     status: text().notNull().default('new'),
+    /** Gevuld zodra een mens er een echt event van heeft gemaakt. Wie aan
+        de aanmelding hing verhuist dan mee naar `attendance`. */
+    eventId: text().references(() => events.id, { onDelete: 'set null' }),
     createdAt: timestamp({ withTimezone: true })
       .notNull()
       .default(sql`now()`),
@@ -1296,6 +1299,33 @@ export const eventSubmissions = pgTable(
   (t) => [
     index('event_submissions_status_idx').on(t.status),
     index('event_submissions_created_idx').on(t.createdAt),
+  ]
+);
+
+/**
+ * "Ik ga" op een aanmelding die nog geen event is.
+ *
+ * Dit bestaat omdat de persoon die een onbekend event aanmeldt het meteen
+ * in zijn agenda wil hebben — wachten op een review is precies de verkeerde
+ * beloning voor moeite. En wie daarna hetzelfde affiche scant komt in
+ * dezelfde wachtkamer terecht in plaats van een tweede aanmelding te maken.
+ */
+export const submissionGoing = pgTable(
+  'submission_going',
+  {
+    submissionId: text()
+      .notNull()
+      .references(() => eventSubmissions.id, { onDelete: 'cascade' }),
+    userId: text()
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    createdAt: timestamp({ withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+  },
+  (t) => [
+    primaryKey({ columns: [t.submissionId, t.userId] }),
+    index('submission_going_user_idx').on(t.userId),
   ]
 );
 

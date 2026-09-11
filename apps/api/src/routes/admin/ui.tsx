@@ -2305,7 +2305,14 @@ adminUi.get('/import', async (c) => {
       city: schema.eventSubmissions.city,
       source: schema.eventSubmissions.source,
       status: schema.eventSubmissions.status,
+      eventId: schema.eventSubmissions.eventId,
       createdAt: schema.eventSubmissions.createdAt,
+      /** Hoeveel mensen hier al "ik ga" op hebben. Dat is het signaal dat
+          dit geen typefout is maar een avond waar mensen op wachten. */
+      waiting: sql<number>`(
+        select count(*)::int from submission_going
+        where submission_going.submission_id = ${schema.eventSubmissions.id}
+      )`,
     })
     .from(schema.eventSubmissions)
     .orderBy(
@@ -2568,6 +2575,14 @@ form.addEventListener('submit', async (e) => {
                 </td>
                 <td>
                   <small>{sub.source ?? '—'}</small>
+                  {sub.waiting > 0 ? (
+                    <>
+                      <br />
+                      <small style="opacity:0.6">
+                        {sub.waiting} {sub.waiting === 1 ? 'wachtende' : 'wachtenden'}
+                      </small>
+                    </>
+                  ) : null}
                 </td>
                 <td style="white-space:nowrap;text-align:right">
                   {sub.status === 'new' ? (
@@ -2580,6 +2595,25 @@ form.addEventListener('submit', async (e) => {
                       >
                         Maak event
                       </a>{' '}
+                      <form
+                        method="post"
+                        action={`/admin/import/submissions/${encodeURIComponent(sub.id)}/link`}
+                        style="display:inline"
+                      >
+                        <input
+                          type="text"
+                          name="eventId"
+                          placeholder="event-id"
+                          required
+                          style="display:inline-block;width:11em;padding:2px 6px;font-size:0.8em;margin:0"
+                        />{' '}
+                        <button
+                          type="submit"
+                          style="padding:2px 8px;font-size:0.8em"
+                        >
+                          Koppelen
+                        </button>
+                      </form>{' '}
                       <form
                         method="post"
                         action={`/admin/import/submissions/${encodeURIComponent(sub.id)}/handled`}
@@ -2625,6 +2659,68 @@ form.addEventListener('submit', async (e) => {
  * anders afgedaan) en `rejected` (geen event). Meer smaken heeft dit niet
  * nodig — de lijst is een werkvoorraad, geen administratie.
  */
+/**
+ * Koppel een aanmelding aan een echt event.
+ *
+ * Dit is de brug uit de wachtkamer: iedereen die "ik ga" op de aanmelding
+ * had, krijgt een echte `attendance`-rij op de eerstvolgende voorstelling
+ * van dat event. Zonder deze stap blijft hun plan voor altijd op
+ * "wacht op Andreas" staan, en dat is precies de belofte die we niet
+ * willen breken.
+ */
+adminUi.post('/import/submissions/:id/link', async (c) => {
+  const id = c.req.param('id');
+  const form = await c.req.parseBody();
+  const key = typeof form.eventId === 'string' ? form.eventId.trim() : '';
+  if (!key) return c.redirect('/admin/import');
+
+  const [event] = await db
+    .select({ id: schema.events.id })
+    .from(schema.events)
+    .where(eq(schema.events.id, key))
+    .limit(1);
+  if (!event) return c.redirect('/admin/import?linkError=1');
+
+  // De eerstvolgende voorstelling; is alles geweest, dan de laatste. Een
+  // aanmelding gaat over één avond, maar wélke weet alleen een mens — en
+  // die heeft net het event aangemaakt.
+  const occurrences = await db
+    .select({ id: schema.occurrences.id, startsAt: schema.occurrences.startsAt })
+    .from(schema.occurrences)
+    .where(eq(schema.occurrences.eventId, event.id))
+    .orderBy(schema.occurrences.startsAt);
+  const now = Date.now();
+  const target =
+    occurrences.find((o) => o.startsAt.getTime() >= now) ??
+    occurrences[occurrences.length - 1];
+
+  await db
+    .update(schema.eventSubmissions)
+    .set({ status: 'handled', handledAt: new Date(), eventId: event.id })
+    .where(eq(schema.eventSubmissions.id, id));
+
+  if (target) {
+    const waiting = await db
+      .select({ userId: schema.submissionGoing.userId })
+      .from(schema.submissionGoing)
+      .where(eq(schema.submissionGoing.submissionId, id));
+    if (waiting.length > 0) {
+      await db
+        .insert(schema.attendance)
+        .values(
+          waiting.map((w) => ({
+            userId: w.userId,
+            occurrenceId: target.id,
+            source: 'share' as const,
+          }))
+        )
+        .onConflictDoNothing();
+    }
+  }
+
+  return c.redirect('/admin/import');
+});
+
 adminUi.post('/import/submissions/:id/:status', async (c) => {
   const id = c.req.param('id');
   const status = c.req.param('status');

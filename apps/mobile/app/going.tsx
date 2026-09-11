@@ -12,6 +12,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
 import {
+  Alert,
   Pressable,
   RefreshControl,
   SectionList,
@@ -27,7 +28,7 @@ import { EventListRow } from '@/components/EventListRow';
 import { RefreshBanner } from '@/components/RefreshBanner';
 import { SpinningCross } from '@/components/SpinningCross';
 import { useSession } from '@/lib/authClient';
-import { type SavedApiEvent } from '@/lib/api';
+import { type PendingEvent, type SavedApiEvent } from '@/lib/api';
 import {
   CATEGORY_TICK,
   VENUE_TYPE_TICK,
@@ -37,13 +38,16 @@ import {
   rowTimeLabel,
   translateCategory,
 } from '@/lib/eventDisplay';
-import { useT, useLocale } from '@/lib/i18n';
-import { useMyGoing } from '@/lib/queries';
+import { useT, useLocale, type Locale } from '@/lib/i18n';
+import {
+  useMyGoing,
+  usePendingEvents,
+  useTogglePendingGoing,
+} from '@/lib/queries';
 import type { BadgeTone } from '@/lib/types';
 import { useMode, useRoles } from '@/store/mode';
 import { useTicketFor } from '@/store/tickets';
 import { fontFamily, palette } from '@/theme/tokens';
-
 
 export default function GoingScreen() {
   const roles = useRoles();
@@ -85,10 +89,10 @@ export default function GoingScreen() {
   const upcoming = useMemo(
     () =>
       (going ?? []).filter(
-        (g) => new Date(g.endsAt ?? g.startsAt).getTime() >= now
+        (g) => new Date(g.endsAt ?? g.startsAt).getTime() >= now,
       ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [going]
+    [going],
   );
   const past = useMemo(() => {
     const weekAgo = now - 7 * 24 * 3600 * 1000;
@@ -99,8 +103,7 @@ export default function GoingScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [going]);
 
-  const isEmpty =
-    authed && !isLoading && !error && (going?.length ?? 0) === 0;
+  const isEmpty = authed && !isLoading && !error && (going?.length ?? 0) === 0;
 
   const closeBtn = (
     <Pressable
@@ -137,7 +140,7 @@ export default function GoingScreen() {
           <Text style={[styles.emptySub, { color: roles.fgMuted }]}>
             {t(
               'Zet bij een event "Ik ga hierheen" aan, dan staat het hier — en op je homepage.',
-              'Turn on "I\u2019m going" at an event and it shows up here, and on your homepage.'
+              'Turn on "I\u2019m going" at an event and it shows up here, and on your homepage.',
             )}
           </Text>
         </View>
@@ -154,11 +157,10 @@ export default function GoingScreen() {
       ) : (
         <SectionList
           sections={[
-            ...(upcoming.length > 0
-              ? [{ isPast: false, data: upcoming }]
-              : []),
+            ...(upcoming.length > 0 ? [{ isPast: false, data: upcoming }] : []),
             ...(past.length > 0 ? [{ isPast: true, data: past }] : []),
           ]}
+          ListHeaderComponent={<PendingGroup />}
           keyExtractor={(item, idx) => `${idx}-${item.occurrenceId}`}
           renderItem={({ item, section }) => (
             <GoingRow entry={item} dim={section.isPast} />
@@ -188,11 +190,7 @@ export default function GoingScreen() {
         />
       )}
 
-      <AppHeader
-        title={t('Going', 'Going')}
-        hideAvatar
-        rightSlot={closeBtn}
-      />
+      <AppHeader title={t('Going', 'Going')} hideAvatar rightSlot={closeBtn} />
     </View>
   );
 }
@@ -245,9 +243,7 @@ function GoingRow({
         genreLabel={(e.genres ?? [])[0]}
         tick={tone}
         onPress={() =>
-          router.push(
-            `/event/${entry.id}?source=going&o=${entry.occurrenceId}`
-          )
+          router.push(`/event/${entry.id}?source=going&o=${entry.occurrenceId}`)
         }
         onTicketPress={
           ticket
@@ -256,6 +252,127 @@ function GoingRow({
         }
       />
     </View>
+  );
+}
+
+/**
+ * Aanmeldingen die nog op Andreas wachten.
+ *
+ * Bovenaan je plannen, want je hebt ze zelf ingevuld en dan wil je ze zien
+ * staan — niet wachten tot iemand ze heeft goedgekeurd. Ze zijn wel
+ * herkenbaar anders: geen beeld, geen tik-doel naar een eventpagina, en
+ * een label dat zegt waar ze op staan te wachten. Zodra er een echt event
+ * van is gemaakt (`published`) verhuizen ze naar de gewone lijst en
+ * verdwijnen ze hier.
+ */
+function PendingGroup() {
+  const roles = useRoles();
+  const t = useT();
+  const locale = useLocale();
+  const { data } = usePendingEvents();
+  const toggle = useTogglePendingGoing();
+
+  const pending = (data ?? []).filter((p) => !p.published);
+  if (pending.length === 0) return null;
+
+  return (
+    <View style={styles.pendingWrap}>
+      <View style={styles.anchor}>
+        <Text style={[styles.pastLabel, { color: roles.fgMuted }]}>
+          {t('Wacht op Andreas', 'Waiting for Andreas')}
+        </Text>
+        <Text style={[styles.anchorCount, { color: roles.fgPlaceholder }]}>
+          {pending.length}{' '}
+          {pending.length === 1 ? t('plan', 'plan') : t('plannen', 'plans')}
+        </Text>
+      </View>
+
+      {pending.map((p) => (
+        <PendingRow
+          key={p.id}
+          pending={p}
+          locale={locale}
+          onRemove={() =>
+            Alert.alert(
+              t('Uit je plannen halen?', 'Remove from your plans?'),
+              t(
+                'De aanmelding blijft staan, jij gaat er alleen niet meer heen.',
+                'The submission stays, you just stop going.',
+              ),
+              [
+                { text: t('Laat staan', 'Keep it'), style: 'cancel' },
+                {
+                  text: t('Weghalen', 'Remove'),
+                  style: 'destructive',
+                  onPress: () => toggle.mutate({ id: p.id, going: false }),
+                },
+              ],
+            )
+          }
+        />
+      ))}
+    </View>
+  );
+}
+
+function PendingRow({
+  pending,
+  locale,
+  onRemove,
+}: {
+  pending: PendingEvent;
+  locale: Locale;
+  onRemove: () => void;
+}) {
+  const roles = useRoles();
+  const t = useT();
+  // Een ticket kan al aan de aanmelding hangen: de ticketstore sleutelt op
+  // een string, en `sub-…` werkt daar net zo goed als een occurrence-id.
+  const ticket = useTicketFor(pending.id);
+
+  const when = pending.date ? new Date(`${pending.date}T12:00:00`) : null;
+  const meta = [
+    pending.venue,
+    when && !Number.isNaN(when.getTime())
+      ? `${dowMixed(when.getDay(), locale)} ${when.getDate()} ${monthShort(when.getMonth(), locale)}`
+      : null,
+    pending.time,
+  ]
+    .filter(Boolean)
+    .join(' · ');
+
+  return (
+    <Pressable
+      onLongPress={onRemove}
+      delayLongPress={350}
+      style={[styles.pendingRow, { borderColor: roles.bgChip }]}
+    >
+      <View style={{ flex: 1, gap: 3 }}>
+        <Text
+          numberOfLines={2}
+          style={[styles.pendingTitle, { color: roles.fg }]}
+        >
+          {pending.title ?? pending.artists[0] ?? t('Naamloos', 'Untitled')}
+        </Text>
+        {meta ? (
+          <Text style={[styles.pendingMeta, { color: roles.fgMuted }]}>
+            {meta}
+          </Text>
+        ) : null}
+      </View>
+      {ticket ? (
+        <Pressable
+          onPress={() => router.push(`/ticket/${pending.id}` as never)}
+          hitSlop={8}
+          style={[styles.pendingTicket, { backgroundColor: roles.accent }]}
+        >
+          <Ionicons name="ticket" size={13} color={roles.onAccent} />
+          <Text style={[styles.pendingTicketText, { color: roles.onAccent }]}>
+            {t('Ticket', 'Ticket')}
+          </Text>
+        </Pressable>
+      ) : null}
+    </Pressable>
   );
 }
 
@@ -322,6 +439,42 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   pastAnchor: { marginTop: 22 },
+  pendingWrap: { marginBottom: 10 },
+  pendingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginHorizontal: 22,
+    marginTop: 8,
+    padding: 14,
+    borderRadius: 14,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  pendingTitle: {
+    fontFamily: fontFamily.bold,
+    fontSize: 15,
+    letterSpacing: -0.22,
+    lineHeight: 19,
+  },
+  pendingMeta: {
+    fontFamily: fontFamily.medium,
+    fontSize: 12.5,
+    lineHeight: 17,
+  },
+  pendingTicket: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 9,
+    height: 24,
+    borderRadius: 999,
+  },
+  pendingTicketText: {
+    fontFamily: fontFamily.mono,
+    fontSize: 10,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+  },
   pastLabel: {
     fontFamily: fontFamily.mono,
     fontSize: 11,

@@ -7,8 +7,7 @@
  * andere envs zitten alleen in build-tooling.
  */
 
-const BASE_URL =
-  process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:8787';
+const BASE_URL = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:8787';
 
 export type ApiFriendBadge = {
   id: string;
@@ -266,7 +265,9 @@ class ApiError extends Error {
   }
 }
 
-export async function getEvents(filter: EventsFilter = {}): Promise<ApiEvent[]> {
+export async function getEvents(
+  filter: EventsFilter = {},
+): Promise<ApiEvent[]> {
   const params = new URLSearchParams();
   if (filter.featured) params.set('featured', 'true');
   if (filter.from) params.set('from', filter.from);
@@ -284,7 +285,7 @@ export async function getEvents(filter: EventsFilter = {}): Promise<ApiEvent[]> 
   // /events werkt voor uitgelogde users (zonder friendsSaved data) en
   // ingelogde users (mét friendsSaved).
   const { events } = await authedRequest<{ events: ApiEvent[] }>(
-    `/events${qs ? `?${qs}` : ''}`
+    `/events${qs ? `?${qs}` : ''}`,
   );
   return events;
 }
@@ -358,7 +359,7 @@ export type NewArrivals = {
 
 export async function getNewEventsSince(
   since: Date,
-  opts: { lanes?: Lane[]; limit?: number } = {}
+  opts: { lanes?: Lane[]; limit?: number } = {},
 ): Promise<NewArrivals> {
   const params = new URLSearchParams({ since: since.toISOString() });
   if (opts.lanes && opts.lanes.length > 0)
@@ -392,7 +393,7 @@ export type SearchResponse = {
  */
 export async function search(
   q: string,
-  eventsOffset = 0
+  eventsOffset = 0,
 ): Promise<SearchResponse> {
   const params = new URLSearchParams({ q });
   if (eventsOffset > 0) params.set('eventsOffset', String(eventsOffset));
@@ -465,7 +466,10 @@ export async function postZoek(req: ZoekRequest): Promise<ZoekResponse> {
   let lastErr: unknown;
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
-      return await authedRequest<ZoekResponse>('/zoek', { method: 'POST', body });
+      return await authedRequest<ZoekResponse>('/zoek', {
+        method: 'POST',
+        body,
+      });
     } catch (e) {
       lastErr = e;
       const status = e instanceof ApiError ? e.status : 0;
@@ -484,19 +488,21 @@ export async function postZoek(req: ZoekRequest): Promise<ZoekResponse> {
 export async function getRecentEvents(limit = 10): Promise<ApiEvent[]> {
   const params = new URLSearchParams({ limit: String(limit) });
   const { events } = await authedRequest<{ events: ApiEvent[] }>(
-    `/events/new?${params.toString()}`
+    `/events/new?${params.toString()}`,
   );
   return events;
 }
 
 export async function getEvent(id: string): Promise<ApiEventDetail> {
-  const { event } = await authedRequest<{ event: ApiEventDetail }>(`/events/${id}`);
+  const { event } = await authedRequest<{ event: ApiEventDetail }>(
+    `/events/${id}`,
+  );
   return event;
 }
 
 export async function getEventGenres(): Promise<ApiGenreBucket[]> {
   const { genres } = await authedRequest<{ genres: ApiGenreBucket[] }>(
-    '/events/genres'
+    '/events/genres',
   );
   return genres;
 }
@@ -543,7 +549,7 @@ export type ApiArtistDetail = {
 
 export async function getArtist(slug: string): Promise<ApiArtistDetail> {
   return await authedRequest<ApiArtistDetail>(
-    `/artists/${encodeURIComponent(slug)}`
+    `/artists/${encodeURIComponent(slug)}`,
   );
 }
 
@@ -621,7 +627,7 @@ export async function getAgendaDays(input: {
   params.set('from', input.from);
   params.set('to', input.to);
   const { days } = await authedRequest<{ days: AgendaDayCount[] }>(
-    `/events/agenda/days?${params.toString()}`
+    `/events/agenda/days?${params.toString()}`,
   );
   return days;
 }
@@ -641,12 +647,13 @@ export async function getAgendaDay(input: {
   if (input.toDate) params.set('to', input.toDate);
   if (input.from) params.set('from', input.from);
   const { rows } = await authedRequest<{ rows: AgendaRow[] }>(
-    `/events/agenda?${params.toString()}`
+    `/events/agenda?${params.toString()}`,
   );
   return rows;
 }
 
-export type VenueCategory = 'Muziek' | 'Theater' | 'Literatuur' | 'Film' | 'Kunst' | 'Lezing';
+export type VenueCategory =
+  'Muziek' | 'Theater' | 'Literatuur' | 'Film' | 'Kunst' | 'Lezing';
 
 export type VenueType =
   | 'galerie'
@@ -672,10 +679,7 @@ export type VenueWijk =
   | 'haarlem';
 
 export type VenueScene =
-  | 'mainstream'
-  | 'alternatief'
-  | 'underground'
-  | 'fringe';
+  'mainstream' | 'alternatief' | 'underground' | 'fringe';
 
 export type VenueCapacity = 'klein' | 'middel' | 'groot' | 'xl';
 
@@ -719,14 +723,16 @@ export type ApiVenueListItem = ApiVenue & {
   myFollowState: VenueFollowState;
 };
 
-export async function getVenues(input: {
-  q?: string;
-  category?: VenueCategory;
-  type?: VenueType;
-  dayNight?: VenueDayNight;
-  wijk?: VenueWijk;
-  scene?: VenueScene;
-} = {}): Promise<ApiVenueListItem[]> {
+export async function getVenues(
+  input: {
+    q?: string;
+    category?: VenueCategory;
+    type?: VenueType;
+    dayNight?: VenueDayNight;
+    wijk?: VenueWijk;
+    scene?: VenueScene;
+  } = {},
+): Promise<ApiVenueListItem[]> {
   const params = new URLSearchParams();
   if (input.q && input.q.trim().length > 0) params.set('q', input.q.trim());
   if (input.category) params.set('category', input.category);
@@ -736,7 +742,7 @@ export async function getVenues(input: {
   if (input.scene) params.set('scene', input.scene);
   const qs = params.toString();
   const { venues } = await authedRequest<{ venues: ApiVenueListItem[] }>(
-    `/venues${qs ? `?${qs}` : ''}`
+    `/venues${qs ? `?${qs}` : ''}`,
   );
   return venues;
 }
@@ -748,14 +754,14 @@ export type ApiVenueSubtypeBucket = {
 };
 
 export async function getVenueSubtypes(
-  types?: VenueType[]
+  types?: VenueType[],
 ): Promise<ApiVenueSubtypeBucket[]> {
   const params = new URLSearchParams();
   if (types) for (const t of types) params.append('type', t);
   const qs = params.toString();
-  const { subtypes } = await authedRequest<{ subtypes: ApiVenueSubtypeBucket[] }>(
-    `/venues/subtypes${qs ? `?${qs}` : ''}`
-  );
+  const { subtypes } = await authedRequest<{
+    subtypes: ApiVenueSubtypeBucket[];
+  }>(`/venues/subtypes${qs ? `?${qs}` : ''}`);
   return subtypes;
 }
 
@@ -781,16 +787,18 @@ export type ApiSeriesWithEvents = {
   events: ApiEvent[];
 };
 
-export async function getSeriesList(input: {
-  q?: string;
-  category?: VenueCategory;
-} = {}): Promise<ApiSeriesListItem[]> {
+export async function getSeriesList(
+  input: {
+    q?: string;
+    category?: VenueCategory;
+  } = {},
+): Promise<ApiSeriesListItem[]> {
   const params = new URLSearchParams();
   if (input.q && input.q.trim().length > 0) params.set('q', input.q.trim());
   if (input.category) params.set('category', input.category);
   const qs = params.toString();
   const { series } = await authedRequest<{ series: ApiSeriesListItem[] }>(
-    `/series${qs ? `?${qs}` : ''}`
+    `/series${qs ? `?${qs}` : ''}`,
   );
   return series;
 }
@@ -874,7 +882,7 @@ export async function registerPushToken(input: {
 }
 
 export async function unregisterPushToken(
-  token: string
+  token: string,
 ): Promise<{ ok: true }> {
   return await authedRequest<{ ok: true }>('/push/unregister', {
     method: 'POST',
@@ -952,7 +960,7 @@ async function getSessionBearer(): Promise<string | null> {
 
 async function authedRequest<T>(
   path: string,
-  init: RequestInit = {}
+  init: RequestInit = {},
 ): Promise<T> {
   const token = await getSessionBearer();
   const headers = new Headers(init.headers ?? {});
@@ -1006,12 +1014,20 @@ export async function createShareInvite(): Promise<{
  * Idempotent — meerdere claims door dezelfde user zijn veilig.
  */
 export async function claimShareInvite(token: string): Promise<{
-  inviter: { id: string; name: string | null; handle: string | null; avatarUrl: string | null };
+  inviter: {
+    id: string;
+    name: string | null;
+    handle: string | null;
+    avatarUrl: string | null;
+  };
   friendshipChange: 'created' | 'upgraded' | 'noop';
 }> {
-  return await authedRequest(`/share-invites/${encodeURIComponent(token)}/claim`, {
-    method: 'POST',
-  });
+  return await authedRequest(
+    `/share-invites/${encodeURIComponent(token)}/claim`,
+    {
+      method: 'POST',
+    },
+  );
 }
 
 export type Visibility = 'favorites' | 'friends' | 'private';
@@ -1041,9 +1057,7 @@ export type SavedApiEvent = ApiEvent & {
 };
 
 export async function getMySaves(): Promise<SavedApiEvent[]> {
-  const { events } = await authedRequest<{ events: SavedApiEvent[] }>(
-    '/saves'
-  );
+  const { events } = await authedRequest<{ events: SavedApiEvent[] }>('/saves');
   return events;
 }
 
@@ -1100,25 +1114,84 @@ export async function submitUnknownEvent(input: {
   time: string | null;
   city: string | null;
   source: 'share' | 'scan';
-}): Promise<{ id: string }> {
-  return await authedRequest<{ id: string }>('/submissions', {
+}): Promise<{ id: string; going: boolean }> {
+  return await authedRequest<{ id: string; going: boolean }>('/submissions', {
     method: 'POST',
     body: JSON.stringify(input),
   });
+}
+
+/**
+ * Een aangemeld event dat nog op een mens wacht.
+ *
+ * Staat nergens in de publieke app — niet in de agenda, niet in zoeken,
+ * niet in de gids. Alleen wie het aanmeldde (of wie hetzelfde affiche
+ * scande) ziet het, in z'n eigen plannen.
+ */
+export type PendingEvent = {
+  id: string;
+  title: string | null;
+  artists: string[];
+  venue: string | null;
+  city: string | null;
+  date: string | null;
+  time: string | null;
+  /** Waar geworden: er is een echt event van gemaakt. */
+  published: boolean;
+  eventId: string | null;
+  status: string;
+};
+
+/** Aanmeldingen waar ik heen ga. Leeg zonder account. */
+export async function myPendingEvents(): Promise<PendingEvent[]> {
+  const res = await authedRequest<{ submissions: PendingEvent[] }>(
+    '/submissions/mine',
+  );
+  return res.submissions;
+}
+
+/**
+ * Is dit al aangemeld door iemand anders? Dan hang je daaraan in plaats
+ * van een tweede aanmelding te maken.
+ */
+export async function matchPendingEvents(input: {
+  title: string | null;
+  venue: string | null;
+  date: string | null;
+}): Promise<PendingEvent[]> {
+  const q = new URLSearchParams();
+  if (input.title) q.set('title', input.title);
+  if (input.venue) q.set('venue', input.venue);
+  if (input.date) q.set('date', input.date);
+  if ([...q.keys()].length === 0) return [];
+  const res = await authedRequest<{ submissions: PendingEvent[] }>(
+    `/submissions/match?${q.toString()}`,
+  );
+  return res.submissions;
+}
+
+/** "Ik ga" op een aanmelding aan- of uitzetten. */
+export async function setPendingGoing(
+  id: string,
+  going: boolean,
+): Promise<{ going: boolean }> {
+  return await authedRequest<{ going: boolean }>(
+    `/submissions/${encodeURIComponent(id)}/going`,
+    { method: going ? 'POST' : 'DELETE' },
+  );
 }
 
 export type SaveSource = (typeof SAVE_SOURCES)[number];
 
 export function isSaveSource(raw: unknown): raw is SaveSource {
   return (
-    typeof raw === 'string' &&
-    (SAVE_SOURCES as readonly string[]).includes(raw)
+    typeof raw === 'string' && (SAVE_SOURCES as readonly string[]).includes(raw)
   );
 }
 
 export async function toggleSave(
   occurrenceId: string,
-  source?: SaveSource | null
+  source?: SaveSource | null,
 ): Promise<{ saved: boolean }> {
   return await authedRequest<{ saved: boolean }>('/saves', {
     method: 'POST',
@@ -1155,21 +1228,19 @@ export type MuseumVenue = {
 
 export async function getMusea(): Promise<MuseumVenue[]> {
   const { venues } = await authedRequest<{ venues: MuseumVenue[] }>(
-    '/venues/musea'
+    '/venues/musea',
   );
   return venues;
 }
 
 export async function getMyGoing(): Promise<SavedApiEvent[]> {
-  const { events } = await authedRequest<{ events: SavedApiEvent[] }>(
-    '/going'
-  );
+  const { events } = await authedRequest<{ events: SavedApiEvent[] }>('/going');
   return events;
 }
 
 export async function toggleGoing(
   occurrenceId: string,
-  source?: SaveSource | null
+  source?: SaveSource | null,
 ): Promise<{ going: boolean }> {
   return await authedRequest<{ going: boolean }>('/going', {
     method: 'POST',
@@ -1179,7 +1250,7 @@ export async function toggleGoing(
 
 export async function toggleDismiss(
   occurrenceId: string,
-  source?: SaveSource | null
+  source?: SaveSource | null,
 ): Promise<{ dismissed: boolean }> {
   return await authedRequest<{ dismissed: boolean }>('/dismisses', {
     method: 'POST',
@@ -1189,7 +1260,7 @@ export async function toggleDismiss(
 
 export async function getMyDismisses(): Promise<string[]> {
   const { occurrenceIds } = await authedRequest<{ occurrenceIds: string[] }>(
-    '/dismisses'
+    '/dismisses',
   );
   return occurrenceIds;
 }
@@ -1233,7 +1304,7 @@ export type PublicMirror = {
 
 export async function getMirrorByHandle(handle: string): Promise<PublicMirror> {
   return await authedRequest<PublicMirror>(
-    `/mirror/u/${encodeURIComponent(handle)}`
+    `/mirror/u/${encodeURIComponent(handle)}`,
   );
 }
 
@@ -1263,29 +1334,29 @@ export async function getFriends(): Promise<ApiFriend[]> {
 
 export async function getFriendRequests(): Promise<ApiFriendRequest[]> {
   const { requests } = await authedRequest<{ requests: ApiFriendRequest[] }>(
-    '/friends/requests'
+    '/friends/requests',
   );
   return requests;
 }
 
 export async function getOutgoingFriendRequests(): Promise<ApiFriendRequest[]> {
   const { outgoing } = await authedRequest<{ outgoing: ApiFriendRequest[] }>(
-    '/friends/outgoing'
+    '/friends/outgoing',
   );
   return outgoing;
 }
 
 export async function sendFriendRequest(
-  handle: string
+  handle: string,
 ): Promise<{ status: 'pending' | 'accepted' }> {
   return await authedRequest<{ status: 'pending' | 'accepted' }>(
     '/friends/request',
-    { method: 'POST', body: JSON.stringify({ handle }) }
+    { method: 'POST', body: JSON.stringify({ handle }) },
   );
 }
 
 export async function acceptFriendRequest(
-  fromUserId: string
+  fromUserId: string,
 ): Promise<{ status: 'accepted' }> {
   return await authedRequest<{ status: 'accepted' }>('/friends/accept', {
     method: 'POST',
@@ -1294,7 +1365,7 @@ export async function acceptFriendRequest(
 }
 
 export async function declineFriendRequest(
-  fromUserId: string
+  fromUserId: string,
 ): Promise<{ ok: true }> {
   return await authedRequest<{ ok: true }>('/friends/decline', {
     method: 'POST',
@@ -1310,7 +1381,7 @@ export async function removeFriend(userId: string): Promise<{ ok: true }> {
 
 export async function searchUsers(q: string): Promise<ApiSearchUser[]> {
   const { users } = await authedRequest<{ users: ApiSearchUser[] }>(
-    `/users/search?q=${encodeURIComponent(q)}`
+    `/users/search?q=${encodeURIComponent(q)}`,
   );
   return users;
 }
@@ -1333,15 +1404,12 @@ export async function getFriendDetail(id: string): Promise<ApiFriendDetail> {
 
 export async function setFriendFavorite(
   id: string,
-  favorite: boolean
+  favorite: boolean,
 ): Promise<{ favorite: boolean }> {
-  return await authedRequest<{ favorite: boolean }>(
-    `/friends/${id}/favorite`,
-    {
-      method: 'PUT',
-      body: JSON.stringify({ favorite }),
-    }
-  );
+  return await authedRequest<{ favorite: boolean }>(`/friends/${id}/favorite`, {
+    method: 'PUT',
+    body: JSON.stringify({ favorite }),
+  });
 }
 
 // ─── Invitations (3-status, groep-aware) ─────────────────────────────
@@ -1405,12 +1473,12 @@ export type ApiInvitation = {
  *  ze in slice B-cleanup expliciet hernoemd worden. */
 export type ApiInvite = ApiInvitation;
 
-export async function getInvitations(opts: { past?: boolean } = {}): Promise<
-  ApiInvitation[]
-> {
+export async function getInvitations(
+  opts: { past?: boolean } = {},
+): Promise<ApiInvitation[]> {
   const qs = opts.past ? '?past=1' : '';
   const { invitations } = await authedRequest<{ invitations: ApiInvitation[] }>(
-    `/invitations${qs}`
+    `/invitations${qs}`,
   );
   return invitations;
 }
@@ -1432,7 +1500,7 @@ export async function sendInvitations(input: {
     {
       method: 'POST',
       body: JSON.stringify(input),
-    }
+    },
   );
 }
 
@@ -1440,7 +1508,7 @@ export async function sendInvitations(input: {
  *  maakt de server automatisch een save aan (idempotent). */
 export async function respondInvitation(
   id: string,
-  body: { status: 'going' | 'maybe' | 'not_going'; replyMessage?: string }
+  body: { status: 'going' | 'maybe' | 'not_going'; replyMessage?: string },
 ): Promise<{ ok: true; status: 'going' | 'maybe' | 'not_going' }> {
   return await authedRequest<{
     ok: true;
@@ -1456,11 +1524,11 @@ export async function respondInvitation(
  *  weigert met 409 als al verzonden. */
 export async function remindInvitation(
   invitationId: string,
-  userId: string
+  userId: string,
 ): Promise<{ ok: true }> {
   return await authedRequest<{ ok: true }>(
     `/invitations/${invitationId}/remind/${userId}`,
-    { method: 'POST' }
+    { method: 'POST' },
   );
 }
 
@@ -1503,7 +1571,7 @@ export type ApiGroupDetail = {
 
 export async function getGroups(): Promise<ApiGroupSummary[]> {
   const { groups } = await authedRequest<{ groups: ApiGroupSummary[] }>(
-    '/groups'
+    '/groups',
   );
   return groups;
 }
@@ -1521,11 +1589,14 @@ export async function createGroup(input: {
     {
       method: 'POST',
       body: JSON.stringify(input),
-    }
+    },
   );
 }
 
-export async function renameGroup(id: string, name: string): Promise<{ ok: true }> {
+export async function renameGroup(
+  id: string,
+  name: string,
+): Promise<{ ok: true }> {
   return await authedRequest<{ ok: true }>(`/groups/${id}`, {
     method: 'PATCH',
     body: JSON.stringify({ name }),
@@ -1541,7 +1612,7 @@ export async function deleteGroup(id: string): Promise<{ ok: true }> {
 
 export async function addGroupMembers(
   id: string,
-  userIds: string[]
+  userIds: string[],
 ): Promise<{ added: number }> {
   return await authedRequest<{ added: number }>(`/groups/${id}/members`, {
     method: 'POST',
@@ -1552,25 +1623,29 @@ export async function addGroupMembers(
 
 export async function removeGroupMember(
   groupId: string,
-  userId: string
+  userId: string,
 ): Promise<{ ok: true }> {
   return await authedRequest<{ ok: true }>(
     `/groups/${groupId}/members/${userId}`,
-    { method: 'DELETE' }
+    { method: 'DELETE' },
   );
 }
 
-export async function muteGroup(id: string): Promise<{ ok: true; muted: boolean }> {
+export async function muteGroup(
+  id: string,
+): Promise<{ ok: true; muted: boolean }> {
   return await authedRequest<{ ok: true; muted: boolean }>(
     `/groups/${id}/mute`,
-    { method: 'POST' }
+    { method: 'POST' },
   );
 }
 
-export async function unmuteGroup(id: string): Promise<{ ok: true; muted: boolean }> {
+export async function unmuteGroup(
+  id: string,
+): Promise<{ ok: true; muted: boolean }> {
   return await authedRequest<{ ok: true; muted: boolean }>(
     `/groups/${id}/mute`,
-    { method: 'DELETE' }
+    { method: 'DELETE' },
   );
 }
 
@@ -1582,12 +1657,11 @@ export async function uploadAvatar(input: {
   if (!token) throw new ApiError('Niet ingelogd.', 401);
 
   const form = new FormData();
-  const ext =
-    input.mimeType?.includes('png')
-      ? 'png'
-      : input.mimeType?.includes('webp')
-        ? 'webp'
-        : 'jpg';
+  const ext = input.mimeType?.includes('png')
+    ? 'png'
+    : input.mimeType?.includes('webp')
+      ? 'webp'
+      : 'jpg';
   form.append('avatar', {
     uri: input.uri,
     name: `avatar.${ext}`,
@@ -1665,7 +1739,7 @@ export type ApiFeedEvent = {
 
 export async function getSocialFeed(): Promise<ApiFeedEvent[]> {
   const { events } = await authedRequest<{ events: ApiFeedEvent[] }>(
-    '/social/feed'
+    '/social/feed',
   );
   return events;
 }

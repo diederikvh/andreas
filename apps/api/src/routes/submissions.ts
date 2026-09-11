@@ -1,4 +1,4 @@
-import { and, eq, gte, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, isNull, sql } from 'drizzle-orm';
 import { Hono, type Context } from 'hono';
 
 import { auth } from '../auth.js';
@@ -13,6 +13,13 @@ import { db, schema } from '../db/index.js';
  * (direct een `events`-rij met `published = false`) zou betekenen dat elke
  * publieke query die filter moet kennen, en één vergeten filter is een
  * half event in de app.
+ *
+ * Maar wachten op die review mag geen prijs zijn voor wie de moeite nam.
+ * Daarom kan je aan een aanmelding "ik ga" hebben (`submission_going`):
+ * voor jezelf staat het meteen in je plannen, en wie daarna hetzelfde
+ * affiche scant komt via `GET /submissions/match` in dezelfde wachtkamer
+ * in plaats van een tweede aanmelding te maken. Publiek is het nergens:
+ * niet in `/events`, niet in `/search`, niet in de gids.
  *
  * De payload is precies wat de whitelist in de app doorlaat: titel,
  * artiesten, venue, datum, tijd, stad. Het gedeelde bestand, de OCR-tekst
@@ -141,5 +148,166 @@ submissionsRoute.post('/', async (c) => {
     source,
   });
 
-  return c.json({ id });
+  // Meteen in je eigen plannen. Dit is het hele punt: je hebt net zelf
+  // ingevuld waar je heen gaat, dan is "wacht op goedkeuring" het
+  // verkeerde antwoord. Alleen met account — zonder account is er geen
+  // agenda om het in te zetten.
+  if (userId) {
+    await db
+      .insert(schema.submissionGoing)
+      .values({ submissionId: id, userId })
+      .onConflictDoNothing();
+  }
+
+  return c.json({ id, going: Boolean(userId) });
+});
+
+/** Wat een aanmelding aan de app teruggeeft. Geen userId, geen bron. */
+function toCard(row: {
+  id: string;
+  title: string | null;
+  artists: string[];
+  venueName: string | null;
+  city: string | null;
+  date: string | null;
+  time: string | null;
+  status: string;
+  eventId: string | null;
+}) {
+  return {
+    id: row.id,
+    title: row.title,
+    artists: row.artists,
+    venue: row.venueName,
+    city: row.city,
+    date: row.date,
+    time: row.time,
+    /** `true` zodra een mens er een echt event van heeft gemaakt; dan
+        staat het ook gewoon in je plannen en mag deze kaart weg. */
+    published: Boolean(row.eventId),
+    eventId: row.eventId,
+    status: row.status,
+  };
+}
+
+/**
+ * GET /submissions/mine — aanmeldingen waar ik heen ga.
+ *
+ * Voedt het groepje "wacht op Andreas" in de plannenlijst. Afgewezen
+ * aanmeldingen vallen eruit: die gaan nooit meer een event worden en in je
+ * agenda laten staan is liegen.
+ */
+submissionsRoute.get('/mine', async (c) => {
+  const userId = await optionalUserId(c);
+  if (!userId) return c.json({ submissions: [] });
+
+  const rows = await db
+    .select({
+      id: schema.eventSubmissions.id,
+      title: schema.eventSubmissions.title,
+      artists: schema.eventSubmissions.artists,
+      venueName: schema.eventSubmissions.venueName,
+      city: schema.eventSubmissions.city,
+      date: schema.eventSubmissions.date,
+      time: schema.eventSubmissions.time,
+      status: schema.eventSubmissions.status,
+      eventId: schema.eventSubmissions.eventId,
+    })
+    .from(schema.submissionGoing)
+    .innerJoin(
+      schema.eventSubmissions,
+      eq(schema.submissionGoing.submissionId, schema.eventSubmissions.id)
+    )
+    .where(
+      and(
+        eq(schema.submissionGoing.userId, userId),
+        sql`${schema.eventSubmissions.status} <> 'rejected'`
+      )
+    )
+    .orderBy(desc(schema.submissionGoing.createdAt));
+
+  return c.json({ submissions: rows.map(toCard) });
+});
+
+/**
+ * GET /submissions/match?title=&venue=&date= — is dit al aangemeld?
+ *
+ * Voor de importflow: scant iemand hetzelfde affiche, dan moet hij de
+ * bestaande aanmelding vinden en daaraan kunnen hangen. Exact op
+ * genormaliseerde titel plus, als we die hebben, dezelfde datum — fuzzy
+ * matchen doet de app zelf op de echte events, en hier de mist ingaan
+ * betekent dat je aan iemand anders z'n avond hangt.
+ */
+submissionsRoute.get('/match', async (c) => {
+  const title = clean(c.req.query('title'), MAX.title);
+  const venue = clean(c.req.query('venue'), MAX.venue);
+  const date = cleanDate(c.req.query('date'));
+  if (!title && !venue) return c.json({ submissions: [] });
+
+  const rows = await db
+    .select({
+      id: schema.eventSubmissions.id,
+      title: schema.eventSubmissions.title,
+      artists: schema.eventSubmissions.artists,
+      venueName: schema.eventSubmissions.venueName,
+      city: schema.eventSubmissions.city,
+      date: schema.eventSubmissions.date,
+      time: schema.eventSubmissions.time,
+      status: schema.eventSubmissions.status,
+      eventId: schema.eventSubmissions.eventId,
+    })
+    .from(schema.eventSubmissions)
+    .where(
+      and(
+        sql`${schema.eventSubmissions.status} <> 'rejected'`,
+        isNull(schema.eventSubmissions.eventId),
+        title
+          ? sql`lower(${schema.eventSubmissions.title}) = lower(${title})`
+          : sql`lower(${schema.eventSubmissions.venueName}) = lower(${venue})`,
+        date ? eq(schema.eventSubmissions.date, date) : sql`true`
+      )
+    )
+    .orderBy(desc(schema.eventSubmissions.createdAt))
+    .limit(5);
+
+  return c.json({ submissions: rows.map(toCard) });
+});
+
+/**
+ * POST /submissions/:id/going — ga ook naar deze aanmelding.
+ * DELETE hetzelfde pad haalt je er weer af.
+ */
+submissionsRoute.post('/:id/going', async (c) => {
+  const userId = await optionalUserId(c);
+  if (!userId) return c.json({ error: 'unauthorized' }, 401);
+  const id = c.req.param('id');
+
+  const [sub] = await db
+    .select({ id: schema.eventSubmissions.id, status: schema.eventSubmissions.status })
+    .from(schema.eventSubmissions)
+    .where(eq(schema.eventSubmissions.id, id))
+    .limit(1);
+  if (!sub || sub.status === 'rejected') {
+    return c.json({ error: 'not_found' }, 404);
+  }
+
+  await db
+    .insert(schema.submissionGoing)
+    .values({ submissionId: id, userId })
+    .onConflictDoNothing();
+  return c.json({ going: true });
+});
+
+submissionsRoute.delete('/:id/going', async (c) => {
+  const userId = await optionalUserId(c);
+  if (!userId) return c.json({ error: 'unauthorized' }, 401);
+  await db
+    .delete(schema.submissionGoing)
+    .where(
+      and(
+        eq(schema.submissionGoing.submissionId, c.req.param('id')),
+        eq(schema.submissionGoing.userId, userId)
+      )
+    );
+  return c.json({ going: false });
 });
