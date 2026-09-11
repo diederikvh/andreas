@@ -284,13 +284,13 @@ export default function EventDetail() {
             </Pressable>
           )}
 
-          {((event.genres && event.genres.length > 0) ||
-            (event.series && event.series.length > 0)) && (
+          {event.series && event.series.length > 0 && (
             <>
+              {/* Alleen series. Genre-pills stonden hier ook, maar tegen de
+                  tijd dat je op deze pagina staat weet je al wat voor avond
+                  het is — dan is "techno" ruis. Het veld blijft bestaan:
+                  zoeken kijkt er nog in (zie CLAUDE.md). */}
               <View style={styles.genreRow}>
-                {/* Series-pills eerst — context ("dit hoort bij ADE")
-                    weegt zwaarder dan genre. Border ipv solid bg om
-                    duidelijk te maken dat ze klikbaar zijn. */}
                 {event.series?.map((s) => (
                   <Pressable
                     key={s.id}
@@ -309,16 +309,6 @@ export default function EventDetail() {
                       {s.name}
                     </Text>
                   </Pressable>
-                ))}
-                {event.genres?.map((g) => (
-                  <View
-                    key={g}
-                    style={[styles.genrePill, { backgroundColor: roles.bgTag }]}
-                  >
-                    <Text style={[styles.genrePillText, { color: roles.fg }]}>
-                      {g}
-                    </Text>
-                  </View>
                 ))}
               </View>
               <View
@@ -2044,13 +2034,6 @@ const styles = StyleSheet.create({
   divider: {
     height: StyleSheet.hairlineWidth,
     marginBottom: 18,
-  },
-  genrePill: {
-    height: 26,
-    paddingHorizontal: 11,
-    borderRadius: 999,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   // Series-pill in de label-strip bovenaan — border ipv solid bg om
   // visueel te tonen dat 'ie tapbaar is (genre-pills zijn dat niet).
