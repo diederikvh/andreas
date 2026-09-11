@@ -1,0 +1,38 @@
+diff --git a/android/build.gradle b/android/build.gradle
+index 37d07c9910cd329324c9f2209f94876c3b380352..95a0b432001ae95bfbbd896c44ebea7b24cab767 100644
+--- a/android/build.gradle
++++ b/android/build.gradle
+@@ -44,7 +44,11 @@ def supportsNamespace() {
+ 
+ android {
+   if (supportsNamespace()) {
+-    namespace "com.pdfthumbnail"
++    // De package hieronder klopte niet met waar de Kotlin daadwerkelijk in
++    // zit (org.songsterq.pdfthumbnail). Autolinking leest de namespace en
++    // genereerde daardoor `import com.pdfthumbnail.PdfThumbnailPackage`,
++    // wat niet bestaat — de Android-build brak erop.
++    namespace "org.songsterq.pdfthumbnail"
+ 
+     sourceSets {
+       main {
+diff --git a/android/src/main/java/org/songsterq/pdfthumbnail/PdfThumbnailModule.kt b/android/src/main/java/org/songsterq/pdfthumbnail/PdfThumbnailModule.kt
+index 921b5782b68b06d750795b5f86d63e4ec4bc62e6..c5d65b1521fef5ca28559ce37c581a7362ea1d92 100644
+--- a/android/src/main/java/org/songsterq/pdfthumbnail/PdfThumbnailModule.kt
++++ b/android/src/main/java/org/songsterq/pdfthumbnail/PdfThumbnailModule.kt
+@@ -98,7 +98,15 @@ class PdfThumbnailModule(reactContext: ReactApplicationContext) :
+     currentPage.close()
+ 
+     // Some bitmaps have transparent background which results in a black thumbnail. Add a white background.
+-    val bitmapWhiteBG = Bitmap.createBitmap(bitmap.width, bitmap.height, bitmap.config)
++    // `bitmap.config` is nullable sinds de nieuwere Android-SDK's; zonder
++    // fallback compileert dit niet meer (Kotlin: Bitmap.Config? vs
++    // Bitmap.Config). ARGB_8888 is wat er een paar regels hierboven ook
++    // wordt aangemaakt, dus dat is de juiste terugval.
++    val bitmapWhiteBG = Bitmap.createBitmap(
++      bitmap.width,
++      bitmap.height,
++      bitmap.config ?: Bitmap.Config.ARGB_8888
++    )
+     val canvas = Canvas(bitmapWhiteBG)
+     canvas.drawBitmap(bitmap, 0f, 0f, null)
+     bitmap.recycle()

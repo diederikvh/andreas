@@ -1,0 +1,45 @@
+diff --git a/android/src/main/java/expo/modules/shareintent/ExpoShareIntentModule.kt b/android/src/main/java/expo/modules/shareintent/ExpoShareIntentModule.kt
+index 0153c89c7e2ce4fa20351bc2d5e7b1c6cd341dbe..03fbe66dc8f422703fc7dd08e6866cc9c4e5fde1 100644
+--- a/android/src/main/java/expo/modules/shareintent/ExpoShareIntentModule.kt
++++ b/android/src/main/java/expo/modules/shareintent/ExpoShareIntentModule.kt
+@@ -66,13 +66,25 @@ class ExpoShareIntentModule : Module() {
+                     "filePath" to instance?.getAbsolutePath(uri),
+                 )
+             }
+-            val queryResult: Cursor = resolver.query(uri, null, null, null, null)!!
+-            queryResult.moveToFirst()
+-            val fileName = queryResult.getString(queryResult.getColumnIndex(OpenableColumns.DISPLAY_NAME))
+-            val fileSize = queryResult.getString(queryResult.getColumnIndex(OpenableColumns.SIZE))
+-            queryResult.close()
++            // Een provider mag een lege cursor teruggeven (MediaStore doet
++            // dat als de rij niet zichtbaar is voor deze app) of null. Dat
++            // is geen reden om de hele app te laten crashen op een gedeeld
++            // bestand: zonder naam en grootte kan de share prima door.
++            var fileName: String? = null
++            var fileSize: String? = null
++            val queryResult: Cursor? = resolver.query(uri, null, null, null, null)
++            if (queryResult != null) {
++                if (queryResult.moveToFirst()) {
++                    fileName = queryResult.getString(queryResult.getColumnIndex(OpenableColumns.DISPLAY_NAME))
++                    fileSize = queryResult.getString(queryResult.getColumnIndex(OpenableColumns.SIZE))
++                }
++                queryResult.close()
++            }
++            if (fileName == null) {
++                fileName = uri.lastPathSegment
++            }
+ 
+-            val mimeType = resolver.getType(uri)!!
++            val mimeType = resolver.getType(uri) ?: "application/octet-stream"
+ 
+             var mediaWidth: String? = null;
+             var mediaHeight: String? = null;
+@@ -142,7 +154,7 @@ class ExpoShareIntentModule : Module() {
+                 if (intent.action == Intent.ACTION_SEND) {
+                     val uri = intent.parcelable<Uri>(Intent.EXTRA_STREAM);
+                     if (uri != null) {
+-                        notifyShareIntent(mapOf( "files" to arrayOf(getFileInfo(uri), "type" to "file")))
++                        notifyShareIntent(mapOf( "files" to arrayOf(getFileInfo(uri)), "type" to "file"))
+                     } else {
+                         notifyError("empty uri for file sharing: " + intent.action)
+                     }

@@ -2,6 +2,10 @@
   "extends": "expo/tsconfig.base",
   "compilerOptions": {
     "strict": true,
+    // Zodat `node --test lib/*.test.ts` relatieve imports met .ts
+    // aankan (Node's eigen TS-runner eist de extensie). Metro raakt
+    // testbestanden niet aan.
+    "allowImportingTsExtensions": true,
     "paths": {
       "@/*": [
         "./*"

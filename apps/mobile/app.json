@@ -118,6 +118,23 @@
           "color": "#caff00"
         }
       ],
+      [
+        "expo-share-intent",
+        {
+          "iosActivationRules": {
+            "NSExtensionActivationSupportsWebURLWithMaxCount": 1,
+            "NSExtensionActivationSupportsWebPageWithMaxCount": 1,
+            "NSExtensionActivationSupportsImageWithMaxCount": 1,
+            "NSExtensionActivationSupportsFileWithMaxCount": 1,
+            "NSExtensionActivationSupportsText": true
+          },
+          "androidIntentFilters": [
+            "text/*",
+            "image/*",
+            "application/pdf"
+          ]
+        }
+      ],
       "expo-localization",
       "@maplibre/maplibre-react-native",
       [
@@ -127,7 +144,16 @@
           "project": "andreas_amsterdam",
           "organization": "pluvo-bv"
         }
-      ]
+      ],
+      [
+        "expo-build-properties",
+        {
+          "ios": {
+            "deploymentTarget": "15.5"
+          }
+        }
+      ],
+      "@react-native-community/datetimepicker"
     ],
     "experiments": {
       "typedRoutes": true,
