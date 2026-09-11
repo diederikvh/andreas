@@ -228,6 +228,28 @@ export default function ImportScreen() {
           </Pressable>
         </View>
       </KeyboardAvoidingView>
+
+      {/* Greepje bovenaan. Zelf getekend: UIKit tekent er alleen één bij
+          een formSheet, en dat is deze route niet — een formSheet heeft
+          een scherm nodig om over te staan en bij een share vanaf een
+          koude start is dat er niet, dan blijft het sheet leeg. Slepen
+          werkt hier wel: deze View vangt geen touches, dus de sleep gaat
+          naar de scroll eronder en die geeft 'm door aan het sheet. */}
+      {Platform.OS === 'ios' ? (
+        <View
+          pointerEvents="none"
+          style={[
+            styles.grabber,
+            {
+              backgroundColor: overHero
+                ? 'rgba(255,255,255,0.6)'
+                : isNacht
+                  ? 'rgba(242,242,239,0.32)'
+                  : 'rgba(26,26,26,0.2)',
+            },
+          ]}
+        />
+      ) : null}
     </View>
   );
 }
@@ -1616,6 +1638,14 @@ function formatSize(bytes: number | null | undefined): string | null {
 const styles = StyleSheet.create({
   root: { flex: 1 },
   fill: { flex: 1 },
+  grabber: {
+    position: 'absolute',
+    top: 8,
+    alignSelf: 'center',
+    width: 36,
+    height: 5,
+    borderRadius: 999,
+  },
   body: { paddingHorizontal: 22, paddingTop: 8, gap: 12 },
   card: { padding: 14, borderRadius: 12, gap: 6 },
   field: { gap: 6 },

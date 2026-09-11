@@ -22,7 +22,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import * as Updates from 'expo-updates';
 import { useEffect, useState } from 'react';
-import { AppState, Platform } from 'react-native';
+import { AppState } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
@@ -66,6 +66,16 @@ Sentry.init({
 });
 
 SplashScreen.preventAutoHideAsync();
+
+/**
+ * Waar de stack begint als de app via een link of een share wordt
+ * geopend. Zonder dit is het gedeelde scherm het énige scherm: een sheet
+ * heeft dan niets om over te staan en presenteert zich als volle pagina,
+ * zonder greepje en zonder ronde hoeken. Met de tabs eronder komt
+ * `/import` netjes als drawer over de app, en gaat Sluiten terug naar
+ * Vandaag in plaats van naar niets.
+ */
+export const unstable_settings = { anchor: '(tabs)' };
 
 function RootLayout() {
   const [fontsLoaded, fontError] = useFonts({
@@ -140,15 +150,7 @@ function RootLayout() {
                     <Stack.Screen
                       name="import"
                       options={{
-                        // formSheet en niet modal: alleen een formSheet
-                        // krijgt van UIKit het greepje bovenaan, en dat
-                        // greepje sleept ook echt (een zelfgetekend
-                        // balkje is een plaatje). Android houdt de
-                        // gewone modal — daar is formSheet een
-                        // bottom-sheet en dat is een ander scherm.
-                        presentation:
-                          Platform.OS === 'ios' ? 'formSheet' : 'modal',
-                        sheetGrabberVisible: true,
+                        presentation: 'modal',
                       }}
                     />
                   </Stack>
