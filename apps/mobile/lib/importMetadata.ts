@@ -282,9 +282,59 @@ function parseSupport(lines: Line[]): string[] {
       .split(/[,&+/]|\s+en\s+|\s+and\s+/i)
       .map((s) => s.trim())
       .filter((s) => s.length >= 2)
+      // "met 40% korting" matcht dezelfde vorm als "met Library Card",
+      // maar een kortingsregel is geen support-act.
+      .filter((s) => !/\d\s*%|korting|discount|gratis|free\b/i.test(s))
       .slice(0, 4);
   }
   return [];
+}
+
+/**
+ * De adresregel van een ticket: `De Roma - Turnhoutsebaan 286 - 2140
+ * Borgerhout`, of `Paradiso, Weteringschans 6-8, 1017 SG Amsterdam`.
+ *
+ * Waarom dit bestaat: `findVenue` kent alleen de venues die Andreas al in
+ * z'n database heeft, en dat zijn Amsterdamse. Een kaartje voor De Roma in
+ * Borgerhout leverde dus geen venue én geen stad op, terwijl het er
+ * letterlijk stond. Deze regel is specifiek genoeg om veilig te zijn: hij
+ * eist een straat mét huisnummer én een postcode, en pakt alleen de
+ * segmenten eromheen.
+ */
+function findLocationLine(
+  lines: Line[]
+): { venue: string | null; city: string | null; index: number } | null {
+  // NL: 1017 SG · BE: 2140 · DE: 10178
+  const POSTCODE = /\b(\d{4}\s?[A-Z]{2}|\d{4,5})\b/;
+  const STREET = /\b[a-z]{3,}\s+\d+([-–]\d+)?\b/i;
+
+  for (let i = 0; i < lines.length; i++) {
+    const text = lines[i].text;
+    // "zaterdag 03 april 2027 - 20u00" ziet er als adres uit: "april 2027"
+    // is straat-plus-nummer en 2027 is een geldige postcode. Datumregels
+    // gaan er dus eerst uit.
+    if (isMostlyDate(text)) continue;
+    const parts = text
+      .split(/\s+[-–]\s+|,/)
+      .map((p) => p.trim())
+      .filter((p) => p.length > 0);
+    if (parts.length < 2) continue;
+    if (!STREET.test(text)) continue;
+
+    const postPart = parts.find((p) => POSTCODE.test(p));
+    if (!postPart) continue;
+
+    // Stad = wat er na de postcode staat. "2140 Borgerhout" → Borgerhout.
+    const city =
+      postPart.replace(POSTCODE, '').trim().replace(/^[,\s]+/, '') || null;
+    // Venue = het eerste segment zonder cijfers. Staat er geen naam voor
+    // het adres, dan laten we 'm leeg in plaats van de straat te pakken.
+    const first = parts[0];
+    const venue = /\d/.test(first) ? null : first;
+    if (!venue && !city) continue;
+    return { venue, city, index: i };
+  }
+  return null;
 }
 
 /**
@@ -295,16 +345,31 @@ function parseSupport(lines: Line[]): string[] {
  * gerenderde PDF — valt hij terug op leesorde, want dan staat de titel
  * vrijwel altijd boven de venue en de datum.
  */
-function findTitle(lines: Line[], used: Set<number>): string | null {
-  const candidates = lines.filter(
-    (l, index) =>
-      !used.has(index) &&
-      !LABELS.test(l.text) &&
-      !TICKET_DATA.test(l.text) &&
-      // Een regel die alleen een datum of tijd is, is geen titel.
-      !/^[\s\d:.\-/u]+$/i.test(l.text) &&
-      !isMostlyDate(l.text)
-  );
+function findTitle(
+  lines: Line[],
+  used: Set<number>,
+  /** Op een ticket: de index van de datumregel. Dan zoeken we omhoog
+      vanaf daar in plaats van naar de grootste regel te kijken — het
+      grootste element op een kaartje is het logo van de zaal, en dat
+      OCR't ook nog eens slecht ("De Roma" werd "Bma"). De naam van wat je
+      gaat zien staat vlak boven de datum. */
+  aboveIndex?: number
+): string | null {
+  const ok = (l: Line, index: number) =>
+    !used.has(index) &&
+    !LABELS.test(l.text) &&
+    !TICKET_DATA.test(l.text) &&
+    // Een regel die alleen een datum of tijd is, is geen titel.
+    !/^[\s\d:.\-/u]+$/i.test(l.text) &&
+    !isMostlyDate(l.text);
+
+  if (aboveIndex !== undefined) {
+    for (let i = aboveIndex - 1; i >= 0; i--) {
+      if (ok(lines[i], i)) return lines[i].text;
+    }
+  }
+
+  const candidates = lines.filter((l, index) => ok(l, index));
   if (candidates.length === 0) return null;
 
   // Grootte mag alleen beslissen als de hoogste regel er écht uitspringt.
@@ -332,7 +397,15 @@ function isMostlyDate(text: string): boolean {
 
 export function extractEventDraft(
   ocr: OcrResult,
-  opts: { venueNames?: string[]; today?: Date; city?: string } = {}
+  opts: {
+    venueNames?: string[];
+    today?: Date;
+    city?: string;
+    /** Komt uit `detectTicket`. Een kaartje is een formulier en geen
+        affiche: daar is het grootste element het logo van de zaal, niet
+        de naam van wat je gaat zien. */
+    isTicket?: boolean;
+  } = {}
 ): EventDraft {
   const lines = toLines(ocr);
   if (lines.length === 0) return EMPTY_DRAFT;
@@ -342,7 +415,10 @@ export function extractEventDraft(
   const venueNames = opts.venueNames ?? [];
 
   const venueHit = findVenue(lines, venueNames);
-  const venue = venueHit?.name ?? null;
+  // De adresregel lezen we altijd: ook als we de venue kennen staat de
+  // stad daar zwart-op-wit, en dat is beter dan onze aanname Amsterdam.
+  const location = findLocationLine(lines);
+  const venue = venueHit?.name ?? location?.venue ?? null;
   const date = parseDate(fullText, today);
   const time = parseTime(fullText);
   const support = parseSupport(lines);
@@ -372,12 +448,29 @@ export function extractEventDraft(
     }
   });
 
-  const title = findTitle(lines, used);
+  if (location) used.add(location.index);
+
+  // Op een ticket zoeken we de titel bóven de datum. Daarvoor moeten we
+  // weten welke regel de datum is.
+  const dateLineIndex =
+    opts.isTicket && date
+      ? lines.findIndex((l) => isMostlyDate(l.text) && /\d/.test(l.text))
+      : -1;
+  const title = findTitle(
+    lines,
+    used,
+    dateLineIndex > 0 ? dateLineIndex : undefined
+  );
 
   // Stad: alleen als ze het zelf zeggen, of als de venue uit onze
   // Amsterdamse lijst kwam — dan is het geen gok maar een gevolg.
   const cityInText = /\bamsterdam\b/i.test(fullText) ? 'Amsterdam' : null;
-  const city = cityInText ?? (venue ? (opts.city ?? 'Amsterdam') : null);
+  // Staat de stad op het kaartje, dan telt die — ook boven onze eigen
+  // aanname. Een ticket voor Borgerhout is geen Amsterdams event.
+  const city =
+    location?.city ??
+    cityInText ??
+    (venueHit ? (opts.city ?? 'Amsterdam') : null);
 
   return {
     title,

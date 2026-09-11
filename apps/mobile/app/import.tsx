@@ -11,7 +11,7 @@ import {
 import { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
-  KeyboardAvoidingView,
+  Keyboard,
   Modal,
   Platform,
   Pressable,
@@ -139,22 +139,35 @@ export default function ImportScreen() {
   // Op stap 2 met een gekozen event is de foto de kop: geen bovenmarge.
   const overHero = step === 'act' && !selfAdd;
 
+  // Typen in het formulier: de dock gaat weg zolang het keyboard er is.
+  //
+  // Hier zat eerst een KeyboardAvoidingView. Die tilde de dock netjes op,
+  // maar dáárdoor overlapte het keyboard de scrollview niet meer — en dan
+  // doet `automaticallyAdjustKeyboardInsets` niets, dus scrolde het veld
+  // waarin je typt niet in beeld. Precies de valkuil die in CLAUDE.md
+  // staat. Zonder die wrapper doet iOS het scrollen zelf; en een knop
+  // "Terug" naast een open keyboard hoeft niet — het keyboard heeft z'n
+  // eigen Klaar.
+  const [keyboardUp, setKeyboardUp] = useState(false);
+  useEffect(() => {
+    const show = Keyboard.addListener('keyboardWillShow', () =>
+      setKeyboardUp(true),
+    );
+    const hide = Keyboard.addListener('keyboardWillHide', () =>
+      setKeyboardUp(false),
+    );
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, []);
+
   return (
     <View
       onLayout={onRootLayout}
       style={[styles.root, { backgroundColor: roles.bg }]}
     >
-      {/* Alles onder de kop schuift mee omhoog als het keyboard komt —
-          bij "zelf toevoegen" typ je in het onderste veld en anders
-          staat dat achter het keyboard, samen met de knop eronder. Kan
-          hier met een gewone KAV omdat de dock een flex-sibling is en
-          geen absolute child (dáár werkt 'ie niet, zie CLAUDE.md). De
-          buitenste View blijft ongemeten zo hoog als het scherm, zodat
-          de sheet-detectie hierboven niet meegaat schuiven. */}
-      <KeyboardAvoidingView
-        style={styles.fill}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
+      <View style={styles.fill}>
         <ScrollView
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
@@ -205,43 +218,45 @@ export default function ImportScreen() {
           )}
         </ScrollView>
 
-        <View
-          style={[
-            styles.dock,
-            {
-              // Op Android is de systeembalk een rij echte knoppen; dan
-              // wil je ruimte tússen onze knop en die van het toestel,
-              // niet alleen de inset. Op iOS is het een streepje en zit
-              // die lucht al in de inset.
-              paddingBottom:
-                Platform.OS === 'android'
-                  ? insets.bottom + 14
-                  : Math.max(insets.bottom, 12),
-              backgroundColor: roles.bg,
-              borderTopColor: roles.bgChip,
-            },
-          ]}
-        >
-          {/* Eén knop, twee betekenissen: halverwege stap 2 brengt hij je
+        {keyboardUp ? null : (
+          <View
+            style={[
+              styles.dock,
+              {
+                // Op Android is de systeembalk een rij echte knoppen; dan
+                // wil je ruimte tússen onze knop en die van het toestel,
+                // niet alleen de inset. Op iOS is het een streepje en zit
+                // die lucht al in de inset.
+                paddingBottom:
+                  Platform.OS === 'android'
+                    ? insets.bottom + 14
+                    : Math.max(insets.bottom, 12),
+                backgroundColor: roles.bg,
+                borderTopColor: roles.bgChip,
+              },
+            ]}
+          >
+            {/* Eén knop, twee betekenissen: halverwege stap 2 brengt hij je
             terug naar de keuze, en op stap 1 sluit hij het scherm. Zo hoef
             je niet naar de linkerbovenhoek voor iets wat je met je duim
             doet. Ben je klaar, dan is er niets om naar terug te gaan — een
             save draai je hier niet ongedaan — dus dan sluit hij weer. */}
-          <Pressable
-            onPress={step === 'act' && !acted ? backToStep1 : onClose}
-            style={[
-              styles.close,
-              { backgroundColor: isNacht ? palette.noir2 : palette.paper2 },
-            ]}
-          >
-            <Text style={[styles.closeText, { color: roles.fg }]}>
-              {step === 'act' && !acted
-                ? t('Terug', 'Back')
-                : t('Sluiten', 'Close')}
-            </Text>
-          </Pressable>
-        </View>
-      </KeyboardAvoidingView>
+            <Pressable
+              onPress={step === 'act' && !acted ? backToStep1 : onClose}
+              style={[
+                styles.close,
+                { backgroundColor: isNacht ? palette.noir2 : palette.paper2 },
+              ]}
+            >
+              <Text style={[styles.closeText, { color: roles.fg }]}>
+                {step === 'act' && !acted
+                  ? t('Terug', 'Back')
+                  : t('Sluiten', 'Close')}
+              </Text>
+            </Pressable>
+          </View>
+        )}
+      </View>
 
       {/* Greepje bovenaan. Zelf getekend: UIKit tekent er alleen één bij
           een formSheet, en dat is deze route niet — een formSheet heeft
@@ -422,6 +437,18 @@ function SharePreview({
   const { data: venues } = useVenues({});
   const venueNames = useMemo(() => (venues ?? []).map((v) => v.name), [venues]);
 
+  // Ticket of poster? Bepaalt welke intentie we voorstellen. Bij een link
+  // of losse tekst is er geen OCR, dan is de gedeelde tekst de input.
+  const verdict: TicketVerdict = useMemo(
+    () =>
+      detectTicket({
+        text: scan.ocr.fullText || share.text || share.title || '',
+        barcodeTypes: scan.barcodeTypes,
+        kind: share.kind,
+      }),
+    [scan.ocr.fullText, scan.barcodeTypes, share.kind, share.text, share.title],
+  );
+
   const [draft, setDraft] = useState<EventDraft | null>(null);
   const [edited, setEdited] = useState(false);
 
@@ -433,8 +460,16 @@ function SharePreview({
   useEffect(() => {
     if (edited) return;
     if (scan.status !== 'done' || scan.ocr.blocks.length === 0) return;
-    setDraft(extractEventDraft(scan.ocr, { venueNames }));
-  }, [scan, venueNames, edited]);
+    // `isTicket` verandert hoe de titel gekozen wordt: op een kaartje is
+    // het grootste element het logo van de zaal, niet de naam van wat je
+    // gaat zien.
+    setDraft(
+      extractEventDraft(scan.ocr, {
+        venueNames,
+        isTicket: verdict.isTicket,
+      }),
+    );
+  }, [scan, venueNames, edited, verdict.isTicket]);
 
   const updateDraft = (patch: Partial<EventDraft>) => {
     setEdited(true);
@@ -472,18 +507,6 @@ function SharePreview({
     staleTime: 60_000,
     placeholderData: keepPreviousData,
   });
-
-  // Ticket of poster? Bepaalt welke intentie we voorstellen. Bij een link
-  // of losse tekst is er geen OCR, dan is de gedeelde tekst de input.
-  const verdict: TicketVerdict = useMemo(
-    () =>
-      detectTicket({
-        text: scan.ocr.fullText || share.text || share.title || '',
-        barcodeTypes: scan.barcodeTypes,
-        kind: share.kind,
-      }),
-    [scan.ocr.fullText, scan.barcodeTypes, share.kind, share.text, share.title],
-  );
 
   const [chosenIntent, setChosenIntent] = useState<Intent | null>(null);
 

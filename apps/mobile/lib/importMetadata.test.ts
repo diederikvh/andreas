@@ -169,3 +169,51 @@ test('het concept komt heel door de privacy-whitelist heen', () => {
     assert.equal(serialized.includes(leak), false, `${leak} lekt`);
   }
 });
+
+/* ── Een echt ticket van buiten Amsterdam ──────────────────────────────
+ *
+ * De Roma, Borgerhout (12 sep 2026). Twee dingen gingen hier mis:
+ *
+ *  1. Het grootste element op het kaartje is het logo van de zaal, en dat
+ *     OCR'de tot "Bma". De "grootste regel wint"-regel koos dat als titel,
+ *     terwijl de artiest in normale letters vlak boven de datum staat.
+ *  2. De venue en de stad stonden in de adresregel, maar `findVenue` kent
+ *     alleen de venues die Andreas al heeft — allemaal Amsterdams. Dus
+ *     bleven venue en stad leeg terwijl ze er letterlijk stonden.
+ */
+test('ticket: het zaal-logo is niet de titel, de adresregel geeft stad', () => {
+  const draft = extractEventDraft(
+    ocr([
+      [180, 'Bma'],
+      [34, 'Roosbeef'],
+      [24, 'zaterdag 03 april 2027 - 20u00'],
+      [20, 'De Roma - Turnhoutsebaan 286 - 2140 Borgerhout'],
+      [18, 'met 40% korting.'],
+    ]),
+    { venueNames: VENUES, today: TODAY, isTicket: true }
+  );
+  assert.equal(draft.title, 'Roosbeef');
+  assert.equal(draft.venue, 'De Roma');
+  assert.equal(draft.city, 'Borgerhout');
+  assert.equal(draft.date, '2027-04-03');
+  assert.equal(draft.time, '20:00');
+  // "met 40% korting" heeft dezelfde vorm als "met Library Card", maar een
+  // korting is geen support-act.
+  assert.deepEqual(draft.artists, ['Roosbeef']);
+});
+
+test('poster: zonder ticket-signalen wint de grootste regel nog steeds', () => {
+  const draft = extractEventDraft(
+    ocr([
+      [123, 'LOWERTOWN'],
+      [68, 'PARADISO'],
+      [46, 'Amsterdam'],
+      [54, 'zaterdag 12 september 2026'],
+      [46, 'deuren 19:00 / aanvang 19:30'],
+    ]),
+    { venueNames: VENUES, today: TODAY }
+  );
+  assert.equal(draft.title, 'LOWERTOWN');
+  assert.equal(draft.venue, 'Paradiso');
+  assert.equal(draft.city, 'Amsterdam');
+});
