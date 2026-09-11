@@ -554,13 +554,22 @@ function SharePreview({
       setSubmitted({ id: res.id, going: res.going, ticket: keepTicket });
       void qc.invalidateQueries({ queryKey: ['pending-events'] });
       setSubmitState('done');
+      onActed();
     } catch {
       setSubmitState('failed');
     }
   };
 
-  /** Ga ook naar een aanmelding van iemand anders. */
+  /**
+   * Ga ook naar een aanmelding van iemand anders.
+   *
+   * Geen tussenstap: het event is herkend en je ticket hoeft niet nog een
+   * keer bevestigd te worden. Wel eerst naar stap 2 — daar staat de
+   * uitkomst, en op stap 1 zou je op een knop tikken waar niets van te
+   * zien is.
+   */
   const joinPending = async (id: string) => {
+    onPickCandidate(null);
     setSubmitState('sending');
     try {
       await setPendingGoing(id, true);
@@ -569,6 +578,7 @@ function SharePreview({
       setSubmitted({ id, going: true, ticket: keepTicket });
       void qc.invalidateQueries({ queryKey: ['pending-events'] });
       setSubmitState('done');
+      onActed();
     } catch {
       setSubmitState('failed');
     }
@@ -1041,6 +1051,14 @@ function SelfAddStep({
   const roles = useRoles();
   const t = useT();
 
+  if (submitState === 'sending' && submitted === null) {
+    return (
+      <View style={styles.checking}>
+        <SpinningCross size={26} color={roles.fgMuted} />
+      </View>
+    );
+  }
+
   if (submitState === 'done') {
     return (
       <View style={styles.stepBlock}>
@@ -1071,6 +1089,19 @@ function SelfAddStep({
                 )}
           </Text>
         </View>
+
+        {/* Geen eventpagina om naartoe te gaan — die bestaat pas als een
+            mens er een event van maakt. Je plannen is waar het nú staat. */}
+        {submitted?.going ? (
+          <Pressable
+            onPress={() => router.push('/going' as never)}
+            style={[styles.primaryBtn, { backgroundColor: roles.accent }]}
+          >
+            <Text style={[styles.primaryBtnText, { color: roles.onAccent }]}>
+              {t('Naar je plannen', 'Open your plans')}
+            </Text>
+          </Pressable>
+        ) : null}
       </View>
     );
   }
