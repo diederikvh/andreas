@@ -1121,6 +1121,9 @@ function IntentStep({
     // pas na migratie 0053; tot dan wordt het stil `null`.
     if (next === 'save') {
       toggleSave.mutate({ occurrenceId, source: 'share' });
+      // Ook hier koppelen: de schakelaar belooft dat we het bewaren, en
+      // die belofte hangt niet aan wélke van de twee knoppen je kiest.
+      if (keepFile) attachTicket();
       onDone();
       return;
     }
@@ -1159,8 +1162,11 @@ function IntentStep({
             router.push(`/ticket/${storedTicket.occurrenceId}` as never)
           }
           style={[
+            // Geen accentrand: dit is informatie, geen keuze. Accent is
+            // voor de schakelaar eronder die aan staat — twee gele randen
+            // boven elkaar maakt ze allebei minder waard.
             styles.ticketCard,
-            { backgroundColor: cardBg, borderColor: roles.accent },
+            { backgroundColor: cardBg, borderColor: 'transparent' },
           ]}
         >
           <View style={styles.ticketCardHead}>
@@ -1264,16 +1270,41 @@ function IntentStep({
             size={option === 'going' ? 20 : 19}
             color={intent === option ? roles.onAccent : roles.fg}
           />
-          <Text
-            style={[
-              styles.choiceBtnText,
-              { color: intent === option ? roles.onAccent : roles.fg },
-            ]}
-          >
-            {option === 'going'
-              ? t('Ik ga hierheen', "I'm going")
-              : t('Wil ik heen', 'Want to go')}
-          </Text>
+          <View style={styles.choiceBtnLabel}>
+            <Text
+              style={[
+                styles.choiceBtnText,
+                { color: intent === option ? roles.onAccent : roles.fg },
+              ]}
+            >
+              {option === 'going'
+                ? t('Ik ga hierheen', "I'm going")
+                : t('Wil ik heen', 'Want to go')}
+            </Text>
+            {/* Wat er met je bestand gebeurt staat op de knop die het
+                doet. De schakelaar erboven zegt het al, maar die lees je
+                niet meer op het moment dat je drukt — en dit is het enige
+                moment waarop het ticket wordt vastgelegd. */}
+            {attachable ? (
+              <Text
+                style={[
+                  styles.choiceBtnSub,
+                  {
+                    color:
+                      intent === option
+                        ? isNacht
+                          ? 'rgba(10,10,11,0.62)'
+                          : 'rgba(255,255,255,0.72)'
+                        : roles.fgMuted,
+                  },
+                ]}
+              >
+                {willKeep
+                  ? t('Ticket wordt bewaard', 'Ticket will be saved')
+                  : t('Zonder je ticket', 'Without your ticket')}
+              </Text>
+            ) : null}
+          </View>
         </Pressable>
       ))}
     </View>
@@ -1748,10 +1779,19 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 10,
     paddingHorizontal: 22,
-    height: 54,
+    // Geen vaste hoogte meer: met de regel over je ticket eronder groeit
+    // de knop mee. Beide standen hebben die regel, dus hij springt niet.
+    minHeight: 54,
+    paddingVertical: 9,
     borderRadius: 999,
   },
+  choiceBtnLabel: { gap: 1 },
   choiceBtnText: { fontFamily: fontFamily.medium, fontSize: 15.5 },
+  choiceBtnSub: {
+    fontFamily: fontFamily.medium,
+    fontSize: 12.5,
+    lineHeight: 16,
+  },
   quietLink: {
     fontFamily: fontFamily.monoMedium,
     fontSize: 12,
