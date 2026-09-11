@@ -8,6 +8,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Alert,
   Keyboard,
   Linking,
   Platform,
@@ -67,30 +68,16 @@ import {
   useToggleGoing,
   useToggleSave,
 } from '@/lib/queries';
-import type { ApiInvitation, InvitationStatus } from '@/lib/api';
+import {
+  isSaveSource,
+  type ApiInvitation,
+  type InvitationStatus,
+} from '@/lib/api';
 import { useMode, useRoles } from '@/store/mode';
+import { useTicketFor } from '@/store/tickets';
 import { fontFamily, palette } from '@/theme/tokens';
 
 const HERO_HEIGHT = 420;
-
-const VALID_SAVE_SOURCES: readonly SaveSource[] = [
-  'venue',
-  'friend',
-  'search',
-  'op-gevoel',
-  'avond',
-  'agenda',
-  'kaart',
-  'series',
-  'gered',
-  'other',
-];
-function isValidSaveSource(raw: unknown): raw is SaveSource {
-  return (
-    typeof raw === 'string' &&
-    (VALID_SAVE_SOURCES as readonly string[]).includes(raw)
-  );
-}
 
 /**
  * Event detail screen — fetches via GET /events/:id. Until lineup,
@@ -111,7 +98,7 @@ export default function EventDetail() {
   // discovery-trail in de persoonlijke spiegel via /saves POST.
   // Callers (avond/agenda/kaart/social/venue/friend/series/search)
   // moeten 'm meegeven; ontbreken = null → backend laat 'm leeg.
-  const navSource = isValidSaveSource(rawSource) ? rawSource : null;
+  const navSource = isSaveSource(rawSource) ? rawSource : null;
   const mode = useMode();
   const roles = useRoles();
   const insets = useSafeAreaInsets();
@@ -162,6 +149,14 @@ export default function EventDetail() {
         inv.event.id === id &&
         inv.occurrence.id === selectedOccurrenceId
     ) ?? null;
+  // Heeft de gebruiker voor dit moment een ticket in Andreas gezet? Dat
+  // bestand staat alleen op dit toestel (zie store/tickets.ts) — de server
+  // weet er niets van, dus dit is puur lokale state.
+  //
+  // Let op de plek: boven de early returns hieronder. Een hook achter een
+  // return is precies de fout die eslint in dit bestand al eerder ving.
+  const myTicket = useTicketFor(selectedOccurrenceId);
+
   // Pulse-animatie op de Datum-cell is uitgeschakeld — Reanimated
   // worklets met transform: scale waren de waarschijnlijke trigger
   // van een setViewToSnapshot-crash in react-native-screens 4.x bij
@@ -357,6 +352,32 @@ export default function EventDetail() {
               />
             </View>
           </View>
+
+          {/* Direct onder datum/tijd/venue, want dit is wat je nodig hebt
+              als je bij de deur staat — niet iets om eerst een
+              beschrijving en een lineup voor door te scrollen. */}
+          {myTicket && (
+            <Pressable
+              onPress={() => {
+                Haptics.selectionAsync();
+                router.push(`/ticket/${myTicket.occurrenceId}` as never);
+              }}
+              style={[
+                styles.myTicketCta,
+                { backgroundColor: roles.accent },
+              ]}
+            >
+              <Ionicons name="ticket" size={19} color={roles.onAccent} />
+              <Text style={[styles.myTicketCtaText, { color: roles.onAccent }]}>
+                {t('Toon ticket', 'Show ticket')}
+              </Text>
+              <Ionicons
+                name="chevron-forward"
+                size={17}
+                color={roles.onAccent}
+              />
+            </Pressable>
+          )}
 
           {pendingInvite && (
             <InviteBanner
@@ -943,19 +964,44 @@ function GoingRow({
   const authed = Boolean(session?.user?.id);
   const { data: going } = useMyGoing({ enabled: authed });
   const toggle = useToggleGoing();
+  const ticket = useTicketFor(occurrenceId);
 
   const isGoing = Boolean(going?.some((g) => g.occurrenceId === occurrenceId));
 
+  const onPress = () => {
+    // Going uitzetten terwijl er een ticket aan hangt kan niet: tickets
+    // hangen aan "ik ga", dus dat zou je kaartje meesleuren. Eén tik en je
+    // bent het kwijt is geen acceptabele manier om data te verliezen — en
+    // de omgekeerde route (eerst ticket weg, dan going uit) is bewust een
+    // stap meer.
+    if (isGoing && ticket) {
+      Alert.alert(
+        t('Je hebt hier een ticket', 'You have a ticket for this'),
+        t(
+          'Je ticket hangt aan "ik ga". Verwijder eerst je ticket als je dit plan wil afzeggen.',
+          'Your ticket is attached to "going". Remove your ticket first if you want to cancel this plan.'
+        ),
+        [
+          { text: t('Laat staan', 'Keep it'), style: 'cancel' },
+          {
+            text: t('Ticket bekijken', 'View ticket'),
+            onPress: () => router.push(`/ticket/${occurrenceId}` as never),
+          },
+        ]
+      );
+      return;
+    }
+    Haptics.impactAsync(
+      isGoing
+        ? Haptics.ImpactFeedbackStyle.Light
+        : Haptics.ImpactFeedbackStyle.Medium
+    );
+    toggle.mutate({ occurrenceId, source: 'other' });
+  };
+
   return (
     <Pressable
-      onPress={() => {
-        Haptics.impactAsync(
-          isGoing
-            ? Haptics.ImpactFeedbackStyle.Light
-            : Haptics.ImpactFeedbackStyle.Medium
-        );
-        toggle.mutate({ occurrenceId, source: 'other' });
-      }}
+      onPress={onPress}
       style={[
         styles.crewInviteCta,
         {
@@ -2245,6 +2291,23 @@ const styles = StyleSheet.create({
     fontFamily: fontFamily.mono,
     fontSize: 14,
     marginLeft: 12,
+  },
+  myTicketCta: {
+    // `body` heeft al padding 20; een eigen marge zou de knop 40 naar
+    // binnen zetten terwijl de meta-cells erboven op 20 staan.
+    marginBottom: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 18,
+    paddingVertical: 15,
+    borderRadius: 8,
+  },
+  myTicketCtaText: {
+    flex: 1,
+    fontFamily: fontFamily.bold,
+    fontSize: 15,
+    letterSpacing: -0.15,
   },
   ticketsBigCtaDisabled: {
     marginTop: 26,

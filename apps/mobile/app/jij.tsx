@@ -1017,6 +1017,10 @@ const SOURCE_LABEL: Record<string, { nl: string; en: string }> = {
   kaart: { nl: 'kaart', en: 'map' },
   series: { nl: 'serie', en: 'series' },
   gered: { nl: 'gered', en: 'saved' },
+  new: { nl: 'net binnen', en: 'just in' },
+  share: { nl: 'gedeeld', en: 'shared' },
+  scan: { nl: 'gescand', en: 'scanned' },
+  going: { nl: 'via plannen', en: 'via plans' },
   other: { nl: 'anders', en: 'other' },
 };
 

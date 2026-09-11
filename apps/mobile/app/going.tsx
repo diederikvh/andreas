@@ -41,6 +41,7 @@ import { useT, useLocale } from '@/lib/i18n';
 import { useMyGoing } from '@/lib/queries';
 import type { BadgeTone } from '@/lib/types';
 import { useMode, useRoles } from '@/store/mode';
+import { useTicketFor } from '@/store/tickets';
 import { fontFamily, palette } from '@/theme/tokens';
 
 
@@ -206,6 +207,9 @@ function GoingRow({
   const locale = useLocale();
   const e = entry;
   const venue = entry.venue;
+  // Hangt er een ticket aan dit moment? Dan is dit de plek waar je 'm
+  // zoekt — niet twee tikken diep in event-detail.
+  const ticket = useTicketFor(entry.occurrenceId);
   const venueTone =
     venue.type && (VENUE_TYPE_TICK as Record<string, BadgeTone>)[venue.type]
       ? (VENUE_TYPE_TICK as Record<string, BadgeTone>)[venue.type]
@@ -244,6 +248,11 @@ function GoingRow({
           router.push(
             `/event/${entry.id}?source=going&o=${entry.occurrenceId}`
           )
+        }
+        onTicketPress={
+          ticket
+            ? () => router.push(`/ticket/${entry.occurrenceId}` as never)
+            : undefined
         }
       />
     </View>

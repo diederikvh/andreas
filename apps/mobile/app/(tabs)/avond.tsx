@@ -73,6 +73,7 @@ import {
 } from '@/lib/queries';
 import { useSession } from '@/lib/authClient';
 import { useMode, useRoles } from '@/store/mode';
+import { useTicketFor } from '@/store/tickets';
 import { useAddSavedVandaagSearch } from '@/store/savedVandaagSearches';
 import { useVandaagFilters } from '@/store/vandaagFilters';
 import { useZoekStore } from '@/store/zoek';
@@ -1145,6 +1146,9 @@ function GoingRailCard({
   const locale = useLocale();
   const { surface } = useRailCardStyles();
   const thumb = eventImageUrl(entry) ?? entry.venue?.imageUrl ?? null;
+  // Ticket in huis? Dan een tikbaar hoekje rechtsboven op de tegel, zodat
+  // je 'm vanaf de homepage in één tik open hebt.
+  const ticket = useTicketFor(entry.occurrenceId);
   const d = new Date(entry.startsAt);
   const dateLabel = `${d.getDate()} ${monthShort(d.getMonth(), locale).toLowerCase()}`;
   const time = isAllDayRange(entry.startsAt, entry.endsAt)
@@ -1187,6 +1191,20 @@ function GoingRailCard({
             </Text>
           ) : null}
         </View>
+        {ticket ? (
+          <Pressable
+            onPress={() =>
+              router.push(`/ticket/${entry.occurrenceId}` as never)
+            }
+            hitSlop={8}
+            style={[
+              goingCardStyles.ticketBadge,
+              { backgroundColor: roles.accent },
+            ]}
+          >
+            <Ionicons name="ticket" size={13} color={roles.onAccent} />
+          </Pressable>
+        ) : null}
       </View>
       <View style={goingCardStyles.body}>
         <Text
@@ -1232,6 +1250,17 @@ const goingCardStyles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 15,
     letterSpacing: -0.2,
+  },
+  // Rechtsboven, tegenover de datum-sticker linksonder.
+  ticketBadge: {
+    position: 'absolute',
+    right: 6,
+    top: 6,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   badgeTime: {
     fontFamily: fontFamily.mono,

@@ -38,6 +38,12 @@ type Props = {
       seriesLabel — neutrale `bgTag` mono uppercase. */
   genreLabel?: string;
   friends?: Friend[];
+  /** Optioneel: er hangt een ticket van de gebruiker aan dit moment
+      (lokaal bewaard, zie `store/tickets.ts`). Rendert een tikbare
+      ticket-pill in de tag-row die rechtstreeks de viewer opent — zonder
+      dit zat je ticket twee tikken diep in event-detail en zag je op je
+      eigen plannen-lijst niet dát je er een had. */
+  onTicketPress?: () => void;
   /** Markeert dit event als de "lead" van z'n sublijst — toont een
       kleine ster vóór de titel. Gebruikt op Vandaag waar elke
       categorie-sublijst z'n eigen uitlicht-event krijgt. */
@@ -86,6 +92,7 @@ export function EventListRow({
   dateAbove = false,
   dateLabel,
   onPress,
+  onTicketPress,
 }: Props) {
   const mode = useMode();
   const roles = useRoles();
@@ -117,7 +124,8 @@ export function EventListRow({
     Boolean(status) ||
     Boolean(seriesLabel) ||
     Boolean(genreLabel) ||
-    Boolean(friends?.length);
+    Boolean(friends?.length) ||
+    Boolean(onTicketPress);
 
   return (
     <Pressable
@@ -243,6 +251,24 @@ export function EventListRow({
               )}
               {friends && friends.length > 0 && (
                 <FriendsPill friends={friends} accent={tickColor} />
+              )}
+              {onTicketPress && (
+                <Pressable
+                  onPress={onTicketPress}
+                  hitSlop={6}
+                  style={[styles.ticketTag, { backgroundColor: tickColor }]}
+                >
+                  <Ionicons
+                    name="ticket"
+                    size={11}
+                    color={roles.onAccent}
+                  />
+                  <Text
+                    style={[styles.ticketTagText, { color: roles.onAccent }]}
+                  >
+                    Ticket
+                  </Text>
+                </Pressable>
               )}
             </View>
           )}
@@ -412,6 +438,20 @@ const styles = StyleSheet.create({
     fontFamily: fontFamily.bold,
     fontSize: 14,
     letterSpacing: -0.2,
+  },
+  ticketTag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: 5,
+  },
+  ticketTagText: {
+    fontFamily: fontFamily.monoMedium,
+    fontSize: 9.5,
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
   },
   rowTags: {
     flexDirection: 'row',
