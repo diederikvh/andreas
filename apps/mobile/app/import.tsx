@@ -268,6 +268,23 @@ export default function ImportScreen() {
   );
 }
 
+/**
+ * Het sheet verlaten naar een echte pagina.
+ *
+ * Een `push` vanuit dit scherm opent de bestemming *in* de drawer — je
+ * plannen of een eventpagina in een halfhoog venster met onze dock
+ * eronder. `dismissTo` sluit het sheet eerst en navigeert daarna, dus je
+ * komt gewoon in de app uit.
+ *
+ * De pending share gaat mee weg; `keepFile` omdat een gekoppeld ticket
+ * inmiddels eigendom van de ticketstore is.
+ */
+function leaveTo(href: string): void {
+  usePendingShare.getState().clearPending({ keepFile: true });
+  if (router.canDismiss()) router.dismissTo(href as never);
+  else router.replace(href as never);
+}
+
 const KIND_META: Record<
   PendingShare['kind'],
   { icon: keyof typeof Ionicons.glyphMap; nl: string; en: string }
@@ -277,6 +294,20 @@ const KIND_META: Record<
   image: { icon: 'image-outline', nl: 'Afbeelding', en: 'Image' },
   pdf: { icon: 'document-text-outline', nl: 'PDF', en: 'PDF' },
   file: { icon: 'document-outline', nl: 'Bestand', en: 'File' },
+};
+
+/** Wat er aangemeld of aangevinkt is, genoeg om het op de klaar-melding
+    te kunnen laten zien: je hebt die velden zelf ingevuld, dan moet je ze
+    ook terugzien. */
+type SubmittedEvent = {
+  id: string;
+  going: boolean;
+  ticket: boolean;
+  title: string | null;
+  venue: string | null;
+  date: string | null;
+  time: string | null;
+  city: string | null;
 };
 
 type ScanState = {
@@ -529,11 +560,7 @@ function SharePreview({
   const [submitState, setSubmitState] = useState<
     'idle' | 'sending' | 'done' | 'failed'
   >('idle');
-  const [submitted, setSubmitted] = useState<{
-    id: string;
-    going: boolean;
-    ticket: boolean;
-  } | null>(null);
+  const [submitted, setSubmitted] = useState<SubmittedEvent | null>(null);
   const qc = useQueryClient();
 
   /**
@@ -551,7 +578,16 @@ function SharePreview({
       const res = await submitUnknownEvent({ ...safe, source: 'share' });
       const keepTicket = Boolean(share.fileUri) && verdict.isTicket;
       if (keepTicket) attachToPending(res.id);
-      setSubmitted({ id: res.id, going: res.going, ticket: keepTicket });
+      setSubmitted({
+        id: res.id,
+        going: res.going,
+        ticket: keepTicket,
+        title: safe.title ?? safe.artists[0] ?? null,
+        venue: safe.venue,
+        date: safe.date,
+        time: safe.time,
+        city: safe.city,
+      });
       void qc.invalidateQueries({ queryKey: ['pending-events'] });
       setSubmitState('done');
       onActed();
@@ -568,14 +604,23 @@ function SharePreview({
    * uitkomst, en op stap 1 zou je op een knop tikken waar niets van te
    * zien is.
    */
-  const joinPending = async (id: string) => {
+  const joinPending = async (pending: PendingEvent) => {
     onPickCandidate(null);
     setSubmitState('sending');
     try {
-      await setPendingGoing(id, true);
+      await setPendingGoing(pending.id, true);
       const keepTicket = Boolean(share.fileUri) && verdict.isTicket;
-      if (keepTicket) attachToPending(id);
-      setSubmitted({ id, going: true, ticket: keepTicket });
+      if (keepTicket) attachToPending(pending.id);
+      setSubmitted({
+        id: pending.id,
+        going: true,
+        ticket: keepTicket,
+        title: pending.title ?? pending.artists[0] ?? null,
+        venue: pending.venue,
+        date: pending.date,
+        time: pending.time,
+        city: pending.city,
+      });
       void qc.invalidateQueries({ queryKey: ['pending-events'] });
       setSubmitState('done');
       onActed();
@@ -890,7 +935,7 @@ function ChooseStep({
   hasFile: boolean;
   /** Dezelfde avond, al aangemeld door iemand anders. */
   pendingMatch: PendingEvent | null;
-  onJoinPending: (id: string) => void;
+  onJoinPending: (pending: PendingEvent) => void;
   onPick: (id: string | null) => void;
 }) {
   const roles = useRoles();
@@ -973,7 +1018,7 @@ function ChooseStep({
             dezelfde avond in de wachtkamer. */}
         {pendingMatch ? (
           <Pressable
-            onPress={() => onJoinPending(pendingMatch.id)}
+            onPress={() => onJoinPending(pendingMatch)}
             style={[
               styles.option,
               {
@@ -1042,14 +1087,15 @@ function SelfAddStep({
   draft: EventDraft | null;
   canSubmit: boolean;
   submitState: 'idle' | 'sending' | 'done' | 'failed';
-  /** Wat er na het aanmelden gebeurde: staat het in je plannen, en hangt
-      je ticket eraan. `null` zolang er niets verstuurd is. */
-  submitted: { id: string; going: boolean; ticket: boolean } | null;
+  /** Wat er aangemeld is, en wat er daarna mee gebeurde. `null` zolang
+      er niets verstuurd is. */
+  submitted: SubmittedEvent | null;
   onSubmitUnknown: () => void;
   onChangeDraft: (patch: Partial<EventDraft>) => void;
 }) {
   const roles = useRoles();
   const t = useT();
+  const locale = useLocale();
 
   if (submitState === 'sending' && submitted === null) {
     return (
@@ -1060,8 +1106,64 @@ function SelfAddStep({
   }
 
   if (submitState === 'done') {
+    // Eerst wát het is — titel, venue, datum, tijd — en dan wat ermee
+    // gebeurde. Dezelfde opbouw als bij een event dat Andreas wél kent,
+    // alleen zonder beeld: dat hebben we niet.
+    const when = submitted?.date
+      ? new Date(`${submitted.date}T12:00:00`)
+      : null;
+    const meta = [
+      submitted?.venue,
+      when && !Number.isNaN(when.getTime())
+        ? `${dowMixed(when.getDay(), locale)} ${when.getDate()} ${monthShort(
+            when.getMonth(),
+            locale,
+          )}`
+        : null,
+      submitted?.time,
+      submitted?.city,
+    ]
+      .filter(Boolean)
+      .join(' · ');
+
     return (
       <View style={styles.stepBlock}>
+        {submitted?.title || meta ? (
+          <View style={styles.chosenBlock}>
+            {submitted?.title ? (
+              <Text
+                style={[
+                  styles.chosenTitle,
+                  styles.centered,
+                  { color: roles.fg },
+                ]}
+              >
+                {submitted.title}
+              </Text>
+            ) : null}
+            {meta ? (
+              <Text
+                style={[
+                  styles.chosenMeta,
+                  styles.centered,
+                  { color: roles.fgMuted },
+                ]}
+              >
+                {meta}
+              </Text>
+            ) : null}
+            <Text
+              style={[
+                styles.chosenNote,
+                styles.centered,
+                { color: roles.fgPlaceholder },
+              ]}
+            >
+              {t('Nog niet bekend bij Andreas', 'Not known to Andreas yet')}
+            </Text>
+          </View>
+        ) : null}
+
         <View style={styles.doneHead}>
           <Ionicons name="checkmark-circle" size={30} color={roles.accent} />
           <Text
@@ -1094,7 +1196,7 @@ function SelfAddStep({
             mens er een event van maakt. Je plannen is waar het nú staat. */}
         {submitted?.going ? (
           <Pressable
-            onPress={() => router.push('/going' as never)}
+            onPress={() => leaveTo('/going')}
             style={[styles.primaryBtn, { backgroundColor: roles.accent }]}
           >
             <Text style={[styles.primaryBtnText, { color: roles.onAccent }]}>
@@ -1589,7 +1691,7 @@ function DoneStep({
       </View>
 
       <Pressable
-        onPress={() => router.push(`/event/${eventId}?source=share` as never)}
+        onPress={() => leaveTo(`/event/${eventId}?source=share`)}
         style={[styles.primaryBtn, { backgroundColor: roles.accent }]}
       >
         <Text style={[styles.primaryBtnText, { color: roles.onAccent }]}>
@@ -1959,6 +2061,9 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   chosenHeroBottom: { gap: 4 },
+  // Zelfde blok zonder beeld: voor een aanmelding hebben we geen foto,
+  // alleen wat jij hebt ingevuld.
+  chosenBlock: { gap: 6, alignItems: 'center', paddingHorizontal: 10 },
   chosenMeta: {
     fontFamily: fontFamily.mono,
     fontSize: 11,

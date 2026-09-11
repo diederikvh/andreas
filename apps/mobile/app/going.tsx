@@ -12,7 +12,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
 import {
-  Alert,
   Pressable,
   RefreshControl,
   SectionList,
@@ -38,16 +37,48 @@ import {
   rowTimeLabel,
   translateCategory,
 } from '@/lib/eventDisplay';
-import { useT, useLocale, type Locale } from '@/lib/i18n';
-import {
-  useMyGoing,
-  usePendingEvents,
-  useTogglePendingGoing,
-} from '@/lib/queries';
+import { useT, useLocale } from '@/lib/i18n';
+import { useMyGoing, usePendingEvents } from '@/lib/queries';
 import type { BadgeTone } from '@/lib/types';
 import { useMode, useRoles } from '@/store/mode';
 import { useTicketFor } from '@/store/tickets';
 import { fontFamily, palette } from '@/theme/tokens';
+import { TONE } from '@/theme/tones';
+
+/** Wat er in de plannenlijst kan staan: een echt moment, of een event
+    dat je zelf hebt toegevoegd en dat nog geen occurrence heeft. */
+type PlanItem = SavedApiEvent | PendingEvent;
+
+/** Tijdstip van een aanmelding. Zonder datum achteraan in de lijst — niet
+    stil verdwijnen, want je hebt er misschien een ticket voor. */
+function pendingTime(p: PendingEvent): number {
+  if (!p.date) return Number.MAX_SAFE_INTEGER;
+  const t = new Date(`${p.date}T${p.time ?? '12:00'}:00`).getTime();
+  return Number.isNaN(t) ? Number.MAX_SAFE_INTEGER : t;
+}
+
+function planTime(item: PlanItem): number {
+  return 'occurrenceId' in item
+    ? new Date(item.startsAt).getTime()
+    : pendingTime(item);
+}
+
+/** Kleuren voor het letter-vlak. Dezelfde tonen als de tikkers elders in
+    de app, dus het blijft binnen het palet. */
+const PENDING_TONES: BadgeTone[] = [
+  'acid',
+  'flare',
+  'plum',
+  'azure',
+  'saffron',
+  'cobalt',
+];
+
+function hashTone(id: string): number {
+  let h = 0;
+  for (let i = 0; i < id.length; i += 1) h = (h * 31 + id.charCodeAt(i)) >>> 0;
+  return h;
+}
 
 export default function GoingScreen() {
   const roles = useRoles();
@@ -64,6 +95,14 @@ export default function GoingScreen() {
   const { data: session } = useSession();
   const authed = Boolean(session?.user?.id);
   const { data: going, isLoading, error } = useMyGoing({ enabled: authed });
+  // Events die je zelf hebt toegevoegd en die Andreas nog niet kent. Ze
+  // gaan gewoon mee in de lijst: het punt van deze pagina is wanneer je
+  // waar bent, niet of onze database het al weet.
+  const { data: pendingRaw } = usePendingEvents({ enabled: authed });
+  const pending = useMemo(
+    () => (pendingRaw ?? []).filter((p) => !p.published),
+    [pendingRaw],
+  );
 
   const [refreshing, setRefreshing] = useState(false);
   const onRefresh = useCallback(async () => {
@@ -86,24 +125,38 @@ export default function GoingScreen() {
   // een anker, en wordt gecapt op 7 dagen. "Oh ja, daar waren we vorige
   // week" is leuk; vorig jaar laat de lijst alleen groeien.
   const now = Date.now();
-  const upcoming = useMemo(
+  const upcoming = useMemo<PlanItem[]>(
     () =>
-      (going ?? []).filter(
-        (g) => new Date(g.endsAt ?? g.startsAt).getTime() >= now,
-      ),
+      [
+        ...(going ?? []).filter(
+          (g) => new Date(g.endsAt ?? g.startsAt).getTime() >= now,
+        ),
+        ...pending.filter((p) => pendingTime(p) >= now),
+      ].sort((a, b) => planTime(a) - planTime(b)),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [going],
+    [going, pending],
   );
-  const past = useMemo(() => {
+  const past = useMemo<PlanItem[]>(() => {
     const weekAgo = now - 7 * 24 * 3600 * 1000;
-    return (going ?? []).filter((g) => {
-      const end = new Date(g.endsAt ?? g.startsAt).getTime();
-      return end < now && end >= weekAgo;
-    });
+    return [
+      ...(going ?? []).filter((g) => {
+        const end = new Date(g.endsAt ?? g.startsAt).getTime();
+        return end < now && end >= weekAgo;
+      }),
+      ...pending.filter((p) => {
+        const tm = pendingTime(p);
+        return tm < now && tm >= weekAgo;
+      }),
+    ].sort((a, b) => planTime(b) - planTime(a));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [going]);
+  }, [going, pending]);
 
-  const isEmpty = authed && !isLoading && !error && (going?.length ?? 0) === 0;
+  const isEmpty =
+    authed &&
+    !isLoading &&
+    !error &&
+    (going?.length ?? 0) === 0 &&
+    pending.length === 0;
 
   const closeBtn = (
     <Pressable
@@ -160,11 +213,16 @@ export default function GoingScreen() {
             ...(upcoming.length > 0 ? [{ isPast: false, data: upcoming }] : []),
             ...(past.length > 0 ? [{ isPast: true, data: past }] : []),
           ]}
-          ListHeaderComponent={<PendingGroup />}
-          keyExtractor={(item, idx) => `${idx}-${item.occurrenceId}`}
-          renderItem={({ item, section }) => (
-            <GoingRow entry={item} dim={section.isPast} />
-          )}
+          keyExtractor={(item, idx) =>
+            `${idx}-${'occurrenceId' in item ? item.occurrenceId : item.id}`
+          }
+          renderItem={({ item, section }) =>
+            'occurrenceId' in item ? (
+              <GoingRow entry={item} dim={section.isPast} />
+            ) : (
+              <PendingRow pending={item} dim={section.isPast} />
+            )
+          }
           renderSectionHeader={({ section }) =>
             section.isPast ? <PastAnchor count={section.data.length} /> : null
           }
@@ -256,128 +314,72 @@ function GoingRow({
 }
 
 /**
- * Aanmeldingen die nog op Andreas wachten.
+ * Een event dat je zelf hebt toegevoegd, in dezelfde rij als de rest.
  *
- * Bovenaan je plannen, want je hebt ze zelf ingevuld en dan wil je ze zien
- * staan — niet wachten tot iemand ze heeft goedgekeurd. Ze zijn wel
- * herkenbaar anders: geen beeld, geen tik-doel naar een eventpagina, en
- * een label dat zegt waar ze op staan te wachten. Zodra er een echt event
- * van is gemaakt (`published`) verhuizen ze naar de gewone lijst en
- * verdwijnen ze hier.
+ * Geen apart groepje en geen "wacht op Andreas"-label: dat Andreas het nog
+ * niet kent is ons probleem, niet dat van iemand die een kaartje heeft. Wat
+ * telt is waar je wanneer bent, en of je ticket bij de hand is.
+ *
+ * Alleen het beeld ontbreekt, want dat bestaat nog niet. In plaats van een
+ * lege grijze rechthoek: de eerste letter van de titel op een kleurvlak uit
+ * onze eigen palet, gekozen op het id zodat dezelfde avond altijd dezelfde
+ * kleur heeft.
  */
-function PendingGroup() {
-  const roles = useRoles();
-  const t = useT();
-  const locale = useLocale();
-  // Zonder account is er geen agenda, dus ook geen wachtkamer. Scheelt
-  // een request op een scherm dat anoniem open kan.
-  const { data: session } = useSession();
-  const { data } = usePendingEvents({
-    enabled: Boolean(session?.user?.id),
-  });
-  const toggle = useTogglePendingGoing();
-
-  const pending = (data ?? []).filter((p) => !p.published);
-  if (pending.length === 0) return null;
-
-  return (
-    <View style={styles.pendingWrap}>
-      <View style={styles.anchor}>
-        <Text style={[styles.pastLabel, { color: roles.fgMuted }]}>
-          {t('Wacht op Andreas', 'Waiting for Andreas')}
-        </Text>
-        <Text style={[styles.anchorCount, { color: roles.fgPlaceholder }]}>
-          {pending.length}{' '}
-          {pending.length === 1 ? t('plan', 'plan') : t('plannen', 'plans')}
-        </Text>
-      </View>
-
-      {pending.map((p) => (
-        <PendingRow
-          key={p.id}
-          pending={p}
-          locale={locale}
-          onRemove={() =>
-            Alert.alert(
-              t('Uit je plannen halen?', 'Remove from your plans?'),
-              t(
-                'De aanmelding blijft staan, jij gaat er alleen niet meer heen.',
-                'The submission stays, you just stop going.',
-              ),
-              [
-                { text: t('Laat staan', 'Keep it'), style: 'cancel' },
-                {
-                  text: t('Weghalen', 'Remove'),
-                  style: 'destructive',
-                  onPress: () => toggle.mutate({ id: p.id, going: false }),
-                },
-              ],
-            )
-          }
-        />
-      ))}
-    </View>
-  );
-}
-
 function PendingRow({
   pending,
-  locale,
-  onRemove,
+  dim = false,
 }: {
   pending: PendingEvent;
-  locale: Locale;
-  onRemove: () => void;
+  dim?: boolean;
 }) {
-  const roles = useRoles();
-  const t = useT();
+  const mode = useMode();
+  const locale = useLocale();
   // Een ticket kan al aan de aanmelding hangen: de ticketstore sleutelt op
   // een string, en `sub-…` werkt daar net zo goed als een occurrence-id.
   const ticket = useTicketFor(pending.id);
 
+  const title =
+    pending.title ??
+    pending.artists[0] ??
+    (locale === 'nl' ? 'Naamloos' : 'Untitled');
+  const tone = PENDING_TONES[hashTone(pending.id) % PENDING_TONES.length];
   const when = pending.date ? new Date(`${pending.date}T12:00:00`) : null;
-  const meta = [
-    pending.venue,
+  const dateLabel =
     when && !Number.isNaN(when.getTime())
-      ? `${dowMixed(when.getDay(), locale)} ${when.getDate()} ${monthShort(when.getMonth(), locale)}`
-      : null,
-    pending.time,
-  ]
-    .filter(Boolean)
-    .join(' · ');
+      ? `${dowMixed(when.getDay(), locale)} ${when.getDate()} ${monthShort(
+          when.getMonth(),
+          locale,
+        ).toLowerCase()}`
+      : '';
 
   return (
-    <Pressable
-      onLongPress={onRemove}
-      delayLongPress={350}
-      style={[styles.pendingRow, { borderColor: roles.bgChip }]}
-    >
-      <View style={{ flex: 1, gap: 3 }}>
-        <Text
-          numberOfLines={2}
-          style={[styles.pendingTitle, { color: roles.fg }]}
-        >
-          {pending.title ?? pending.artists[0] ?? t('Naamloos', 'Untitled')}
-        </Text>
-        {meta ? (
-          <Text style={[styles.pendingMeta, { color: roles.fgMuted }]}>
-            {meta}
-          </Text>
-        ) : null}
-      </View>
-      {ticket ? (
-        <Pressable
-          onPress={() => router.push(`/ticket/${pending.id}` as never)}
-          hitSlop={8}
-          style={[styles.pendingTicket, { backgroundColor: roles.accent }]}
-        >
-          <Ionicons name="ticket" size={13} color={roles.onAccent} />
-          <Text style={[styles.pendingTicketText, { color: roles.onAccent }]}>
-            {t('Ticket', 'Ticket')}
-          </Text>
-        </Pressable>
-      ) : null}
-    </Pressable>
+    <View style={dim ? { opacity: 0.5 } : undefined}>
+      <EventListRow
+        thumb=""
+        thumbFallback={
+          <View
+            style={[styles.letterThumb, { backgroundColor: TONE[mode][tone] }]}
+          >
+            <Text style={styles.letter}>{title.trim().charAt(0)}</Text>
+          </View>
+        }
+        thumbSize={96}
+        title={title}
+        venue={pending.venue ?? pending.city ?? ''}
+        venueTone={tone}
+        time={pending.time ?? ''}
+        dateLabel={dateLabel}
+        dateAbove
+        tags={[]}
+        tick={tone}
+        onPress={() => router.push(`/pending/${pending.id}` as never)}
+        onTicketPress={
+          ticket
+            ? () => router.push(`/ticket/${pending.id}` as never)
+            : undefined
+        }
+      />
+    </View>
   );
 }
 
@@ -448,37 +450,23 @@ const styles = StyleSheet.create({
   pendingRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: 12,
     marginHorizontal: 22,
     marginTop: 8,
-    padding: 14,
+    padding: 12,
     borderRadius: 14,
     borderWidth: StyleSheet.hairlineWidth,
   },
-  pendingTitle: {
-    fontFamily: fontFamily.bold,
-    fontSize: 15,
-    letterSpacing: -0.22,
-    lineHeight: 19,
-  },
-  pendingMeta: {
-    fontFamily: fontFamily.medium,
-    fontSize: 12.5,
-    lineHeight: 17,
-  },
-  pendingTicket: {
-    flexDirection: 'row',
+  letterThumb: {
+    width: '100%',
+    height: '100%',
     alignItems: 'center',
-    gap: 5,
-    paddingHorizontal: 9,
-    height: 24,
-    borderRadius: 999,
+    justifyContent: 'center',
   },
-  pendingTicketText: {
-    fontFamily: fontFamily.mono,
-    fontSize: 10,
-    letterSpacing: 1,
-    textTransform: 'uppercase',
+  letter: {
+    fontFamily: fontFamily.display,
+    fontSize: 40,
+    color: 'rgba(0,0,0,0.55)',
   },
   pastLabel: {
     fontFamily: fontFamily.mono,

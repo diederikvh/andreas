@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import type { ReactNode } from 'react';
 import { Image } from 'expo-image';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
@@ -7,7 +8,6 @@ import type { BadgeTone, Friend } from '@/lib/types';
 import { useMode, useRoles } from '@/store/mode';
 import { fontFamily, palette } from '@/theme/tokens';
 import { TONE } from '@/theme/tones';
-
 
 export type EventTag = { label: string; tone: BadgeTone };
 
@@ -53,6 +53,10 @@ type Props = {
   /** Optional: override thumb size (default 76). Agenda gebruikt 96 om
       het beeld meer ruimte te geven naast de tekst-zware rij. */
   thumbSize?: number;
+  /** Wat er op de plek van het beeld staat als er geen beeld is. Voor een
+      event dat je zelf hebt toegevoegd bestaat er nog geen foto; een lege
+      grijze rechthoek in een lijst vol beeld leest als een fout. */
+  thumbFallback?: ReactNode;
   /** Wanneer aan: tijd + datum verschijnen als kleine bold-regel
       bóven de titel, in een iets lichtere kleur dan de titel.
       Vervangt de mono-uppercase subline boven de tags. Gebruikt op de
@@ -77,6 +81,7 @@ export function EventListRow({
   time,
   duration,
   thumb,
+  thumbFallback,
   title,
   venue,
   venueTone,
@@ -133,14 +138,26 @@ export function EventListRow({
       style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}
     >
       <View style={[styles.row, { borderColor: roles.bgChip }]}>
-        <Image
-          source={{ uri: thumb }}
-          style={[
-            styles.rowThumb,
-            thumbSize ? { width: thumbSize, height: thumbSize } : null,
-          ]}
-          contentFit="cover"
-        />
+        {thumb.length === 0 && thumbFallback ? (
+          <View
+            style={[
+              styles.rowThumb,
+              thumbSize ? { width: thumbSize, height: thumbSize } : null,
+              styles.rowThumbFallback,
+            ]}
+          >
+            {thumbFallback}
+          </View>
+        ) : (
+          <Image
+            source={{ uri: thumb }}
+            style={[
+              styles.rowThumb,
+              thumbSize ? { width: thumbSize, height: thumbSize } : null,
+            ]}
+            contentFit="cover"
+          />
+        )}
         <View style={styles.rowBody}>
           {dateAbove && dateAboveText.length > 0 && (
             <Text
@@ -189,10 +206,7 @@ export function EventListRow({
               )}
               {featured && (
                 <View
-                  style={[
-                    styles.tag,
-                    { backgroundColor: `${tickColor}26` },
-                  ]}
+                  style={[styles.tag, { backgroundColor: `${tickColor}26` }]}
                 >
                   <Ionicons
                     name="star"
@@ -227,10 +241,7 @@ export function EventListRow({
               )}
               {seriesLabel && (
                 <View
-                  style={[
-                    styles.seriesTag,
-                    { backgroundColor: roles.bgTag },
-                  ]}
+                  style={[styles.seriesTag, { backgroundColor: roles.bgTag }]}
                 >
                   <Text style={[styles.seriesTagText, { color: roles.fg }]}>
                     {seriesLabel}
@@ -239,10 +250,7 @@ export function EventListRow({
               )}
               {genreLabel && (
                 <View
-                  style={[
-                    styles.seriesTag,
-                    { backgroundColor: roles.bgTag },
-                  ]}
+                  style={[styles.seriesTag, { backgroundColor: roles.bgTag }]}
                 >
                   <Text style={[styles.seriesTagText, { color: roles.fg }]}>
                     {genreLabel}
@@ -258,11 +266,7 @@ export function EventListRow({
                   hitSlop={6}
                   style={[styles.ticketTag, { backgroundColor: tickColor }]}
                 >
-                  <Ionicons
-                    name="ticket"
-                    size={11}
-                    color={roles.onAccent}
-                  />
+                  <Ionicons name="ticket" size={11} color={roles.onAccent} />
                   <Text
                     style={[styles.ticketTagText, { color: roles.onAccent }]}
                   >
@@ -300,7 +304,9 @@ function lightenHex(hex: string, amount: number): string {
   const g = parseInt(h.slice(2, 4), 16);
   const b = parseInt(h.slice(4, 6), 16);
   const blend = (c: number) =>
-    Math.round(c + (255 - c) * amount).toString(16).padStart(2, '0');
+    Math.round(c + (255 - c) * amount)
+      .toString(16)
+      .padStart(2, '0');
   return `#${blend(r)}${blend(g)}${blend(b)}`;
 }
 
@@ -353,11 +359,14 @@ function FriendsPill({
                 {(f.name.trim()[0] ?? '?').toUpperCase()}
               </Text>
             </View>
-          )
+          ),
         )}
       </View>
       <Text style={[styles.friendsText, { color: textColor }]}>
-        {friendsLabel(friends.map((f) => f.name), locale)}
+        {friendsLabel(
+          friends.map((f) => f.name),
+          locale,
+        )}
       </Text>
     </View>
   );
@@ -439,18 +448,22 @@ const styles = StyleSheet.create({
     fontSize: 14,
     letterSpacing: -0.2,
   },
+  // Zelfde maat en ronding als de andere labels in deze rij (`tag`):
+  // een ticket is geen ander soort ding dan een venue of een genre, het
+  // is alleen het enige label dat vol accent mag zijn.
+  rowThumbFallback: { alignItems: 'center', justifyContent: 'center' },
   ticketTag: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    paddingHorizontal: 7,
-    paddingVertical: 3,
-    borderRadius: 5,
+    height: 24,
+    paddingHorizontal: 10,
+    borderRadius: 999,
   },
   ticketTagText: {
     fontFamily: fontFamily.monoMedium,
-    fontSize: 9.5,
-    letterSpacing: 0.4,
+    fontSize: 9,
+    letterSpacing: 0.9,
     textTransform: 'uppercase',
   },
   rowTags: {

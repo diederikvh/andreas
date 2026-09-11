@@ -609,6 +609,15 @@ zelfde privacygrens. Alleen de vraagstelling.
         `handled`, `event_id` gezet, en iedereen die aan de aanmelding hing
         krijgt een echte `attendance`-rij op de eerstvolgende voorstelling.
         Zonder die stap blijft hun plan voor altijd in de wachtkamer staan.
+      - In de app staan ze **tussen** je gewone plannen, niet in een eigen
+        groepje: dat Andreas het event nog niet kent is ons werk, niet dat
+        van iemand met een kaartje. Zelfde rij, zelfde labels, zelfde
+        tegel op de homepage-rail — alleen het beeld ontbreekt, en daar
+        staat de eerste letter op een kleurvlak uit het palet (gekozen op
+        het id, dus altijd dezelfde kleur voor dezelfde avond).
+      - `app/pending/[id].tsx` is de detailpagina: karig met opzet (geen
+        beschrijving, geen lineup), maar met wat aan de deur telt — je
+        ticket, en de datum/tijd/venue die je zelf invulde.
       - Openstaand: het ticket blijft na die verhuizing op de `sub-…`-sleutel
         hangen in plaats van op de occurrence. Het bestand is niet weg, maar
         de eventpagina laat 'm niet zien tot dat is omgezet.

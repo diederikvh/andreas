@@ -3,7 +3,14 @@ import { useNavigation, useScrollToTop } from '@react-navigation/native';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
 import {
   KeyboardAvoidingView,
   type NativeScrollEvent,
@@ -36,7 +43,12 @@ import {
 import { RefreshBanner } from '@/components/RefreshBanner';
 import { RunningStrip } from '@/components/RunningStrip';
 import { SpinningCross } from '@/components/SpinningCross';
-import type { ApiEvent, SavedApiEvent, VenueType } from '@/lib/api';
+import type {
+  ApiEvent,
+  PendingEvent,
+  SavedApiEvent,
+  VenueType,
+} from '@/lib/api';
 import {
   eventImageUrl,
   CATEGORY_TICK,
@@ -65,6 +77,7 @@ import { useLocale, useT, type Locale } from '@/lib/i18n';
 import {
   useEvents,
   useMyGoing,
+  usePendingEvents,
   useVenues,
   useForYouEvents,
   useMusea,
@@ -78,7 +91,7 @@ import { useAddSavedVandaagSearch } from '@/store/savedVandaagSearches';
 import { useVandaagFilters } from '@/store/vandaagFilters';
 import { useZoekStore } from '@/store/zoek';
 import { fontFamily, palette } from '@/theme/tokens';
-import { TONE } from '@/theme/tones';
+import { TONE, type BadgeToneKey } from '@/theme/tones';
 
 function formatMetaForRow(row: OccurrenceRow, locale: Locale): string {
   const d = new Date(row.occurrence.startsAt);
@@ -100,7 +113,6 @@ function formatMetaForRow(row: OccurrenceRow, locale: Locale): string {
     .join(' · ');
 }
 
-
 // Hoogte van de chip-row — gebruikt door de sticky-overlay om de
 // fade-in threshold te bepalen (= scrollY waar de inline chip-row
 // achter de AppHeader is verdwenen).
@@ -116,7 +128,6 @@ const CATEGORIES_ORDER: ApiEvent['category'][] = [
   'Literatuur',
   'Film',
 ];
-
 
 /**
  * Museum-tegels in de rail zijn smaller dan de gewone rail-kaart: het is
@@ -199,7 +210,11 @@ export default function Avond() {
   // exhibitions die binnenkort openen) ook in de "Doorlopend te zien"
   // strook, gelijk aan wat de Agenda-tab toont. De vandaag-filter op
   // de events-lijst doen we cliënt-side via todayWindow.toMs.
-  const { data: events, isLoading, error } = useEvents({
+  const {
+    data: events,
+    isLoading,
+    error,
+  } = useEvents({
     from: todayWindow.from,
     lean: true,
   });
@@ -259,16 +274,30 @@ export default function Avond() {
   // op elke telefoon klopt — 22 leading pad, 10 gap, ~34 peek.
   const { width: screenW } = useWindowDimensions();
   const goingCardW = Math.floor((screenW - 22 - 2 * 10 - 34) / 3);
+  // Events die je zelf hebt toegevoegd horen hier net zo goed: je hebt er
+  // een kaartje voor, dan is het een plan. Dat Andreas het event nog niet
+  // kent is ons werk, niet iets om jouw agenda voor leeg te laten.
+  const { data: pendingRaw } = usePendingEvents({ enabled: authed });
   const agendaRail = useMemo(() => {
-    if (!authed) return [];
+    if (!authed) return [] as AgendaRailItem[];
     const now = Date.now();
-    return (going ?? [])
+    const real: AgendaRailItem[] = (going ?? [])
       .filter((g) => new Date(g.endsAt ?? g.startsAt).getTime() >= now)
-      .sort(
-        (a, b) =>
-          new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime()
-      );
-  }, [authed, going]);
+      .map((g) => ({
+        kind: 'going' as const,
+        at: new Date(g.startsAt).getTime(),
+        entry: g,
+      }));
+    const own: AgendaRailItem[] = (pendingRaw ?? [])
+      .filter((p) => !p.published && p.date)
+      .map((p) => ({
+        kind: 'pending' as const,
+        at: new Date(`${p.date}T${p.time ?? '12:00'}:00`).getTime(),
+        pending: p,
+      }))
+      .filter((i) => !Number.isNaN(i.at) && i.at >= now);
+    return [...real, ...own].sort((a, b) => a.at - b.at);
+  }, [authed, going, pendingRaw]);
 
   // Pull-to-refresh: invalideert events-cache zodat de huidige
   // window-query opnieuw fetched. Voor wanneer de gebruiker denkt
@@ -282,7 +311,7 @@ export default function Avond() {
   // Start op een tijd-gebaseerde waarde zodat verschillende sessies
   // niet allemaal hetzelfde item zien.
   const [featuredSeed, setFeaturedSeed] = useState(() =>
-    Math.floor(Date.now() / 60_000)
+    Math.floor(Date.now() / 60_000),
   );
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -311,7 +340,7 @@ export default function Avond() {
   // elke re-render.
   const allRows = useMemo<OccurrenceRow[]>(
     () => (events ? expandToOccurrenceRows(events) : []),
-    [events]
+    [events],
   );
 
   // Hoofd-lijst: vandaag's events (geen exhibitions), gefilterd op
@@ -334,9 +363,7 @@ export default function Avond() {
       if (effectiveEndsAtMs(row.occurrence, row.event) < now) return false;
       // Cliënt-side vandaag-filter: alleen occurrences waarvan
       // startsAt vandaag valt (= < morgen 00:00).
-      if (
-        new Date(row.occurrence.startsAt).getTime() >= todayWindow.toMs
-      ) {
+      if (new Date(row.occurrence.startsAt).getTime() >= todayWindow.toMs) {
         return false;
       }
       // Geen cat-mode-coupling meer: `filtered` bevat alle single-day
@@ -356,16 +383,15 @@ export default function Avond() {
         //
         // Venue zonder type valt buiten de filter — bewust strict zodat
         // "alleen clubs" niet ineens venues zonder type meesleurt.
-        const shownType = (e.nextOccurrenceVenue?.type ?? e.venue.type) as
-          | VenueType
-          | null;
+        const shownType = (e.nextOccurrenceVenue?.type ??
+          e.venue.type) as VenueType | null;
         if (!shownType || !activeTypes.includes(shownType)) {
           return false;
         }
       }
       if (activeBlocks.length > 0) {
         const block = getTimeBlock(
-          new Date(row.occurrence.startsAt).getHours()
+          new Date(row.occurrence.startsAt).getHours(),
         );
         if (!activeBlocks.includes(block)) return false;
       }
@@ -378,7 +404,7 @@ export default function Avond() {
         // Search matched óók op event.genres — zo vindt "techno"
         // events met techno-tag ook al staat 't niet in de titel.
         const inGenres = (e.genres ?? []).some((g) =>
-          g.toLowerCase().includes(needle)
+          g.toLowerCase().includes(needle),
         );
         if (!inTitle && !inVenue && !inDesc && !inGenres) return false;
       }
@@ -412,7 +438,7 @@ export default function Avond() {
       .sort(
         (a, b) =>
           new Date(a.occurrence.startsAt).getTime() -
-          new Date(b.occurrence.startsAt).getTime()
+          new Date(b.occurrence.startsAt).getTime(),
       );
   }, [events, allRows, now]);
 
@@ -429,7 +455,7 @@ export default function Avond() {
       .sort(
         (a, b) =>
           new Date(a.occurrence.startsAt).getTime() -
-          new Date(b.occurrence.startsAt).getTime()
+          new Date(b.occurrence.startsAt).getTime(),
       );
   }, [events, allRows, now]);
 
@@ -467,7 +493,7 @@ export default function Avond() {
         { id: `${ev.id}::${occ.id}`, event: ev, occurrence: occ },
         ev.venueFollowed
           ? t('Jouw venue', 'Your venue')
-          : t('Voor jou', 'For you')
+          : t('Voor jou', 'For you'),
       );
     }
 
@@ -475,7 +501,8 @@ export default function Avond() {
     // anders oplevert in plaats van steeds hetzelfde eerstvolgende event.
     const rest = featuredFallbackPool.filter((r) => !seen.has(r.event.id));
     for (let i = 0; i < rest.length && out.length < 3; i++) {
-      const idx = (((featuredSeed + i) % rest.length) + rest.length) % rest.length;
+      const idx =
+        (((featuredSeed + i) % rest.length) + rest.length) % rest.length;
       push(rest[idx], t('Uitgelicht', 'Featured'));
     }
     return out;
@@ -504,7 +531,7 @@ export default function Avond() {
         const inVenue = e.venue.name.toLowerCase().includes(needle);
         const inDesc = (e.description ?? '').toLowerCase().includes(needle);
         const inGenres = (e.genres ?? []).some((g) =>
-          g.toLowerCase().includes(needle)
+          g.toLowerCase().includes(needle),
         );
         if (!inTitle && !inVenue && !inDesc && !inGenres) return false;
       }
@@ -525,23 +552,22 @@ export default function Avond() {
   // categorie.
   const railClubs = useMemo(
     () => filtered.filter((r) => r.event.venue.type === 'club'),
-    [filtered]
+    [filtered],
   );
   const railLivePodium = useMemo(
     () =>
       filtered.filter(
-        (r) =>
-          r.event.venue.type === 'podium' && r.event.category === 'Muziek'
+        (r) => r.event.venue.type === 'podium' && r.event.category === 'Muziek',
       ),
-    [filtered]
+    [filtered],
   );
   const railTheater = useMemo(
     () => filtered.filter((r) => r.event.category === 'Theater'),
-    [filtered]
+    [filtered],
   );
   const railFilm = useMemo(
     () => filtered.filter((r) => r.event.category === 'Film'),
-    [filtered]
+    [filtered],
   );
   // "Overdag"-rail: alle single-day events vandaag die
   // helemaal in het dag-venster vallen (start < 18:00 én eindt
@@ -558,9 +584,9 @@ export default function Avond() {
         (r) =>
           r.event.category !== 'Film' &&
           r.event.category !== 'Literatuur' &&
-          isDaytimeOccurrence(r.occurrence.startsAt, r.occurrence.endsAt)
+          isDaytimeOccurrence(r.occurrence.startsAt, r.occurrence.endsAt),
       ),
-    [filtered]
+    [filtered],
   );
   // Morgen-rail: zelfde filter als "Overdag" (start < 18:00, eindt
   // < 20:00 dezelfde dag) maar voor morgen. Avond-events horen niet
@@ -578,7 +604,9 @@ export default function Avond() {
       if (startMs < tomorrowWindow.fromMs || startMs >= tomorrowWindow.toMs) {
         return false;
       }
-      if (!isDaytimeOccurrence(row.occurrence.startsAt, row.occurrence.endsAt)) {
+      if (
+        !isDaytimeOccurrence(row.occurrence.startsAt, row.occurrence.endsAt)
+      ) {
         return false;
       }
       return true;
@@ -612,7 +640,7 @@ export default function Avond() {
   const expoEventsToday = useMemo<ApiEvent[]>(
     () => expoEvents.filter(isOnViewToday),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [expoEvents, todayWindow.toMs, startOfTodayMs]
+    [expoEvents, todayWindow.toMs, startOfTodayMs],
   );
 
   // Sort-key voor expo-rails: concrete happenings (single-day én
@@ -628,7 +656,6 @@ export default function Avond() {
     return new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime();
   };
 
-
   // Musea/galleries-rails zijn kunst-rails — gate op category='Kunst'
   // zodat een daytime concert of literatuur-event in een museum-venue
   // niet per ongeluk hier landt (sinds Muziek/Theater nu óók in
@@ -643,11 +670,10 @@ export default function Avond() {
           (e) =>
             e.category === 'Kunst' &&
             e.venue.type === 'galerie' &&
-            (e.venue.scene === 'mainstream' ||
-              e.venue.scene === 'alternatief')
+            (e.venue.scene === 'mainstream' || e.venue.scene === 'alternatief'),
         )
         .sort(sortByStartsAt),
-    [expoEventsToday]
+    [expoEventsToday],
   );
 
   const railGalleriesAndere = useMemo<ApiEvent[]>(
@@ -657,10 +683,10 @@ export default function Avond() {
           (e) =>
             e.category === 'Kunst' &&
             e.venue.type === 'galerie' &&
-            (e.venue.scene === 'underground' || e.venue.scene === 'fringe')
+            (e.venue.scene === 'underground' || e.venue.scene === 'fringe'),
         )
         .sort(sortByStartsAt),
-    [expoEventsToday]
+    [expoEventsToday],
   );
 
   const railLit = useMemo<ApiEvent[]>(
@@ -668,7 +694,7 @@ export default function Avond() {
       expoEventsToday
         .filter((e) => e.category === 'Literatuur')
         .sort(sortByStartsAt),
-    [expoEventsToday]
+    [expoEventsToday],
   );
 
   const hasFilterActive =
@@ -730,13 +756,21 @@ export default function Avond() {
             onMore={() => router.push('/going' as never)}
             cardWidth={goingCardW}
           >
-            {agendaRail.map((g) => (
-              <GoingRailCard
-                key={g.occurrenceId}
-                entry={g}
-                width={goingCardW}
-              />
-            ))}
+            {agendaRail.map((item) =>
+              item.kind === 'going' ? (
+                <GoingRailCard
+                  key={item.entry.occurrenceId}
+                  entry={item.entry}
+                  width={goingCardW}
+                />
+              ) : (
+                <PendingRailCard
+                  key={item.pending.id}
+                  pending={item.pending}
+                  width={goingCardW}
+                />
+              ),
+            )}
           </Rail>
         )}
 
@@ -815,7 +849,9 @@ export default function Avond() {
                   key={r.id}
                   event={r.event}
                   occurrenceId={
-                    r.occurrence.id.endsWith('::next') ? undefined : r.occurrence.id
+                    r.occurrence.id.endsWith('::next')
+                      ? undefined
+                      : r.occurrence.id
                   }
                   occurrenceStartsAt={r.occurrence.startsAt}
                   occurrenceEndsAt={r.occurrence.endsAt}
@@ -833,7 +869,9 @@ export default function Avond() {
                   key={r.id}
                   event={r.event}
                   occurrenceId={
-                    r.occurrence.id.endsWith('::next') ? undefined : r.occurrence.id
+                    r.occurrence.id.endsWith('::next')
+                      ? undefined
+                      : r.occurrence.id
                   }
                   occurrenceStartsAt={r.occurrence.startsAt}
                   occurrenceEndsAt={r.occurrence.endsAt}
@@ -851,7 +889,9 @@ export default function Avond() {
                   key={r.id}
                   event={r.event}
                   occurrenceId={
-                    r.occurrence.id.endsWith('::next') ? undefined : r.occurrence.id
+                    r.occurrence.id.endsWith('::next')
+                      ? undefined
+                      : r.occurrence.id
                   }
                   occurrenceStartsAt={r.occurrence.startsAt}
                   occurrenceEndsAt={r.occurrence.endsAt}
@@ -870,7 +910,9 @@ export default function Avond() {
                   key={r.id}
                   event={r.event}
                   occurrenceId={
-                    r.occurrence.id.endsWith('::next') ? undefined : r.occurrence.id
+                    r.occurrence.id.endsWith('::next')
+                      ? undefined
+                      : r.occurrence.id
                   }
                   occurrenceStartsAt={r.occurrence.startsAt}
                   occurrenceEndsAt={r.occurrence.endsAt}
@@ -896,7 +938,9 @@ export default function Avond() {
                     key={r.id}
                     event={r.event}
                     occurrenceId={
-                      r.occurrence.id.endsWith('::next') ? undefined : r.occurrence.id
+                      r.occurrence.id.endsWith('::next')
+                        ? undefined
+                        : r.occurrence.id
                     }
                     occurrenceStartsAt={r.occurrence.startsAt}
                     occurrenceEndsAt={r.occurrence.endsAt}
@@ -915,7 +959,9 @@ export default function Avond() {
                   key={r.id}
                   event={r.event}
                   occurrenceId={
-                    r.occurrence.id.endsWith('::next') ? undefined : r.occurrence.id
+                    r.occurrence.id.endsWith('::next')
+                      ? undefined
+                      : r.occurrence.id
                   }
                   occurrenceStartsAt={r.occurrence.startsAt}
                   occurrenceEndsAt={r.occurrence.endsAt}
@@ -999,7 +1045,6 @@ export default function Avond() {
             </Animated.View>
           )}
 
-
         {/* Favoriete venues, altijd zichtbaar — los van of er vandaag
             iets speelt. Komt na de agenda-banner omdat 't visueel
             buiten de "vandaag"-bubbel valt en als hub voor je
@@ -1015,7 +1060,6 @@ export default function Avond() {
     </View>
   );
 }
-
 
 /**
  * Pad naar event-detail. Voor occurrences die uit de API komen (echte
@@ -1100,10 +1144,18 @@ function NewArrivalsAlert() {
             key={uri}
             style={[
               styles.newAlertThumb,
-              { left: i * 22, zIndex: thumbs.length - i, borderColor: roles.bg },
+              {
+                left: i * 22,
+                zIndex: thumbs.length - i,
+                borderColor: roles.bg,
+              },
             ]}
           >
-            <Image source={{ uri }} style={styles.newAlertImg} contentFit="cover" />
+            <Image
+              source={{ uri }}
+              style={styles.newAlertImg}
+              contentFit="cover"
+            />
           </View>
         ))}
       </View>
@@ -1135,6 +1187,110 @@ function NewArrivalsAlert() {
  * datum is hier de reden dat je kijkt, dus die moet je zien voordat je
  * de titel leest.
  */
+/** Tegel voor een event dat je zelf hebt toegevoegd. Zelfde tegel als de
+    rest, alleen staat er de eerste letter op een kleurvlak in plaats van
+    een foto — die bestaat nog niet. */
+function PendingRailCard({
+  pending,
+  width,
+}: {
+  pending: PendingEvent;
+  width: number;
+}) {
+  const roles = useRoles();
+  const mode = useMode();
+  const locale = useLocale();
+  const ticket = useTicketFor(pending.id);
+  const title =
+    pending.title ??
+    pending.artists[0] ??
+    (locale === 'nl' ? 'Naamloos' : 'Untitled');
+  const tone = PENDING_TONES[hashTone(pending.id) % PENDING_TONES.length];
+  const when = pending.date ? new Date(`${pending.date}T12:00:00`) : null;
+  const dateLabel =
+    when && !Number.isNaN(when.getTime())
+      ? `${when.getDate()} ${monthShort(when.getMonth(), locale).toLowerCase()}`
+      : '';
+
+  return (
+    <Pressable
+      onPress={() => router.push(`/pending/${pending.id}` as never)}
+      style={[goingCardStyles.card, { width }]}
+    >
+      <View
+        style={[
+          goingCardStyles.imgWrap,
+          { height: width, backgroundColor: TONE[mode][tone] },
+          goingCardStyles.letterWrap,
+        ]}
+      >
+        <Text style={goingCardStyles.letter}>{title.trim().charAt(0)}</Text>
+        <View
+          style={[goingCardStyles.badge, { backgroundColor: roles.accent }]}
+        >
+          <Text style={[goingCardStyles.badgeDate, { color: roles.onAccent }]}>
+            {dateLabel}
+          </Text>
+          {pending.time ? (
+            <Text
+              style={[goingCardStyles.badgeTime, { color: roles.onAccent }]}
+            >
+              {pending.time}
+            </Text>
+          ) : null}
+        </View>
+        {ticket ? (
+          <Pressable
+            onPress={() => router.push(`/ticket/${pending.id}` as never)}
+            hitSlop={8}
+            style={[
+              goingCardStyles.ticketBadge,
+              { backgroundColor: roles.accent },
+            ]}
+          >
+            <Ionicons name="ticket" size={13} color={roles.onAccent} />
+          </Pressable>
+        ) : null}
+      </View>
+      <View style={goingCardStyles.body}>
+        <Text
+          numberOfLines={2}
+          style={[goingCardStyles.title, { color: roles.fg }]}
+        >
+          {title}
+        </Text>
+        <Text
+          numberOfLines={1}
+          style={[goingCardStyles.venue, { color: roles.fgMuted }]}
+        >
+          {pending.venue ?? pending.city ?? ''}
+        </Text>
+      </View>
+    </Pressable>
+  );
+}
+
+/** Kleuren voor dat letter-vlak: de tonen die de app elders ook gebruikt,
+    gekozen op het id zodat dezelfde avond altijd dezelfde kleur heeft. */
+const PENDING_TONES: BadgeToneKey[] = [
+  'acid',
+  'flare',
+  'plum',
+  'azure',
+  'saffron',
+  'cobalt',
+];
+
+function hashTone(id: string): number {
+  let h = 0;
+  for (let i = 0; i < id.length; i += 1) h = (h * 31 + id.charCodeAt(i)) >>> 0;
+  return h;
+}
+
+type AgendaRailItem =
+  | { kind: 'going'; at: number; entry: SavedApiEvent }
+  | { kind: 'pending'; at: number; pending: PendingEvent };
+
 function GoingRailCard({
   entry,
   width,
@@ -1159,7 +1315,7 @@ function GoingRailCard({
     <Pressable
       onPress={() =>
         router.push(
-          `/event/${entry.id}?o=${entry.occurrenceId}&source=avond` as never
+          `/event/${entry.id}?o=${entry.occurrenceId}&source=avond` as never,
         )
       }
       style={[goingCardStyles.card, { width }]}
@@ -1186,7 +1342,9 @@ function GoingRailCard({
             {dateLabel}
           </Text>
           {time ? (
-            <Text style={[goingCardStyles.badgeTime, { color: roles.onAccent }]}>
+            <Text
+              style={[goingCardStyles.badgeTime, { color: roles.onAccent }]}
+            >
               {time}
             </Text>
           ) : null}
@@ -1233,6 +1391,12 @@ const goingCardStyles = StyleSheet.create({
     overflow: 'hidden',
   },
   img: { width: '100%', height: '100%' },
+  letterWrap: { alignItems: 'center', justifyContent: 'center' },
+  letter: {
+    fontFamily: fontFamily.display,
+    fontSize: 44,
+    color: 'rgba(0,0,0,0.55)',
+  },
   // Linksonder in de afbeelding, zoals een sticker op een agenda-blad.
   // Datum boven, tijd eronder — twee korte regels maken er een blokje
   // van in plaats van een liggend strookje.
@@ -1301,11 +1465,11 @@ function EmptyResults({
   const body = hasFilter
     ? t(
         'Pas je filter of zoekterm aan om meer events te zien.',
-        'Adjust your filter or search to see more events.'
+        'Adjust your filter or search to see more events.',
       )
     : t(
         'Kijk morgen weer, of bekijk de hele week op Agenda.',
-        'Check back tomorrow, or browse the whole week on Agenda.'
+        'Check back tomorrow, or browse the whole week on Agenda.',
       );
   return (
     <View style={[styles.emptyResults, { minHeight }]}>
@@ -1388,9 +1552,7 @@ function FeaturedCarousel({
       >
         {leads.map((lead) => (
           <View key={lead.id} style={{ width }}>
-            <Pressable
-              onPress={() => router.push(eventPathFor(lead) as never)}
-            >
+            <Pressable onPress={() => router.push(eventPathFor(lead) as never)}>
               <FeaturedCard
                 kicker={lead.kicker}
                 title={lead.event.title}
@@ -1662,7 +1824,7 @@ export function AvondFilterSheet({
         <Text style={[styles.sheetLead, { color: roles.fgMuted }]}>
           {t(
             "Combineer tijd, vrienden en favorieten. Sla 'm op om de combinatie als chip te bewaren.",
-            'Combine time, friends and favourites. Save it to keep the combination as a chip.'
+            'Combine time, friends and favourites. Save it to keep the combination as a chip.',
           )}
         </Text>
       </View>
@@ -1736,14 +1898,16 @@ export function AvondFilterSheet({
             />
           ))}
         </View>
-
       </ScrollView>
 
       {saveOpen ? (
         <View
           style={[
             styles.sheetFooter,
-            { borderTopColor: roles.bgChip, paddingBottom: footerPaddingBottom },
+            {
+              borderTopColor: roles.bgChip,
+              paddingBottom: footerPaddingBottom,
+            },
           ]}
         >
           <View
@@ -1760,7 +1924,7 @@ export function AvondFilterSheet({
               onChangeText={setSaveName}
               placeholder={t(
                 'Naam (bv. Avond met vrienden)',
-                'Name (e.g. Evening with friends)'
+                'Name (e.g. Evening with friends)',
               )}
               placeholderTextColor={roles.fgPlaceholder}
               autoFocus
@@ -1807,7 +1971,10 @@ export function AvondFilterSheet({
         <View
           style={[
             styles.sheetFooter,
-            { borderTopColor: roles.bgChip, paddingBottom: footerPaddingBottom },
+            {
+              borderTopColor: roles.bgChip,
+              paddingBottom: footerPaddingBottom,
+            },
           ]}
         >
           <Pressable
@@ -1892,10 +2059,7 @@ function SheetChip({
       ]}
     >
       <Text
-        style={[
-          styles.sheetChipText,
-          { color: active ? roles.bg : roles.fg },
-        ]}
+        style={[styles.sheetChipText, { color: active ? roles.bg : roles.fg }]}
       >
         {label}
       </Text>
