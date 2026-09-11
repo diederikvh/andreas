@@ -434,6 +434,7 @@ export default function EventDetail() {
               ticketUrl={selectedOccurrence.ticketUrl ?? event.ticketUrl}
               isNacht={isNacht}
               soldOut={selectedOccurrence.status === 'sold_out'}
+              secondary={Boolean(myTicket)}
             />
           )}
 
@@ -1269,12 +1270,18 @@ function TicketsBlock({
   ticketUrl,
   isNacht,
   soldOut,
+  secondary,
 }: {
   price: string;
   priceNote: string | null;
   ticketUrl: string | null;
   isNacht: boolean;
   soldOut: boolean;
+  /** Er hangt al een ticket aan deze avond, dus "Toon ticket" is de
+      hoofdknop. Dan kan deze niet óók vol accent zijn: één knop per
+      pagina die om aandacht vraagt. Kopen blijft mogelijk — je gaat
+      met iemand mee, of je hebt er nog één nodig. */
+  secondary: boolean;
 }) {
   const roles = useRoles();
   const t = useT();
@@ -1326,14 +1333,26 @@ function TicketsBlock({
       }}
       style={[
         styles.ticketsBigCta,
-        { backgroundColor: isNacht ? palette.acid : palette.soil },
+        {
+          backgroundColor: secondary
+            ? roles.bgChip
+            : isNacht
+              ? palette.acid
+              : palette.soil,
+        },
       ]}
     >
       <View style={styles.ticketsBigCtaContent}>
         <Text
           style={[
             styles.ticketsBigCtaTitle,
-            { color: isNacht ? palette.noir : palette.paper3 },
+            {
+              color: secondary
+                ? roles.fg
+                : isNacht
+                  ? palette.noir
+                  : palette.paper3,
+            },
           ]}
         >
           {title}
@@ -1343,9 +1362,11 @@ function TicketsBlock({
             style={[
               styles.ticketsBigCtaSubtitle,
               {
-                color: isNacht
-                  ? 'rgba(10,10,11,0.65)'
-                  : 'rgba(255,255,255,0.7)',
+                color: secondary
+                  ? roles.fgMuted
+                  : isNacht
+                    ? 'rgba(10,10,11,0.65)'
+                    : 'rgba(255,255,255,0.7)',
               },
             ]}
           >
@@ -1356,7 +1377,13 @@ function TicketsBlock({
       <Text
         style={[
           styles.ticketsBigCtaArrow,
-          { color: isNacht ? palette.noir : palette.paper3 },
+          {
+            color: secondary
+              ? roles.fgMuted
+              : isNacht
+                ? palette.noir
+                : palette.paper3,
+          },
         ]}
       >
         ›
