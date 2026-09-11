@@ -561,6 +561,13 @@ function SharePreview({
     'idle' | 'sending' | 'done' | 'failed'
   >('idle');
   const [submitted, setSubmitted] = useState<SubmittedEvent | null>(null);
+  // Bij een event dat Andreas niet kent is een bestand er bijna altijd
+  // omdát je een ticket hebt — dat is de reden dat je het formulier
+  // invult. Dus standaard aan, en je kan 'm uitzetten. Andreas' oordeel
+  // ("dit is geen ticket") beslist dit niet: bij een onbekend event is
+  // de herkenning het minst betrouwbaar en jij het meest zeker.
+  const [keepOwnTicket, setKeepOwnTicket] = useState<boolean | null>(null);
+  const willKeepOwn = keepOwnTicket ?? Boolean(share.fileUri);
   const qc = useQueryClient();
 
   /**
@@ -576,7 +583,7 @@ function SharePreview({
     setSubmitState('sending');
     try {
       const res = await submitUnknownEvent({ ...safe, source: 'share' });
-      const keepTicket = Boolean(share.fileUri) && verdict.isTicket;
+      const keepTicket = Boolean(share.fileUri) && willKeepOwn;
       if (keepTicket) attachToPending(res.id);
       setSubmitted({
         id: res.id,
@@ -609,7 +616,7 @@ function SharePreview({
     setSubmitState('sending');
     try {
       await setPendingGoing(pending.id, true);
-      const keepTicket = Boolean(share.fileUri) && verdict.isTicket;
+      const keepTicket = Boolean(share.fileUri) && willKeepOwn;
       if (keepTicket) attachToPending(pending.id);
       setSubmitted({
         id: pending.id,
@@ -753,6 +760,9 @@ function SharePreview({
             <SelfAddStep
               draft={draft}
               canSubmit={isMatchable(safe)}
+              fileCount={shareFileUris(share).length}
+              keepTicket={willKeepOwn}
+              onToggleKeepTicket={() => setKeepOwnTicket(!willKeepOwn)}
               submitState={submitState}
               submitted={submitted}
               onSubmitUnknown={submitUnknown}
@@ -1079,6 +1089,9 @@ function ChooseStep({
 function SelfAddStep({
   draft,
   canSubmit,
+  fileCount,
+  keepTicket,
+  onToggleKeepTicket,
   submitState,
   submitted,
   onSubmitUnknown,
@@ -1086,6 +1099,10 @@ function SelfAddStep({
 }: {
   draft: EventDraft | null;
   canSubmit: boolean;
+  /** Hoeveel bestanden er met deze share meekwamen. 0 = niets te bewaren. */
+  fileCount: number;
+  keepTicket: boolean;
+  onToggleKeepTicket: () => void;
   submitState: 'idle' | 'sending' | 'done' | 'failed';
   /** Wat er aangemeld is, en wat er daarna mee gebeurde. `null` zolang
       er niets verstuurd is. */
@@ -1214,6 +1231,33 @@ function SelfAddStep({
         {t('Zelf toevoegen', 'Add it yourself')}
       </Text>
       {draft ? <DraftFields draft={draft} onChange={onChangeDraft} /> : null}
+
+      {/* Hier gaat het meestal juist om: je vult dit formulier in omdát je
+          een kaartje hebt voor iets dat Andreas niet kent. Dus standaard
+          aan, en geen herkenning die daar overheen beslist. */}
+      {fileCount > 0 ? (
+        <TicketKeepCard
+          keep={keepTicket}
+          onToggle={onToggleKeepTicket}
+          title={
+            fileCount > 1
+              ? t('Dit zijn je tickets', 'These are your tickets')
+              : t('Dit is je ticket', 'This is your ticket')
+          }
+          body={
+            keepTicket
+              ? t(
+                  'We bewaren het bij dit event, alleen op dit toestel. Zo toon je het aan de deur.',
+                  'We keep it with this event, on this device only. So you can show it at the door.',
+                )
+              : t(
+                  'We bewaren het niet. Je kan het straks niet vanuit Andreas aan de deur tonen.',
+                  'We will not keep it. You will not be able to show it from Andreas at the door.',
+                )
+          }
+        />
+      ) : null}
+
       <Pressable
         onPress={onSubmitUnknown}
         disabled={!canSubmit || submitState === 'sending'}
@@ -1508,74 +1552,42 @@ function IntentStep({
         </Pressable>
       ) : null}
       {attachable ? (
-        // De hele kaart schakelt, niet alleen het schuifje: een doelwit van
-        // 40×24 is te klein voor een keuze die bepaalt of je aan de deur
-        // iets te tonen hebt.
-        <Pressable
-          onPress={() => setKeepAsTicket(!willKeep)}
-          style={[
-            styles.ticketCard,
-            {
-              backgroundColor: cardBg,
-              borderColor: willKeep ? roles.accent : 'transparent',
-            },
-          ]}
-        >
-          <View style={styles.ticketCardHead}>
-            <Ionicons
-              name="ticket"
-              size={19}
-              color={willKeep ? roles.accent : roles.fgMuted}
-            />
-            <View style={{ flex: 1, gap: 4 }}>
-              <Text style={[styles.ticketCardTitle, { color: roles.fg }]}>
-                {storedTicket
-                  ? // In het Nederlands dekt dezelfde vraag enkelvoud en
-                    // meervoud, in het Engels niet.
-                    t(
-                      'Deze er ook bij?',
-                      fileCount > 1 ? 'Keep these too?' : 'Keep this one too?',
-                    )
-                  : verdict.isTicket
-                    ? fileCount > 1
-                      ? t(
-                          'Dit lijken je tickets',
-                          'These look like your tickets',
-                        )
-                      : t('Dit lijkt je ticket', 'This looks like your ticket')
-                    : fileCount > 1
-                      ? t('Bewaren als tickets?', 'Keep as your tickets?')
-                      : t('Bewaren als ticket?', 'Keep as your ticket?')}
-              </Text>
-              <Text style={[styles.ticketCardBody, { color: roles.fgMuted }]}>
-                {willKeep
-                  ? t(
-                      'We bewaren het bij dit event, alleen op dit toestel. Zo toon je het aan de deur.',
-                      'We keep it with this event, on this device only. So you can show it at the door.',
-                    )
-                  : verdict.isTicket
-                    ? t(
-                        'We bewaren het niet. Je kan het straks niet vanuit Andreas aan de deur tonen.',
-                        'We will not keep it. You will not be able to show it from Andreas at the door.',
-                      )
-                    : t(
-                        'We bewaren het niet. Je houdt het bestand zelf, Andreas doet er niets mee.',
-                        'We will not keep it. You keep the file yourself, Andreas does nothing with it.',
-                      )}
-              </Text>
-            </View>
-            {/* Niet zelf aantikbaar — de kaart eromheen vangt de tik, zodat
-                één gebaar niet twee keer kan omschakelen. Verticaal
-                gecentreerd tegen het hele tekstblok, niet tegen de kop. */}
-            <View pointerEvents="none">
-              <Switch
-                value={willKeep}
-                trackColor={{ true: roles.accent, false: roles.bgChip }}
-                thumbColor={isNacht ? palette.ink : palette.paper3}
-              />
-            </View>
-          </View>
-        </Pressable>
+        <TicketKeepCard
+          keep={willKeep}
+          onToggle={() => setKeepAsTicket(!willKeep)}
+          title={
+            storedTicket
+              ? // In het Nederlands dekt dezelfde vraag enkelvoud en
+                // meervoud, in het Engels niet.
+                t(
+                  'Deze er ook bij?',
+                  fileCount > 1 ? 'Keep these too?' : 'Keep this one too?',
+                )
+              : verdict.isTicket
+                ? fileCount > 1
+                  ? t('Dit lijken je tickets', 'These look like your tickets')
+                  : t('Dit lijkt je ticket', 'This looks like your ticket')
+                : fileCount > 1
+                  ? t('Bewaren als tickets?', 'Keep as your tickets?')
+                  : t('Bewaren als ticket?', 'Keep as your ticket?')
+          }
+          body={
+            willKeep
+              ? t(
+                  'We bewaren het bij dit event, alleen op dit toestel. Zo toon je het aan de deur.',
+                  'We keep it with this event, on this device only. So you can show it at the door.',
+                )
+              : verdict.isTicket
+                ? t(
+                    'We bewaren het niet. Je kan het straks niet vanuit Andreas aan de deur tonen.',
+                    'We will not keep it. You will not be able to show it from Andreas at the door.',
+                  )
+                : t(
+                    'We bewaren het niet. Je houdt het bestand zelf, Andreas doet er niets mee.',
+                    'We will not keep it. You keep the file yourself, Andreas does nothing with it.',
+                  )
+          }
+        />
       ) : null}
 
       {/* De knop die we verwachten staat bovenaan. Zit er een ticket bij,
@@ -1654,6 +1666,67 @@ function IntentStep({
         </Pressable>
       ))}
     </View>
+  );
+}
+
+/**
+ * De ticket-keuze. Twee plekken gebruiken 'm: een event dat Andreas kent,
+ * en een event dat je zelf toevoegt. De kaart schakelt in z'n geheel —
+ * een doelwit van 40×24 is te klein voor de keuze die bepaalt of je aan
+ * de deur iets te tonen hebt.
+ */
+function TicketKeepCard({
+  keep,
+  title,
+  body,
+  onToggle,
+}: {
+  keep: boolean;
+  title: string;
+  body: string;
+  onToggle: () => void;
+}) {
+  const roles = useRoles();
+  const mode = useMode();
+  const isNacht = mode === 'nacht';
+  const cardBg = isNacht ? palette.noir2 : palette.paper2;
+
+  return (
+    <Pressable
+      onPress={onToggle}
+      style={[
+        styles.ticketCard,
+        {
+          backgroundColor: cardBg,
+          borderColor: keep ? roles.accent : 'transparent',
+        },
+      ]}
+    >
+      <View style={styles.ticketCardHead}>
+        <Ionicons
+          name="ticket"
+          size={19}
+          color={keep ? roles.accent : roles.fgMuted}
+        />
+        <View style={{ flex: 1, gap: 4 }}>
+          <Text style={[styles.ticketCardTitle, { color: roles.fg }]}>
+            {title}
+          </Text>
+          <Text style={[styles.ticketCardBody, { color: roles.fgMuted }]}>
+            {body}
+          </Text>
+        </View>
+        {/* Niet zelf aantikbaar — de kaart eromheen vangt de tik, zodat
+            één gebaar niet twee keer kan omschakelen. */}
+        <View pointerEvents="none">
+          <Switch
+            value={keep}
+            trackColor={{ true: roles.accent, false: roles.bgChip }}
+            thumbColor={isNacht ? palette.ink : palette.paper3}
+          />
+        </View>
+      </View>
+    </Pressable>
   );
 }
 

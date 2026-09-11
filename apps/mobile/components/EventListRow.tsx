@@ -451,7 +451,14 @@ const styles = StyleSheet.create({
   // Zelfde maat en ronding als de andere labels in deze rij (`tag`):
   // een ticket is geen ander soort ding dan een venue of een genre, het
   // is alleen het enige label dat vol accent mag zijn.
-  rowThumbFallback: { alignItems: 'center', justifyContent: 'center' },
+  // `overflow: hidden` is hier het punt: het kleurvlak binnenin neemt
+  // anders geen ronde hoeken over en steekt vierkant door de radius van
+  // de thumb heen.
+  rowThumbFallback: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
   ticketTag: {
     flexDirection: 'row',
     alignItems: 'center',
