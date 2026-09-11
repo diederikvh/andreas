@@ -276,11 +276,15 @@ submissionsRoute.get('/match', async (c) => {
       )
     )
     // Zelfde datum eerst: bij twee aanmeldingen met dezelfde naam is de
-    // avond die jij deelde bijna altijd de juiste.
+    // avond die jij deelde bijna altijd de juiste. Geen datum? Dan alleen
+    // op recentheid — een constante in ORDER BY leest Postgres als
+    // kolomnummer ("ORDER BY position 0 is not in select list").
     .orderBy(
-      date
-        ? sql`case when ${schema.eventSubmissions.date} = ${date} then 0 else 1 end`
-        : sql`0`,
+      ...(date
+        ? [
+            sql`case when ${schema.eventSubmissions.date} = ${date} then 0 else 1 end`,
+          ]
+        : []),
       desc(schema.eventSubmissions.createdAt)
     )
     .limit(5);
