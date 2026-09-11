@@ -75,6 +75,10 @@ export default function InvitationDetail() {
   const revoke = useRevokeInvitation();
 
   const [reply, setReply] = useState('');
+  // Edit-state van het eigen antwoord. Staat hier — bóven de
+  // !invitation early return — zodat de hook-volgorde gelijk blijft;
+  // gebruikt wordt ie pas verderop bij `showRespondForm`.
+  const [editing, setEditing] = useState(false);
 
   // Bij keyboard-show: scroll de hele content naar het einde zodat de
   // respondWrap (reply-veld + Ga/Misschien/Nee-knoppen) boven het
@@ -140,7 +144,6 @@ export default function InvitationDetail() {
   const hasAnswered = myStatus !== null && myStatus !== 'pending';
   const msUntilStart = new Date(occStart).getTime() - Date.now();
   const canEdit = msUntilStart > 24 * 60 * 60 * 1000;
-  const [editing, setEditing] = useState(false);
   const showRespondForm = !hasAnswered || editing;
 
   // Groepeer responses per status. Initiator zit ook in responses
