@@ -47,13 +47,20 @@ const MAX_ZOOM = 5;
  *
  * Sluiten gaat via de kruisknop en niet via een tik op de achtergrond: bij
  * ingezoomd beeld is elke tik ook het begin van een sleep.
+ *
+ * `background` bepaalt het vlak achter de pagina's. Zwart is de default en
+ * blijft dat voor je bewaarde ticket — een gescande code leest beter op een
+ * donkere ondergrond. Kijk je alleen naar wat je deelde, dan is er niets te
+ * scannen en geef je 'm de kleur van de modus waar je in zit.
  */
 export function ZoomableImages({
   pages,
   onClose,
+  background = '#000000',
 }: {
   pages: ViewerPage[];
   onClose?: () => void;
+  background?: string;
 }) {
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
@@ -143,7 +150,7 @@ export function ZoomableImages({
   ));
 
   return (
-    <View style={styles.root}>
+    <View style={[styles.root, { backgroundColor: background }]}>
       <ScrollView
         scrollEnabled={isIos || !zoomed}
         maximumZoomScale={isIos ? MAX_ZOOM : 1}
@@ -180,7 +187,7 @@ export function ZoomableImages({
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#000000' },
+  root: { flex: 1 },
   content: { flexGrow: 1, justifyContent: 'center', gap: 10 },
   close: {
     position: 'absolute',

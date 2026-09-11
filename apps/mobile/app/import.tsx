@@ -720,6 +720,7 @@ function SharePreview({
                     },
                   ]
             }
+            background={roles.bg}
             onClose={() => setFullscreen(false)}
           />
         ) : null}
