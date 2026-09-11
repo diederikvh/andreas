@@ -175,6 +175,7 @@ Laatste sync: 2026-08-31 · branch `main`.
 **App-features**:
 10. **Niet-leden uitnodigen — token-flow** ⬜ (zie `## Toekomstige slice` hieronder voor design).
 11. **Dynamic app-icon (iOS)** ⬜ — `expo-alternate-app-icons` plugin + JS-call vanuit `useMode()` om het home-screen-icoon mee te laten kleuren met nacht/dag. Vereist native rebuild + brengt iOS-systeem-popup bij elke wissel. Optioneel.
+12. **Share naar Andreas** ⬜ — Andreas als bestemming in de native share-sheet (Instagram/Safari/Foto's/Mail/Files → Deel → Andreas), daarna lokale OCR + eventmatching. Werkplan met fasering in [docs/share-naar-andreas.md](docs/share-naar-andreas.md). Fase 1 t/m 3 zijn af (11 sep 2026): share-extension + `/import`-scherm, lokale QR- en OCR-herkenning, en metadata-extractie met 13 tests. Niets gaat naar de backend. Volgende: fase 4 (matchen tegen bestaande events). Vereist een native rebuild bij nieuwe native deps (kan niet via OTA).
 
 ---
 
@@ -401,3 +402,4 @@ Niet allemaal akkoord, niet allemaal nu — vóór bouw eerst beslissen. Georden
 - [CLAUDE.md](CLAUDE.md) — briefing voor elke nieuwe Claude-sessie.
 - [docs/groei-checklist.md](docs/groei-checklist.md) — 12 aspecten om bij elke product/strategie-keuze langs te lopen.
 - [docs/n8n.md](docs/n8n.md) — admin-API + Bunny-uploads voor n8n-flows.
+- [docs/share-naar-andreas.md](docs/share-naar-andreas.md) — werkplan voor de share/scan-featurelijn ("Shazam voor events"), fase 1 t/m 8.
