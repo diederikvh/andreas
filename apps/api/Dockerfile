@@ -13,6 +13,12 @@ WORKDIR /app
 # ── Deps stage — installeert alleen api-relevante deps ───────────
 FROM base AS deps
 COPY pnpm-workspace.yaml package.json pnpm-lock.yaml .npmrc ./
+# `patchedDependencies` in de root-package.json geldt voor de hele
+# workspace, ook als de gepatchte pakketten alleen in de app zitten:
+# pnpm opent de patchbestanden bij elke install en stopt met ENOENT als
+# ze er niet zijn. Zonder deze regel faalt élke API-deploy zodra er één
+# patch in de repo staat.
+COPY patches ./patches
 COPY apps/api/package.json apps/api/package.json
 COPY packages/shared/package.json packages/shared/package.json
 RUN pnpm install --frozen-lockfile --filter @andreas/api...
@@ -21,6 +27,7 @@ RUN pnpm install --frozen-lockfile --filter @andreas/api...
 FROM base AS build
 COPY --from=deps /app/node_modules ./node_modules
 COPY pnpm-workspace.yaml package.json pnpm-lock.yaml .npmrc ./
+COPY patches ./patches
 COPY apps/api ./apps/api
 COPY packages/shared ./packages/shared
 RUN pnpm --filter @andreas/api exec tsc
