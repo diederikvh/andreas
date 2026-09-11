@@ -1301,7 +1301,7 @@ function IntentStep({
               >
                 {willKeep
                   ? t('Ticket wordt bewaard', 'Ticket will be saved')
-                  : t('Zonder je ticket', 'Without your ticket')}
+                  : t('Ticket wordt niet bewaard', 'Ticket will not be saved')}
               </Text>
             ) : null}
           </View>
