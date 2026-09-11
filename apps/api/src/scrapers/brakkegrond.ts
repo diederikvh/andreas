@@ -1,49 +1,52 @@
-import { eq } from 'drizzle-orm';
+import { and, eq, gt, inArray } from 'drizzle-orm';
 import { chromium, type Browser } from 'playwright';
 
 import { db, schema } from '../db/index.js';
 import { uploadToBunny } from '../storage/bunny.js';
+import { parseTicketSlots, type Slot } from './_brakkegrond-dates.js';
 import { enrichEvent, refineKindByDuration } from './enrich.js';
 
 /**
- * Vlaams Cultuurhuis De Brakke Grond. Hun /agenda is volledig CSR
- * (klanten-side rendered) en detail-pages óók — geen JSON-LD, geen
- * og-meta met betekenisvolle description, geen sitemap die helpt.
+ * Vlaams Cultuurhuis De Brakke Grond. Hun /agenda is volledig CSR en
+ * detail-pages óók — geen JSON-LD, geen og-meta met betekenisvolle
+ * description, geen sitemap die helpt.
  *
  * Strategie:
- *  1. Playwright open `/agenda`, harvest show-URLs `/agenda/{id}/{slug}`
+ *  1. Playwright opent `/agenda`, harvest show-URLs `/agenda/{id}/{slug}`
  *  2. Per show-page (Playwright, `domcontentloaded` want `networkidle`
  *     timeout't door long-poll websockets):
  *       - h1 → title
  *       - .text-block.block (NL) → description
  *       - figure.gallery-block__image img → image
- *       - body text "Data di 02 jun, 20:00 — 21:35 wo 03 jun, ..."
- *         → parse Dutch dates voor occurrences
+ *       - .event-detail__tickets-{date,info} → speeldata en tijd
+ *
+ * De datums komen uit de ticketkolom, niet uit de lopende tekst. Dat
+ * was hier jarenlang mis: de oude parser zocht in de body naar
+ * "vr 18 sep, 18:30 — 23:59", en dat formaat staat op precies één van
+ * de 41 pagina's. De andere 40 werden stil overgeslagen — gemeten op
+ * 2026-09-11, drie scrape-runs op rij hetzelfde. Vandaar ook
+ * `skipReasons` in het resultaat: een overslag zonder reden is
+ * onzichtbaar, en onzichtbaar betekende hier: maanden.
  *
  * Title-grouping: één event-row per show, N occurrences per speeldag
  * (multi-night theater is regel hier).
  *
  * Idempotency:
  *  - eventId      = `evt-bg-{showId}` (numeriek deel uit URL)
- *  - occurrenceId = `occ-bg-{showId}-{YYYY-MM-DD}T{HH-MM}`
+ *  - occurrenceId = `occ-bg-{showId}-{YYYY-MM-DD}T{HH-MM}` (UTC)
  */
 
 const VENUE_ID = 'de-brakke-grond';
 const UA = 'Mozilla/5.0 (Andreas/1.0)';
 const AGENDA_URL = 'https://brakkegrond.nl/agenda';
 
-const DUTCH_MONTHS_SHORT: Record<string, number> = {
-  jan: 1, feb: 2, mrt: 3, mar: 3, maart: 3, apr: 4, mei: 5, jun: 6,
-  jul: 7, aug: 8, sep: 9, okt: 10, nov: 11, dec: 12,
-};
-
-type Slot = { startsAt: Date; endsAt: Date | null };
 type ShowMeta = {
   url: string;
   showId: string;
   title: string;
   description: string | null;
   imageUrl: string | null;
+  room: string | null;
   slots: Slot[];
 };
 
@@ -51,52 +54,10 @@ function slugify(s: string): string {
   return s
     .toLowerCase()
     .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
+    .replace(/[\u0300-\u036f]/g, '')
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
     .slice(0, 80);
-}
-
-function parseDutchDateTime(dayMonth: string, time: string, anchor: Date): Date | null {
-  const m = dayMonth.toLowerCase().match(/(\d{1,2})\s+(\w{3,})/);
-  if (!m) return null;
-  const day = parseInt(m[1], 10);
-  const month = DUTCH_MONTHS_SHORT[m[2].slice(0, 3)];
-  if (!month) return null;
-  const t = time.match(/(\d{1,2}):(\d{2})/);
-  if (!t) return null;
-  const hh = parseInt(t[1], 10);
-  const mm = parseInt(t[2], 10);
-
-  for (const y of [anchor.getFullYear(), anchor.getFullYear() + 1, anchor.getFullYear() - 1]) {
-    const d = new Date(`${y}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}T${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}:00+02:00`);
-    if (isNaN(d.getTime())) continue;
-    const delta = d.getTime() - anchor.getTime();
-    if (delta > -7 * 24 * 60 * 60 * 1000 && delta < 365 * 24 * 60 * 60 * 1000) return d;
-  }
-  return null;
-}
-
-/**
- * Parse "di 02 jun, 20:00 — 21:35 wo 03 jun, 20:00 — 21:35" naar slots.
- * Format na de string "Data": dag-naam + dag + maand + ", " + tijd "—" tijd.
- */
-function parseSlotsFromBody(bodyText: string): Slot[] {
-  const slots: Slot[] = [];
-  const now = new Date();
-  // Capture "DD MMM, HH:MM — HH:MM" (or "HH:MM" without end)
-  const re = /(?:ma|di|wo|do|vr|za|zo)\s+(\d{1,2}\s+(?:jan|feb|mrt|maart|apr|mei|jun|jul|aug|sep|okt|nov|dec)\w*)\s*,\s*(\d{1,2}:\d{2})(?:\s*[—-]\s*(\d{1,2}:\d{2}))?/gi;
-  for (const m of bodyText.matchAll(re)) {
-    const startsAt = parseDutchDateTime(m[1], m[2], now);
-    if (!startsAt) continue;
-    let endsAt: Date | null = null;
-    if (m[3]) {
-      const end = parseDutchDateTime(m[1], m[3], now);
-      if (end && end.getTime() > startsAt.getTime()) endsAt = end;
-    }
-    slots.push({ startsAt, endsAt });
-  }
-  return slots;
 }
 
 async function harvestShowUrls(browser: Browser): Promise<string[]> {
@@ -137,31 +98,62 @@ async function fetchShowMeta(browser: Browser, url: string): Promise<ShowMeta | 
     await page.waitForTimeout(800);
 
     const data = (await page.evaluate(`(() => {
-      const h1 = document.querySelector('h1');
-      const title = h1 ? (h1.textContent || '').replace(/\\s+/g, ' ').trim() : '';
+      var clean = function (el) { return el ? (el.textContent || '').replace(/\\s+/g, ' ').trim() : ''; };
+      var title = clean(document.querySelector('h1'));
       // Image: fullscreen--trigger data-src is hi-res; img src is thumb
-      const fs = document.querySelector('.fullscreen--trigger[data-src]');
-      const galleryImg = document.querySelector('.gallery-block__item-image');
-      const image = (fs && fs.getAttribute('data-src')) || (galleryImg && galleryImg.src) || '';
+      var fs = document.querySelector('.fullscreen--trigger[data-src]');
+      var galleryImg = document.querySelector('.gallery-block__item-image');
+      var image = (fs && fs.getAttribute('data-src')) || (galleryImg && galleryImg.src) || '';
       // Description (NL eerst): meerdere .text-block kunnen voorkomen,
       // pak de eerste die niet alleen credits/whitespace heeft.
-      const blocks = Array.from(document.querySelectorAll('.text-block.block, .text-block, .event-detail__english-description'));
-      let description = '';
-      for (const b of blocks) {
-        const t = (b.textContent || '').replace(/\\s+/g, ' ').trim();
+      var blocks = document.querySelectorAll('.text-block.block, .text-block, .event-detail__english-description');
+      var description = '';
+      for (var i = 0; i < blocks.length; i++) {
+        var t = clean(blocks[i]);
         if (t.length > 80) { description = t; break; }
       }
-      // Body text voor datums (Ticketinfo sectie)
-      const main = document.querySelector('main, article, [class*="event-detail"]');
-      const bodyText = main ? (main.textContent || '').replace(/\\s+/g, ' ').trim() : '';
-      return { title, image, description, bodyText };
-    })()`)) as { title: string; image: string; description: string; bodyText: string };
+      // Speeldata en tijd staan in de ticketkolom, in twee aparte divs.
+      var info = document.querySelector('.event-detail__tickets-info');
+      var infoParts = [];
+      if (info) {
+        var kids = info.querySelectorAll('div');
+        for (var j = 0; j < kids.length; j++) {
+          var k = clean(kids[j]);
+          if (k) infoParts.push(k);
+        }
+      }
+      return {
+        title: title,
+        image: image,
+        description: description,
+        dateText: clean(document.querySelector('.event-detail__tickets-date')),
+        infoText: clean(info),
+        infoParts: infoParts
+      };
+    })()`)) as {
+      title: string; image: string; description: string;
+      dateText: string; infoText: string; infoParts: string[];
+    };
 
     if (!data.title) return null;
     const idMatch = url.match(/\/agenda\/(\d+)\//);
     const showId = idMatch?.[1] ?? slugify(data.title);
-    const slots = parseSlotsFromBody(data.bodyText);
+    const slots = parseTicketSlots(data.dateText, data.infoText);
     if (slots.length === 0) return null;
+
+    // Zaal: het infoblok bevat naast de zaal ook losse mededelingen
+    // ("Gratis toegang. Graag even aanmelden.", "Meer info volgt
+    // binnenkort!"). Een zaalnaam is een kort label zonder zinstekens —
+    // "Grote zaal", "Rode zaal", of bij een uitvoering elders
+    // "Theater Bellevue". "de Brakke Grond" is de venue zelf en zegt
+    // niets over waar je moet zijn.
+    const room = data.infoParts.find(
+      (x) =>
+        !/[.!?]/.test(x) &&
+        x.split(/\s+/).length <= 4 &&
+        !/\d{1,2}[:.]\d{2}/.test(x) &&
+        !/brakke\s*grond/i.test(x)
+    ) ?? null;
 
     return {
       url,
@@ -169,6 +161,7 @@ async function fetchShowMeta(browser: Browser, url: string): Promise<ShowMeta | 
       title: data.title,
       description: data.description.length > 30 ? data.description : null,
       imageUrl: data.image && !data.image.startsWith('data:') ? data.image : null,
+      room,
       slots,
     };
   } catch {
@@ -199,7 +192,12 @@ export type BrakkeGrondResult = {
   fetched: number;
   inserted: number;
   occurrencesUpserted: number;
+  occurrencesPruned: number;
   skipped: number;
+  /** Waaróm er is overgeslagen. Een kale teller verbergt een kapotte
+      parser: die stond hier 40 van de 41 pagina's over te slaan en het
+      log zei alleen `skipped: 40`. */
+  skipReasons: Record<string, number>;
   errors: string[];
 };
 
@@ -209,7 +207,12 @@ export async function scrapeBrakkeGrond(options?: {
   if (options?.venueIds && !options.venueIds.includes(VENUE_ID)) return [];
 
   const result: BrakkeGrondResult = {
-    venueId: VENUE_ID, fetched: 0, inserted: 0, occurrencesUpserted: 0, skipped: 0, errors: [],
+    venueId: VENUE_ID, fetched: 0, inserted: 0, occurrencesUpserted: 0,
+    occurrencesPruned: 0, skipped: 0, skipReasons: {}, errors: [],
+  };
+  const skip = (reden: string) => {
+    result.skipped++;
+    result.skipReasons[reden] = (result.skipReasons[reden] ?? 0) + 1;
   };
 
   const [venue] = await db.select().from(schema.venues).where(eq(schema.venues.id, VENUE_ID));
@@ -229,14 +232,16 @@ export async function scrapeBrakkeGrond(options?: {
     }
 
     const cutoff = Date.now() - 6 * 60 * 60 * 1000;
+    /** eventId → occurrence-ids die de bron dit rondje aanbood. */
+    const seenOcc = new Map<string, Set<string>>();
 
     for (const url of urls) {
       try {
         const meta = await fetchShowMeta(browser, url);
-        if (!meta) { result.skipped++; continue; }
+        if (!meta) { skip('geen titel of geen datum in ticketblok'); continue; }
 
         const futureSlots = meta.slots.filter((s) => (s.endsAt ?? s.startsAt).getTime() > cutoff);
-        if (futureSlots.length === 0) { result.skipped++; continue; }
+        if (futureSlots.length === 0) { skip('alle speeldata voorbij'); continue; }
 
         const eventId = `evt-bg-${meta.showId}`;
         const [existing] = await db
@@ -302,23 +307,75 @@ export async function scrapeBrakkeGrond(options?: {
                 priceCents: null,
                 priceNote: existing ? null : (enriched?.priceNote ?? null),
                 ticketUrl: meta.url,
-                room: null,
+                room: meta.room,
                 lineup: existing ? null : (enriched?.lineup ?? null),
                 status: 'scheduled',
               })
               .onConflictDoUpdate({
                 target: schema.occurrences.id,
-                set: { startsAt: slot.startsAt, endsAt: slot.endsAt, ticketUrl: meta.url },
+                // room hoort hierbij: die komt elke ronde vers uit de
+                // bron, dus een correctie moet een bestaande rij ook
+                // bereiken. priceNote en lineup blijven insert-only —
+                // die worden door enrich gezet, niet door de bron.
+                set: {
+                  startsAt: slot.startsAt,
+                  endsAt: slot.endsAt,
+                  ticketUrl: meta.url,
+                  room: meta.room,
+                },
               });
             result.occurrencesUpserted++;
+            const seen = seenOcc.get(eventId) ?? new Set<string>();
+            seen.add(occurrenceId);
+            seenOcc.set(eventId, seen);
           } catch (err) {
             result.errors.push(`occurrence ${meta.url} ${slot.startsAt.toISOString()}: ${(err as Error).message}`);
-            result.skipped++;
+            skip('occurrence-write faalde');
           }
         }
       } catch (e) {
         result.errors.push(`show ${url}: ${(e as Error).message}`);
-        result.skipped++;
+        skip('exception op detailpagina');
+      }
+    }
+
+    // Toekomstige datums weghalen die de bron niet meer aanbiedt.
+    // Zonder dit blijven oude rijen eeuwig staan: er stonden hier 35
+    // toekomstige occurrences uit 14 juni die door niemand meer
+    // bevestigd werden, en bij een datumwijziging zag je dat nooit.
+    //
+    // Alleen voor events die we dit rondje écht gezien hebben — een
+    // pagina die timeout't of tijdelijk geen ticketblok heeft raakt
+    // seenOcc nooit en blijft dus onaangeraakt.
+    const pruneCutoff = new Date(cutoff);
+    for (const [eventId, keep] of seenOcc) {
+      try {
+        const bestaand = await db
+          .select({ id: schema.occurrences.id })
+          .from(schema.occurrences)
+          .where(
+            and(
+              eq(schema.occurrences.eventId, eventId),
+              gt(schema.occurrences.startsAt, pruneCutoff)
+            )
+          );
+        const drop = bestaand.map((r) => r.id).filter((id) => !keep.has(id));
+        if (!drop.length) continue;
+        // Saves hangen aan occurrence-ids. Liever een verlopen rij dan
+        // een verdwenen save.
+        const saved = await db
+          .select({ occurrenceId: schema.saves.occurrenceId })
+          .from(schema.saves)
+          .where(inArray(schema.saves.occurrenceId, drop));
+        const savedIds = new Set(saved.map((r) => r.occurrenceId));
+        const finalDrop = drop.filter((id) => !savedIds.has(id));
+        if (!finalDrop.length) continue;
+        await db
+          .delete(schema.occurrences)
+          .where(inArray(schema.occurrences.id, finalDrop));
+        result.occurrencesPruned += finalDrop.length;
+      } catch (e) {
+        result.errors.push(`prune ${eventId}: ${(e as Error).message}`);
       }
     }
   } finally {
