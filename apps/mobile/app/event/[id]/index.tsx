@@ -113,17 +113,14 @@ export default function EventDetail() {
       scrollY.value,
       [HERO_HEIGHT - 140, HERO_HEIGHT - 60],
       [0, 1],
-      Extrapolation.CLAMP
+      Extrapolation.CLAMP,
     ),
   }));
   const heroStyle = useAnimatedStyle(() => {
     const offset = Math.min(0, scrollY.value);
     const scale = 1 - offset / HERO_HEIGHT;
     return {
-      transform: [
-        { translateY: ((scale - 1) * HERO_HEIGHT) / 2 },
-        { scale },
-      ],
+      transform: [{ translateY: ((scale - 1) * HERO_HEIGHT) / 2 }, { scale }],
     };
   });
 
@@ -134,7 +131,7 @@ export default function EventDetail() {
     targetOccurrenceId &&
     event?.occurrences?.find((o) => o.id === targetOccurrenceId)
       ? targetOccurrenceId
-      : event?.occurrences?.[0]?.id ?? null;
+      : (event?.occurrences?.[0]?.id ?? null);
 
   // Vind een openstaande invitation waar ik nog op moet reageren voor
   // dít event én déze occurrence. Een event kan meerdere occurrences
@@ -147,7 +144,7 @@ export default function EventDetail() {
         !inv.isOutgoing &&
         inv.myStatus === 'pending' &&
         inv.event.id === id &&
-        inv.occurrence.id === selectedOccurrenceId
+        inv.occurrence.id === selectedOccurrenceId,
     ) ?? null;
   // Heeft de gebruiker voor dit moment een ticket in Andreas gezet? Dat
   // bestand staat alleen op dit toestel (zie store/tickets.ts) — de server
@@ -168,7 +165,9 @@ export default function EventDetail() {
   }
   if (error || !event) {
     return (
-      <DetailFallback tone="error">Dit event is niet beschikbaar.</DetailFallback>
+      <DetailFallback tone="error">
+        Dit event is niet beschikbaar.
+      </DetailFallback>
     );
   }
 
@@ -179,7 +178,7 @@ export default function EventDetail() {
     hasActuele &&
     !event.occurrences!.some((o) => o.id === targetOccurrenceId);
   const selectedOccurrence = selectedOccurrenceId
-    ? event.occurrences?.find((o) => o.id === selectedOccurrenceId) ?? null
+    ? (event.occurrences?.find((o) => o.id === selectedOccurrenceId) ?? null)
     : null;
 
   const view = toViewModel(event, selectedOccurrence, locale);
@@ -206,8 +205,16 @@ export default function EventDetail() {
         <LinearGradient
           colors={
             isNacht
-              ? ['rgba(10,10,11,0.4)', 'rgba(10,10,11,0.2)', 'rgba(10,10,11,0.95)']
-              : ['rgba(45,74,62,0.4)', 'rgba(45,74,62,0.3)', 'rgba(45,74,62,0.85)']
+              ? [
+                  'rgba(10,10,11,0.4)',
+                  'rgba(10,10,11,0.2)',
+                  'rgba(10,10,11,0.95)',
+                ]
+              : [
+                  'rgba(45,74,62,0.4)',
+                  'rgba(45,74,62,0.3)',
+                  'rgba(45,74,62,0.85)',
+                ]
           }
           locations={[0, 0.4, 1]}
           style={StyleSheet.absoluteFill}
@@ -253,6 +260,30 @@ export default function EventDetail() {
         </View>
 
         <View style={[styles.body, { backgroundColor: roles.bg }]}>
+          {/* Bovenaan, boven datum/tijd/venue en alles daarna: dit is wat
+              je nodig hebt als je bij de deur staat — niet iets om eerst
+              genres, een beschrijving en een lineup voor door te
+              scrollen. */}
+          {myTicket && (
+            <Pressable
+              onPress={() => {
+                Haptics.selectionAsync();
+                router.push(`/ticket/${myTicket.occurrenceId}` as never);
+              }}
+              style={[styles.myTicketCta, { backgroundColor: roles.accent }]}
+            >
+              <Ionicons name="ticket" size={19} color={roles.onAccent} />
+              <Text style={[styles.myTicketCtaText, { color: roles.onAccent }]}>
+                {t('Toon ticket', 'Show ticket')}
+              </Text>
+              <Ionicons
+                name="chevron-forward"
+                size={17}
+                color={roles.onAccent}
+              />
+            </Pressable>
+          )}
+
           {((event.genres && event.genres.length > 0) ||
             (event.series && event.series.length > 0)) && (
             <>
@@ -290,18 +321,16 @@ export default function EventDetail() {
                   </View>
                 ))}
               </View>
-              <View style={[styles.divider, { backgroundColor: roles.bgChip }]} />
+              <View
+                style={[styles.divider, { backgroundColor: roles.bgChip }]}
+              />
             </>
           )}
 
           {(eventOver || targetMissed) && (
             <>
               <View style={styles.expiredNotice}>
-                <Ionicons
-                  name="time-outline"
-                  size={14}
-                  color={roles.accent}
-                />
+                <Ionicons name="time-outline" size={14} color={roles.accent} />
                 <Text
                   style={[styles.expiredNoticeText, { color: roles.accent }]}
                 >
@@ -309,11 +338,13 @@ export default function EventDetail() {
                     ? t('Dit event is afgelopen.', 'This event is over.')
                     : t(
                         'De voorstelling die je selecteerde is voorbij. Dit is de eerstvolgende.',
-                        'The performance you selected is over. This is the next one.'
+                        'The performance you selected is over. This is the next one.',
                       )}
                 </Text>
               </View>
-              <View style={[styles.divider, { backgroundColor: roles.bgChip }]} />
+              <View
+                style={[styles.divider, { backgroundColor: roles.bgChip }]}
+              />
             </>
           )}
 
@@ -353,32 +384,6 @@ export default function EventDetail() {
             </View>
           </View>
 
-          {/* Direct onder datum/tijd/venue, want dit is wat je nodig hebt
-              als je bij de deur staat — niet iets om eerst een
-              beschrijving en een lineup voor door te scrollen. */}
-          {myTicket && (
-            <Pressable
-              onPress={() => {
-                Haptics.selectionAsync();
-                router.push(`/ticket/${myTicket.occurrenceId}` as never);
-              }}
-              style={[
-                styles.myTicketCta,
-                { backgroundColor: roles.accent },
-              ]}
-            >
-              <Ionicons name="ticket" size={19} color={roles.onAccent} />
-              <Text style={[styles.myTicketCtaText, { color: roles.onAccent }]}>
-                {t('Toon ticket', 'Show ticket')}
-              </Text>
-              <Ionicons
-                name="chevron-forward"
-                size={17}
-                color={roles.onAccent}
-              />
-            </Pressable>
-          )}
-
           {pendingInvite && (
             <InviteBanner
               invite={pendingInvite}
@@ -404,16 +409,17 @@ export default function EventDetail() {
                 lineup → nodig iemand uit → tickets → alle voorstellingen
               === */}
 
-          {selectedOccurrence?.lineup && selectedOccurrence.lineup.length > 0 && (
-            <Lineup
-              lineup={selectedOccurrence.lineup}
-              kicker={
-                event.occurrences && event.occurrences.length > 1
-                  ? formatLineupKicker(selectedOccurrence.startsAt, locale)
-                  : null
-              }
-            />
-          )}
+          {selectedOccurrence?.lineup &&
+            selectedOccurrence.lineup.length > 0 && (
+              <Lineup
+                lineup={selectedOccurrence.lineup}
+                kicker={
+                  event.occurrences && event.occurrences.length > 1
+                    ? formatLineupKicker(selectedOccurrence.startsAt, locale)
+                    : null
+                }
+              />
+            )}
 
           <CrewAndInvite
             event={event}
@@ -453,7 +459,6 @@ export default function EventDetail() {
               }}
             />
           )}
-
         </View>
       </Animated.ScrollView>
 
@@ -507,13 +512,17 @@ export default function EventDetail() {
           </View>
         </View>
       </View>
-
     </View>
   );
 }
 
 type CrewRow = {
-  user: { id: string; name: string; handle: string | null; avatarUrl: string | null };
+  user: {
+    id: string;
+    name: string;
+    handle: string | null;
+    avatarUrl: string | null;
+  };
   /** Heeft deze persoon dit event in z'n gered (organisch of via going). */
   saved: boolean;
   /** Response-status van een door mij verzonden invite, als die er is.
@@ -635,7 +644,7 @@ function InviteBanner({
             {invite.group
               ? t(
                   `VIA ${invite.group.name.toUpperCase()}`,
-                  `VIA ${invite.group.name.toUpperCase()}`
+                  `VIA ${invite.group.name.toUpperCase()}`,
                 )
               : t('UITGENODIGD DOOR', 'INVITED BY')}
           </Text>
@@ -661,10 +670,7 @@ function InviteBanner({
         <TextInput
           value={reply}
           onChangeText={setReply}
-          placeholder={t(
-            'kort antwoord (optioneel)',
-            'short reply (optional)'
-          )}
+          placeholder={t('kort antwoord (optioneel)', 'short reply (optional)')}
           placeholderTextColor={roles.fgPlaceholder}
           multiline
           maxLength={280}
@@ -750,17 +756,17 @@ function CrewAndInvite({
       selectedOccurrence?.friendsSaved ?? event.friendsSaved ?? [];
     const myOccInvites = selectedOccurrence
       ? (event.myInvites ?? []).filter(
-          (inv) => inv.occurrenceId === selectedOccurrence.id
+          (inv) => inv.occurrenceId === selectedOccurrence.id,
         )
       : (event.myInvites ?? []);
     const incomingAccepted = selectedOccurrence
       ? (event.incomingAcceptedInvites ?? []).filter(
-          (inv) => inv.occurrenceId === selectedOccurrence.id
+          (inv) => inv.occurrenceId === selectedOccurrence.id,
         )
       : (event.incomingAcceptedInvites ?? []);
     const occPeopleGoing = selectedOccurrence
       ? (event.peopleGoing ?? []).filter(
-          (p) => p.occurrenceId === selectedOccurrence.id
+          (p) => p.occurrenceId === selectedOccurrence.id,
         )
       : (event.peopleGoing ?? []);
     const map = new Map<string, CrewRow>();
@@ -832,7 +838,7 @@ function CrewAndInvite({
         (inv) =>
           !inv.revokedAt &&
           inv.occurrence.id === selectedOccurrence.id &&
-          inv.myStatus === 'going'
+          inv.myStatus === 'going',
       );
       if (myGoing) {
         map.set(me.id, {
@@ -860,7 +866,7 @@ function CrewAndInvite({
       return 4;
     };
     return Array.from(map.values()).sort(
-      (a, b) => order(a) - order(b) || a.user.name.localeCompare(b.user.name)
+      (a, b) => order(a) - order(b) || a.user.name.localeCompare(b.user.name),
     );
   }, [
     selectedOccurrence,
@@ -876,7 +882,7 @@ function CrewAndInvite({
   // Synthetische "::next"-occurrences hebben geen echte id, dus daar valt
   // niks op te markeren.
   const canMarkGoing = Boolean(
-    selectedOccurrence && !selectedOccurrence.id.endsWith('::next')
+    selectedOccurrence && !selectedOccurrence.id.endsWith('::next'),
   );
   const borderColor = isNacht ? '#232327' : palette.paper;
   const innerBorderColor = isNacht ? '#1d1d20' : palette.paper;
@@ -980,7 +986,7 @@ function GoingRow({
         t('Je hebt hier een ticket', 'You have a ticket for this'),
         t(
           'Je ticket hangt aan "ik ga". Verwijder eerst je ticket als je dit plan wil afzeggen.',
-          'Your ticket is attached to "going". Remove your ticket first if you want to cancel this plan.'
+          'Your ticket is attached to "going". Remove your ticket first if you want to cancel this plan.',
         ),
         [
           { text: t('Laat staan', 'Keep it'), style: 'cancel' },
@@ -988,14 +994,14 @@ function GoingRow({
             text: t('Ticket bekijken', 'View ticket'),
             onPress: () => router.push(`/ticket/${occurrenceId}` as never),
           },
-        ]
+        ],
       );
       return;
     }
     Haptics.impactAsync(
       isGoing
         ? Haptics.ImpactFeedbackStyle.Light
-        : Haptics.ImpactFeedbackStyle.Medium
+        : Haptics.ImpactFeedbackStyle.Medium,
     );
     toggle.mutate({ occurrenceId, source: 'other' });
   };
@@ -1023,7 +1029,9 @@ function GoingRow({
           { color: isGoing ? roles.accent : roles.fg },
         ]}
       >
-        {isGoing ? t('Je gaat hierheen', "You're going") : t('Ik ga hierheen', "I'm going")}
+        {isGoing
+          ? t('Je gaat hierheen', "You're going")
+          : t('Ik ga hierheen', "I'm going")}
       </Text>
     </Pressable>
   );
@@ -1084,10 +1092,7 @@ function CrewRowItem({
         </View>
       )}
       <View style={{ flex: 1, minWidth: 0 }}>
-        <Text
-          numberOfLines={1}
-          style={[styles.crewName, { color: roles.fg }]}
-        >
+        <Text numberOfLines={1} style={[styles.crewName, { color: roles.fg }]}>
           {row.user.name}
           {row.isMe ? t(' (jij)', ' (you)') : ''}
         </Text>
@@ -1209,24 +1214,26 @@ function Lineup({
                   ]}
                 >
                   <Text
-                    style={[styles.lineupRolePillText, { color: roles.fgMuted }]}
+                    style={[
+                      styles.lineupRolePillText,
+                      { color: roles.fgMuted },
+                    ]}
                   >
                     {ROLE_LABEL[entry.role]}
                   </Text>
                 </View>
               )}
               {entry.artistId && (
-                <Ionicons
-                  name="chevron-forward"
-                  size={16}
-                  color={roles.fg}
-                />
+                <Ionicons name="chevron-forward" size={16} color={roles.fg} />
               )}
             </>
           );
           const rowStyle = [
             styles.lineupRow,
-            i > 0 && { borderTopColor: roles.bgChip, borderTopWidth: StyleSheet.hairlineWidth },
+            i > 0 && {
+              borderTopColor: roles.bgChip,
+              borderTopWidth: StyleSheet.hairlineWidth,
+            },
           ];
           // Klikbaar alleen als we een artist-record hebben — eerlijk
           // signaal dat er een echte pagina achter zit. Anders gewoon
@@ -1235,7 +1242,9 @@ function Lineup({
             return (
               <Pressable
                 key={`${entry.name}-${i}`}
-                onPress={() => router.push(`/artist/${entry.artistId}` as never)}
+                onPress={() =>
+                  router.push(`/artist/${entry.artistId}` as never)
+                }
                 style={rowStyle}
               >
                 {inner}
@@ -1422,7 +1431,7 @@ function OccurrenceList({
         venueName,
         list: list.sort(
           (a, b) =>
-            new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime()
+            new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime(),
         ),
       }));
   })();
@@ -1435,64 +1444,64 @@ function OccurrenceList({
           </Text>
           <View style={[styles.occList, { borderColor: roles.bgChip }]}>
             {list.map((o) => {
-          const d = new Date(o.startsAt);
-          const dow = dowMixed(d.getDay(), locale);
-          const day = d.getDate();
-          const month = monthShort(d.getMonth(), locale).toLowerCase();
-          const year = d.getFullYear();
-          const time = rowTimeLabel(o.startsAt, o.endsAt, locale);
-          const lineupHint =
-            o.lineup && o.lineup.length > 0
-              ? o.lineup.length === 1
-                ? o.lineup[0].name
-                : `${o.lineup[0].name} +${o.lineup.length - 1}`
-              : null;
-          const isSelected = o.id === selectedId;
-          return (
-            <Pressable
-              key={o.id}
-              onPress={() => onSelect(o.id)}
-              style={[
-                styles.occRow,
-                { borderTopColor: roles.bgChip },
-                isSelected && {
-                  backgroundColor: roles.bgTag,
-                  borderLeftColor: roles.accent,
-                  borderLeftWidth: 3,
-                },
-              ]}
-            >
-              <View style={styles.occHeader}>
-                <Text
+              const d = new Date(o.startsAt);
+              const dow = dowMixed(d.getDay(), locale);
+              const day = d.getDate();
+              const month = monthShort(d.getMonth(), locale).toLowerCase();
+              const year = d.getFullYear();
+              const time = rowTimeLabel(o.startsAt, o.endsAt, locale);
+              const lineupHint =
+                o.lineup && o.lineup.length > 0
+                  ? o.lineup.length === 1
+                    ? o.lineup[0].name
+                    : `${o.lineup[0].name} +${o.lineup.length - 1}`
+                  : null;
+              const isSelected = o.id === selectedId;
+              return (
+                <Pressable
+                  key={o.id}
+                  onPress={() => onSelect(o.id)}
                   style={[
-                    styles.occDate,
-                    { color: isSelected ? roles.accent : roles.fg },
+                    styles.occRow,
+                    { borderTopColor: roles.bgChip },
+                    isSelected && {
+                      backgroundColor: roles.bgTag,
+                      borderLeftColor: roles.accent,
+                      borderLeftWidth: 3,
+                    },
                   ]}
                 >
-                  {dow} {day} {month} {year}
-                </Text>
-                <Text style={[styles.occTime, { color: roles.fgMuted }]}>
-                  {time}
-                  {o.room ? ` · ${o.room}` : ''}
-                </Text>
-                <Text style={[styles.occPrice, { color: roles.fgMuted }]}>
-                  {o.status === 'sold_out'
-                    ? t('Uitverkocht', 'Sold out')
-                    : o.status === 'cancelled'
-                      ? t('Geannuleerd', 'Cancelled')
-                      : formatPrice(o.priceCents, locale)}
-                </Text>
-              </View>
-              {lineupHint && (
-                <Text
-                  numberOfLines={1}
-                  style={[styles.occLineup, { color: roles.fgRead }]}
-                >
-                  {lineupHint}
-                </Text>
-              )}
-            </Pressable>
-          );
+                  <View style={styles.occHeader}>
+                    <Text
+                      style={[
+                        styles.occDate,
+                        { color: isSelected ? roles.accent : roles.fg },
+                      ]}
+                    >
+                      {dow} {day} {month} {year}
+                    </Text>
+                    <Text style={[styles.occTime, { color: roles.fgMuted }]}>
+                      {time}
+                      {o.room ? ` · ${o.room}` : ''}
+                    </Text>
+                    <Text style={[styles.occPrice, { color: roles.fgMuted }]}>
+                      {o.status === 'sold_out'
+                        ? t('Uitverkocht', 'Sold out')
+                        : o.status === 'cancelled'
+                          ? t('Geannuleerd', 'Cancelled')
+                          : formatPrice(o.priceCents, locale)}
+                    </Text>
+                  </View>
+                  {lineupHint && (
+                    <Text
+                      numberOfLines={1}
+                      style={[styles.occLineup, { color: roles.fgRead }]}
+                    >
+                      {lineupHint}
+                    </Text>
+                  )}
+                </Pressable>
+              );
             })}
           </View>
         </View>
@@ -1531,7 +1540,7 @@ type ViewModel = {
 function toViewModel(
   event: ApiEvent,
   occ: ApiOccurrence | null,
-  locale: Locale
+  locale: Locale,
 ): ViewModel {
   // Voor exhibitions zonder selected occurrence valt 'ie terug op
   // event.startsAt (gedenormaliseerd vanuit nextOccurrence). Voor shows
@@ -1610,10 +1619,7 @@ function TrailerCard({
           />
         ) : (
           <View
-            style={[
-              styles.trailerThumb,
-              { backgroundColor: roles.bgChip },
-            ]}
+            style={[styles.trailerThumb, { backgroundColor: roles.bgChip }]}
           />
         )}
         <View style={styles.trailerPlayOverlay}>
@@ -1644,13 +1650,13 @@ function ShareButton({ event }: { event: ApiEvent }) {
     const url = `https://andreas.amsterdam/e/${encodeURIComponent(event.id)}${qs ? `?${qs}` : ''}`;
     const messageBody = t(
       `Ik ga naar ${event.title} via Andreas. Wil je mee?\n${url}`,
-      `I’m going to ${event.title} via Andreas. Want to come?\n${url}`
+      `I’m going to ${event.title} via Andreas. Want to come?\n${url}`,
     );
     try {
       await Share.share(
         Platform.OS === 'ios'
           ? { url, message: messageBody }
-          : { message: messageBody }
+          : { message: messageBody },
       );
       Haptics.selectionAsync();
     } catch {
@@ -1677,7 +1683,7 @@ function HeartButton({
   const { data: saves } = useMySaves({ enabled: authed });
   const toggleMutation = useToggleSave();
   const isSaved = Boolean(
-    occurrenceId && saves?.some((s) => s.occurrenceId === occurrenceId)
+    occurrenceId && saves?.some((s) => s.occurrenceId === occurrenceId),
   );
   const scale = useSharedValue(1);
 
@@ -1694,7 +1700,7 @@ function HeartButton({
     if (!occurrenceId) return; // Geen actieve occurrence (event afgelopen)
     scale.value = withSequence(
       withTiming(1.3, { duration: 140 }),
-      withTiming(1, { duration: 180 })
+      withTiming(1, { duration: 180 }),
     );
     if (!isSaved) {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -1944,7 +1950,10 @@ const styles = StyleSheet.create({
   },
   trailerPlayOverlay: {
     position: 'absolute',
-    top: 0, left: 0, right: 0, bottom: 0,
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: 'rgba(0,0,0,0.32)',
