@@ -16,10 +16,31 @@ index 37d07c9910cd329324c9f2209f94876c3b380352..95a0b432001ae95bfbbd896c44ebea7b
      sourceSets {
        main {
 diff --git a/android/src/main/java/org/songsterq/pdfthumbnail/PdfThumbnailModule.kt b/android/src/main/java/org/songsterq/pdfthumbnail/PdfThumbnailModule.kt
-index 921b5782b68b06d750795b5f86d63e4ec4bc62e6..c5d65b1521fef5ca28559ce37c581a7362ea1d92 100644
+index 921b5782b68b06d750795b5f86d63e4ec4bc62e6..eb595c8ae6ddf97993383da7efbabcc2d22319c4 100644
 --- a/android/src/main/java/org/songsterq/pdfthumbnail/PdfThumbnailModule.kt
 +++ b/android/src/main/java/org/songsterq/pdfthumbnail/PdfThumbnailModule.kt
-@@ -98,7 +98,15 @@ class PdfThumbnailModule(reactContext: ReactApplicationContext) :
+@@ -4,6 +4,7 @@ import android.content.ContentResolver
+ import android.graphics.Bitmap
+ import android.graphics.Canvas
+ import android.graphics.Color
++import android.graphics.Matrix
+ import android.graphics.pdf.PdfRenderer
+ import android.net.Uri
+ import android.os.ParcelFileDescriptor
+@@ -92,13 +93,26 @@ class PdfThumbnailModule(reactContext: ReactApplicationContext) :
+     val currentPage = pdfRenderer.openPage(page)
+     val width = currentPage.width
+     val height = currentPage.height
+-    val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
++    // Zie de iOS-kant: op paginamaat is een QR te grof voor een scanner.
++    // 2× rendert viermaal zoveel pixels; de matrix schaalt de pagina mee,
++    // anders staat hij linksboven in een te groot vlak.
++    val scale = 2
++    val bitmap = Bitmap.createBitmap(width * scale, height * scale, Bitmap.Config.ARGB_8888)
+     bitmap.eraseColor(Color.WHITE)
+-    currentPage.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
++    val scaleMatrix = Matrix().apply { setScale(scale.toFloat(), scale.toFloat()) }
++    currentPage.render(bitmap, null, scaleMatrix, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
      currentPage.close()
  
      // Some bitmaps have transparent background which results in a black thumbnail. Add a white background.
@@ -36,3 +57,22 @@ index 921b5782b68b06d750795b5f86d63e4ec4bc62e6..c5d65b1521fef5ca28559ce37c581a73
      val canvas = Canvas(bitmapWhiteBG)
      canvas.drawBitmap(bitmap, 0f, 0f, null)
      bitmap.recycle()
+diff --git a/ios/PdfThumbnail.swift b/ios/PdfThumbnail.swift
+index 4869aed8a6daaaf0efdb9585857065b12afac57d..6b2ec5fefda7151eb92d278a43a82e5734da255e 100644
+--- a/ios/PdfThumbnail.swift
++++ b/ios/PdfThumbnail.swift
+@@ -22,7 +22,13 @@ class PdfThumbnail: NSObject {
+ 
+     func generatePage(pdfPage: PDFPage, filePath: String, page: Int, quality: Int) -> Dictionary<String, Any>? {
+         let pageRect = pdfPage.bounds(for: .mediaBox)
+-        let image = pdfPage.thumbnail(of: CGSize(width: pageRect.width, height: pageRect.height), for: .mediaBox)
++        // Op mediaBox-maat komt een QR van 3 cm op zo'n 100-150px uit; te
++        // weinig voor een scanner aan de deur, en inzoomen maakt de pixels
++        // groter in plaats van de code scherper. Dus renderen op 2×. De
++        // gerapporteerde breedte/hoogte blijven punten: de verhouding is
++        // wat de viewer ervan gebruikt.
++        let scale: CGFloat = 2
++        let image = pdfPage.thumbnail(of: CGSize(width: pageRect.width * scale, height: pageRect.height * scale), for: .mediaBox)
+         let outputFile = getCachesDirectory().appendingPathComponent(getOutputFilename(filePath: filePath, page: page))
+         guard let data = image.jpegData(compressionQuality: CGFloat(quality) / 100) else {
+             return nil
