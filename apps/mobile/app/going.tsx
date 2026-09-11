@@ -269,7 +269,12 @@ function PendingGroup() {
   const roles = useRoles();
   const t = useT();
   const locale = useLocale();
-  const { data } = usePendingEvents();
+  // Zonder account is er geen agenda, dus ook geen wachtkamer. Scheelt
+  // een request op een scherm dat anoniem open kan.
+  const { data: session } = useSession();
+  const { data } = usePendingEvents({
+    enabled: Boolean(session?.user?.id),
+  });
   const toggle = useTogglePendingGoing();
 
   const pending = (data ?? []).filter((p) => !p.published);
