@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import * as Brightness from 'expo-brightness';
 import { useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
@@ -101,6 +102,36 @@ export default function TicketScreen() {
   // ponytail: verwijdert álles wat aan deze avond hangt. Eén bestand uit
   // een stapel van twee pikken vraagt om chrome per ticket in een viewer
   // die juist niets dan ticket wil tonen; delen kan je opnieuw.
+  // Vol licht zolang dit scherm open staat. Helderheid weegt bij een
+  // scanner zwaarder dan resolutie: een code die je zelf goed ziet is nog
+  // niet per se een code die een imager leest. Op Android geldt dit alleen
+  // voor ons eigen venster; op iOS is het systeembreed, dus zetten we de
+  // oude waarde bij het weggaan terug.
+  //
+  // ponytail: alleen bij mount/unmount. Zet je de app weg met dit scherm
+  // open, dan blijft iOS fel tot je terugkomt en sluit — dat is precies
+  // het moment waarop je 'm juist niet dimt (je staat in de rij).
+  useEffect(() => {
+    let previous: number | null = null;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const current = await Brightness.getBrightnessAsync();
+        if (cancelled) return;
+        previous = current;
+        await Brightness.setBrightnessAsync(1);
+      } catch {
+        /* geen helderheid is geen reden om je ticket niet te tonen */
+      }
+    })();
+    return () => {
+      cancelled = true;
+      if (previous !== null) {
+        Brightness.setBrightnessAsync(previous).catch(() => {});
+      }
+    };
+  }, []);
+
   const onDelete = () => {
     Alert.alert(
       tickets.length > 1
@@ -185,8 +216,8 @@ export default function TicketScreen() {
       >
         {tickets.some((x) => x.barcodeTypes.length > 0)
           ? t(
-              'Houd de code voor de scanner. Zet je helderheid hoog.',
-              'Hold the code up to the scanner. Turn your brightness up.',
+              'Houd de code voor de scanner.',
+              'Hold the code up to the scanner.',
             )
           : t('Alleen op dit toestel bewaard.', 'Stored on this device only.')}
       </Text>
