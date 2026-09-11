@@ -215,10 +215,15 @@ export default function TicketScreen() {
         ]}
       >
         {tickets.some((x) => x.barcodeTypes.length > 0)
-          ? t(
-              'Houd de code voor de scanner.',
-              'Hold the code up to the scanner.',
-            )
+          ? tickets.length > 1
+            ? t(
+                'Houd de codes één voor één voor de scanner.',
+                'Hold the codes up to the scanner one by one.',
+              )
+            : t(
+                'Houd de code voor de scanner.',
+                'Hold the code up to the scanner.',
+              )
           : t('Alleen op dit toestel bewaard.', 'Stored on this device only.')}
       </Text>
     </View>

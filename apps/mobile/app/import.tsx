@@ -518,6 +518,7 @@ function SharePreview({
   };
 
   const storedTicket = useTicketFor(occurrenceId);
+  const storedTicketCount = useTicketsFor(occurrenceId).length;
   // Welke knop bovenaan staat en aan is: de knop die bij de herkenning
   // hoort. Zit er een ticket bij — of hangt er al één aan deze avond —
   // dan ga je. Een poster zonder code is een plan voor later.
@@ -709,7 +710,7 @@ function SharePreview({
               ) : (
                 <DoneStep
                   eventId={chosen.candidate.id}
-                  hasTicket={Boolean(storedTicket)}
+                  ticketCount={storedTicketCount}
                 />
               )}
             </>
@@ -1246,7 +1247,12 @@ function IntentStep({
             <View style={{ flex: 1, gap: 4 }}>
               <Text style={[styles.ticketCardTitle, { color: roles.fg }]}>
                 {storedTicket
-                  ? t('Deze er ook bij?', 'Keep this one too?')
+                  ? // In het Nederlands dekt dezelfde vraag enkelvoud en
+                    // meervoud, in het Engels niet.
+                    t(
+                      'Deze er ook bij?',
+                      fileCount > 1 ? 'Keep these too?' : 'Keep this one too?',
+                    )
                   : verdict.isTicket
                     ? fileCount > 1
                       ? t(
@@ -1372,10 +1378,10 @@ function IntentStep({
 
 function DoneStep({
   eventId,
-  hasTicket,
+  ticketCount,
 }: {
   eventId: string;
-  hasTicket: boolean;
+  ticketCount: number;
 }) {
   const roles = useRoles();
   const t = useT();
@@ -1390,9 +1396,14 @@ function DoneStep({
         <Text
           style={[styles.stepQuestion, styles.centered, { color: roles.fg }]}
         >
-          {hasTicket
-            ? t('Ticket staat erbij', 'Ticket is saved')
-            : t('Staat in je plannen', 'Added to your plans')}
+          {ticketCount > 1
+            ? t(
+                `${ticketCount} tickets staan erbij`,
+                `${ticketCount} tickets are saved`,
+              )
+            : ticketCount === 1
+              ? t('Ticket staat erbij', 'Ticket is saved')
+              : t('Staat in je plannen', 'Added to your plans')}
         </Text>
       </View>
 

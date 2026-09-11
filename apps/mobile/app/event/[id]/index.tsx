@@ -74,7 +74,7 @@ import {
   type InvitationStatus,
 } from '@/lib/api';
 import { useMode, useRoles } from '@/store/mode';
-import { useTicketFor } from '@/store/tickets';
+import { useTicketFor, useTicketsFor } from '@/store/tickets';
 import { fontFamily, palette } from '@/theme/tokens';
 
 const HERO_HEIGHT = 420;
@@ -152,7 +152,8 @@ export default function EventDetail() {
   //
   // Let op de plek: boven de early returns hieronder. Een hook achter een
   // return is precies de fout die eslint in dit bestand al eerder ving.
-  const myTicket = useTicketFor(selectedOccurrenceId);
+  const myTickets = useTicketsFor(selectedOccurrenceId);
+  const myTicket = myTickets[0];
 
   // Pulse-animatie op de Datum-cell is uitgeschakeld — Reanimated
   // worklets met transform: scale waren de waarschijnlijke trigger
@@ -274,7 +275,12 @@ export default function EventDetail() {
             >
               <Ionicons name="ticket" size={19} color={roles.onAccent} />
               <Text style={[styles.myTicketCtaText, { color: roles.onAccent }]}>
-                {t('Toon ticket', 'Show ticket')}
+                {myTickets.length > 1
+                  ? t(
+                      `Toon ${myTickets.length} tickets`,
+                      `Show ${myTickets.length} tickets`,
+                    )
+                  : t('Toon ticket', 'Show ticket')}
               </Text>
               <Ionicons
                 name="chevron-forward"
