@@ -782,26 +782,31 @@ function ChooseStep({
       {/* Geen vraag maar een opdracht, en dezelfde bij één of bij drie
           kandidaten: ook met één suggestie kies je nog steeds tussen die
           ene en "geen van deze". Dan hoeft de kop niet te wisselen. */}
-      <Text style={[styles.stepQuestion, styles.centered, { color: roles.fg }]}>
-        {candidates.length === 0
-          ? t('Dit kent Andreas nog niet', 'Andreas does not know this yet')
-          : t('Selecteer het event', 'Select the event')}
-      </Text>
-
-      {/* Eén keer zeggen, hier, klein. In de dock stond het groter dan de
-          knop ernaast en op scherm 2 zegt de ticketkaart het al. */}
-      {hasFile ? (
-        <Text style={[styles.privacy, { color: roles.fgMuted }]}>
-          {t(
-            'Dit bestand blijft op je toestel en wordt niet met Andreas gedeeld.',
-            'This file stays on your device and is not shared with Andreas.',
-          )}
+      {/* Kop en regel eronder horen bij elkaar, dus die staan dicht op
+          elkaar — en daarna pas lucht naar wat je kan kiezen. Eén keer
+          zeggen, hier, klein: in de dock stond het groter dan de knop
+          ernaast en op scherm 2 zegt de ticketkaart het al. */}
+      <View style={{ gap: 4 }}>
+        <Text
+          style={[styles.stepQuestion, styles.centered, { color: roles.fg }]}
+        >
+          {candidates.length === 0
+            ? t('Dit kent Andreas nog niet', 'Andreas does not know this yet')
+            : t('Selecteer het event', 'Select the event')}
         </Text>
-      ) : null}
+        {hasFile ? (
+          <Text style={[styles.privacy, { color: roles.fgMuted }]}>
+            {t(
+              'Dit bestand blijft op je toestel en wordt niet met Andreas gedeeld.',
+              'This file stays on your device and is not shared with Andreas.',
+            )}
+          </Text>
+        ) : null}
+      </View>
 
       {/* Kandidaten en "geen van deze" in één lijst met dezelfde tussenruimte:
           het zijn allemaal keuzes, dus ze horen even ver uit elkaar. */}
-      <View style={{ gap: 8 }}>
+      <View style={{ gap: 8, marginTop: 8 }}>
         {candidates.length > 0 ? (
           <OptionList
             candidates={candidates}
