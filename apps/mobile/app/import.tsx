@@ -28,7 +28,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SpinningCross } from '@/components/SpinningCross';
 import { ZoomableImages } from '@/components/ZoomableImages';
 import { dowMixed, eventStillUrl, monthShort } from '@/lib/eventDisplay';
-import { useLocale, useT } from '@/lib/i18n';
+import { useLocale, useT, type Locale } from '@/lib/i18n';
 import { detectBarcodeTypes } from '@/lib/importBarcode';
 import {
   logicalDay,
@@ -746,7 +746,7 @@ function SharePreview({
             match={match}
             draftTitle={draft?.title ?? null}
             hasFile={Boolean(share.fileUri)}
-            pendingMatch={pendingMatches?.[0] ?? null}
+            pendingMatches={pendingMatches ?? []}
             onJoinPending={joinPending}
             onPick={onPickCandidate}
           />
@@ -917,6 +917,18 @@ function SharePreview({
   );
 }
 
+/** Korte datumregel voor een zelf toegevoegd event. */
+function pendingDateLabel(p: PendingEvent, locale: Locale): string | null {
+  if (!p.date) return null;
+  const d = new Date(`${p.date}T12:00:00`);
+  if (Number.isNaN(d.getTime())) return null;
+  const day = `${dowMixed(d.getDay(), locale)} ${d.getDate()} ${monthShort(
+    d.getMonth(),
+    locale,
+  ).toUpperCase()}`;
+  return p.time ? `${day} · ${p.time}` : day;
+}
+
 /* ── Scherm 1: welk event is dit? ──────────────────────────────────── */
 
 /**
@@ -935,7 +947,7 @@ function ChooseStep({
   match,
   draftTitle,
   hasFile,
-  pendingMatch,
+  pendingMatches,
   onJoinPending,
   onPick,
 }: {
@@ -943,8 +955,10 @@ function ChooseStep({
   match: MatchResult | null;
   draftTitle: string | null;
   hasFile: boolean;
-  /** Dezelfde avond, al aangemeld door iemand anders. */
-  pendingMatch: PendingEvent | null;
+  /** Avonden die iemand zelf heeft toegevoegd en die op deze titel of
+      venue lijken. Horen in dezelfde lijst als de echte events: voor wie
+      kiest is het verschil niet interessant. */
+  pendingMatches: PendingEvent[];
   onJoinPending: (pending: PendingEvent) => void;
   onPick: (id: string | null) => void;
 }) {
@@ -952,6 +966,7 @@ function ChooseStep({
   const mode = useMode();
   const isNacht = mode === 'nacht';
   const t = useT();
+  const locale = useLocale();
 
   if (busy) {
     return (
@@ -984,7 +999,9 @@ function ChooseStep({
         <Text
           style={[styles.stepQuestion, styles.centered, { color: roles.fg }]}
         >
-          {candidates.length === 0
+          {/* Een avond die jij (of iemand anders) zelf toevoegde telt
+              net zo goed als keuze — dan is de lijst niet leeg. */}
+          {candidates.length === 0 && pendingMatches.length === 0
             ? t('Dit kent Andreas nog niet', 'Andreas does not know this yet')
             : t('Selecteer het event', 'Select the event')}
         </Text>
@@ -1007,7 +1024,7 @@ function ChooseStep({
             pickedId={null}
             onPick={(id) => onPick(id)}
           />
-        ) : (
+        ) : pendingMatches.length > 0 ? null : (
           <Text
             style={[styles.stepLead, styles.centered, { color: roles.fgMuted }]}
           >
@@ -1023,12 +1040,13 @@ function ChooseStep({
           </Text>
         )}
 
-        {/* Iemand was je voor. Dan hang je aan zijn aanmelding in plaats
-            van er een tweede te maken — anders staan er straks vier keer
-            dezelfde avond in de wachtkamer. */}
-        {pendingMatch ? (
+        {/* Al toegevoegd — door jou of door iemand anders die hetzelfde
+            affiche scande. Zelfde rij als een echt event: wie kiest wil
+            weten wélke avond het is, niet uit welke tabel hij komt. */}
+        {pendingMatches.map((p) => (
           <Pressable
-            onPress={() => onJoinPending(pendingMatch)}
+            key={p.id}
+            onPress={() => onJoinPending(p)}
             style={[
               styles.option,
               {
@@ -1039,20 +1057,17 @@ function ChooseStep({
           >
             <View style={{ flex: 1, gap: 3 }}>
               <Text style={[styles.optionTitle, { color: roles.fg }]}>
-                {pendingMatch.title ??
-                  pendingMatch.artists[0] ??
-                  t('Deze avond', 'This night')}
+                {p.title ?? p.artists[0] ?? t('Deze avond', 'This night')}
               </Text>
               <Text style={[styles.optionMeta, { color: roles.fgMuted }]}>
-                {t(
-                  'Al aangemeld — zet in mijn plannen',
-                  'Already submitted — add to my plans',
-                )}
+                {[p.venue, pendingDateLabel(p, locale)]
+                  .filter(Boolean)
+                  .join(' · ') || t('Zelf toegevoegd', 'Added by you')}
               </Text>
             </View>
             <Ionicons name="chevron-forward" size={16} color={roles.fgMuted} />
           </Pressable>
-        ) : null}
+        ))}
 
         <Pressable
           onPress={() => onPick(null)}

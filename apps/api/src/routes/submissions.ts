@@ -232,11 +232,17 @@ submissionsRoute.get('/mine', async (c) => {
 /**
  * GET /submissions/match?title=&venue=&date= — is dit al aangemeld?
  *
- * Voor de importflow: scant iemand hetzelfde affiche, dan moet hij de
- * bestaande aanmelding vinden en daaraan kunnen hangen. Exact op
- * genormaliseerde titel plus, als we die hebben, dezelfde datum — fuzzy
- * matchen doet de app zelf op de echte events, en hier de mist ingaan
- * betekent dat je aan iemand anders z'n avond hangt.
+ * Dit is de tweede helft van de keuzelijst in de importflow: naast de
+ * echte events van Andreas zoekt die ook hier, want een avond die iemand
+ * zelf heeft toegevoegd is voor de volgende scanner net zo goed een
+ * kandidaat. Zonder dat staat dezelfde avond straks vier keer in de
+ * wachtkamer.
+ *
+ * Zoeken op deel-van-de-titel (en op venue als die meekomt), niet exact:
+ * de OCR leest "LOWERTOWN" waar iemand anders "Lowertown 2" invulde, en
+ * een exacte vergelijking vindt dan niets. Dezelfde datum weegt mee in de
+ * volgorde maar is geen eis — een half gelezen datum mag een kandidaat
+ * niet wegfilteren.
  */
 submissionsRoute.get('/match', async (c) => {
   const title = clean(c.req.query('title'), MAX.title);
@@ -262,12 +268,21 @@ submissionsRoute.get('/match', async (c) => {
         sql`${schema.eventSubmissions.status} <> 'rejected'`,
         isNull(schema.eventSubmissions.eventId),
         title
-          ? sql`lower(${schema.eventSubmissions.title}) = lower(${title})`
-          : sql`lower(${schema.eventSubmissions.venueName}) = lower(${venue})`,
-        date ? eq(schema.eventSubmissions.date, date) : sql`true`
+          ? sql`(
+              ${schema.eventSubmissions.title} ilike ${'%' + title + '%'}
+              or ${title} ilike '%' || ${schema.eventSubmissions.title} || '%'
+            )`
+          : sql`${schema.eventSubmissions.venueName} ilike ${'%' + venue + '%'}`
       )
     )
-    .orderBy(desc(schema.eventSubmissions.createdAt))
+    // Zelfde datum eerst: bij twee aanmeldingen met dezelfde naam is de
+    // avond die jij deelde bijna altijd de juiste.
+    .orderBy(
+      date
+        ? sql`case when ${schema.eventSubmissions.date} = ${date} then 0 else 1 end`
+        : sql`0`,
+      desc(schema.eventSubmissions.createdAt)
+    )
     .limit(5);
 
   return c.json({ submissions: rows.map(toCard) });
