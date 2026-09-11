@@ -1275,9 +1275,11 @@ function DoneStep({
   // op de eventpagina staat die knop toch. Dus: klaar, en hier is 'm.
   return (
     <View style={styles.stepBlock}>
-      <View style={styles.hintRow}>
-        <Ionicons name="checkmark-circle" size={20} color={roles.accent} />
-        <Text style={[styles.stepQuestion, { color: roles.fg }]}>
+      <View style={styles.doneHead}>
+        <Ionicons name="checkmark-circle" size={30} color={roles.accent} />
+        <Text
+          style={[styles.stepQuestion, styles.centered, { color: roles.fg }]}
+        >
           {hasTicket
             ? t('Ticket staat erbij', 'Ticket is saved')
             : t('Staat in je plannen', 'Added to your plans')}
@@ -1647,6 +1649,9 @@ const styles = StyleSheet.create({
   },
   divider: { height: StyleSheet.hairlineWidth, marginVertical: 4 },
   stepBlock: { gap: 12, paddingTop: 6 },
+  // Klaar-melding: vinkje boven de kop, gecentreerd, met lucht eromheen.
+  // Er staat maar één knop onder — dan mag dit even staan.
+  doneHead: { alignItems: 'center', gap: 10, paddingVertical: 24 },
   // Kop van scherm 2. Zelfde bouw als de event-detail hero: beeld tot
   // aan alle drie de randen, gradient eroverheen, tekst onderin. Dus
   // géén radius en geen marges — de negatieve marges duwen 'm door de
