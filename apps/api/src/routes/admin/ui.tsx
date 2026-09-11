@@ -586,6 +586,7 @@ adminUi.get('/events/new', async (c) => {
   return c.html(
     <Layout title="Nieuw event" active="events">
       <h2>Nieuw event</h2>
+      <UrlFillBar kind="event" />
       {sub ? (
         <p style="opacity:0.7">
           Uit een aanmelding van een gebruiker. Opslaan koppelt de
@@ -1515,6 +1516,7 @@ adminUi.get('/venues/new', (c) => {
   return c.html(
     <Layout title="Nieuwe venue" active="venues">
       <h2>Nieuwe venue</h2>
+      <UrlFillBar kind="venue" />
       {name ? (
         <p style="opacity:0.7">
           Uit een aanmelding: <strong>{name}</strong>
@@ -1796,6 +1798,119 @@ adminUi.post('/venues/:id/delete', async (c) => {
   await db.delete(schema.venues).where(eq(schema.venues.id, id));
   return c.redirect('/admin/venues');
 });
+
+/**
+ * "Haal op van URL" boven een formulier.
+ *
+ * Plak de pagina van de zaal of van het event, en Claude vult de velden
+ * in — inclusief het adres en de coördinaten uit de JSON-LD, want die
+ * staan er op de meeste sites gewoon in. Leeg gebleven velden zijn velden
+ * die de pagina niet gaf: liever niets dan een gok, zeker bij een adres.
+ *
+ * Vult alleen wat nog leeg is, tenzij je "overschrijven" aanvinkt. Zo kan
+ * je 'm loslaten op een half ingevuld formulier zonder je eigen werk
+ * kwijt te raken.
+ */
+function UrlFillBar({ kind }: { kind: 'venue' | 'event' }) {
+  return (
+    <article style="padding:0.9rem 1rem;margin-bottom:1.25rem">
+      <div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:center">
+        <input
+          type="url"
+          id="fill-url"
+          placeholder={
+            kind === 'venue'
+              ? 'https://… pagina van de zaal'
+              : 'https://… pagina van het event'
+          }
+          style="flex:1;min-width:18em;margin:0"
+        />
+        <button type="button" id="fill-btn" class="outline" style="width:auto;margin:0">
+          Haal op
+        </button>
+        <label style="display:flex;align-items:center;gap:0.35rem;margin:0;font-size:13px">
+          <input type="checkbox" id="fill-overwrite" style="margin:0" />
+          overschrijven
+        </label>
+      </div>
+      <small id="fill-status" style="display:block;margin-top:0.5rem;opacity:0.75" />
+      <script
+        dangerouslySetInnerHTML={{
+          __html: `
+(function () {
+  var kind = ${JSON.stringify(kind)};
+  var btn = document.getElementById('fill-btn');
+  var urlEl = document.getElementById('fill-url');
+  var status = document.getElementById('fill-status');
+  var overwriteEl = document.getElementById('fill-overwrite');
+
+  // Vult een veld op naam. Leeg laten wat al ingevuld is, tenzij je
+  // overschrijven aanvinkt — je eigen typewerk is meer waard dan de gok
+  // van een model.
+  function put(name, value) {
+    if (value === null || value === undefined || value === '') return false;
+    var el = document.querySelector('[name="' + name + '"]');
+    if (!el) return false;
+    if (el.value && !overwriteEl.checked) return false;
+    el.value = value;
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    return true;
+  }
+
+  btn.addEventListener('click', async function () {
+    var url = (urlEl.value || '').trim();
+    if (!url) { status.textContent = 'Plak eerst een URL.'; return; }
+    btn.disabled = true;
+    btn.setAttribute('aria-busy', 'true');
+    status.textContent = 'Pagina ophalen + Claude leest mee…';
+    try {
+      var res = await fetch('/admin/api/import/fields-from-url', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ url: url, kind: kind }),
+      });
+      var data = await res.json();
+      if (!res.ok) { status.textContent = 'Fout: ' + (data.error || res.status); return; }
+      var f = data.fields || {};
+      var filled = 0;
+      if (kind === 'venue') {
+        if (put('name', f.name)) filled++;
+        if (put('address', f.address)) filled++;
+        if (put('lat', f.lat)) filled++;
+        if (put('lng', f.lng)) filled++;
+        if (put('description', f.description)) filled++;
+        if (put('imageUrl', f.imageUrl)) filled++;
+        if (put('website', f.website)) filled++;
+      } else {
+        if (put('title', f.title)) filled++;
+        if (put('description', f.description)) filled++;
+        if (put('occurrences[0].startsAt', f.startsAt)) filled++;
+        if (put('occurrences[0].endsAt', f.endsAt)) filled++;
+        if (put('occurrences[0].priceCents', f.priceCents)) filled++;
+        if (put('occurrences[0].ticketUrl', f.ticketUrl)) filled++;
+        if (put('imageUrl', f.imageUrl)) filled++;
+      }
+      var leeg = Object.keys(f).filter(function (k) { return f[k] === null; });
+      status.textContent =
+        filled + ' veld(en) ingevuld in ' + Math.round((data.durationMs || 0) / 1000) + 's' +
+        (leeg.length ? ' · niet gevonden: ' + leeg.join(', ') : '') +
+        (kind === 'venue' && f.name ? ' · venue: ' + f.name : '') +
+        (kind === 'event' && f.venueName ? ' · venue op de pagina: ' + f.venueName + ' (zelf kiezen)' : '');
+    } catch (err) {
+      status.textContent = 'Fout: ' + err.message;
+    } finally {
+      btn.disabled = false;
+      btn.removeAttribute('aria-busy');
+    }
+  });
+})();
+`,
+        }}
+      />
+    </article>
+  );
+}
 
 function VenueForm({
   venue,

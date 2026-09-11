@@ -14,6 +14,7 @@ import { recomputeCancellations } from '../../scrapers/_cancellations.js';
 import { enrichFilmsFromOmdb } from '../../scrapers/_omdb-enrich.js';
 import { enrichFilmsFromTmdb } from '../../scrapers/_tmdb-enrich.js';
 import { extractFromUrl } from '../../scrapers/extract-from-url.js';
+import { eventFromUrl, venueFromUrl } from '../../scrapers/extract-fields.js';
 import { scrapers, type ScraperName } from '../../scrapers/index.js';
 import { uploadToBunny } from '../../storage/bunny.js';
 import { requireAdminAny } from './auth.js';
@@ -1266,6 +1267,34 @@ adminApi.post('/import/extract-from-url', async (c) => {
         error: (e as Error).message,
         durationMs: Date.now() - startedAt,
       },
+      500,
+    );
+  }
+});
+
+/**
+ * Eén URL → de velden van één venue of één event.
+ *
+ * Voor de admin-formulieren: je plakt de pagina van de zaal of van het
+ * event en de velden vullen zichzelf. Dezelfde SSRF-guard en dezelfde
+ * Playwright-fallback als de agenda-import; alleen het antwoord is één
+ * object in plaats van een lijst.
+ */
+adminApi.post('/import/fields-from-url', async (c) => {
+  const body = await c.req.json<{ url?: unknown; kind?: unknown }>();
+  const url = typeof body.url === 'string' ? body.url.trim() : '';
+  const kind = body.kind === 'event' ? 'event' : 'venue';
+  if (!url || !/^https?:\/\//.test(url)) {
+    return c.json({ error: 'geef een geldige http(s)-URL' }, 400);
+  }
+  const startedAt = Date.now();
+  try {
+    const fields =
+      kind === 'event' ? await eventFromUrl(url) : await venueFromUrl(url);
+    return c.json({ kind, fields, durationMs: Date.now() - startedAt });
+  } catch (e) {
+    return c.json(
+      { error: (e as Error).message, durationMs: Date.now() - startedAt },
       500,
     );
   }

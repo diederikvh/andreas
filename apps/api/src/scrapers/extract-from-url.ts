@@ -208,6 +208,35 @@ function makeAbsolute(href: string | null, base: string): string | null {
   }
 }
 
+/**
+ * Eén pagina ophalen en klaarmaken voor een LLM: gestripte tekst plus de
+ * JSON-LD apart.
+ *
+ * `stripHtml` gooit alle `<script>` weg, en juist daarin staat bij de
+ * meeste sites het adres, de coördinaten en de openingstijden
+ * (schema.org). Voor een agenda maakt dat niet uit, voor het invullen van
+ * één venue of één event is het het verschil tussen weten en raden.
+ */
+export async function extractPage(
+  url: string
+): Promise<{ text: string; jsonLd: string; method: string }> {
+  const { html, method } = await fetchPage(url);
+  const blocks: string[] = [];
+  const re =
+    /<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(html)) !== null) {
+    const body = m[1]?.trim();
+    if (body) blocks.push(body);
+    if (blocks.join('').length > 12000) break;
+  }
+  return {
+    text: stripHtml(html).slice(0, 30000),
+    jsonLd: blocks.join('\n').slice(0, 12000) || '(geen)',
+    method,
+  };
+}
+
 export async function extractFromUrl(url: string): Promise<ExtractResult> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) throw new Error('ANTHROPIC_API_KEY not set');
