@@ -84,6 +84,29 @@ een importscherm met een preview. Geen AI, geen OCR, niets naar de backend.
       de kopie stil en toont het scherm "kon het bestand niet lokaal opslaan". Als de
       Android-kant duurder blijkt: iOS shippen, Android als los item.
 
+### Meerdere bestanden in één share (11 sep 2026)
+
+Je koopt drie kaartjes en krijgt drie losse PDF's. Dat kon niet: iOS liet de
+extensie alleen zien bij één item (`MaxCount: 1`) en Android had geen
+`SEND_MULTIPLE`-filter, dus Andreas stond niet eens in het deelmenu. Nu staan
+de iOS-counts op 6 en geeft `androidMultiIntentFilters` de tweede filter.
+
+`PendingShare` draagt de rest in `extraFiles`. De herkenning draait op het
+eerste bestand — drie kaartjes zijn één avond, dus één OCR-pass en één match —
+en `attachTicket()` koppelt ze allemaal aan dezelfde occurrence. `MAX_FILES = 6`
+in [pendingShare.ts](../apps/mobile/lib/pendingShare.ts): wie meer deelt, deelt
+een fotoalbum. Opruimen (`pruneImportDir`) en `clearPending` gaan over de hele
+lijst via `shareFileUris()`; op één uri laten staan zou de rest de volgende
+launch wissen.
+
+**Let op bij plugin-wijzigingen:** `expo run:ios` heeft de config-plugin *niet*
+opnieuw gedraaid — de plist bleef op `MaxCount: 1` staan en de extensie bleef
+weg uit het deelmenu bij twee foto's, terwijl app.json al 6 zei. Een wijziging
+in de plugin-opties vraagt een expliciete `npx expo prebuild -p ios`
+(of `-p android`) vóór de build. De gegenereerde bestanden zijn de waarheid:
+`ios/ShareExtension/ShareExtension-Info.plist` en
+`android/app/src/main/AndroidManifest.xml` — controleer daar, niet in app.json.
+
 ## Fase 2 — Lokale herkenning
 
 Tweede native build. Alles on-device.
