@@ -74,7 +74,26 @@ export const Layout: FC<PropsWithChildren<{ title: string; active?: string }>> =
         table { font-size: 14px; }
         td.actions { white-space: nowrap; }
         td.actions form { display: inline-block; margin: 0 0.25rem 0 0; }
-        td.actions button { padding: 0.25rem 0.6rem; font-size: 12px; margin: 0; }
+        td.actions button { padding: 0.25rem 0.6rem; font-size: 12px; margin: 0; width: auto; }
+        /* Kleine link die als knop leest, in dezelfde maat als de buttons
+           in een actie-cel. */
+        td.actions a[role="button"] {
+          padding: 0.25rem 0.6rem;
+          font-size: 12px;
+          margin: 0;
+          width: auto;
+          display: inline-block;
+        }
+        /* Tekstveld tussen de knoppen: Pico maakt inputs 100% breed, en in
+           een actie-cel rekt dat de hele tabel uit het scherm. */
+        td.actions .inline-input {
+          display: inline-block;
+          width: 11em;
+          padding: 0.25rem 0.5rem;
+          font-size: 12px;
+          margin: 0;
+          height: auto;
+        }
         .row-unpub { opacity: 0.55; }
         .pill {
           display: inline-block;

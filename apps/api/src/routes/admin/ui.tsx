@@ -2758,46 +2758,38 @@ adminUi.get('/aanmeldingen', async (c) => {
                       </>
                     ) : null}
                   </td>
-                  <td style="white-space:nowrap;text-align:right">
+                  {/* `white-space:normal` omdat deze cel drie acties én
+                      een invoerveld draagt: met nowrap duwt dat de tabel
+                      het scherm uit in plaats van netjes te wikkelen. */}
+                  <td class="actions" style="text-align:right;white-space:normal">
                     {sub.status === 'new' ? (
                       <>
                         <a
                           href={newEventUrl}
                           role="button"
-                          style="padding:2px 8px;font-size:0.8em"
                         >
                           Maak event
                         </a>{' '}
                         <form
                           method="post"
                           action={`/admin/aanmeldingen/${encodeURIComponent(sub.id)}/link`}
-                          style="display:inline"
                         >
                           <input
                             type="text"
                             name="eventId"
                             placeholder="bestaand event-id"
                             required
-                            style="display:inline-block;width:11em;padding:2px 6px;font-size:0.8em;margin:0"
+                            class="inline-input"
                           />{' '}
-                          <button
-                            type="submit"
-                            class="outline"
-                            style="padding:2px 8px;font-size:0.8em"
-                          >
+                          <button type="submit" class="outline">
                             Koppel
                           </button>
                         </form>{' '}
                         <form
                           method="post"
                           action={`/admin/aanmeldingen/${encodeURIComponent(sub.id)}/rejected`}
-                          style="display:inline"
                         >
-                          <button
-                            type="submit"
-                            class="outline secondary"
-                            style="padding:2px 8px;font-size:0.8em"
-                          >
+                          <button type="submit" class="outline secondary">
                             Geen event
                           </button>
                         </form>
