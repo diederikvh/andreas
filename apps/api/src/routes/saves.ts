@@ -114,6 +114,11 @@ const SAVE_SOURCES = [
   'series',
   'gered',
   'new',
+  // Import-flow: share-sheet en poster-scanner. Vereist migratie
+  // 0053_save_source_share_scan.sql.
+  'share',
+  'scan',
+  'going',
   'other',
 ] as const;
 type SaveSource = (typeof SAVE_SOURCES)[number];

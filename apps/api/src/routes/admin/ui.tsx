@@ -2291,6 +2291,30 @@ adminUi.get('/import', async (c) => {
     if (v.agendaUrl) venueAgendaMap[v.id] = v.agendaUrl;
   }
 
+  // Aanmeldingen uit de importflow in de app (fase 6). Openstaande eerst,
+  // daarna de afgehandelde — je komt hier om de nieuwe te doen.
+  const submissions = await db
+    .select({
+      id: schema.eventSubmissions.id,
+      title: schema.eventSubmissions.title,
+      artists: schema.eventSubmissions.artists,
+      venueName: schema.eventSubmissions.venueName,
+      venueId: schema.eventSubmissions.venueId,
+      date: schema.eventSubmissions.date,
+      time: schema.eventSubmissions.time,
+      city: schema.eventSubmissions.city,
+      source: schema.eventSubmissions.source,
+      status: schema.eventSubmissions.status,
+      createdAt: schema.eventSubmissions.createdAt,
+    })
+    .from(schema.eventSubmissions)
+    .orderBy(
+      sql`case when ${schema.eventSubmissions.status} = 'new' then 0 else 1 end`,
+      desc(schema.eventSubmissions.createdAt)
+    )
+    .limit(50);
+  const openCount = submissions.filter((s) => s.status === 'new').length;
+
   return c.html(
     <Layout title="Import" active="import">
       <h2>LLM-import voor tentoonstellingen</h2>
@@ -2480,8 +2504,138 @@ form.addEventListener('submit', async (e) => {
 `,
         }}
       />
+
+      <hr />
+
+      <h2>
+        Aangemeld door gebruikers{' '}
+        {openCount > 0 ? <mark>{openCount} open</mark> : null}
+      </h2>
+      <p style="opacity:0.7;max-width:60ch">
+        Events die iemand via de share-sheet of de poster-scanner aanmeldde
+        omdat Andreas ze nog niet kende. Dit zijn <em>aanmeldingen</em>, geen
+        events: alleen de velden die de privacygrens doorkomen (titel,
+        artiest, venue, datum, tijd, stad). Het gedeelde bestand en de
+        OCR-tekst blijven op het toestel van de gebruiker.
+      </p>
+      {submissions.length === 0 ? (
+        <p style="opacity:0.6">Nog niets aangemeld.</p>
+      ) : (
+        <table>
+          <thead>
+            <tr>
+              <th>Wat</th>
+              <th>Waar</th>
+              <th>Wanneer</th>
+              <th>Via</th>
+              <th />
+            </tr>
+          </thead>
+          <tbody>
+            {submissions.map((sub) => (
+              <tr style={sub.status === 'new' ? '' : 'opacity:0.45'}>
+                <td>
+                  <strong>{sub.title ?? '—'}</strong>
+                  {sub.artists.length > 0 ? (
+                    <>
+                      <br />
+                      <small style="opacity:0.7">
+                        {sub.artists.join(', ')}
+                      </small>
+                    </>
+                  ) : null}
+                </td>
+                <td>
+                  {sub.venueName ?? '—'}
+                  {sub.venueId ? (
+                    <>
+                      {' '}
+                      <small title="naam matchte op een bekende venue">✓</small>
+                    </>
+                  ) : null}
+                  {sub.city ? (
+                    <>
+                      <br />
+                      <small style="opacity:0.7">{sub.city}</small>
+                    </>
+                  ) : null}
+                </td>
+                <td>
+                  {sub.date ?? '—'}
+                  {sub.time ? ` · ${sub.time}` : ''}
+                  <br />
+                  <small style="opacity:0.6">{fmtRelative(sub.createdAt)}</small>
+                </td>
+                <td>
+                  <small>{sub.source ?? '—'}</small>
+                </td>
+                <td style="white-space:nowrap;text-align:right">
+                  {sub.status === 'new' ? (
+                    <>
+                      <a
+                        href="/admin/events/new"
+                        role="button"
+                        class="outline"
+                        style="padding:2px 8px;font-size:0.8em"
+                      >
+                        Maak event
+                      </a>{' '}
+                      <form
+                        method="post"
+                        action={`/admin/import/submissions/${encodeURIComponent(sub.id)}/handled`}
+                        style="display:inline"
+                      >
+                        <button
+                          type="submit"
+                          class="outline"
+                          style="padding:2px 8px;font-size:0.8em"
+                        >
+                          Afgehandeld
+                        </button>
+                      </form>{' '}
+                      <form
+                        method="post"
+                        action={`/admin/import/submissions/${encodeURIComponent(sub.id)}/rejected`}
+                        style="display:inline"
+                      >
+                        <button
+                          type="submit"
+                          class="outline secondary"
+                          style="padding:2px 8px;font-size:0.8em"
+                        >
+                          Geen event
+                        </button>
+                      </form>
+                    </>
+                  ) : (
+                    <small style="opacity:0.6">{sub.status}</small>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
     </Layout>,
   );
+});
+
+/**
+ * Aanmelding afvinken. Twee statussen: `handled` (event aangemaakt of
+ * anders afgedaan) en `rejected` (geen event). Meer smaken heeft dit niet
+ * nodig — de lijst is een werkvoorraad, geen administratie.
+ */
+adminUi.post('/import/submissions/:id/:status', async (c) => {
+  const id = c.req.param('id');
+  const status = c.req.param('status');
+  if (status !== 'handled' && status !== 'rejected') {
+    return c.redirect('/admin/import');
+  }
+  await db
+    .update(schema.eventSubmissions)
+    .set({ status, handledAt: new Date() })
+    .where(eq(schema.eventSubmissions.id, id));
+  return c.redirect('/admin/import');
 });
 
 /* ═══════════════════════════════════════════════════════════════════════

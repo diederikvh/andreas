@@ -74,6 +74,13 @@ export const saveSource = pgEnum('save_source', [
   /** De dagelijkse "net binnen"-lijst (/new) — de plek waar je nieuw
       aanbod meteen beoordeelt. */
   'new',
+  /** Van buiten de app naar binnen: gedeeld via de native share-sheet
+      ('share') of gefotografeerd met de poster-scanner ('scan'). Zie
+      docs/share-naar-andreas.md. */
+  'share',
+  'scan',
+  /** De plannen-lijst (/going) — waar je je eigen afspraken teruginziet. */
+  'going',
   'other',
 ]);
 export const venueFollowState = pgEnum('venue_follow_state', [
@@ -1236,6 +1243,62 @@ export const verification = pgTable('verification', {
  * bij autoscale (>1 machine) klopt. Model `rateLimit` met velden key/count/
  * lastRequest (better-auth-contract). lastRequest = ms-since-epoch (bigint).
  */
+/**
+ * Events die gebruikers zelf aanmelden via de importflow (share-sheet of
+ * poster-scanner) omdat Andreas ze nog niet kent. Zie fase 6 in
+ * docs/share-naar-andreas.md.
+ *
+ * Dit is **geen** event: het is een aanmelding die nog door een mens moet.
+ * Daarom een eigen tabel en niet `events.published = false` — een
+ * onvolledige rij in `events` zou overal moeten worden weggefilterd, en
+ * één vergeten filter betekent een half event in de app.
+ *
+ * Alleen de velden die de privacygrens doorkomen (`toServerMetadata()` in
+ * de app): titel, artiesten, venue, datum, tijd, stad. Geen bestand, geen
+ * OCR-tekst, geen ticketgegevens — die verlaten het toestel nooit.
+ */
+export const eventSubmissions = pgTable(
+  'event_submissions',
+  {
+    id: text().primaryKey(),
+    title: text(),
+    artists: text()
+      .array()
+      .notNull()
+      .default(sql`ARRAY[]::text[]`),
+    /** Naam zoals de gebruiker/OCR hem gaf — vrije tekst, want een
+        onbekend event zit vaak juist bij een venue die we niet kennen. */
+    venueName: text(),
+    /** Gevuld als de naam matchte op een bekende venue. Maakt de
+        review-stap korter en is het signaal waarop je kan sorteren:
+        bekende venue = bijna zeker een echt event. */
+    venueId: text().references(() => venues.id, { onDelete: 'set null' }),
+    /** `YYYY-MM-DD` als losse tekst: een half herkende datum mag niet op
+        een timestamp-parse stuklopen voordat een mens 'm heeft gezien. */
+    date: text(),
+    /** `HH:MM`. */
+    time: text(),
+    city: text(),
+    /** Wie meldde het aan. Nullable: de importflow werkt anoniem, en een
+        aanmelding weigeren omdat iemand geen account heeft is precies de
+        verkeerde drempel. */
+    userId: text().references(() => users.id, { onDelete: 'set null' }),
+    /** Via de share-sheet of via de poster-scanner. */
+    source: saveSource(),
+    /** `new` → nog niets mee gedaan, `handled` → event aangemaakt of
+        anders afgedaan, `rejected` → geen event. */
+    status: text().notNull().default('new'),
+    createdAt: timestamp({ withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+    handledAt: timestamp({ withTimezone: true }),
+  },
+  (t) => [
+    index('event_submissions_status_idx').on(t.status),
+    index('event_submissions_created_idx').on(t.createdAt),
+  ]
+);
+
 export const rateLimit = pgTable(
   'rate_limit',
   {

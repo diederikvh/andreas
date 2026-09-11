@@ -87,6 +87,10 @@ const SOURCES = new Set([
   'series',
   'gered',
   'new',
+  // Import-flow: vereist migratie 0053_save_source_share_scan.sql.
+  'share',
+  'scan',
+  'going',
   'other',
 ]);
 
