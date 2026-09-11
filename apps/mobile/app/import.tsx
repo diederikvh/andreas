@@ -70,7 +70,7 @@ import { useSession } from '@/lib/authClient';
 import { search, submitUnknownEvent } from '@/lib/api';
 import * as Haptics from 'expo-haptics';
 import { useMode, useRoles } from '@/store/mode';
-import { useTicketFor, useTickets, type StoredTicket } from '@/store/tickets';
+import { useTicketFor, useTickets, useTicketsFor } from '@/store/tickets';
 import { fontFamily, palette } from '@/theme/tokens';
 
 /**
@@ -704,7 +704,6 @@ function SharePreview({
                   intent={intent}
                   onChoose={setChosenIntent}
                   occurrenceId={occurrenceId}
-                  storedTicket={storedTicket}
                   onDone={onActed}
                 />
               ) : (
@@ -1059,7 +1058,6 @@ function IntentStep({
   intent,
   onChoose,
   occurrenceId,
-  storedTicket,
   onDone,
 }: {
   candidate: MatchCandidate;
@@ -1068,7 +1066,6 @@ function IntentStep({
   intent: Intent;
   onChoose: (intent: Intent) => void;
   occurrenceId: string | null;
-  storedTicket: StoredTicket | undefined;
   onDone: () => void;
 }) {
   const roles = useRoles();
@@ -1083,6 +1080,8 @@ function IntentStep({
   const toggleGoing = useToggleGoing();
 
   const fileCount = shareFileUris(share).length;
+  const storedTickets = useTicketsFor(occurrenceId);
+  const storedTicket = storedTickets[0];
   const [keepAsTicket, setKeepAsTicket] = useState<boolean | null>(null);
   // Er mag er meer dan één bij: met z'n tweeën heb je twee bestanden, en
   // soms stuurt de venue een vervanger. Alleen hetzelfde bestand nog een
@@ -1200,7 +1199,18 @@ function IntentStep({
             <Ionicons name="ticket" size={19} color={roles.accent} />
             <View style={{ flex: 1, gap: 4 }}>
               <Text style={[styles.ticketCardTitle, { color: roles.fg }]}>
-                {t('Je ticket staat hierbij', 'Your ticket is saved here')}
+                {/* Verleden tijd, geen bevestiging: dit hing er al voordat
+                    je dit scherm opende. "Je ticket staat hierbij" las
+                    alsof het net gebeurd was. */}
+                {storedTickets.length > 1
+                  ? t(
+                      `Je had hier al ${storedTickets.length} tickets`,
+                      `You already had ${storedTickets.length} tickets here`,
+                    )
+                  : t(
+                      'Je had hier al een ticket',
+                      'You already had a ticket here',
+                    )}
               </Text>
               <Text style={[styles.ticketCardBody, { color: roles.fgMuted }]}>
                 {t(
