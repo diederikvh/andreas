@@ -1130,6 +1130,30 @@ export async function submitUnknownEvent(input: {
 }
 
 /**
+ * De poster bij een aanmelding, als de aanmelder daarvoor koos.
+ *
+ * Aparte call, met opzet: `submitUnknownEvent` blijft tekst-alleen, want
+ * daar komt de whitelist uit `importPayload.ts` op uit. Een bestand
+ * versturen is een tweede, expliciete handeling — en gebeurt nooit bij
+ * een ticket.
+ */
+export async function attachSubmissionImage(
+  id: string,
+  bytes: Uint8Array,
+  mimeType: string,
+): Promise<string | null> {
+  const res = await authedRequest<{ imageUrl: string }>(
+    `/submissions/${id}/image`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': mimeType },
+      body: bytes as unknown as BodyInit,
+    },
+  );
+  return res.imageUrl ?? null;
+}
+
+/**
  * Een aangemeld event dat nog op een mens wacht.
  *
  * Staat nergens in de publieke app — niet in de agenda, niet in zoeken,
@@ -1148,6 +1172,9 @@ export type PendingEvent = {
   published: boolean;
   eventId: string | null;
   status: string;
+  /** De poster die de aanmelder meegaf, of anders de foto van de zaal.
+      Leeg? Dan tekent de app een lettertegel. */
+  imageUrl: string | null;
 };
 
 /** Aanmeldingen waar ik heen ga. Leeg zonder account. */

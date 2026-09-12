@@ -3,6 +3,7 @@ import { Hono, type Context } from 'hono';
 
 import { auth } from '../auth.js';
 import { db, schema } from '../db/index.js';
+import { uploadToBunny } from '../storage/bunny.js';
 
 /**
  * Events die gebruikers zelf aanmelden omdat Andreas ze nog niet kent —
@@ -173,6 +174,8 @@ function toCard(row: {
   time: string | null;
   status: string;
   eventId: string | null;
+  imageUrl?: string | null;
+  venueImageUrl?: string | null;
 }) {
   return {
     id: row.id,
@@ -182,6 +185,10 @@ function toCard(row: {
     city: row.city,
     date: row.date,
     time: row.time,
+    /** Eerst de poster die de aanmelder zelf meegaf, anders de foto van
+        de zaal. Geen van beide? Dan tekent de app een lettertegel — dat
+        is geen gebrek, maar het moet niet de enige mogelijkheid zijn. */
+    imageUrl: row.imageUrl ?? row.venueImageUrl ?? null,
     /** `true` zodra een mens er een echt event van heeft gemaakt; dan
         staat het ook gewoon in je plannen en mag deze kaart weg. */
     published: Boolean(row.eventId),
@@ -212,12 +219,17 @@ submissionsRoute.get('/mine', async (c) => {
       time: schema.eventSubmissions.time,
       status: schema.eventSubmissions.status,
       eventId: schema.eventSubmissions.eventId,
+      imageUrl: schema.eventSubmissions.imageUrl,
+      venueImageUrl: schema.venues.imageUrl,
     })
     .from(schema.submissionGoing)
     .innerJoin(
       schema.eventSubmissions,
       eq(schema.submissionGoing.submissionId, schema.eventSubmissions.id)
     )
+    // Left: een aanmelding bij een zaal die we niet kennen heeft geen
+    // venueId, en die mag daar niet op wegvallen.
+    .leftJoin(schema.venues, eq(schema.eventSubmissions.venueId, schema.venues.id))
     .where(
       and(
         eq(schema.submissionGoing.userId, userId),
@@ -261,8 +273,11 @@ submissionsRoute.get('/match', async (c) => {
       time: schema.eventSubmissions.time,
       status: schema.eventSubmissions.status,
       eventId: schema.eventSubmissions.eventId,
+      imageUrl: schema.eventSubmissions.imageUrl,
+      venueImageUrl: schema.venues.imageUrl,
     })
     .from(schema.eventSubmissions)
+    .leftJoin(schema.venues, eq(schema.eventSubmissions.venueId, schema.venues.id))
     .where(
       and(
         sql`${schema.eventSubmissions.status} <> 'rejected'`,
@@ -329,4 +344,68 @@ submissionsRoute.delete('/:id/going', async (c) => {
       )
     );
   return c.json({ going: false });
+});
+
+/**
+ * POST /submissions/:id/image — de poster bij een aanmelding.
+ *
+ * **Bewust een eigen route.** De metadata-route hierboven blijft
+ * tekst-alleen: dat is de plek waar de whitelist uit
+ * `lib/importPayload.ts` op uitkomt, en daar wil je nooit per ongeluk een
+ * bestand in laten glippen. Een beeld meesturen is een tweede, expliciete
+ * handeling — in de app een schakelaar die standaard uit staat en die
+ * niet bestaat als het bestand een ticket is.
+ *
+ * Ruwe bytes in de body, `Content-Type` zegt wat het is.
+ *
+ * Wie mag dit? De importflow werkt anoniem, dus we kunnen geen eigenaar
+ * controleren. In plaats daarvan: alleen als er nog géén beeld hangt en
+ * de aanmelding vers is. Daarmee hoort de upload bij het aanmelden zelf
+ * en kan niemand later het plaatje van andermans aanmelding vervangen.
+ */
+const IMAGE_MAX_BYTES = 6 * 1024 * 1024;
+const IMAGE_TYPES: Record<string, string> = {
+  'image/jpeg': 'jpg',
+  'image/jpg': 'jpg',
+  'image/png': 'png',
+  'image/webp': 'webp',
+  'image/heic': 'heic',
+};
+
+submissionsRoute.post('/:id/image', async (c) => {
+  const id = c.req.param('id');
+  const mime = (c.req.header('content-type') ?? '').split(';')[0].trim();
+  const ext = IMAGE_TYPES[mime];
+  if (!ext) return c.json({ error: 'geen afbeelding' }, 400);
+
+  const [row] = await db
+    .select({
+      imageUrl: schema.eventSubmissions.imageUrl,
+      createdAt: schema.eventSubmissions.createdAt,
+    })
+    .from(schema.eventSubmissions)
+    .where(eq(schema.eventSubmissions.id, id))
+    .limit(1);
+  if (!row) return c.json({ error: 'niet gevonden' }, 404);
+  if (row.imageUrl) return c.json({ error: 'heeft al een beeld' }, 409);
+  if (Date.now() - row.createdAt.getTime() > 3600_000) {
+    return c.json({ error: 'te laat' }, 409);
+  }
+
+  const body = await c.req.arrayBuffer();
+  if (body.byteLength === 0) return c.json({ error: 'leeg' }, 400);
+  if (body.byteLength > IMAGE_MAX_BYTES) {
+    return c.json({ error: 'te groot' }, 413);
+  }
+
+  const url = await uploadToBunny(
+    `media/submissions/${id}.${ext}`,
+    body,
+    mime
+  );
+  await db
+    .update(schema.eventSubmissions)
+    .set({ imageUrl: url })
+    .where(eq(schema.eventSubmissions.id, id));
+  return c.json({ imageUrl: url });
 });

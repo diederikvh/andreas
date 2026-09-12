@@ -1285,6 +1285,11 @@ export const eventSubmissions = pgTable(
     userId: text().references(() => users.id, { onDelete: 'set null' }),
     /** Via de share-sheet of via de poster-scanner. */
     source: saveSource(),
+    /** De poster die de aanmelder zelf meegaf, op onze CDN. Alleen als
+        hij daar expliciet voor koos — en die keuze bestaat niet als het
+        bestand een ticket is (barcode + ticketsignalen). Leeg? Dan valt
+        de app terug op de foto van de zaal, en anders op de lettertegel. */
+    imageUrl: text(),
     /** `new` → nog niets mee gedaan, `handled` → event aangemaakt of
         anders afgedaan, `rejected` → geen event. */
     status: text().notNull().default('new'),

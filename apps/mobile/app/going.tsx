@@ -341,7 +341,7 @@ function PendingRow({
   return (
     <View style={dim ? { opacity: 0.5 } : undefined}>
       <EventListRow
-        thumb=""
+        thumb={pending.imageUrl ?? ''}
         thumbFallback={
           <View
             style={[styles.letterThumb, { backgroundColor: TONE[mode][tone] }]}

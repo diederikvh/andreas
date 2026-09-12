@@ -1224,7 +1224,19 @@ function PendingRailCard({
           goingCardStyles.letterWrap,
         ]}
       >
-        <Text style={goingCardStyles.letter}>{title.trim().charAt(0)}</Text>
+        {/* De poster van de aanmelder of de foto van de zaal. Is er geen
+            van beide, dan blijft de letter op z'n gekleurde vlak staan —
+            die ligt eronder, dus een beeld dat niet laadt valt niet op. */}
+        {pending.imageUrl ? (
+          <Image
+            source={{ uri: pending.imageUrl }}
+            style={StyleSheet.absoluteFill}
+            contentFit="cover"
+            transition={160}
+          />
+        ) : (
+          <Text style={goingCardStyles.letter}>{title.trim().charAt(0)}</Text>
+        )}
         <View
           style={[goingCardStyles.badge, { backgroundColor: roles.accent }]}
         >

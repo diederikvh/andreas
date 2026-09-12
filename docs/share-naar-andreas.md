@@ -227,6 +227,39 @@ Drie dingen opgelost:
 
 Plus: een nieuw document (andere pagina-URI's) begint altijd zonder uitsnede.
 
+### Een aanmelding met een beeld (12 sep 2026)
+
+Een onbekend event was een gekleurde tegel met een letter tussen de kaarten van
+echte events. Nu twee bronnen, in deze volgorde:
+
+1. **De poster die de aanmelder zelf meestuurde.** Een schakelaar in het
+   aanmeldformulier, standaard **uit**.
+2. **De foto van de zaal**, als de venuenaam matchte op een zaal die we kennen.
+   Kost niets: `venue_id` stond er al, elke venue heeft een `imageUrl`. Dit
+   werkt met terugwerkende kracht voor alles wat al is aangemeld.
+
+Geen van beide? Dan blijft het de lettertegel.
+
+**De privacyregel is hiermee uitgebreid, bewust en precies.** Tot nu ging er
+alleen tekst naar de server. Dit is de enige plek waar een bestand de deur uit
+kan, en daarom:
+
+- **Een eigen route** (`POST /submissions/:id/image`), niet de metadata-route.
+  Die blijft tekst-alleen — dat is waar de whitelist uit `importPayload.ts` op
+  uitkomt en daar mag nooit per ongeluk een bestand in glippen.
+- **De schakelaar bestaat niet als het een ticket is.** `detectTicket` beslist
+  dat; op een ticket staat je naam en een code.
+- **Standaard uit.** Een beeld meesturen is een keuze van de aanmelder.
+- Geen eigenaarscontrole mogelijk (de flow werkt anoniem), dus in plaats
+  daarvan: alleen als er nog géén beeld hangt en de aanmelding **korter dan een
+  uur** oud is. Zo hoort de upload bij het aanmelden zelf en kan niemand later
+  het plaatje van andermans aanmelding vervangen. Max 6 MB, alleen echte
+  afbeeldingstypes.
+
+Migratie `0057_submission_image.sql` (gedraaid). Geverifieerd tegen de echte
+database en CDN: aanmelding bij Paradiso krijgt de Paradiso-foto, een geüploade
+poster wint daarvan, een tweede upload geeft 409.
+
 ### Meerdere bestanden in één share (11 sep 2026)
 
 Je koopt drie kaartjes en krijgt drie losse PDF's. Dat kon niet: iOS liet de

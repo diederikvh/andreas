@@ -75,12 +75,14 @@ import {
 } from '@/lib/queries';
 import { useSession } from '@/lib/authClient';
 import {
+  attachSubmissionImage,
   matchPendingEvents,
   search,
   setPendingGoing,
   submitUnknownEvent,
   type PendingEvent,
 } from '@/lib/api';
+import { File } from 'expo-file-system';
 import * as Haptics from 'expo-haptics';
 import { useMode, useRoles } from '@/store/mode';
 import { useImportLearnings } from '@/store/importLearnings';
@@ -721,6 +723,14 @@ function SharePreview({
   // de herkenning het minst betrouwbaar en jij het meest zeker.
   const [keepOwnTicket, setKeepOwnTicket] = useState<boolean | null>(null);
   const willKeepOwn = keepOwnTicket ?? Boolean(share.fileUri);
+  // Je poster meesturen met de aanmelding. Alleen bij een afbeelding die
+  // géén ticket is: op een ticket staat je naam en een code, en dat is
+  // precies wat dit toestel niet verlaat. Standaard uit — dit is het enige
+  // moment in de hele flow waarop een bestand de deur uit kan, dus dat
+  // mag je zelf aanzetten en niet wij.
+  const canSharePoster =
+    share.kind === 'image' && Boolean(share.fileUri) && !verdict.isTicket;
+  const [sharePoster, setSharePoster] = useState(false);
   const qc = useQueryClient();
 
   /**
@@ -738,6 +748,19 @@ function SharePreview({
       const res = await submitUnknownEvent({ ...safe, source: 'share' });
       const keepTicket = Boolean(share.fileUri) && willKeepOwn;
       if (keepTicket) attachToPending(res.id);
+      // Mislukt de upload, dan is de aanmelding er nog steeds. Een beeld
+      // is mooi meegenomen, geen voorwaarde.
+      if (canSharePoster && sharePoster && share.fileUri) {
+        try {
+          await attachSubmissionImage(
+            res.id,
+            await new File(share.fileUri).bytes(),
+            share.mimeType ?? 'image/jpeg',
+          );
+        } catch {
+          /* volgende keer dan */
+        }
+      }
       setSubmitted({
         id: res.id,
         going: res.going,
@@ -969,6 +992,9 @@ function SharePreview({
               fileCount={shareFileUris(share).length}
               keepTicket={willKeepOwn}
               onToggleKeepTicket={() => setKeepOwnTicket(!willKeepOwn)}
+              canSharePoster={canSharePoster}
+              sharePoster={sharePoster}
+              onToggleSharePoster={() => setSharePoster((v) => !v)}
               submitState={submitState}
               submitted={submitted}
               onSubmitUnknown={submitUnknown}
@@ -1245,9 +1271,9 @@ function ChooseStep({
               },
             ]}
           >
-            {/* Zelf toegevoegd, dus geen beeld: de eerste letter op een
-                kleurvlak, dezelfde kleur als deze avond in je plannen
-                heeft. */}
+            {/* De poster die de aanmelder meestuurde, of de foto van de
+                zaal. Allebei niet? Dan de eerste letter op een kleurvlak,
+                dezelfde kleur als deze avond in je plannen heeft. */}
             <View
               style={[
                 styles.optionThumb,
@@ -1255,7 +1281,18 @@ function ChooseStep({
                 { backgroundColor: TONE[mode][pendingTone(p.id)] },
               ]}
             >
-              <Text style={styles.optionLetter}>{label.trim().charAt(0)}</Text>
+              {p.imageUrl ? (
+                <Image
+                  source={{ uri: p.imageUrl }}
+                  style={StyleSheet.absoluteFill}
+                  contentFit="cover"
+                  transition={160}
+                />
+              ) : (
+                <Text style={styles.optionLetter}>
+                  {label.trim().charAt(0)}
+                </Text>
+              )}
             </View>
             <View style={{ flex: 1, gap: 3 }}>
               <Text style={[styles.optionTitle, { color: roles.fg }]}>
@@ -1326,6 +1363,9 @@ function SelfAddStep({
   fileCount,
   keepTicket,
   onToggleKeepTicket,
+  canSharePoster,
+  sharePoster,
+  onToggleSharePoster,
   submitState,
   submitted,
   onSubmitUnknown,
@@ -1337,6 +1377,10 @@ function SelfAddStep({
   fileCount: number;
   keepTicket: boolean;
   onToggleKeepTicket: () => void;
+  /** Alleen bij een afbeelding die geen ticket is. */
+  canSharePoster: boolean;
+  sharePoster: boolean;
+  onToggleSharePoster: () => void;
   submitState: 'idle' | 'sending' | 'done' | 'failed';
   /** Wat er aangemeld is, en wat er daarna mee gebeurde. `null` zolang
       er niets verstuurd is. */
@@ -1487,6 +1531,28 @@ function SelfAddStep({
               : t(
                   'We bewaren het niet. Je kan het straks niet vanuit Andreas aan de deur tonen.',
                   'We will not keep it. You will not be able to show it from Andreas at the door.',
+                )
+          }
+        />
+      ) : null}
+
+      {/* Een aanmelding zonder beeld is een regel tekst tussen de kaarten
+          van echte events. Met jouw poster is het er eentje. */}
+      {canSharePoster ? (
+        <TicketKeepCard
+          icon="image"
+          keep={sharePoster}
+          onToggle={onToggleSharePoster}
+          title={t('Stuur de poster mee', 'Send the poster along')}
+          body={
+            sharePoster
+              ? t(
+                  'Dit beeld gaat mee naar Andreas en staat straks bij dit event.',
+                  'This image goes to Andreas and will show with this event.',
+                )
+              : t(
+                  'Zonder beeld blijft het een tegel met een letter. Alleen dit plaatje gaat mee, verder niets.',
+                  'Without an image it stays a tile with a letter. Only this picture is sent, nothing else.',
                 )
           }
         />
@@ -2022,11 +2088,13 @@ function TicketKeepCard({
   title,
   body,
   onToggle,
+  icon = 'ticket',
 }: {
   keep: boolean;
   title: string;
   body: string;
   onToggle: () => void;
+  icon?: 'ticket' | 'image';
 }) {
   const roles = useRoles();
   const mode = useMode();
@@ -2046,7 +2114,7 @@ function TicketKeepCard({
     >
       <View style={styles.ticketCardHead}>
         <Ionicons
-          name="ticket"
+          name={icon}
           size={19}
           color={keep ? roles.accent : roles.fgMuted}
         />
@@ -2519,7 +2587,9 @@ const styles = StyleSheet.create({
   },
   // Zelfde vorm als de thumb in `EventListRow`, een maat kleiner: deze
   // rij heeft twee regels tekst, geen vier.
-  optionThumb: { width: 56, height: 56, borderRadius: 10 },
+  // overflow: een beeld dat het vlak vult moet dezelfde ronde hoeken
+  // krijgen als de tegel eronder.
+  optionThumb: { width: 56, height: 56, borderRadius: 10, overflow: 'hidden' },
   optionThumbFill: { alignItems: 'center', justifyContent: 'center' },
   optionLetter: {
     fontFamily: fontFamily.display,

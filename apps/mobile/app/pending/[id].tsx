@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, useLocalSearchParams } from 'expo-router';
 import {
@@ -135,10 +136,21 @@ export default function PendingEventScreen() {
   return (
     <View style={[styles.root, { backgroundColor: roles.bg }]}>
       {/* Vast vlak achter de content, net als de hero-foto op een
-          eventpagina. Geen beeld, dus de letter groot en scheef over de
-          rand — dat is leuker dan een lege kleurvlek. */}
+          eventpagina. Is er een beeld — de poster die de aanmelder
+          meegaf, of anders de foto van de zaal — dan staat dat hier.
+          Anders de letter groot en scheef over de rand; dat is leuker
+          dan een lege kleurvlek. */}
       <View style={[styles.heroPinned, { backgroundColor: TONE[mode][tone] }]}>
-        <Text style={styles.heroLetter}>{title.trim().charAt(0)}</Text>
+        {pending?.imageUrl ? (
+          <Image
+            source={{ uri: pending.imageUrl }}
+            style={StyleSheet.absoluteFill}
+            contentFit="cover"
+            transition={160}
+          />
+        ) : (
+          <Text style={styles.heroLetter}>{title.trim().charAt(0)}</Text>
+        )}
         <LinearGradient
           colors={
             isNacht
