@@ -13,6 +13,7 @@ import {
   extractEventDraft,
   parseDate,
   parseTime,
+  titleFromFileName,
 } from './importMetadata.ts';
 import { toServerMetadata } from './importPayload.ts';
 import type { OcrResult } from './importOcr.ts';
@@ -26,6 +27,7 @@ const VENUES = [
   'Concertgebouw',
   'Bimhuis',
   'Cinetol',
+  'Paradiso',
 ];
 
 const TODAY = new Date(2026, 8, 11); // 11 september 2026
@@ -294,4 +296,102 @@ test('een zaal die Andreas niet kent staat boven z\'n eigen adres', () => {
   });
   assert.equal(draft.venue, 'Cinetol');
   assert.equal(draft.title, 'De Nachtelijke Escapades');
+});
+
+/**
+ * Paylogic-kaartje voor Paradiso, 12 sep 2026 uit de app. Het logo loopt
+ * achter de QR-code langs, dus de grootste regel op het kaartje leest als
+ * "Pagadiso" — en dát werd de titel, want zonder datumregel valt de
+ * titelkeuze terug op "het grootste". In de bestandsnaam staat gewoon wie
+ * er speelt.
+ */
+const PARADISO_PAYLOGIC = ocr([
+  [258, 'Pagadiso'],
+  [17, '1247363607128'],
+  [
+    26,
+    'A membership is required to\nvisit this programme.\nBuy it in advance on\nwww.paradiso.n/membership if you\ndidn\'t do so already.',
+  ],
+  [
+    22,
+    'If you can show this ticket on your\nsmartphone, you don\'t need to print it.',
+  ],
+  [
+    21,
+    'All times mentioned on this ticket are\nsubject to change. Please check our\nwebsite closer to the event date for\naccurate timings.',
+  ],
+  [
+    22,
+    'At this venue, you can only pay by card\n(all debit and credit cards accepted)',
+  ],
+  [31, 'Venue address'],
+  [17, 'Paradiso\nWeteringschans 6-8\n1017 SG Amsterdam'],
+  [31, 'Visitor information'],
+  [
+    17,
+    'Visit www.paradiso.nl/visit for all important\ninfo regarding your visit to Paradiso,\nincluding transport recommendations and\ndoors & starting times.',
+  ],
+  [57, 'Paylogic\nCUstomer Care'],
+  [
+    22,
+    'Do you have a question regarding\nthis ticket? Check our FAQ on\nwww.paradiso.nl/faq, or you can reach\nout to the Paylogic Customer Service\nthrough customerservice.paylogic.com',
+  ],
+  [17, 'The Afghan Whigs\nOpen 19:30\nNormaal'],
+  [15, 'Exclusief verplicht lidmaatschap'],
+  [15, 'Prijs:  € 34,30 EUR*  Datum: 28 september 2026 21:00'],
+  [17, 'Paradiso - Grote Zaal'],
+  [15, 'Bestelnummer:  165876208\nNaam:  Diederik van Huijstee'],
+  [17, '8963268943842'],
+  [22, 'www.paradiso.nl'],
+]);
+
+test('logo achter de QR: de bestandsnaam weet wie er speelt', () => {
+  const draft = extractEventDraft(PARADISO_PAYLOGIC, {
+    venueNames: VENUES,
+    today: TODAY,
+    isTicket: true,
+    fileName: 'The Afghan Whigs - order 165876208.pdf',
+  });
+  assert.equal(draft.title, 'The Afghan Whigs');
+  assert.equal(draft.venue, 'Paradiso');
+  assert.equal(draft.date, '2026-09-28');
+  assert.equal(draft.time, '21:00'); // Datum-regel, niet "Open 19:30"
+  assert.equal(draft.city, 'Amsterdam');
+  assert.deepEqual(draft.artists, ['The Afghan Whigs']);
+});
+
+test('zonder bestandsnaam blijft het logo staan — dat is de reden', () => {
+  const draft = extractEventDraft(PARADISO_PAYLOGIC, {
+    venueNames: VENUES,
+    today: TODAY,
+    isTicket: true,
+  });
+  assert.equal(draft.title, 'Pagadiso');
+});
+
+test('de bestandsnaam wint alleen als hij iets anders zegt', () => {
+  // Zelfde avond, andere schrijfwijze: dan houden we wat er op het
+  // kaartje staat.
+  const draft = extractEventDraft(STAGER_CINETOL, {
+    venueNames: VENUES,
+    today: TODAY,
+    isTicket: true,
+    fileName:
+      'Stager Tickets - Cinetol - Event De Nachtelijke Escapades support Scout.pdf',
+  });
+  assert.equal(draft.title, 'De Nachtelijke Escapades');
+  assert.equal(draft.venue, 'Cinetol');
+});
+
+test('wat een bestandsnaam niet is', () => {
+  assert.equal(titleFromFileName('download.pdf'), null);
+  assert.equal(titleFromFileName('1247363607128.pdf'), null);
+  assert.equal(titleFromFileName('e-ticket.pdf'), null);
+  assert.equal(titleFromFileName('order 165876208.pdf'), null);
+  assert.equal(titleFromFileName('Paradiso.pdf', VENUES), null);
+  assert.equal(titleFromFileName(null), null);
+  assert.equal(
+    titleFromFileName('The Afghan Whigs - order 165876208.pdf'),
+    'The Afghan Whigs'
+  );
 });

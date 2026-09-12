@@ -444,6 +444,70 @@ function isMostlyDate(text: string): boolean {
   return stripped.length <= 2;
 }
 
+/** Ruis die als bestandsnaam voorkomt maar nooit een event is. */
+const FILE_NOISE =
+  /^(download|document|bestand|file|scan|scan\d*|bijlage|attachment|untitled|naamloos|image|img|foto|photo|screenshot|whatsapp.*|afbeelding|print|pdf)$/i;
+
+/** Segmenten die over de bestelling gaan in plaats van over de avond. */
+const FILE_ADMIN =
+  /^(order|orders|bestelling|bestelnummer|ticket|tickets|e-?ticket|e-?tickets|invoice|factuur|bevestiging|confirmation|reservering|reservation|booking)\b/i;
+
+/**
+ * De bestandsnaam als titelkandidaat.
+ *
+ * Ticketproviders zetten de naam van het event erin — "The Afghan Whigs -
+ * order 165876208.pdf", "Stager Tickets - Cinetol - Event De Nachtelijke
+ * Escapades support Scout.pdf". Die naam is getypt en niet gelezen, en
+ * dat maakt 'm sterk precies waar OCR zwak is: een logo dat door een QR
+ * heen loopt las hij als "Pagadiso", terwijl in de bestandsnaam gewoon
+ * "The Afghan Whigs" stond.
+ *
+ * Eruit: bestelnummers, het woord ticket zelf, de zaal (die kennen we al)
+ * en algemene ruis. Wat overblijft is het langste stuk — dat is in de
+ * praktijk de eventnaam.
+ *
+ * Let op: dit is metadata van de deler, geen OCR. Het mag dus ook hier
+ * niet buiten de whitelist om naar de server; `toServerMetadata` blijft
+ * de enige uitgang.
+ */
+export function titleFromFileName(
+  name: string | null | undefined,
+  venueNames: string[] = []
+): string | null {
+  if (!name) return null;
+  const known = new Set(venueNames.map((v) => normalize(v)));
+  const parts = name
+    .replace(/\.[a-z0-9]{1,5}$/i, '')
+    .split(/\s*[-–—|]\s+|_+/)
+    .map((part) => part.replace(/\s+/g, ' ').trim())
+    .map((part) => part.replace(/^(event|evenement|tickets?|e-?ticket)\s+/i, ''))
+    .filter((part) => {
+      if (part.length < 4) return false;
+      if (!/[a-zà-ÿ]{3,}/i.test(part)) return false;
+      if (FILE_NOISE.test(part)) return false;
+      if (FILE_ADMIN.test(part)) return false;
+      if (TICKET_DATA.test(part)) return false;
+      return !known.has(normalize(part));
+    });
+  if (parts.length === 0) return null;
+  return parts.reduce((a, b) => (b.length > a.length ? b : a));
+}
+
+/**
+ * Welke van de twee titels we geloven.
+ *
+ * Zeggen ze hetzelfde, dan wint wat er op het kaartje staat — die kent de
+ * schrijfwijze. Spreken ze elkaar tegen, dan wint de bestandsnaam: de OCR
+ * heeft dan waarschijnlijk het logo of een adresregel te pakken.
+ */
+function chooseTitle(fromOcr: string | null, fromFile: string | null) {
+  if (!fromFile) return fromOcr;
+  if (!fromOcr) return fromFile;
+  const a = normalize(fromOcr);
+  const b = normalize(fromFile);
+  return a.length > 0 && (b.includes(a) || a.includes(b)) ? fromOcr : fromFile;
+}
+
 export function extractEventDraft(
   ocr: OcrResult,
   opts: {
@@ -454,6 +518,9 @@ export function extractEventDraft(
         affiche: daar is het grootste element het logo van de zaal, niet
         de naam van wat je gaat zien. */
     isTicket?: boolean;
+    /** De naam van het gedeelde bestand. Zie {@link titleFromFileName}:
+        wat de provider tikte is betrouwbaarder dan wat wij lezen. */
+    fileName?: string | null;
   } = {}
 ): EventDraft {
   const lines = toLines(ocr);
@@ -507,10 +574,14 @@ export function extractEventDraft(
       : -1;
   // "De Nachtelijke Escapades +" — dat plusje hoort bij de support-regel
   // eronder, die we net als aparte artiest hebben gelezen.
-  const title =
+  const readTitle =
     findTitle(lines, used, dateLineIndex > 0 ? dateLineIndex : undefined)
       ?.replace(/\s*[+&,]\s*$/, '')
       .trim() || null;
+  const title = chooseTitle(
+    readTitle,
+    titleFromFileName(opts.fileName, venueNames)
+  );
 
   // Stad: alleen als ze het zelf zeggen, of als de venue uit onze
   // Amsterdamse lijst kwam — dan is het geen gok maar een gevolg.

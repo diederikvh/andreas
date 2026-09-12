@@ -544,11 +544,14 @@ function SharePreview({
         extractEventDraft(scan.ocr, {
           venueNames,
           isTicket: verdict.isTicket,
+          // Wat de provider in de bestandsnaam tikte is betrouwbaarder
+          // dan wat wij van een logo maken.
+          fileName: share.fileName,
         }),
         venueMemory,
       ),
     );
-  }, [scan, venueNames, edited, verdict.isTicket, venueMemory]);
+  }, [scan, venueNames, edited, verdict.isTicket, venueMemory, share.fileName]);
 
   const updateDraft = (patch: Partial<EventDraft>) => {
     setEdited(true);
