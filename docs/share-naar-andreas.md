@@ -79,10 +79,28 @@ een importscherm met een preview. Geen AI, geen OCR, niets naar de backend.
       `node:test` — 4 tests, geen framework. Sentry heeft een `beforeBreadcrumb` die
       alles met de import-map of de share-extension weggooit; `sendDefaultPii: false`
       dekt console-breadcrumbs namelijk niet.
-- [ ] **1.8 — Android-pariteit.** `expo run:android`, deel uit Chrome + Google Foto's.
-      Bekend risico: als Android een `content://`-URI zonder bestandspad geeft, faalt
-      de kopie stil en toont het scherm "kon het bestand niet lokaal opslaan". Als de
-      Android-kant duurder blijkt: iOS shippen, Android als los item.
+- [x] **1.8 — Android-pariteit** (12 sep 2026, emulator API 36). Delen vanuit de
+      Files-app: kopie, herkenning, koppeling, ticket bewaren en de viewer met
+      tik-zoom werken hetzelfde als op iOS. Vier dingen waren anders:
+      - Het risico klopte: Android geeft een `content://`-URI en de nieuwe
+        `File`-API van expo-file-system kan die niet lezen. `copyAsync` uit
+        `expo-file-system/legacy` wél (die gaat via de ContentResolver). Het
+        mimetype is daarbij vaak `application/octet-stream`, dus `kind` komt uit
+        de extensie van de bestandsnaam.
+      - `scanFromURLAsync` geeft op Android de ruwe ML Kit-constante terug (256,
+        32) waar iOS "qr" zegt — vertaald in `importBarcode.ts`.
+      - ML Kit leest een 0 aan het eind van een tijd als `)`: "21:00" kwam binnen
+        als "21:0)" en dan won de deurtijd. `parseTime` repareert dat nu.
+      - De blokvolgorde is een andere dan op iOS: de datumregel staat middenin de
+        kleine lettertjes, dus "de titel staat boven de datum" pakte een regel
+        voorwaarden. De bestandsnaam wijst nu de titelregel aan
+        (`titleLineFor`) — die weet wát er staat, de OCR hóe het geschreven wordt.
+        Fixture `PARADISO_ANDROID` in `importMetadata.test.ts` houdt dit vast.
+
+      Let op bij testen: fast refresh pakt een wijziging in `lib/` hier niet altijd,
+      een volle Reload uit het dev-menu wel. En een `am start`-intent met een
+      `content://`-URI uit de shell werkt niet (`SecurityException`) — delen moet
+      echt via de share-sheet van de Files-app.
 
 ### Meerdere bestanden in één share (11 sep 2026)
 

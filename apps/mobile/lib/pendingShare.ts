@@ -1,5 +1,9 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Directory, File, Paths } from 'expo-file-system';
+// De nieuwe file-API kent alleen paden en `file://`. Android deelt met
+// `content://`, en dat kan alleen de oude API lezen — die opent zo'n URI
+// via de ContentResolver. Vandaar allebei.
+import { copyAsync } from 'expo-file-system/legacy';
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 
@@ -134,9 +138,26 @@ function extFromMime(mimeType: string | undefined): string {
   return sub === 'jpeg' ? 'jpg' : sub.replace(/[^a-z0-9]/gi, '') || 'bin';
 }
 
-function kindForMime(mimeType: string | undefined): PendingShareKind {
+/**
+ * Wat voor ding is dit?
+ *
+ * Het mimetype is de eerste bron, maar Android geeft lang niet altijd een
+ * bruikbare: een provider die het niet weet levert `application/octet-
+ * stream`, en dan zou een ticket-PDF als "onbekend bestand" binnenkomen —
+ * geen render, geen herkenning. De extensie van de bestandsnaam is dan de
+ * tweede kans.
+ */
+function kindForMime(
+  mimeType: string | undefined,
+  fileName: string | undefined,
+): PendingShareKind {
   if (mimeType?.startsWith('image/')) return 'image';
   if (mimeType === 'application/pdf') return 'pdf';
+  const ext = fileName?.toLowerCase().match(/\.([a-z0-9]{1,5})$/)?.[1];
+  if (ext === 'pdf') return 'pdf';
+  if (ext && ['jpg', 'jpeg', 'png', 'heic', 'heif', 'webp', 'gif'].includes(ext)) {
+    return 'image';
+  }
   return 'file';
 }
 
@@ -145,21 +166,30 @@ function kindForMime(mimeType: string | undefined): PendingShareKind {
  * nieuwe pad terug. Faalt-stil met `null`: een mislukte kopie mag de
  * importflow niet laten crashen, het scherm toont dan gewoon geen preview.
  */
-function copyIntoImportDir(
+async function copyIntoImportDir(
   sourceUri: string,
   fileName: string | undefined,
   mimeType: string | undefined,
-): { uri: string; size: number | null } | null {
+): Promise<{ uri: string; size: number | null } | null> {
   try {
-    const source = new File(sourceUri);
-    if (!source.exists) return null;
     const target = new File(
       importDirectory(),
       `${Date.now()}-${safeFileName(fileName, extFromMime(mimeType))}`,
     );
-    source.copy(target);
-    return { uri: target.uri, size: target.size ?? null };
+    if (sourceUri.startsWith('content://')) {
+      // Android deelt een content-URI met een tijdelijk leesrecht. Het
+      // absolute pad dat ernaast wordt aangeboden mag deze app niet lezen
+      // (scoped storage), dus kopiëren gaat via de resolver.
+      await copyAsync({ from: sourceUri, to: target.uri });
+    } else {
+      const source = new File(sourceUri);
+      if (!source.exists) return null;
+      source.copy(target);
+    }
+    const copied = new File(target.uri);
+    return copied.exists ? { uri: copied.uri, size: copied.size ?? null } : null;
   } catch {
+    // Onleesbare bron of geen ruimte. Beide betekenen: geen bestand.
     return null;
   }
 }
@@ -176,17 +206,27 @@ function copyIntoImportDir(
  * op draait, de rest gaat mee als `extraFiles` en wordt bij hetzelfde
  * event bewaard.
  */
-export function normalizeShareIntent(intent: ShareIntent): PendingShare | null {
+export async function normalizeShareIntent(
+  intent: ShareIntent,
+): Promise<PendingShare | null> {
   const receivedAt = Date.now();
   const title = intent.meta?.title ?? null;
 
   const shared = (intent.files ?? []).filter((f) => f.path).slice(0, MAX_FILES);
   const [file, ...rest] = shared;
   if (file) {
-    const copied = copyIntoImportDir(file.path, file.fileName, file.mimeType);
+    const copied = await copyIntoImportDir(
+      file.path,
+      file.fileName,
+      file.mimeType,
+    );
     const extraFiles: SharedFile[] = [];
     for (const other of rest) {
-      const c = copyIntoImportDir(other.path, other.fileName, other.mimeType);
+      const c = await copyIntoImportDir(
+        other.path,
+        other.fileName,
+        other.mimeType,
+      );
       if (!c) continue;
       extraFiles.push({
         fileUri: c.uri,
@@ -196,7 +236,7 @@ export function normalizeShareIntent(intent: ShareIntent): PendingShare | null {
       });
     }
     return {
-      kind: kindForMime(file.mimeType),
+      kind: kindForMime(file.mimeType, file.fileName ?? copied?.uri),
       title,
       fileUri: copied?.uri ?? null,
       fileName: file.fileName ?? null,

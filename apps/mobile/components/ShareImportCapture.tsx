@@ -39,14 +39,23 @@ export function ShareImportCapture() {
   useEffect(() => {
     if (!isReady) return;
     if (hasShareIntent) {
-      const pending = normalizeShareIntent(shareIntent);
-      // Altijd resetten, ook bij een payload die we niet snappen — anders
-      // blijft dezelfde share bij elke app-focus opnieuw binnenkomen.
-      resetShareIntent();
-      if (pending) {
-        usePendingShare.getState().setPending(pending);
-        if (pathname !== '/import') router.push('/import');
-      }
+      // Kopiëren is asynchroon geworden: op Android komt een share binnen
+      // als `content://` en die lezen we via de resolver.
+      void (async () => {
+        const pending = await normalizeShareIntent(shareIntent);
+        // Altijd resetten, ook bij een payload die we niet snappen —
+        // anders blijft dezelfde share bij elke app-focus opnieuw
+        // binnenkomen.
+        resetShareIntent();
+        if (pending) {
+          usePendingShare.getState().setPending(pending);
+          if (pathname !== '/import') router.push('/import');
+        }
+        // Pas opruimen als het nieuwe bestand er staat, anders veegt hij
+        // precies dat weg.
+        pruneImportDir(shareFileUris(usePendingShare.getState().pending));
+      })();
+      return;
     }
     pruneImportDir(shareFileUris(usePendingShare.getState().pending));
   }, [isReady, hasShareIntent, shareIntent, resetShareIntent, pathname]);

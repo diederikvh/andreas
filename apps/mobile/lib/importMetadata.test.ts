@@ -398,4 +398,82 @@ test('wat een bestandsnaam niet is', () => {
     titleFromFileName('The Afghan Whigs - order 165876208.pdf'),
     'The Afghan Whigs'
   );
+  // Zo heet een bestand dat door een download of een chat is gegaan.
+  assert.equal(
+    titleFromFileName('the-afghan-whigs-ticket.pdf'),
+    'the afghan whigs'
+  );
+});
+
+test('android leest een 0 soms als haakje', () => {
+  assert.equal(parseTime('Datum: 28 september 2026 21:0)'), '21:00');
+});
+
+test('de OCR-titel wint van de bestandsnaam als ze een woord delen', () => {
+  const draft = extractEventDraft(PARADISO_PAYLOGIC, {
+    venueNames: ['Paradiso', 'Melkweg'],
+    today: new Date('2026-09-12T12:00:00Z'),
+    fileName: 'afghan-whigs-ticket.pdf',
+    isTicket: true,
+  });
+  assert.equal(draft.title, 'The Afghan Whigs');
+  assert.equal(draft.time, '21:00');
+});
+
+/** Dezelfde PDF, maar door ML Kit op Android gelezen: andere blokvolgorde,
+    een 0 als haakje, en de datumregel staat middenin de kleine lettertjes. */
+const PARADISO_ANDROID = ocr([
+  [299, 'P adiso'],
+  [21, '1247363607128'],
+  [30, 'Venue address'],
+  [20, 'Paradiso'],
+  [23, 'Weteringschans 6-8\n1017 SG Amsterdam'],
+  [30, 'Visitor information'],
+  [
+    34,
+    'Visit www.paradiso.nl/visit for all important\ninfo regarding your visit to Paradiso,\nincluding transport recommendations and\ndoors & starting times.',
+  ],
+  [22, 'The Afghan Whigs\nOpen 19:30'],
+  [12, 'Normaal'],
+  [
+    19,
+    'Exclusief verplicht lidmaatschap\nPrijs:  € 34,30 EUR*\nParadiso - Grote Zaal',
+  ],
+  [17, 'Bestelnummer:'],
+  [13, 'Naam:'],
+  [14, '165876208'],
+  [18, 'Diederik van Huijstee'],
+  [25, 'A membership is required to\nvisit this programme.'],
+  [19, '1247363607128 *incl. € 4,30 EUR kosten'],
+  [27, 'Buy it in advance on'],
+  [26, "www.paradiso.nl/membership if you\ndidn't do so already."],
+  [
+    21,
+    "If you can show this ticket on\nyour smartphone, you don't need to print it.",
+  ],
+  [
+    21,
+    'All times mentioned on this ticket are\nsubject to change. Please check our\nwebsite closer to the event date for accurate timings.',
+  ],
+  [
+    23,
+    'At this venue, you can only pay by card\n(all debit and credit cards accepted)',
+  ],
+  [21, 'Datum: 28 september 2026 21:0)'],
+  [41, 'Paylogic\nCustomer Care'],
+  [40, 'www.paradiso.nl'],
+]);
+
+test('android leest hetzelfde kaartje in een andere volgorde', () => {
+  const draft = extractEventDraft(PARADISO_ANDROID, {
+    venueNames: VENUES,
+    today: TODAY,
+    fileName: 'afghan-whigs-ticket.pdf',
+    isTicket: true,
+  });
+  assert.equal(draft.title, 'The Afghan Whigs');
+  assert.equal(draft.venue, 'Paradiso');
+  assert.equal(draft.date, '2026-09-28');
+  assert.equal(draft.time, '21:00');
+  assert.equal(draft.city, 'Amsterdam');
 });

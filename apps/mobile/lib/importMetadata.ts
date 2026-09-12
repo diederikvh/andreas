@@ -322,13 +322,16 @@ function asDate(year: number, month: number, day: number): string | null {
  * de eerste die er staat.
  */
 export function parseTime(text: string): string | null {
-  const matches = [...text.matchAll(/\b(\d{1,2})\s*[:.hu]\s*(\d{2})\b/gi)];
+  const matches = [...text.matchAll(/\b(\d{1,2})\s*[:.hu]\s*([\dOoIl)]{2})/gi)];
   if (matches.length === 0) return null;
 
   const scored = matches
     .map((m) => {
       const hour = Number(m[1]);
-      const minute = Number(m[2]);
+      // ML Kit leest de nullen op een ticket geregeld als ) of O:
+      // "21:00" komt binnen als "21:0)". Een uur heeft altijd twee
+      // cijfers achter de dubbele punt, dus dit is te repareren.
+      const minute = Number(m[2].replace(/[Oo)]/g, '0').replace(/[Il]/g, '1'));
       if (hour > 23 || minute > 59) return null;
       const before = text.slice(Math.max(0, (m.index ?? 0) - 24), m.index ?? 0);
       return {
@@ -557,9 +560,16 @@ export function titleFromFileName(
   const known = new Set(venueNames.map((v) => normalize(v)));
   const parts = name
     .replace(/\.[a-z0-9]{1,5}$/i, '')
-    .split(/\s*[-–—|]\s+|_+/)
+    .split(/\s*[-–—|]\s+|_{2,}/)
+    // "the-afghan-whigs" is geen woord maar een zin: streepjes en
+    // liggende streepjes zijn spaties zodra er geen spaties in zitten.
+    .map((part) => (/\s/.test(part) ? part : part.replace(/[-_]+/g, ' ')))
     .map((part) => part.replace(/\s+/g, ' ').trim())
     .map((part) => part.replace(/^(event|evenement|tickets?|e-?ticket)\s+/i, ''))
+    // En achteraan net zo goed: "afghan whigs ticket" is de band.
+    .map((part) =>
+      part.replace(/\s+(tickets?|e-?tickets?|bestelling|order)$/i, '')
+    )
     .filter((part) => {
       if (part.length < 4) return false;
       if (!/[a-zà-ÿ]{3,}/i.test(part)) return false;
@@ -579,12 +589,41 @@ export function titleFromFileName(
  * schrijfwijze. Spreken ze elkaar tegen, dan wint de bestandsnaam: de OCR
  * heeft dan waarschijnlijk het logo of een adresregel te pakken.
  */
+/** De regel op het kaartje waar de bestandsnaam naar wijst. */
+function titleLineFor(
+  fromFile: string | null,
+  lines: Line[],
+  used: Set<number>
+): string | null {
+  const words = fromFile ? normalize(fromFile).split(' ').filter(Boolean) : [];
+  if (words.length === 0) return null;
+  const max = words.join(' ').length * 2;
+  for (const [index, line] of lines.entries()) {
+    if (used.has(index)) continue;
+    // ML Kit plakt "The Afghan Whigs" en "Open 19:30" tot één blok; we
+    // willen alleen het stuk waar de bestandsnaam in zit.
+    for (const part of line.text.split('\n')) {
+      const norm = normalize(part);
+      if (norm.length > 0 && norm.length <= max && words.every((w) => norm.includes(w))) {
+        return part.trim();
+      }
+    }
+  }
+  return null;
+}
+
 function chooseTitle(fromOcr: string | null, fromFile: string | null) {
   if (!fromFile) return fromOcr;
   if (!fromOcr) return fromFile;
   const a = normalize(fromOcr);
   const b = normalize(fromFile);
-  return a.length > 0 && (b.includes(a) || a.includes(b)) ? fromOcr : fromFile;
+  if (a.length === 0) return fromFile;
+  if (b.includes(a) || a.includes(b)) return fromOcr;
+  // Delen ze een woord, dan lazen we hetzelfde en is de OCR-versie de
+  // nettere: met hoofdletters, zonder "ticket-2" erachter. Delen ze niets,
+  // dan is de OCR-titel vermoedelijk onzin en is de bestandsnaam veiliger.
+  const words = new Set(b.split(' ').filter((w) => w.length >= 4));
+  return a.split(' ').some((w) => words.has(w)) ? fromOcr : fromFile;
 }
 
 export function extractEventDraft(
@@ -666,10 +705,12 @@ export function extractEventDraft(
     findTitle(lines, used, dateLineIndex > 0 ? dateLineIndex : undefined)
       ?.replace(/\s*[+&,]\s*$/, '')
       .trim() || null;
-  const title = chooseTitle(
-    readTitle,
-    titleFromFileName(opts.fileName, venueNames)
-  );
+  const fromFile = titleFromFileName(opts.fileName, venueNames);
+  // De bestandsnaam zegt wát er staat, de OCR hóe het geschreven wordt.
+  // Vinden we "afghan-whigs-ticket.pdf" terug als regel op het kaartje,
+  // dan is dat de titel — ook als die regel nergens uitspringt.
+  const title =
+    titleLineFor(fromFile, lines, used) ?? chooseTitle(readTitle, fromFile);
 
   // Stad: alleen als ze het zelf zeggen, of als de venue uit onze
   // Amsterdamse lijst kwam — dan is het geen gok maar een gevolg.

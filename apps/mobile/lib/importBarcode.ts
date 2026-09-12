@@ -39,10 +39,25 @@ const TICKET_BARCODE_TYPES: BarcodeType[] = [
   'codabar',
 ];
 
+/** Android geeft de ruwe ML Kit-constante terug ("256") waar iOS "qr" zegt. */
+const ML_KIT_FORMATS: Record<string, string> = {
+  '1': 'code128',
+  '2': 'code39',
+  '4': 'code93',
+  '8': 'codabar',
+  '16': 'datamatrix',
+  '32': 'ean13',
+  '64': 'ean8',
+  '128': 'itf14',
+  '256': 'qr',
+  '2048': 'pdf417',
+  '4096': 'aztec',
+};
+
 export async function detectBarcodeTypes(uri: string): Promise<string[]> {
   try {
     const hits = await scanFromURLAsync(uri, TICKET_BARCODE_TYPES);
-    return [...new Set(hits.map((h) => h.type))];
+    return [...new Set(hits.map((h) => ML_KIT_FORMATS[h.type] ?? h.type))];
   } catch {
     // Geen leesbare afbeelding, of niks gevonden. Beide betekenen
     // "geen code" — een import mag hier niet op stuklopen.
