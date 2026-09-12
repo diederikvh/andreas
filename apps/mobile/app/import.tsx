@@ -31,10 +31,13 @@ import { dowMixed, eventStillUrl, monthShort } from '@/lib/eventDisplay';
 import { useLocale, useT, type Locale } from '@/lib/i18n';
 import { detectBarcodeTypes } from '@/lib/importBarcode';
 import {
+  applyMemory,
+  learnFromPick,
   logicalDay,
   matchEvent,
   type MatchCandidate,
   type MatchResult,
+  type ScoredCandidate,
 } from '@/lib/importMatch';
 import { extractEventDraft, type EventDraft } from '@/lib/importMetadata';
 import { isMatchable, toServerMetadata } from '@/lib/importPayload';
@@ -80,6 +83,7 @@ import {
 } from '@/lib/api';
 import * as Haptics from 'expo-haptics';
 import { useMode, useRoles } from '@/store/mode';
+import { useImportLearnings } from '@/store/importLearnings';
 import { useTicketFor, useTickets, useTicketsFor } from '@/store/tickets';
 import { fontFamily, palette } from '@/theme/tokens';
 
@@ -496,6 +500,11 @@ function SharePreview({
   const [draft, setDraft] = useState<EventDraft | null>(null);
   const [edited, setEdited] = useState(false);
 
+  // Wat we van eerdere handmatige koppelingen leerden. Een kaartje van een
+  // zaal die je al eens zelf hebt aangewezen leest daardoor beter.
+  const venueMemory = useImportLearnings((s) => s.venues);
+  const remember = useImportLearnings((s) => s.remember);
+
   // Opnieuw extraheren zodra de OCR klaar is of de venuelijst alsnog
   // binnenkomt — maar niet meer nadat de gebruiker zelf iets heeft
   // aangepast. `useVenues` refetcht op focus en geeft dan een nieuwe
@@ -508,12 +517,15 @@ function SharePreview({
     // het grootste element het logo van de zaal, niet de naam van wat je
     // gaat zien.
     setDraft(
-      extractEventDraft(scan.ocr, {
-        venueNames,
-        isTicket: verdict.isTicket,
-      }),
+      applyMemory(
+        extractEventDraft(scan.ocr, {
+          venueNames,
+          isTicket: verdict.isTicket,
+        }),
+        venueMemory,
+      ),
     );
-  }, [scan, venueNames, edited, verdict.isTicket]);
+  }, [scan, venueNames, edited, verdict.isTicket, venueMemory]);
 
   const updateDraft = (patch: Partial<EventDraft>) => {
     setEdited(true);
@@ -553,6 +565,8 @@ function SharePreview({
   });
 
   const [chosenIntent, setChosenIntent] = useState<Intent | null>(null);
+  // Het event dat je zelf opzocht toen wij het niet vonden.
+  const [manual, setManual] = useState<MatchCandidate | null>(null);
 
   const match: MatchResult | null = useMemo(() => {
     if (!matches) return null;
@@ -703,6 +717,23 @@ function SharePreview({
     }
   };
 
+  /**
+   * Zelf opgezocht en aangewezen.
+   *
+   * Hier leren we van: lazen we de grote regel op een kaartje verkeerd,
+   * dan onthouden we bij welke zaal die regel hoort. Alleen bij een
+   * ticket — op een affiche is die regel meestal wél de titel, en kies je
+   * een ander event omdat het programma anders heet.
+   */
+  const pickSearched = (candidate: MatchCandidate) => {
+    if (verdict.isTicket && draft) {
+      const lesson = learnFromPick(draft, candidate);
+      if (lesson) remember(lesson.key, lesson.venue);
+    }
+    setManual(candidate);
+    onPickCandidate(candidate.id);
+  };
+
   /** De ticketstore sleutelt op een string; een `sub-…`-id werkt daar net
       zo goed als een occurrence-id. Zodra de aanmelding een echt event
       wordt verhuist het plan mee — het ticket blijft dan hier hangen en
@@ -764,7 +795,20 @@ function SharePreview({
   const intent =
     chosenIntent ??
     (storedTicket ? 'going' : suggestedIntent(verdict, share.kind));
-  const chosen = match?.ranked.find((r) => r.candidate.id === bestId) ?? null;
+  // Zelf gezocht en aangewezen? Dan staat dat event niet in `match.ranked`
+  // — daar zit alleen wat wij van de herkenning maakten. Zonder deze
+  // terugval draait stap 2 eeuwig z'n spinner.
+  const chosen: ScoredCandidate | null = useMemo(() => {
+    const scored = match?.ranked.find((r) => r.candidate.id === bestId);
+    if (scored) return scored;
+    if (!manual || manual.id !== bestId) return null;
+    return {
+      candidate: manual,
+      score: 1,
+      parts: { title: null, venue: null, date: null, time: null },
+      dateMatches: !safe.date || logicalDay(manual.startsAt) === safe.date,
+    };
+  }, [match, bestId, manual, safe.date]);
   const chosenWhen = useMemo(() => {
     if (!chosen) return '';
     const when = new Date(chosen.candidate.startsAt);
@@ -835,10 +879,12 @@ function SharePreview({
             busy={busy}
             match={match}
             draftTitle={draft?.title ?? null}
+            draftDate={safe.date}
             hasFile={Boolean(share.fileUri)}
             pendingMatches={pendingMatches ?? []}
             onJoinPending={joinPending}
             onPick={onPickCandidate}
+            onPickSearched={pickSearched}
           />
         </Animated.View>
       ) : (
@@ -1036,14 +1082,18 @@ function ChooseStep({
   busy,
   match,
   draftTitle,
+  draftDate,
   hasFile,
   pendingMatches,
   onJoinPending,
   onPick,
+  onPickSearched,
 }: {
   busy: boolean;
   match: MatchResult | null;
   draftTitle: string | null;
+  /** Alleen om "andere avond" bij een zoekresultaat te kunnen zetten. */
+  draftDate: string | null;
   hasFile: boolean;
   /** Avonden die iemand zelf heeft toegevoegd en die op deze titel of
       venue lijken. Horen in dezelfde lijst als de echte events: voor wie
@@ -1051,6 +1101,7 @@ function ChooseStep({
   pendingMatches: PendingEvent[];
   onJoinPending: (pending: PendingEvent) => void;
   onPick: (id: string | null) => void;
+  onPickSearched: (candidate: MatchCandidate) => void;
 }) {
   const roles = useRoles();
   const mode = useMode();
@@ -1158,6 +1209,11 @@ function ChooseStep({
             <Ionicons name="chevron-forward" size={16} color={roles.fgMuted} />
           </Pressable>
         ))}
+
+        {/* Zelf zoeken staat vóór zelf toevoegen: een avond die Andreas
+            al kent hoort geen tweede keer aangemeld te worden, en jouw
+            ticket hoort aan de echte te hangen. */}
+        <SearchFallback draftDate={draftDate} onPick={onPickSearched} />
 
         <Pressable
           onPress={() => onPick(null)}
@@ -1371,6 +1427,113 @@ function SelfAddStep({
           {t(
             'Aanmelden lukte niet. Probeer het later nog eens.',
             'Submitting failed. Try again later.',
+          )}
+        </Text>
+      ) : null}
+    </View>
+  );
+}
+
+/**
+ * Zelf zoeken wanneer de herkenning het niet vond.
+ *
+ * Stond hier alleen "zelf toevoegen", dan meld je een avond aan die
+ * Andreas allang kent en hangt je ticket aan een schaduwkopie. Zoeken is
+ * dus geen extra: het is de andere helft van dezelfde vraag. Wat je
+ * aanwijst onthouden we — zie `learnFromPick` — zodat het volgende
+ * kaartje van diezelfde zaal wél door de herkenning komt.
+ */
+function SearchFallback({
+  draftDate,
+  onPick,
+}: {
+  draftDate: string | null;
+  onPick: (candidate: MatchCandidate) => void;
+}) {
+  const roles = useRoles();
+  const mode = useMode();
+  const isNacht = mode === 'nacht';
+  const t = useT();
+
+  const [typed, setTyped] = useState('');
+  const [q, setQ] = useState('');
+  // Niet elke toetsaanslag een request; een tel stilte is genoeg.
+  useEffect(() => {
+    const id = setTimeout(() => setQ(typed.trim()), 300);
+    return () => clearTimeout(id);
+  }, [typed]);
+
+  const ready = q.length >= 2;
+  const { data, isFetching } = useQuery({
+    queryKey: ['search', q],
+    queryFn: () => search(q),
+    enabled: ready,
+    staleTime: 60_000,
+    placeholderData: keepPreviousData,
+  });
+
+  // Zelfde rijen als de kandidaten hierboven: het is dezelfde keuze, dus
+  // dezelfde vorm. Score is hier niet aan de orde — jij weet het beter.
+  const rows: MatchResult['ranked'] = useMemo(
+    () =>
+      (data?.events ?? []).slice(0, 6).map((e) => {
+        const candidate: MatchCandidate = {
+          id: e.id,
+          title: e.title,
+          venueName: e.nextOccurrenceVenue?.name ?? e.venue.name,
+          startsAt: e.startsAt,
+        };
+        return {
+          candidate,
+          score: 1,
+          parts: { title: null, venue: null, date: null, time: null },
+          dateMatches:
+            !draftDate || logicalDay(candidate.startsAt) === draftDate,
+        };
+      }),
+    [data, draftDate],
+  );
+
+  return (
+    <View style={{ gap: 8 }}>
+      <View
+        style={[
+          styles.searchRow,
+          { backgroundColor: isNacht ? palette.noir2 : palette.paper2 },
+        ]}
+      >
+        <Ionicons name="search" size={16} color={roles.fgMuted} />
+        <TextInput
+          value={typed}
+          onChangeText={setTyped}
+          placeholder={t('Zelf zoeken in Andreas', 'Search Andreas yourself')}
+          placeholderTextColor={roles.fgPlaceholder}
+          autoCapitalize="none"
+          autoCorrect={false}
+          returnKeyType="search"
+          style={[styles.searchInput, { color: roles.fg }]}
+        />
+        {ready && isFetching ? (
+          <SpinningCross size={14} color={roles.fgMuted} />
+        ) : null}
+      </View>
+
+      {ready && rows.length > 0 ? (
+        <OptionList
+          candidates={rows}
+          pickedId={null}
+          onPick={(id) => {
+            const hit = rows.find((r) => r.candidate.id === id);
+            if (hit) onPick(hit.candidate);
+          }}
+        />
+      ) : null}
+
+      {ready && !isFetching && rows.length === 0 ? (
+        <Text style={[styles.stepLead, { color: roles.fgMuted }]}>
+          {t(
+            'Geen event met die naam gevonden.',
+            'No event found by that name.',
           )}
         </Text>
       ) : null}
@@ -2255,6 +2418,22 @@ const styles = StyleSheet.create({
     padding: 14,
     borderRadius: 14,
     borderWidth: 1,
+  },
+  // Zelfde blok als een optie, maar dan om in te typen. Geen rand: het is
+  // een veld, geen keuze die je al gemaakt kan hebben.
+  searchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 13,
+    borderRadius: 14,
+  },
+  searchInput: {
+    flex: 1,
+    fontFamily: fontFamily.medium,
+    fontSize: 15,
+    padding: 0,
   },
   // Zelfde maat als `EventListRow` elders in de app: titel bold 15, en de
   // regel eronder bold 12 in gedempte kleur — géén mini-mono. De app

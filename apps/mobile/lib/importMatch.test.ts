@@ -5,7 +5,13 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { matchEvent, scoreCandidate, textScore } from './importMatch.ts';
+import {
+  applyMemory,
+  learnFromPick,
+  matchEvent,
+  scoreCandidate,
+  textScore,
+} from './importMatch.ts';
 import type { MatchCandidate } from './importMatch.ts';
 import type { EventMetadata } from './importPayload.ts';
 
@@ -105,4 +111,54 @@ test('textScore', () => {
   assert.equal(textScore('PLOEGENDIENST', 'Ploegendienst + support'), 0.9);
   assert.equal(textScore('', 'iets'), 0);
   assert.ok(textScore('Kamerorkest Zuid', 'Ploegendienst') < 0.2);
+});
+
+/* ── Zonder titel, en wat we van een handmatige koppeling leren ──────── */
+
+/** Het kaartje van De Roma: de grootste regel is het logo van de zaal,
+    niet de naam van wat je gaat zien. Zo kwam het binnen op 12 sep 2026. */
+const TICKET: EventMetadata = {
+  title: 'Bma',
+  artists: [],
+  venue: null,
+  date: '2026-10-18',
+  time: '20:30',
+  city: null,
+};
+
+test('een leesfout als titel haalt niks op', () => {
+  const result = matchEvent(TICKET, [candidate({ id: 'a' })]);
+  assert.equal(result.level, 'low');
+});
+
+test('wat we leren van een koppeling: die regel is de zaal', () => {
+  const lesson = learnFromPick(TICKET, candidate({ id: 'a' }));
+  assert.deepEqual(lesson, { key: 'bma', venue: 'Paradiso' });
+});
+
+test('klopte de titel gewoon, dan valt er niets te leren', () => {
+  assert.equal(learnFromPick(DRAFT, candidate({ id: 'a' })), null);
+  assert.equal(learnFromPick({ title: null }, candidate({ id: 'a' })), null);
+  assert.equal(learnFromPick({ title: 'ab' }, candidate({ id: 'a' })), null);
+});
+
+test('het volgende kaartje van die zaal komt er wél door', () => {
+  const geleerd = applyMemory(TICKET, { bma: 'Paradiso' });
+  assert.equal(geleerd.title, null);
+  assert.equal(geleerd.venue, 'Paradiso');
+
+  // Zaal + datum dragen de match nu, en de titel telt niet als nul mee.
+  const result = matchEvent(geleerd, [
+    candidate({ id: 'a' }),
+    candidate({ id: 'b', startsAt: '2026-11-02T20:30:00+01:00' }),
+  ]);
+  assert.equal(result.ranked[0].parts.title, null);
+  assert.equal(result.ranked[0].candidate.id, 'a');
+  // Wel tonen, niet zelf voorstellen: zonder titel kan het de andere zaal
+  // in hetzelfde gebouw zijn.
+  assert.equal(result.level, 'medium');
+});
+
+test('een zaal die we niet geleerd hebben laat de herkenning met rust', () => {
+  assert.deepEqual(applyMemory(TICKET, { iets: 'Bimhuis' }), TICKET);
 });

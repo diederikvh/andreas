@@ -33,7 +33,10 @@ export type MatchCandidate = {
 };
 
 export type MatchParts = {
-  title: number;
+  /** `null` als er geen titel én geen artiest te beoordelen valt — zie
+      {@link applyMemory}: op een ticket is de grote regel soms het logo
+      van de zaal, en dan houden we liever niks over dan een gok. */
+  title: number | null;
   venue: number | null;
   date: number | null;
   time: number | null;
@@ -135,10 +138,13 @@ export function scoreCandidate(
   const titleSources = [draft.title, ...draft.artists].filter(
     (s): s is string => Boolean(s)
   );
-  const title = titleSources.reduce(
-    (best, source) => Math.max(best, textScore(source, candidate.title)),
-    0
-  );
+  const title =
+    titleSources.length === 0
+      ? null
+      : titleSources.reduce(
+          (best, source) => Math.max(best, textScore(source, candidate.title)),
+          0
+        );
 
   const venue = draft.venue ? textScore(draft.venue, candidate.venueName) : null;
 
@@ -200,7 +206,9 @@ export function matchEvent(
     .sort((a, b) => b.score - a.score);
 
   const best = ranked[0];
-  if (!best || best.score < 0.5 || best.parts.title < 0.5) {
+  // Geen titel is geen slechte titel: dan beslissen venue en datum, net
+  // zoals een ontbrekende tijd al buiten de noemer viel.
+  if (!best || best.score < 0.5 || (best.parts.title ?? 1) < 0.5) {
     return { level: 'low', ranked: ranked.slice(0, 3) };
   }
 
@@ -208,7 +216,9 @@ export function matchEvent(
   const clear = !runnerUp || best.score - runnerUp.score >= 0.15;
   if (
     best.score >= 0.8 &&
-    best.parts.title >= 0.8 &&
+    // Zonder titel nooit zelf voorstellen: venue + datum kan twee zalen
+    // in hetzelfde gebouw zijn. Dan tonen we de lijst.
+    (best.parts.title ?? 0) >= 0.8 &&
     best.dateMatches &&
     clear
   ) {
@@ -216,4 +226,57 @@ export function matchEvent(
   }
 
   return { level: 'medium', ranked: ranked.slice(0, 3) };
+}
+
+/* ── Wat we onthouden van een handmatige koppeling ───────────────────── */
+
+/**
+ * Hing je een ticket zelf aan een event dat wij niet vonden, dan hebben we
+ * de grote regel op dat kaartje verkeerd gelezen. Op een ticket is dat
+ * bijna altijd het logo van de zaal — "Bma" voor De Roma — en dat logo
+ * staat op élk kaartje van die zaal.
+ *
+ * Dus onthouden we die ene vertaling: deze onleesbare regel betekent deze
+ * zaal, en is dus geen titel. Het volgende ticket van dezelfde zaal komt
+ * daardoor niet meer als "onbekend" binnen maar als een lijstje avonden
+ * daar, op de datum die op het kaartje staat.
+ *
+ * Alleen bij een ticket leren: op een affiche is de grootste regel meestal
+ * wél de titel, en dan is een afwijkende keuze een programmanaam en geen
+ * leesfout. De opslag staat in `store/importLearnings.ts` — lokaal, zoals
+ * alles in deze flow.
+ */
+export type VenueMemory = Record<string, string>;
+
+/** Genormaliseerde sleutel, of niets als er te weinig tekst is om op te
+    herkennen. Twee tekens is geen logo maar ruis. */
+export function memoryKey(raw: string | null | undefined): string | null {
+  const key = raw ? normalize(raw) : '';
+  return key.length >= 3 ? key : null;
+}
+
+/** Wat deze koppeling ons leert, of niets als er niets te leren viel. */
+export function learnFromPick(
+  draft: { title: string | null },
+  candidate: MatchCandidate
+): { key: string; venue: string } | null {
+  const key = memoryKey(draft.title);
+  if (!key || !candidate.venueName) return null;
+  // Stond de titel er goed op, dan lazen we 'm goed en viel er niets te
+  // leren — dan koos je een andere avond, niet een ander woord.
+  if (textScore(draft.title ?? '', candidate.title) >= 0.5) return null;
+  return { key, venue: candidate.venueName };
+}
+
+/** De geleerde vertaling toepassen op een verse herkenning. */
+export function applyMemory<
+  T extends { title: string | null; venue: string | null },
+>(draft: T, memory: VenueMemory): T {
+  const key = memoryKey(draft.title);
+  const venue = key ? memory[key] : undefined;
+  if (!venue) return draft;
+  // Titel weg: we weten inmiddels dat dit de zaal is. Wat we zelf lazen
+  // als zaal wint wel — dat komt van dít kaartje, de herinnering van een
+  // vorig.
+  return { ...draft, title: null, venue: draft.venue ?? venue };
 }
