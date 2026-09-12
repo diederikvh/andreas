@@ -2,7 +2,7 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
-import { router } from 'expo-router';
+import { router, useNavigation } from 'expo-router';
 import {
   keepPreviousData,
   useQuery,
@@ -145,7 +145,20 @@ export default function ImportScreen() {
   // beneden trekken in plaats van de knop pakken mag geen bestanden
   // laten liggen. Een ticket dat al aan een avond hangt blijft staan:
   // daar waakt `isTicketFile` in `clearPending` over.
-  useEffect(() => () => usePendingShare.getState().clearPending(), []);
+  //
+  // Aan de navigatie hangen en niet aan het afbreken van dit component:
+  // fast refresh draait effecten opnieuw, en met een opruiming in de
+  // cleanup was je gedeelde bestand weg zodra er iets aan deze file
+  // veranderde. `beforeRemove` vuurt alleen als het scherm ook echt
+  // verdwijnt — ook bij het naar beneden slepen.
+  const navigation = useNavigation();
+  useEffect(
+    () =>
+      navigation.addListener('beforeRemove', () => {
+        usePendingShare.getState().clearPending();
+      }),
+    [navigation],
+  );
 
   // Sta je bovenaan stil, dan mag de scrollview niet veren: alleen dán
   // geeft hij een sleep naar beneden door aan iOS en volgt het paneel je
