@@ -1211,11 +1211,6 @@ function ChooseStep({
           </Pressable>
         ))}
 
-        {/* Zelf zoeken staat vóór zelf toevoegen: een avond die Andreas
-            al kent hoort geen tweede keer aangemeld te worden, en jouw
-            ticket hoort aan de echte te hangen. */}
-        <SearchFallback draftDate={draftDate} onPick={onPickSearched} />
-
         <Pressable
           onPress={() => onPick(null)}
           style={[
@@ -1239,6 +1234,12 @@ function ChooseStep({
           </View>
           <Ionicons name="chevron-forward" size={16} color={roles.fgMuted} />
         </Pressable>
+
+        {/* Zelf zoeken staat onder de keuzes en niet ertussen: die rijen
+            zijn één groep, en een veld met een andere vorm er middenin
+            hakt die doormidden. Onderaan is het wat het is — de uitweg
+            als niets hierboven klopt. */}
+        <SearchFallback draftDate={draftDate} onPick={onPickSearched} />
       </View>
     </View>
   );
