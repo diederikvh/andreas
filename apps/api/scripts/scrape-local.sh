@@ -5,8 +5,12 @@
 # .github/workflows/scrape-stager.yml — deze vijftien staan daar bewust
 # niet in.
 #
-# Wekelijks via launchd: ~/Library/LaunchAgents/nl.wend.andreas.scrape.plist
-# (maandag 09:00; launchd haalt een gemiste run in bij het wakker worden).
+# Dagelijks via launchd: ~/Library/LaunchAgents/nl.wend.andreas.scrape.plist
+# (09:00; launchd haalt een gemiste run in bij het wakker worden).
+#
+# Dagelijks en niet wekelijks omdat Paradiso's aankondigingen per mail
+# eerder buiten waren dan in de app — met een weekschema liep dat tot
+# zes dagen achter. Kost niets: de sweep draait lokaal en duurt ~12 min.
 # Handmatig: ./scripts/scrape-local.sh          — alles
 #            ./scripts/scrape-local.sh foam     — één, om te testen
 #
