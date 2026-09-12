@@ -1,4 +1,6 @@
 import TextRecognition from '@react-native-ml-kit/text-recognition';
+import { File } from 'expo-file-system';
+import { Image } from 'react-native';
 
 /**
  * On-device OCR via ML Kit. Tekst van een gedeelde poster of screenshot
@@ -70,10 +72,50 @@ function toBox(frame?: {
 }
 
 /**
+ * Waarom dit bestand niet te lezen is, of `null` als het wél kan.
+ *
+ * **Dit moet vóór elke ML Kit-aanroep.** De iOS-module doet
+ * `[UIImage imageWithData:]` en geeft het resultaat ongecontroleerd door
+ * aan `MLKVisionImage initWithImage:`. Is dat nil, dan vliegt er een
+ * ObjC-exception op de turbomodule-queue en gaat de app hard onderuit —
+ * SIGABRT, geen afgewezen promise, dus geen try/catch in JS die daar nog
+ * bij komt. Zo crashte de import op 12 sep 2026. Android faalt op z'n
+ * eigen manier met een null-bitmap.
+ *
+ * Je loopt hier tegenaan met een bestand dat er niet meer is (een share
+ * uit een vorige sessie waarvan `pruneImportDir` het bestand al opruimde),
+ * met een lege kopie van een provider die niets gaf, en met iets dat wel
+ * een afbeelding heet maar het niet is. De reden staat in de melding
+ * zodat het debugpaneel laat zien wat er aan de hand was.
+ */
+async function unreadableReason(uri: string): Promise<string | null> {
+  try {
+    const file = new File(uri);
+    if (!file.exists) return 'bestand bestaat niet meer';
+    if (file.size === 0) return 'bestand is leeg';
+  } catch {
+    return 'geen geldig pad';
+  }
+  // Bestaat en heeft bytes — maar is het ook een beeld dat dit toestel
+  // uitpakt? Dezelfde decoders als waar ML Kit op leunt, maar dan met een
+  // callback in plaats van een crash.
+  const decodes = await new Promise<boolean>((resolve) => {
+    Image.getSize(
+      uri,
+      (w, h) => resolve(w > 0 && h > 0),
+      () => resolve(false),
+    );
+  });
+  return decodes ? null : 'geen leesbaar beeldformaat';
+}
+
+/**
  * @param uri `file://`-URI van een lokale afbeelding. ML Kit leest via
  * `NSURL`, dus een plat pad zonder scheme werkt niet.
  */
 export async function recognizeImageText(uri: string): Promise<OcrResult> {
+  const reason = await unreadableReason(uri);
+  if (reason) throw new Error(`${reason} (${uri})`);
   const result = await TextRecognition.recognize(uri);
   return {
     fullText: result.text,
