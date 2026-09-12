@@ -5,11 +5,14 @@ import { useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { Ionicons } from '@expo/vector-icons';
+
 import { Cross } from '@/components/Cross';
 import { SpinningCross } from '@/components/SpinningCross';
 import { useT } from '@/lib/i18n';
 import { safeBack } from '@/lib/navigation';
 import { pendingShareFromPhoto, usePendingShare } from '@/lib/pendingShare';
+import { useRoles } from '@/store/mode';
 import { fontFamily } from '@/theme/tokens';
 
 /**
@@ -31,6 +34,7 @@ import { fontFamily } from '@/theme/tokens';
  */
 export default function ScanScreen() {
   const insets = useSafeAreaInsets();
+  const roles = useRoles();
   const t = useT();
   const camera = useRef<CameraView>(null);
   const [permission, requestPermission] = useCameraPermissions();
@@ -80,14 +84,21 @@ export default function ScanScreen() {
         </View>
       )}
 
+      {/* Zelfde koptekst-lockup als elk ander scherm — wordmark links,
+          sluiten rechts — maar in vaste lichte kleuren: hierachter zit
+          geen modus-vlak maar een willekeurige foto, en in dagmodus zou
+          donkere inkt op een donkere poster verdwijnen. */}
       <View style={[styles.topBar, { paddingTop: insets.top + 8 }]}>
+        <View style={styles.lockup} pointerEvents="none">
+          <Text style={styles.wordmark}>Andreas</Text>
+          <View style={styles.lockupCross}>
+            <Cross size={16} thickness={4} color={roles.accent} />
+          </View>
+          <Text style={styles.wordmark}>{t('Scanner', 'Scanner')}</Text>
+        </View>
         <Pressable onPress={() => safeBack()} hitSlop={8} style={styles.close}>
-          <Cross size={14} thickness={2.6} color="#f2f2ef" />
+          <Ionicons name="close" size={20} color="#f2f2ef" />
         </Pressable>
-        <Text style={styles.title}>
-          {t('Scan een poster', 'Scan a poster')}
-        </Text>
-        <View style={{ width: 40, height: 40 }} />
       </View>
 
       <View style={[styles.bottom, { paddingBottom: insets.bottom + 24 }]}>
@@ -138,25 +149,30 @@ const styles = StyleSheet.create({
     right: 0,
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: 18,
     paddingBottom: 12,
     gap: 8,
   },
+  // Maten één-op-één uit AppHeader, anders staat het kruis hier net
+  // een haar anders dan op elk ander scherm.
+  lockup: { flexDirection: 'row', alignItems: 'center', gap: 4, flexShrink: 1 },
+  lockupCross: { transform: [{ translateY: -1 }] },
+  wordmark: {
+    fontFamily: fontFamily.display,
+    fontSize: 18,
+    letterSpacing: -0.18,
+    textTransform: 'uppercase',
+    lineHeight: 18,
+    color: '#f2f2ef',
+  },
   close: {
-    width: 40,
-    height: 40,
+    width: 36,
+    height: 36,
     borderRadius: 999,
-    backgroundColor: 'rgba(0,0,0,0.4)',
+    backgroundColor: 'rgba(0,0,0,0.45)',
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  title: {
-    flex: 1,
-    fontFamily: fontFamily.bold,
-    fontSize: 14,
-    letterSpacing: -0.21,
-    textAlign: 'center',
-    color: '#f2f2ef',
   },
   bottom: {
     position: 'absolute',
