@@ -141,6 +141,21 @@ export default function ImportScreen() {
     safeBack();
   };
 
+  // Wegvegen doet hetzelfde als op Sluiten tikken. Het paneel naar
+  // beneden trekken in plaats van de knop pakken mag geen bestanden
+  // laten liggen. Een ticket dat al aan een avond hangt blijft staan:
+  // daar waakt `isTicketFile` in `clearPending` over.
+  useEffect(() => () => usePendingShare.getState().clearPending(), []);
+
+  // Sta je bovenaan stil, dan mag de scrollview niet veren: alleen dán
+  // geeft hij een sleep naar beneden door aan iOS en volgt het paneel je
+  // vinger. Tijdens het scrollen zelf veert hij gewoon — dat elastiek is
+  // waar het scrollen z'n gevoel aan ontleent, en dat willen we houden.
+  // Vandaar: bij de eerste beweging meteen weer aan, en pas als hij
+  // bovenaan tot stilstand is gekomen weer uit.
+  const [atTop, setAtTop] = useState(true);
+  const settle = (y: number) => setAtTop(y <= 2);
+
   // Op stap 2 met een gekozen event is de foto de kop: geen bovenmarge.
   const overHero = step === 'act' && !selfAdd;
 
@@ -187,12 +202,13 @@ export default function ImportScreen() {
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
-          // Geen elastiek aan de bovenkant. Bovenaan naar beneden slepen
-          // is hoe je een sheet dichtdoet, maar zolang de scrollview op
-          // die beweging zelf terugveert houdt hij 'm vast en gebeurt er
-          // niets — je trekt dan aan de foto in plaats van aan het
-          // paneel. Zonder bounce geeft hij 'm meteen door aan iOS.
-          bounces={false}
+          bounces={!atTop}
+          onScroll={(e) => {
+            if (e.nativeEvent.contentOffset.y > 2 && atTop) setAtTop(false);
+          }}
+          onScrollEndDrag={(e) => settle(e.nativeEvent.contentOffset.y)}
+          onMomentumScrollEnd={(e) => settle(e.nativeEvent.contentOffset.y)}
+          scrollEventThrottle={32}
           // De dock is een flex-sibling, geen absolute child, dus KAV heeft
           // hier niks te zoeken. Dit houdt het veld waarin je typt zichtbaar.
           automaticallyAdjustKeyboardInsets
