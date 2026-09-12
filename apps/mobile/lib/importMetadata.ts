@@ -291,14 +291,30 @@ export function parseDate(
   }
 
   const monthNames = Object.keys(MONTHS).join('|');
+  // Spaties en tabs, geen regeleindes: "NOV. 11" met "NOV. 19" op de
+  // volgende regel leverde anders 11 november op, omdat de 11 en de NOV
+  // van de regel eronder samen een datum leken.
   const named = new RegExp(
-    `\\b(\\d{1,2})\\s*(?:e|ste|de)?\\s+(${monthNames})\\b\\.?,?\\s*(\\d{4})?`,
+    `\\b(\\d{1,2})[ \\t]*(?:e|ste|de)?[ \\t]+(${monthNames})\\b\\.?,?[ \\t]*(\\d{4})?`,
     'i'
   ).exec(text);
   if (named) {
     const day = Number(named[1]);
     const month = MONTHS[named[2].toLowerCase()];
     const year = named[3] ? Number(named[3]) : inferYear(day, month, today);
+    const d = asDate(year, month, day);
+    if (d) return d;
+  }
+
+  // Engelse posters zetten de maand voorop: "OCT. 28 AMSTERDAM, NL".
+  const monthLed = new RegExp(
+    `\\b(${monthNames})\\.?[ \\t]+(\\d{1,2})\\b(?:[ \\t]*,?[ \\t]*(\\d{4}))?`,
+    'i'
+  ).exec(text);
+  if (monthLed) {
+    const month = MONTHS[monthLed[1].toLowerCase()];
+    const day = Number(monthLed[2]);
+    const year = monthLed[3] ? Number(monthLed[3]) : inferYear(day, month, today);
     const d = asDate(year, month, day);
     if (d) return d;
   }
@@ -540,9 +556,30 @@ function findTitle(
     !/^[\s\d:.\-/u]+$/i.test(l.text) &&
     !isMostlyDate(l.text);
 
+  /**
+   * De hele titel, niet alleen de eerste regel ervan.
+   *
+   * ML Kit knipt "STEVIE WONDER" in twee regels binnen hetzelfde blok, en
+   * dan hield je "STEVIE" over. Regels uit hetzelfde blok, van ongeveer
+   * dezelfde hoogte, die zelf ook een titel zouden mogen zijn: die horen
+   * erbij. Een tijd of datum eronder valt af op `ok` — "Open 19:30" is
+   * geen titelregel — dus die plakt niet mee.
+   */
+  const whole = (index: number): string => {
+    const parts = [lines[index].text];
+    const { block, height } = lines[index];
+    for (let j = index + 1; j < lines.length && parts.length < 3; j++) {
+      const next = lines[j];
+      if (next.block !== block || !ok(next, j)) break;
+      if (height > 0 && Math.abs(next.height - height) / height > 0.3) break;
+      parts.push(next.text);
+    }
+    return parts.join(' ');
+  };
+
   if (aboveIndex !== undefined) {
     for (let i = aboveIndex - 1; i >= 0; i--) {
-      if (ok(lines[i], i)) return lines[i].text;
+      if (ok(lines[i], i)) return whole(i);
     }
   }
 
@@ -555,9 +592,10 @@ function findTitle(
   const sorted = [...new Set(candidates.map((c) => c.height))].sort((a, b) => b - a);
   const [tallest, next] = sorted;
   if (tallest > 0 && (next === undefined || tallest >= next * 1.4)) {
-    return candidates.reduce((a, b) => (b.height > a.height ? b : a)).text;
+    const top = candidates.reduce((a, b) => (b.height > a.height ? b : a));
+    return whole(lines.indexOf(top));
   }
-  return candidates[0].text;
+  return whole(lines.indexOf(candidates[0]));
 }
 
 /** Regels als "zaterdag 18 oktober 2026" zijn datum, geen titel. */
@@ -575,6 +613,19 @@ function isMostlyDate(text: string): boolean {
 /** Ruis die als bestandsnaam voorkomt maar nooit een event is. */
 const FILE_NOISE =
   /^(download|document|bestand|file|scan|scan\d*|bijlage|attachment|untitled|naamloos|image|img|foto|photo|screenshot|whatsapp.*|afbeelding|print|pdf)$/i;
+
+/**
+ * Namen die een toestel zelf verzint. Niet alleen "screenshot" kaal, maar
+ * ook alles wat erachter komt: iOS deelt een screenshot als "Screenshot
+ * 2026-09-12 at 16.37.56-CF5494B2-C01A-4025-B1C7-E04DDB361641" en dat
+ * werd een eventtitel.
+ */
+const FILE_DEVICE =
+  /^(screenshot|schermafbeelding|scherm.?afbeelding|img|image|photo|foto|pxl|dsc|dscn|signal|whatsapp|snapchat|fb)[\s_-]/i;
+
+/** Een streepjescode van een UUID of hash uit een bestandsnaam. Geen naam
+    van iets waar je heen gaat. */
+const FILE_HASH = /^[0-9a-f]{6,}(-[0-9a-f]{4,}){0,5}$/i;
 
 /** Segmenten die over de bestelling gaan in plaats van over de avond. */
 const FILE_ADMIN =
@@ -620,6 +671,8 @@ export function titleFromFileName(
       if (part.length < 4) return false;
       if (!/[a-zà-ÿ]{3,}/i.test(part)) return false;
       if (FILE_NOISE.test(part)) return false;
+      if (FILE_DEVICE.test(part)) return false;
+      if (FILE_HASH.test(part.replace(/\s+/g, ''))) return false;
       if (FILE_ADMIN.test(part)) return false;
       if (TICKET_DATA.test(part)) return false;
       return !known.has(normalize(part));

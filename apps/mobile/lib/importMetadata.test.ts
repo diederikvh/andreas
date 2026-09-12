@@ -531,3 +531,38 @@ test('op een tourposter telt de datum naast jouw stad', () => {
   assert.equal(draft.time, null);
   assert.equal(draft.city, 'Amsterdam');
 });
+
+test('een engelse poster zet de maand voorop', () => {
+  assert.equal(parseDate('OCT. 28 AMSTERDAM, NL', TODAY), '2026-10-28');
+  assert.equal(parseDate('NOV. 03 LONDON, UK', TODAY), '2026-11-03');
+  // En de dag-eerst-vorm blijft gewoon werken.
+  assert.equal(parseDate('28 oktober 2026', TODAY), '2026-10-28');
+});
+
+test('een datum loopt niet over een regeleinde heen', () => {
+  // "NOV. 11" met "NOV. 19" eronder: de 11 en de NOV van de regel
+  // daaronder leken samen 11 november.
+  assert.equal(parseDate('NOV. 11\nNOV. 19 NEW YORK, NY', TODAY), '2026-11-11');
+});
+
+test('de tourposter van Stevie Wonder', () => {
+  const draft = extractEventDraft(
+    ocr([
+      [151, 'STEVIE\nWONDER'],
+      [123, 'Songe a JheKey of Lie'],
+      [395, '50'],
+      [33, 'OCT. 13 BIRMINGHAM, UK\nOCT. 15 PARIS, FR'],
+      [31, 'OCT. 28 AMSTERDAM, NL\nNOV, 0T DUBLIN, IE'],
+      [25, 'NOV. 11\nNOV. 19- NEw YORK, NY\nGLASGOW, UK'],
+      [21, 'PRODUCED BY WONDER PRODUCTIONS,ING.'],
+    ]),
+    {
+      today: TODAY,
+      fileName:
+        'Screenshot 2026-09-12 at 16.37.56-CF5494B2-C01A-4025-B1C7-E04DDB361641.png',
+    }
+  );
+  assert.equal(draft.title, 'STEVIE WONDER');
+  assert.equal(draft.date, '2026-10-28');
+  assert.equal(draft.city, 'Amsterdam');
+});

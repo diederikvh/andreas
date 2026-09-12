@@ -166,6 +166,39 @@ Wat er niet is opgelost: de titel blijft "PAPER ►" (ML Kit knipt "PAPER" los v
 het domein het event vindt — maar bij *zelf aanmaken* staat die onzin wel in het
 formulier.
 
+### En de tweede tourposter (12 sep 2026)
+
+Stevie Wonder, "Songs In The Key of Life". De OCR las de naam gewoon goed —
+`151px · STEVIE / WONDER` — en tóch kwam eruit:
+
+```json
+{"title":"Screenshot 2026-09-12 at 16.37.56-CF5494B2-C01A-4025-B1C7-E04DDB361641",
+ "date":"2026-11-11"}
+```
+
+Drie oorzaken, alle drie generiek:
+
+1. **De bestandsnaam van een screenshot won.** `FILE_NOISE` matchte alleen een
+   segment dat exact "screenshot" ís. iOS deelt een screenshot als "Screenshot
+   2026-09-12 at 16.37.56-<UUID>". Nu vallen namen die een toestel zelf verzint
+   af op hun begin (`FILE_DEVICE`), en losse hex-brokken op `FILE_HASH`.
+2. **De datum liep over een regeleinde.** "NOV. 11" met "NOV. 19" eronder: de 11
+   van de ene regel plus de NOV van de volgende leken samen 11 november. De
+   dag-eerst-regex accepteert nu alleen spaties en tabs tussen dag en maand,
+   geen `\n`.
+3. **Engelse posters zetten de maand voorop** ("OCT. 28 AMSTERDAM, NL"). Die
+   vorm kenden we niet, dus `dateForCity` vond niets op de Amsterdam-regel.
+   `parseDate` leest 'm nu ook maand-eerst.
+
+En één die pas zichtbaar werd toen de bestandsnaam wegviel: ML Kit knipt "STEVIE
+WONDER" in twee regels binnen hetzelfde blok, en dan hield je "STEVIE" over.
+`findTitle` plakt nu de volgende regels uit hetzelfde blok eraan, mits ze
+ongeveer even hoog zijn en zelf ook een titel zouden mogen zijn. Een tijd eronder
+valt af op `ok` — "Open 19:30" is geen titelregel — dus die plakt niet mee.
+
+Resultaat: **Stevie Wonder — 'Songs in The Key of Life' — Ziggo Dome, 28 okt**,
+de avond die op de poster naast Amsterdam staat.
+
 ### Meerdere bestanden in één share (11 sep 2026)
 
 Je koopt drie kaartjes en krijgt drie losse PDF's. Dat kon niet: iOS liet de
