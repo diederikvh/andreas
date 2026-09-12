@@ -23,7 +23,7 @@ jobs:
       # Alle pure-HTTP-scrapers parallel — ze schrijven naar verschillende
       # venue-id's, geen conflict. `fail-fast: false` zorgt dat een crash
       # van één scraper de andere niet meeneemt. Playwright-scrapers
-      # (paradiso, melkweg, muziekgebouw, ontheroof) draaien lokaal —
+      # (melkweg, muziekgebouw, ontheroof) draaien lokaal —
       # die zitten niet in de Dockerfile op Fly.
       # `max-parallel: 6` bakent de gelijktijdige load op de Fly-VM af:
       # 57 curls tegelijk OOM-de de 512mb machine (alle in-flight requests
@@ -34,8 +34,11 @@ jobs:
       fail-fast: false
       max-parallel: 6
       matrix:
-        scraper: [stager, ical, jsonld, ticketmaster, theater, concertgebouw, fourvenues, boomchicago, concertgemaal, wptheatre, p60, patronaat, ziggodome, ita, operaballet, podiummozaiek, celebratix, weeztix, shelter, sieraad, garagenoord, krakeling, eventscalendar, volkshotel, akhnaton, dezwijger, debalie, felixmeritis, rijksakademie, deceuvel, lima, perdu, nieuweboekhandel, eventbrite, aaservices, vrijburcht, munganga, westweelde, veronica, supper, gashouder, levenslang, clubup, ijland, odessa, fullhouse, bostheater, eye, kriterion, themovies, studiok, filmhallen, lab111, uitkijk, fchyena, rialto, cinecenter, cinemadevlugt, cavia]
+        scraper: [stager, ical, jsonld, ticketmaster, theater, concertgebouw, fourvenues, paradiso, boomchicago, concertgemaal, wptheatre, p60, patronaat, ziggodome, ita, operaballet, podiummozaiek, celebratix, weeztix, shelter, sieraad, garagenoord, krakeling, eventscalendar, volkshotel, akhnaton, dezwijger, debalie, felixmeritis, rijksakademie, deceuvel, lima, perdu, nieuweboekhandel, eventbrite, aaservices, vrijburcht, munganga, westweelde, veronica, supper, gashouder, levenslang, clubup, ijland, odessa, fullhouse, bostheater, eye, kriterion, themovies, studiok, filmhallen, lab111, uitkijk, fchyena, rialto, cinecenter, cinemadevlugt, cavia]
         # Niet in cron: bimhuis, ot301, radioradio, ketelhuis, thepulse (Playwright, niet in Fly Dockerfile).
+        # paradiso zit er sinds 12 sep in: die ging van Playwright naar een kale fetch op de
+        # server-rendered detailpagina, dus geen browser meer nodig. Aankondigingen stonden
+        # anders pas in de app zodra er lokaal een sweep draaide.
         # fourvenues zit er wél in sinds die van de iframe-widget naar hun JSON-API ging — geen browser meer nodig.
     steps:
       - name: POST /admin/api/scrapers/run/${{ matrix.scraper }}
