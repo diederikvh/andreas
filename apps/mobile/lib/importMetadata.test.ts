@@ -489,3 +489,45 @@ test('de speeldata op een tourposter zijn geen tijd', () => {
   // Maar op een gewone poster blijft de punt wel een tijd.
   assert.equal(parseTime('Deuren 19.30, aanvang 20.30'), '20:30');
 });
+
+test('het webadres op een poster is een tweede kans op de naam', () => {
+  const draft = extractEventDraft(
+    ocr([
+      [129, 'B\nE\nN\nF\nD'],
+      [85, 'AIRPLANE\nREQUEST\nTOUR'],
+      [25, '29.11 AMSTERDAM, NL'],
+      [35, 'GET YOUR TICKETS AT benfolds.com/tour'],
+    ]),
+    { today: TODAY }
+  );
+  assert.equal(draft.site, 'benfolds');
+});
+
+test('de ticketboer is geen artiest', () => {
+  const draft = extractEventDraft(
+    ocr([
+      [40, 'Ploegendienst'],
+      [20, 'Koop je kaartje op paylogic.nl of via www.paradiso.nl'],
+    ]),
+    { today: TODAY }
+  );
+  // paylogic valt af, paradiso niet.
+  assert.equal(draft.site, 'paradiso');
+});
+
+test('op een tourposter telt de datum naast jouw stad', () => {
+  const draft = extractEventDraft(
+    ocr([
+      [85, 'AIRPLANE\nREQUEST\nTOUR'],
+      [25, '14.11 DUBLIN, IE'],
+      [25, '15.11 GLASGOW, UK'],
+      [25, '29.11 AMSTERDAM, NL'],
+      [25, '30.11 BERLIN, DE'],
+      [35, 'GET YOUR TICKETS AT benfolds.com/tour'],
+    ]),
+    { today: TODAY }
+  );
+  assert.equal(draft.date, '2026-11-29');
+  assert.equal(draft.time, null);
+  assert.equal(draft.city, 'Amsterdam');
+});

@@ -126,6 +126,46 @@ migratie nodig, oude tickets werken weer — mits het bestand nog bestaat.
 Regel voor de toekomst: **bewaar nooit een absoluut pad in de document-dir.**
 Alleen de naam, en resolven bij gebruik.
 
+### Wat een tourposter kapotmaakt (12 sep 2026)
+
+Een Ben Folds-tourposter door de pijplijn gehaald. De OCR was niet het probleem —
+die las álles — maar er kwam uit:
+
+```json
+{"title":"PAPER ►","date":null,"time":"14:11","city":"Amsterdam"}
+```
+
+Drie dingen, en samen zijn ze het recept voor "Andreas kent dit nog niet":
+
+1. **De artiestnaam stond verticaal.** ML Kit las `B / E / N / F / D` en `S` — met
+   de O en de L eruit. Daar valt niets aan te repareren. Maar onderaan stond
+   `benfolds.com/tour`, en dát is te lezen. Sindsdien haalt `siteFromLines()` de
+   naam uit een webadres (ticketboeren en social eruit gefilterd) en zoekt
+   `/import` daarop als de titel niets oplevert. Tegen de echte database:
+   `?q=benfolds` → **Ben Folds, Het Concertgebouw, 29 nov** — precies de datum van
+   de poster. Dat werkt alleen dankzij trigram; zonder fuzzy geeft "benfolds" nul
+   rijen tegen "Ben Folds".
+
+   Dit is een **afgeleide artiestnaam**, geen nieuw veld: `site` staat niet in
+   {@link ALLOWED_KEYS} en gaat nooit als veld mee. Hij wordt alleen als zoekterm
+   gebruikt, en bij het wegen als extra artiest meegegeven — anders scoort
+   "benfolds" tegen "Ben Folds" een nul (geen gedeeld woord) en gooit de drempel
+   het juiste antwoord eruit. `textScore` vergelijkt daarom ook zonder spaties.
+
+2. **"14.11 DUBLIN" werd 14:11.** Een puntpaar is een tijd én een datum. Staan er
+   drie of meer in het document, dan is het een datumlijst: `parseTime` negeert de
+   punt en `parseDate` léést 'm juist (dag.maand, jaar erbij geraden). Eén signaal,
+   twee kanten op.
+
+3. **Zestien steden, zestien data.** De eerste (Dublin) won omdat hij bovenaan
+   staat. `dateForCity()` zoekt nu eerst de regel met jóuw stad en leest de datum
+   daar: "29.11 AMSTERDAM, NL".
+
+Wat er niet is opgelost: de titel blijft "PAPER ►" (ML Kit knipt "PAPER" los van
+"AIRPLANE REQUEST TOUR", en dat vliegtuigje is een ►). Dat hoeft ook niet zolang
+het domein het event vindt — maar bij *zelf aanmaken* staat die onzin wel in het
+formulier.
+
 ### Meerdere bestanden in één share (11 sep 2026)
 
 Je koopt drie kaartjes en krijgt drie losse PDF's. Dat kon niet: iOS liet de

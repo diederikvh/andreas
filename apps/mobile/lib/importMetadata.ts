@@ -33,6 +33,19 @@ export type EventDraft = {
   /** `HH:MM`, 24-uurs */
   time: string | null;
   city: string | null;
+  /**
+   * De naam uit de website op de poster ("benfolds.com/tour" → benfolds).
+   *
+   * Een tweede kans op de artiestnaam, niet meer dan dat. Op een
+   * tourposter staat de naam vaak alleen nog verticaal of in een logo —
+   * ML Kit las "BEN FOLDS" als `B / E / N / F / D`, met de O en de L
+   * eruit — terwijl het domein er zwart-op-wit staat.
+   *
+   * **Staat niet in de whitelist** ({@link ALLOWED_KEYS}) en gaat dus nooit
+   * als veld mee. Hij wordt alleen als zóekterm gebruikt als de titel
+   * niets oplevert, en dat is een afgeleide artiestnaam.
+   */
+  site: string | null;
 };
 
 export const EMPTY_DRAFT: EventDraft = {
@@ -42,6 +55,7 @@ export const EMPTY_DRAFT: EventDraft = {
   date: null,
   time: null,
   city: null,
+  site: null,
 };
 
 /** Eén OCR-regel met de hoogte van z'n bounding box, plus het blok waar
@@ -263,7 +277,13 @@ function venueLikeLines(lines: Line[], venueNames: string[]): number[] {
  * poster zonder jaar gaat over de komende editie, niet over die van
  * vorig jaar.
  */
-export function parseDate(text: string, today: Date): string | null {
+export function parseDate(
+  text: string,
+  today: Date,
+  /** "Puntparen zijn in dit document data" — bepaald op de hele tekst,
+      want per regel zie je dat niet: één "29.11" kan ook een tijd zijn. */
+  dotIsDate = false
+): string | null {
   const iso = text.match(/\b(\d{4})-(\d{2})-(\d{2})\b/);
   if (iso) {
     const d = asDate(Number(iso[1]), Number(iso[2]), Number(iso[3]));
@@ -281,6 +301,22 @@ export function parseDate(text: string, today: Date): string | null {
     const year = named[3] ? Number(named[3]) : inferYear(day, month, today);
     const d = asDate(year, month, day);
     if (d) return d;
+  }
+
+  // Een tourposter zet zestien speeldata onder elkaar als "29.11
+  // AMSTERDAM, NL" — dag en maand, geen jaar. Alleen lezen als er drie of
+  // meer van die puntparen staan, want los is "19.30" een tijd en geen
+  // 19 maart. Zelfde signaal als in `parseTime`, de andere kant op.
+  if (dotIsDate || [...text.matchAll(/\b\d{1,2}\.\d{1,2}\b/g)].length >= 3) {
+    const tour = text.match(/\b(\d{1,2})\.(\d{1,2})\b/);
+    if (tour) {
+      const day = Number(tour[1]);
+      const month = Number(tour[2]);
+      if (month >= 1 && month <= 12) {
+        const d = asDate(inferYear(day, month, today), month, day);
+        if (d) return d;
+      }
+    }
   }
 
   const numeric = text.match(/\b(\d{1,2})[-/.](\d{1,2})[-/.](\d{2,4})\b/);
@@ -636,6 +672,59 @@ function chooseTitle(fromOcr: string | null, fromFile: string | null) {
   return a.split(' ').some((w) => words.has(w)) ? fromOcr : fromFile;
 }
 
+/** Ticketboeren, social en linkverkorters: die zeggen niets over wie er
+    speelt. De rest van het internet doet dat wel. */
+const SITE_NOISE =
+  /^(paylogic|eventix|ticketmaster|ticketswap|stager|see|seetickets|yourticketprovider|eventbrite|instagram|facebook|fb|twitter|x|tiktok|youtube|spotify|bandcamp|linktr|bit|goo|tinyurl|gmail|google|apple|www)$/i;
+
+/**
+ * De naam uit een webadres op de poster: "benfolds.com/tour" → "benfolds".
+ *
+ * Waarom dit bestaat: op een tourposter staat de artiestnaam vaak
+ * verticaal of als logo, en dat leest geen enkele OCR betrouwbaar — bij
+ * Ben Folds kwam er `B / E / N / F / D` uit, met twee letters eruit. Het
+ * domein staat er wél gewoon. Zonder spaties weliswaar, maar daar is de
+ * trigram-zoekopdracht op de server tegen bestand.
+ */
+export function siteFromLines(lines: Line[]): string | null {
+  for (const line of lines) {
+    for (const m of line.text.matchAll(
+      /(?:https?:\/\/)?(?:www\.)?([a-z0-9][a-z0-9-]{2,})\.[a-z]{2,}(?:\.[a-z]{2,})?\b/gi
+    )) {
+      const name = m[1].toLowerCase();
+      if (SITE_NOISE.test(name)) continue;
+      return name;
+    }
+  }
+  return null;
+}
+
+/**
+ * De datum op de regel waar jouw stad staat.
+ *
+ * Op een tourposter staan zestien steden met zestien data. De eerste is
+ * Dublin en die zegt niets; de regel "29.11 AMSTERDAM, NL" is de jouwe.
+ * Vinden we de stad niet, dan valt de gewone datumlezing terug op de hele
+ * tekst.
+ */
+function dateForCity(
+  lines: Line[],
+  city: string,
+  today: Date,
+  dotIsDate: boolean
+): string | null {
+  const needle = normalize(city);
+  if (needle.length === 0) return null;
+  for (const line of lines) {
+    for (const part of line.text.split('\n')) {
+      if (!normalize(part).includes(needle)) continue;
+      const found = parseDate(part, today, dotIsDate);
+      if (found) return found;
+    }
+  }
+  return null;
+}
+
 export function extractEventDraft(
   ocr: OcrResult,
   opts: {
@@ -663,7 +752,12 @@ export function extractEventDraft(
   // stad daar zwart-op-wit, en dat is beter dan onze aanname Amsterdam.
   const location = findLocationLine(lines);
   const venue = venueHit?.name ?? location?.venue ?? null;
-  const date = parseDate(fullText, today);
+  // Welke van de zestien speeldata is de jouwe? Die op de regel met je
+  // stad. Zonder dit wint "14.11 DUBLIN" omdat die bovenaan staat.
+  const dotIsDate = [...fullText.matchAll(/\b\d{1,2}\.\d{1,2}\b/g)].length >= 3;
+  const date =
+    dateForCity(lines, opts.city ?? 'Amsterdam', today, dotIsDate) ??
+    parseDate(fullText, today);
   const time = parseTime(fullText);
   const support = parseSupport(lines);
 
@@ -741,5 +835,6 @@ export function extractEventDraft(
     date,
     time,
     city,
+    site: siteFromLines(lines),
   };
 }

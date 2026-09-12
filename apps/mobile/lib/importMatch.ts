@@ -98,6 +98,13 @@ export function textScore(a: string, b: string): number {
   if (na.length === 0 || nb.length === 0) return 0;
   if (na === nb) return 1;
   if (na.includes(nb) || nb.includes(na)) return 0.9;
+  // Zonder spaties ook nog een keer: de naam uit een webadres komt
+  // aaneengeschreven binnen ("benfolds" tegen "Ben Folds") en anders
+  // delen die twee geen enkel woord — score 0 voor een perfecte match.
+  const sa = na.replace(/ /g, '');
+  const sb = nb.replace(/ /g, '');
+  if (sa === sb) return 0.95;
+  if (sa.includes(sb) || sb.includes(sa)) return 0.85;
 
   const ta = new Set(tokens(a));
   const tb = new Set(tokens(b));

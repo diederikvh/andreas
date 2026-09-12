@@ -577,7 +577,7 @@ function SharePreview({
   const safe = useMemo(() => toServerMetadata(draft ?? {}), [draft]);
   const query = safe.title ?? safe.artists[0] ?? safe.venue ?? '';
   const expectsMatch = query.length > 1 && isMatchable(safe);
-  const { data: matches, isFetching: matching } = useQuery({
+  const { data: titleMatches, isFetching: matching } = useQuery({
     queryKey: ['search', query, 'fuzzy'],
     queryFn: () => search(query, 0, true),
     enabled: expectsMatch,
@@ -586,6 +586,27 @@ function SharePreview({
     // binnen is. Anders knippert de lijst weg bij elke toetsaanslag.
     placeholderData: keepPreviousData,
   });
+
+  // Tweede kans: de naam uit het webadres op de poster. Op een tourposter
+  // staat de artiest vaak alleen verticaal of in een logo — ML Kit las
+  // "BEN FOLDS" als losse letters mét gaten — terwijl "benfolds.com"
+  // eronder gewoon leesbaar staat. Alleen als de titel niets oplevert, en
+  // alleen als zoekterm: het is een afgeleide artiestnaam, geen veld.
+  const site = draft?.site ?? null;
+  const siteChance =
+    Boolean(site) && !matching && (titleMatches?.events.length ?? 0) === 0;
+  const { data: siteMatches } = useQuery({
+    queryKey: ['search', site, 'fuzzy'],
+    queryFn: () => search(site ?? '', 0, true),
+    enabled: siteChance,
+    staleTime: 60_000,
+  });
+
+  const matches = useMemo(
+    () =>
+      siteChance && siteMatches ? siteMatches : titleMatches,
+    [siteChance, siteMatches, titleMatches]
+  );
 
   // Heeft iemand anders dit al aangemeld? Dan moet je daaraan kunnen
   // hangen in plaats van een tweede aanmelding te maken. Zelfde gate als
@@ -616,8 +637,13 @@ function SharePreview({
       startsAt: e.startsAt,
       imageUrl: e.posterUrl ?? e.imageUrl ?? e.venue.imageUrl ?? null,
     }));
-    return matchEvent(safe, candidates);
-  }, [matches, safe]);
+    // Kwam deze lijst van het webadres, dan moet de weging dat ook weten:
+    // anders scoort "benfolds" tegen "Ben Folds" een nul en gooit de
+    // drempel het juiste antwoord eruit. Als artiestnaam, want dat is het.
+    const weigh =
+      siteChance && site ? { ...safe, artists: [...safe.artists, site] } : safe;
+    return matchEvent(weigh, candidates);
+  }, [matches, safe, siteChance, site]);
 
   // Welke kandidaat is het? Bij hoge confidence de bovenste, anders degene
   // die de gebruiker aantikt. Dat aantikken navigeert dus níet meteen weg:
@@ -1195,6 +1221,7 @@ function ChooseStep({
             te lezen helpt je niet vooruit — de knop eronder wel. */}
         {candidates.length > 0 ? (
           <OptionList
+            hasDate={Boolean(draftDate)}
             candidates={candidates}
             pickedId={null}
             onPick={(id) => onPick(id)}
@@ -1567,6 +1594,7 @@ function SearchFallback({
 
       {ready && rows.length > 0 ? (
         <OptionList
+          hasDate={Boolean(draftDate)}
           candidates={rows}
           pickedId={null}
           onPick={(id) => {
@@ -1589,10 +1617,12 @@ function SearchFallback({
 }
 
 function OptionList({
+  hasDate,
   candidates,
   pickedId,
   onPick,
 }: {
+  hasDate: boolean;
   candidates: MatchResult['ranked'];
   pickedId: string | null;
   onPick: (id: string) => void;
@@ -1658,7 +1688,12 @@ function OptionList({
                       when.getMonth(),
                       locale,
                     )}`}
-                {dateMatches ? '' : ` · ${t('andere avond', 'other night')}`}
+                {/* Alleen zeggen als we een datum gelézen hebben: bij een
+                    tourposter zonder leesbare datum is "andere avond"
+                    een bewering over niets. */}
+                {!hasDate || dateMatches
+                  ? ''
+                  : ` · ${t('andere avond', 'other night')}`}
               </Text>
             </View>
             <Ionicons
@@ -2168,6 +2203,7 @@ const EMPTY_DRAFT_STATE: EventDraft = {
   date: null,
   time: null,
   city: null,
+  site: null,
 };
 
 /**
