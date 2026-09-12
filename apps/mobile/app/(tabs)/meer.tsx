@@ -100,6 +100,13 @@ export default function MeerScreen() {
       onPress: go('/new'),
     },
     {
+      key: 'voor-jou',
+      icon: <Ionicons name="heart-outline" size={22} color={roles.accent} />,
+      label: t('Aanbevolen', 'Recommended'),
+      hint: t('Op basis van je smaak', 'Based on your taste'),
+      onPress: go('/voor-jou'),
+    },
+    {
       // Een poster in de stad kan je niet delen — je staat ervoor. Hier,
       // en niet op de hero: dit doe je een paar keer per maand.
       key: 'scan',
@@ -107,13 +114,6 @@ export default function MeerScreen() {
       label: t('Scan een poster', 'Scan a poster'),
       hint: t('Zet \'m op je lijst', 'Put it on your list'),
       onPress: go('/scan'),
-    },
-    {
-      key: 'voor-jou',
-      icon: <Ionicons name="heart-outline" size={22} color={roles.accent} />,
-      label: t('Aanbevolen', 'Recommended'),
-      hint: t('Op basis van je smaak', 'Based on your taste'),
-      onPress: go('/voor-jou'),
     },
   ];
 
