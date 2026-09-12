@@ -42,24 +42,27 @@ searchRoute.get('/', async (c) => {
 
   const needle = `%${rawQ}%`;
 
-  // Fuzzy staat uit tenzij erom gevraagd. De import vraagt erom: die
-  // zoekt met wat de OCR van een poster las, en één verkeerde letter
-  // ("Pagadiso") geeft met alleen ILIKE nul rijen. Het zoekveld van de
-  // app blijft ongemoeid — daar typt een mens mee, en daar zou losser
-  // matchen de chronologische volgorde vertroebelen.
+  // Fuzzy zoeken: `%` is de trigram-operator uit pg_trgm (migratie 0056,
+  // drempel 0,3) en gebruikt de GIN-index op title/name. Zo vindt
+  // "Pagadiso" alsnog Paradiso.
   //
-  // `%` is de trigram-operator uit pg_trgm (migratie 0056), drempel 0,3,
-  // en gebruikt de GIN-index op title/name.
-  const fuzzy = c.req.query('fuzzy') === '1';
-  const alike = (column: PgColumn) =>
-    fuzzy ? [ilike(column, needle), sql`${column} % ${rawQ}`] : [ilike(column, needle)];
+  // Twee manieren om erbij te komen. De import vráágt erom (`fuzzy=1`),
+  // want die zoekt met wat de OCR van een poster las en heeft ook fuzzy
+  // nodig als het exacte woord toevallig íéts oplevert. Voor een mens is
+  // het een **terugval**: levert je zoekopdracht niets op, dan zoeken we
+  // hem nog een keer losser. Zo houdt een goede zoekopdracht z'n rustige,
+  // chronologische lijst en krijg je bij een typefout geen leeg scherm.
+  const alike = (column: PgColumn, fuzzy: boolean) =>
+    fuzzy
+      ? [ilike(column, needle), sql`${column} % ${rawQ}`]
+      : [ilike(column, needle)];
 
   // Venues — alleen op de eerste pagina laden (eventsOffset === 0).
   // Voor scroll-pagina's heeft de client de venues al; opnieuw fetchen
   // verspilt round-trip-tijd.
-  const venues =
+  const findVenues = (fuzzy: boolean) =>
     eventsOffset === 0
-      ? await db
+      ? db
           .select({
             id: schema.venues.id,
             slug: schema.venues.slug,
@@ -75,26 +78,29 @@ searchRoute.get('/', async (c) => {
           .where(
             and(
               eq(schema.venues.published, true),
-              or(...alike(schema.venues.name))
+              or(...alike(schema.venues.name, fuzzy))
             )
           )
           .orderBy(asc(schema.venues.name))
           .limit(VENUE_CAP)
-      : [];
+      : Promise.resolve([]);
 
   // Events — match op title OF venue-naam. Filter: published events
   // bij published venues, ≥1 toekomstige occurrence. We sorteren op
   // de eerstvolgende occurrence (asc) door een subquery, en paginen
   // met limit/offset.
-  const eventConditions: SQL[] = [
-    eq(schema.events.published, true),
-    eq(schema.venues.published, true),
-  ];
-  const matchEvent = or(
-    ...alike(schema.events.title),
-    ...alike(schema.venues.name)
-  );
-  if (matchEvent) eventConditions.push(matchEvent);
+  const eventWhere = (fuzzy: boolean) => {
+    const conditions: SQL[] = [
+      eq(schema.events.published, true),
+      eq(schema.venues.published, true),
+    ];
+    const matchEvent = or(
+      ...alike(schema.events.title, fuzzy),
+      ...alike(schema.venues.name, fuzzy)
+    );
+    if (matchEvent) conditions.push(matchEvent);
+    return and(...conditions);
+  };
 
   // Subquery: voor elk event de eerstvolgende occurrence-startsAt.
   // Sorteer dáár op — anders krijg je events die jaren-oud zijn maar
@@ -116,7 +122,8 @@ searchRoute.get('/', async (c) => {
     .groupBy(schema.occurrences.eventId)
     .as('next_occ');
 
-  const eventRows = await db
+  const findEvents = (fuzzy: boolean) =>
+    db
     .select({
       id: schema.events.id,
       title: schema.events.title,
@@ -145,10 +152,21 @@ searchRoute.get('/', async (c) => {
       nextOccSubquery,
       eq(nextOccSubquery.eventId, schema.events.id)
     )
-    .where(and(...eventConditions))
+    .where(eventWhere(fuzzy))
     .orderBy(asc(nextOccSubquery.nextStartsAt))
     .limit(EVENTS_LIMIT + 1)
     .offset(eventsOffset);
+
+  const asked = c.req.query('fuzzy') === '1';
+  let [venues, eventRows] = await Promise.all([
+    findVenues(asked),
+    findEvents(asked),
+  ]);
+  // Niets gevonden? Dan lag het misschien aan de spelling. Eén woord van
+  // twee letters fuzzy zoeken levert alleen ruis op, vandaar de ondergrens.
+  if (!asked && venues.length === 0 && eventRows.length === 0 && rawQ.length >= 3) {
+    [venues, eventRows] = await Promise.all([findVenues(true), findEvents(true)]);
+  }
 
   const eventsHasMore = eventRows.length > EVENTS_LIMIT;
   const eventsTrimmed = eventRows.slice(0, EVENTS_LIMIT);

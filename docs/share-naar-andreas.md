@@ -413,11 +413,21 @@ te wegen, hoe slim de score ook is. Op de echte database:
 | The Afghan Wighs | The Afghan Whigs (0,55) |
 | Melkwec | Melkweg (0,60) |
 
-Het zit achter `?fuzzy=1` en **alleen de import zet dat aan**. Het zoekveld van
-de app blijft `ILIKE`: daar typt een mens mee, en losser matchen vertroebelt een
-lijst die op datum sorteert in plaats van op relevantie. De import heeft ook een
-eigen react-query-sleutel (`['search', q, 'fuzzy']`) — anders geeft de cache
-hetzelfde woord uit het zoekveld terug.
+Er zijn twee manieren om erbij te komen:
+
+- **De import vráágt erom** (`?fuzzy=1`). Die heeft het ook nodig als het exacte
+  woord toevallig íéts oplevert — de goede match kan nog steeds achter een
+  verkeerd gelezen letter zitten. Eigen react-query-sleutel
+  (`['search', q, 'fuzzy']`), anders geeft de cache de smallere lijst terug die
+  het zoekveld van de app voor hetzelfde woord ophaalde.
+- **Voor een mens is het een terugval.** Levert de zoekopdracht niets op, dan
+  draaien we hem nog een keer los. Een goede zoekopdracht houdt zo z'n rustige,
+  chronologische lijst — geen ruis erbij — en een typefout geeft geen leeg
+  scherm. Vanaf 3 tekens; korter fuzzy zoeken levert alleen ruis.
+
+Gemeten op de draaiende API, zonder vlag: "Pagadiso" → Paradiso (terugval),
+"Paradiso" → dezelfde lijst als voorheen (geen terugval, want er was al
+resultaat), "Lowertow" → Lowertown (dat kon ILIKE al), "xq" → niets.
 
 De weging blijft expres op het toestel: de geleerde zaal-vertaling (logo →
 Paradiso) is lokaal en moet dat blijven.
