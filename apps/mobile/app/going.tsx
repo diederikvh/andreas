@@ -43,7 +43,7 @@ import type { BadgeTone } from '@/lib/types';
 import { useMode, useRoles } from '@/store/mode';
 import { useTicketFor } from '@/store/tickets';
 import { fontFamily, palette } from '@/theme/tokens';
-import { TONE } from '@/theme/tones';
+import { TONE, pendingTone } from '@/theme/tones';
 
 /** Wat er in de plannenlijst kan staan: een echt moment, of een event
     dat je zelf hebt toegevoegd en dat nog geen occurrence heeft. */
@@ -65,20 +65,6 @@ function planTime(item: PlanItem): number {
 
 /** Kleuren voor het letter-vlak. Dezelfde tonen als de tikkers elders in
     de app, dus het blijft binnen het palet. */
-const PENDING_TONES: BadgeTone[] = [
-  'acid',
-  'flare',
-  'plum',
-  'azure',
-  'saffron',
-  'cobalt',
-];
-
-function hashTone(id: string): number {
-  let h = 0;
-  for (let i = 0; i < id.length; i += 1) h = (h * 31 + id.charCodeAt(i)) >>> 0;
-  return h;
-}
 
 export default function GoingScreen() {
   const roles = useRoles();
@@ -342,7 +328,7 @@ function PendingRow({
     pending.title ??
     pending.artists[0] ??
     (locale === 'nl' ? 'Naamloos' : 'Untitled');
-  const tone = PENDING_TONES[hashTone(pending.id) % PENDING_TONES.length];
+  const tone = pendingTone(pending.id);
   const when = pending.date ? new Date(`${pending.date}T12:00:00`) : null;
   const dateLabel =
     when && !Number.isNaN(when.getTime())

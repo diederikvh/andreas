@@ -19,7 +19,7 @@ import { usePendingEvents, useTogglePendingGoing } from '@/lib/queries';
 import { useMode, useRoles } from '@/store/mode';
 import { useTicketsFor } from '@/store/tickets';
 import { fontFamily, palette } from '@/theme/tokens';
-import { TONE, type BadgeToneKey } from '@/theme/tones';
+import { TONE, pendingTone } from '@/theme/tones';
 
 /**
  * Detailpagina van een event dat je zelf hebt toegevoegd.
@@ -39,20 +39,6 @@ const HERO_HEIGHT = 320;
 
 /** Zelfde tonen en dezelfde hash als in de plannenlijst, zodat de kleur
     van een avond overal gelijk is. */
-const PENDING_TONES: BadgeToneKey[] = [
-  'acid',
-  'flare',
-  'plum',
-  'azure',
-  'saffron',
-  'cobalt',
-];
-
-function hashTone(id: string): number {
-  let h = 0;
-  for (let i = 0; i < id.length; i += 1) h = (h * 31 + id.charCodeAt(i)) >>> 0;
-  return h;
-}
 
 export default function PendingEventScreen() {
   const { id: raw } = useLocalSearchParams<{ id: string }>();
@@ -71,7 +57,7 @@ export default function PendingEventScreen() {
 
   const title =
     pending?.title ?? pending?.artists[0] ?? t('Naamloos', 'Untitled');
-  const tone = PENDING_TONES[hashTone(id) % PENDING_TONES.length];
+  const tone = pendingTone(id);
   const when = pending?.date ? new Date(`${pending.date}T12:00:00`) : null;
   const dateLabel =
     when && !Number.isNaN(when.getTime())

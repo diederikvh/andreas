@@ -86,6 +86,7 @@ import { useMode, useRoles } from '@/store/mode';
 import { useImportLearnings } from '@/store/importLearnings';
 import { useTicketFor, useTickets, useTicketsFor } from '@/store/tickets';
 import { fontFamily, palette } from '@/theme/tokens';
+import { TONE, pendingTone } from '@/theme/tones';
 
 /**
  * Importscherm — fase 1 van "Share naar Andreas".
@@ -186,6 +187,12 @@ export default function ImportScreen() {
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
+          // Geen elastiek aan de bovenkant. Bovenaan naar beneden slepen
+          // is hoe je een sheet dichtdoet, maar zolang de scrollview op
+          // die beweging zelf terugveert houdt hij 'm vast en gebeurt er
+          // niets — je trekt dan aan de foto in plaats van aan het
+          // paneel. Zonder bounce geeft hij 'm meteen door aan iOS.
+          bounces={false}
           // De dock is een flex-sibling, geen absolute child, dus KAV heeft
           // hier niks te zoeken. Dit houdt het veld waarin je typt zichtbaar.
           automaticallyAdjustKeyboardInsets
@@ -1185,7 +1192,9 @@ function ChooseStep({
         {/* Al toegevoegd — door jou of door iemand anders die hetzelfde
             affiche scande. Zelfde rij als een echt event: wie kiest wil
             weten wélke avond het is, niet uit welke tabel hij komt. */}
-        {pendingMatches.map((p) => (
+        {pendingMatches.map((p) => {
+          const label = p.title ?? p.artists[0] ?? t('Deze avond', 'This night');
+          return (
           <Pressable
             key={p.id}
             onPress={() => onJoinPending(p)}
@@ -1197,9 +1206,21 @@ function ChooseStep({
               },
             ]}
           >
+            {/* Zelf toegevoegd, dus geen beeld: de eerste letter op een
+                kleurvlak, dezelfde kleur als deze avond in je plannen
+                heeft. */}
+            <View
+              style={[
+                styles.optionThumb,
+                styles.optionThumbFill,
+                { backgroundColor: TONE[mode][pendingTone(p.id)] },
+              ]}
+            >
+              <Text style={styles.optionLetter}>{label.trim().charAt(0)}</Text>
+            </View>
             <View style={{ flex: 1, gap: 3 }}>
               <Text style={[styles.optionTitle, { color: roles.fg }]}>
-                {p.title ?? p.artists[0] ?? t('Deze avond', 'This night')}
+                {label}
               </Text>
               <Text style={[styles.optionMeta, { color: roles.fgMuted }]}>
                 {[p.venue, pendingDateLabel(p, locale)]
@@ -1209,7 +1230,8 @@ function ChooseStep({
             </View>
             <Ionicons name="chevron-forward" size={16} color={roles.fgMuted} />
           </Pressable>
-        ))}
+          );
+        })}
 
         <Pressable
           onPress={() => onPick(null)}
@@ -1221,6 +1243,18 @@ function ChooseStep({
             },
           ]}
         >
+          {/* Ook hier een vlak, anders springt deze rij uit het ritme.
+              Gedempt en niet in het accent: aanmaken is de uitwijk, niet
+              het antwoord. */}
+          <View
+            style={[
+              styles.optionThumb,
+              styles.optionThumbFill,
+              { backgroundColor: roles.bgChip },
+            ]}
+          >
+            <Ionicons name="add" size={26} color={roles.fgMuted} />
+          </View>
           <View style={{ flex: 1, gap: 3 }}>
             <Text style={[styles.optionTitle, { color: roles.fg }]}>
               {t('Event aanmaken', 'Create event')}
@@ -2438,6 +2472,12 @@ const styles = StyleSheet.create({
   // Zelfde vorm als de thumb in `EventListRow`, een maat kleiner: deze
   // rij heeft twee regels tekst, geen vier.
   optionThumb: { width: 56, height: 56, borderRadius: 10 },
+  optionThumbFill: { alignItems: 'center', justifyContent: 'center' },
+  optionLetter: {
+    fontFamily: fontFamily.display,
+    fontSize: 24,
+    color: 'rgba(0,0,0,0.55)',
+  },
   // Een veld, geen keuze — dus de vorm van de zoekpil elders in de app
   // (rond, 44 hoog) in plaats van die van de keuzerijen eromheen. Iets
   // ruimer dan die pil, want hij staat hier tussen rijen van 80.

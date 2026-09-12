@@ -91,7 +91,7 @@ import { useAddSavedVandaagSearch } from '@/store/savedVandaagSearches';
 import { useVandaagFilters } from '@/store/vandaagFilters';
 import { useZoekStore } from '@/store/zoek';
 import { fontFamily, palette } from '@/theme/tokens';
-import { TONE, type BadgeToneKey } from '@/theme/tones';
+import { TONE, pendingTone } from '@/theme/tones';
 
 function formatMetaForRow(row: OccurrenceRow, locale: Locale): string {
   const d = new Date(row.occurrence.startsAt);
@@ -1205,7 +1205,7 @@ function PendingRailCard({
     pending.title ??
     pending.artists[0] ??
     (locale === 'nl' ? 'Naamloos' : 'Untitled');
-  const tone = PENDING_TONES[hashTone(pending.id) % PENDING_TONES.length];
+  const tone = pendingTone(pending.id);
   const when = pending.date ? new Date(`${pending.date}T12:00:00`) : null;
   const dateLabel =
     when && !Number.isNaN(when.getTime())
@@ -1272,20 +1272,6 @@ function PendingRailCard({
 
 /** Kleuren voor dat letter-vlak: de tonen die de app elders ook gebruikt,
     gekozen op het id zodat dezelfde avond altijd dezelfde kleur heeft. */
-const PENDING_TONES: BadgeToneKey[] = [
-  'acid',
-  'flare',
-  'plum',
-  'azure',
-  'saffron',
-  'cobalt',
-];
-
-function hashTone(id: string): number {
-  let h = 0;
-  for (let i = 0; i < id.length; i += 1) h = (h * 31 + id.charCodeAt(i)) >>> 0;
-  return h;
-}
 
 type AgendaRailItem =
   | { kind: 'going'; at: number; entry: SavedApiEvent }

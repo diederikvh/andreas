@@ -48,3 +48,27 @@ export const TONE: Record<'nacht' | 'dag', Record<BadgeToneKey, string>> = {
     cobalt: '#1a3157',
   },
 };
+
+/** De zes tonen in de volgorde waarin we ze voor letter-vlakken gebruiken. */
+const PENDING_TONES: BadgeToneKey[] = [
+  'acid',
+  'flare',
+  'plum',
+  'azure',
+  'saffron',
+  'cobalt',
+];
+
+/**
+ * Vaste kleur voor een avond die nog geen beeld heeft — iets wat iemand
+ * zelf toevoegde. Gekozen op het id, zodat dezelfde avond overal dezelfde
+ * kleur krijgt: in je plannen, op Vandaag, op de detailpagina en in de
+ * keuzelijst bij het importeren. Stond in alle vier de bestanden los.
+ */
+export function pendingTone(id: string): BadgeToneKey {
+  let hash = 0;
+  for (let i = 0; i < id.length; i += 1) {
+    hash = (hash * 31 + id.charCodeAt(i)) >>> 0;
+  }
+  return PENDING_TONES[hash % PENDING_TONES.length];
+}
