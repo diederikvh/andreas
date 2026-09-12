@@ -578,8 +578,8 @@ function SharePreview({
   const query = safe.title ?? safe.artists[0] ?? safe.venue ?? '';
   const expectsMatch = query.length > 1 && isMatchable(safe);
   const { data: matches, isFetching: matching } = useQuery({
-    queryKey: ['search', query],
-    queryFn: () => search(query),
+    queryKey: ['search', query, 'fuzzy'],
+    queryFn: () => search(query, 0, true),
     enabled: expectsMatch,
     staleTime: 60_000,
     // Pas je de titel aan, dan blijft de vorige lijst staan tot de nieuwe
@@ -1511,8 +1511,8 @@ function SearchFallback({
 
   const ready = q.length >= 2;
   const { data, isFetching } = useQuery({
-    queryKey: ['search', q],
-    queryFn: () => search(q),
+    queryKey: ['search', q, 'fuzzy'],
+    queryFn: () => search(q, 0, true),
     enabled: ready,
     staleTime: 60_000,
     placeholderData: keepPreviousData,

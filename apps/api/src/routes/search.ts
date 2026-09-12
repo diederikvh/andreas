@@ -17,6 +17,7 @@
  * onbedoelde dump-zoek de DB niet stuk maakt.
  */
 import { and, asc, eq, gt, ilike, inArray, or, sql, type SQL } from 'drizzle-orm';
+import type { PgColumn } from 'drizzle-orm/pg-core';
 import { Hono } from 'hono';
 
 import { db, displayGenres, schema } from '../db/index.js';
@@ -41,6 +42,18 @@ searchRoute.get('/', async (c) => {
 
   const needle = `%${rawQ}%`;
 
+  // Fuzzy staat uit tenzij erom gevraagd. De import vraagt erom: die
+  // zoekt met wat de OCR van een poster las, en één verkeerde letter
+  // ("Pagadiso") geeft met alleen ILIKE nul rijen. Het zoekveld van de
+  // app blijft ongemoeid — daar typt een mens mee, en daar zou losser
+  // matchen de chronologische volgorde vertroebelen.
+  //
+  // `%` is de trigram-operator uit pg_trgm (migratie 0056), drempel 0,3,
+  // en gebruikt de GIN-index op title/name.
+  const fuzzy = c.req.query('fuzzy') === '1';
+  const alike = (column: PgColumn) =>
+    fuzzy ? [ilike(column, needle), sql`${column} % ${rawQ}`] : [ilike(column, needle)];
+
   // Venues — alleen op de eerste pagina laden (eventsOffset === 0).
   // Voor scroll-pagina's heeft de client de venues al; opnieuw fetchen
   // verspilt round-trip-tijd.
@@ -62,7 +75,7 @@ searchRoute.get('/', async (c) => {
           .where(
             and(
               eq(schema.venues.published, true),
-              ilike(schema.venues.name, needle)
+              or(...alike(schema.venues.name))
             )
           )
           .orderBy(asc(schema.venues.name))
@@ -78,8 +91,8 @@ searchRoute.get('/', async (c) => {
     eq(schema.venues.published, true),
   ];
   const matchEvent = or(
-    ilike(schema.events.title, needle),
-    ilike(schema.venues.name, needle)
+    ...alike(schema.events.title),
+    ...alike(schema.venues.name)
   );
   if (matchEvent) eventConditions.push(matchEvent);
 

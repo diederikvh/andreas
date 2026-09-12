@@ -391,12 +391,20 @@ export type SearchResponse = {
  * IMDB-stijl globale zoek. `q` is required; eventsOffset paginate't
  * alleen de events-sectie (venues komen op de eerste pagina mee).
  */
+/**
+ * @param fuzzy Ook trigram-matches meenemen. Alleen voor de import: die
+ *   zoekt met wat de OCR van een poster las en "Pagadiso" levert met een
+ *   gewone LIKE nul rijen op. In het zoekveld van de app laten we het uit
+ *   — daar typt een mens, en losser matchen maakt de lijst onrustig.
+ */
 export async function search(
   q: string,
   eventsOffset = 0,
+  fuzzy = false,
 ): Promise<SearchResponse> {
   const params = new URLSearchParams({ q });
   if (eventsOffset > 0) params.set('eventsOffset', String(eventsOffset));
+  if (fuzzy) params.set('fuzzy', '1');
   return authedRequest<SearchResponse>(`/search?${params.toString()}`);
 }
 

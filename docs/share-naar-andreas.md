@@ -401,6 +401,27 @@ en het kost geen nieuw endpoint.
 `/import/match` wordt interessant zodra we occurrences willen meewegen (dan verdwijnt
 die hele onzekerheid) of wanneer de weging server-side moet om andere redenen.
 
+**Fuzzy zoeken staat er sinds 12 sep 2026** (migratie `0056_trgm_search.sql`:
+`pg_trgm` + GIN-index op `events.title` en `venues.name`). Dat loste het
+onderste gat op: `/search` deed alleen `ILIKE '%naald%'`, dus één verkeerd
+gelezen letter gaf **nul rijen** — en dan valt er aan de clientkant niets meer
+te wegen, hoe slim de score ook is. Op de echte database:
+
+| gezocht | gevonden |
+|---|---|
+| Pagadiso | Paradiso (0,50) |
+| The Afghan Wighs | The Afghan Whigs (0,55) |
+| Melkwec | Melkweg (0,60) |
+
+Het zit achter `?fuzzy=1` en **alleen de import zet dat aan**. Het zoekveld van
+de app blijft `ILIKE`: daar typt een mens mee, en losser matchen vertroebelt een
+lijst die op datum sorteert in plaats van op relevantie. De import heeft ook een
+eigen react-query-sleutel (`['search', q, 'fuzzy']`) — anders geeft de cache
+hetzelfde woord uit het zoekveld terug.
+
+De weging blijft expres op het toestel: de geleerde zaal-vertaling (logo →
+Paradiso) is lokaal en moet dat blijven.
+
 ### Geverifieerd op de simulator, tegen de productie-database (11 sep 2026)
 
 Testposter met een echt event erop (Lowertown, Paradiso, 12 sep 19:30):
