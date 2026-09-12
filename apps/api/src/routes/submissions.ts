@@ -115,19 +115,7 @@ submissionsRoute.post('/', async (c) => {
     if (count >= 20) return c.json({ error: 'rate_limited' }, 429);
   }
 
-  // Matcht de venuenaam op een venue die we kennen? Dan is dit bijna zeker
-  // een echt event en kan de review korter. Exact op genormaliseerde naam:
-  // fuzzy matchen doet de app al, en een verkeerde gok hier zou de
-  // aanmelding aan de verkeerde zaal hangen.
-  let venueId: string | null = null;
-  if (venueName) {
-    const [hit] = await db
-      .select({ id: schema.venues.id })
-      .from(schema.venues)
-      .where(sql`lower(${schema.venues.name}) = lower(${venueName})`)
-      .limit(1);
-    venueId = hit?.id ?? null;
-  }
+  const venueId = await findVenueId(venueName);
 
   const source =
     body.source === 'scan' || body.source === 'share'
@@ -164,6 +152,36 @@ submissionsRoute.post('/', async (c) => {
 });
 
 /** Wat een aanmelding aan de app teruggeeft. Geen userId, geen bron. */
+/**
+ * De zaal bij een aangemelde zaalnaam.
+ *
+ * Matcht het? Dan is dit bijna zeker een echt event, kan de review korter,
+ * en heeft de aanmelding meteen een beeld (de foto van die zaal).
+ *
+ * Eerst exact op genormaliseerde naam, en anders op trigram-gelijkenis
+ * (`pg_trgm`, migratie 0056). Die tweede ronde is er omdat de naam uit een
+ * poster of een formulier komt: "Paradiso 2", "de roma", "Melkwec". De
+ * drempel ligt hoog genoeg dat twee verschillende zalen niet op één hoop
+ * belanden, en een verkeerde koppeling is voor de admin één klik.
+ */
+export async function findVenueId(name: string | null): Promise<string | null> {
+  if (!name) return null;
+  const [exact] = await db
+    .select({ id: schema.venues.id })
+    .from(schema.venues)
+    .where(sql`lower(${schema.venues.name}) = lower(${name})`)
+    .limit(1);
+  if (exact) return exact.id;
+
+  const [close] = await db
+    .select({ id: schema.venues.id })
+    .from(schema.venues)
+    .where(sql`similarity(${schema.venues.name}, ${name}) > 0.55`)
+    .orderBy(sql`similarity(${schema.venues.name}, ${name}) desc`)
+    .limit(1);
+  return close?.id ?? null;
+}
+
 function toCard(row: {
   id: string;
   title: string | null;

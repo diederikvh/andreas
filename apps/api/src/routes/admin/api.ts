@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { and, asc, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 
 import { db, schema } from '../../db/index.js';
@@ -617,6 +617,19 @@ adminApi.post('/venues', async (c) => {
         published: body.published == null ? true : Boolean(body.published),
       })
       .returning();
+    // Aanmeldingen die op deze zaal wachtten alsnog koppelen. De
+    // koppeling gebeurde tot nu toe alleen bij het aanmelden zelf, dus
+    // wie een event insTuurde voor een zaal die we nog niet kenden bleef
+    // voorgoed losgekoppeld — en zonder beeld.
+    await db
+      .update(schema.eventSubmissions)
+      .set({ venueId: id })
+      .where(
+        and(
+          isNull(schema.eventSubmissions.venueId),
+          sql`lower(${schema.eventSubmissions.venueName}) = lower(${name})`
+        )
+      );
     return c.json({ venue: row }, 201);
   } catch (e) {
     const code = (e as { code?: string }).code ?? '';

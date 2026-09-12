@@ -260,6 +260,29 @@ Migratie `0057_submission_image.sql` (gedraaid). Geverifieerd tegen de echte
 database en CDN: aanmelding bij Paradiso krijgt de Paradiso-foto, een geüploade
 poster wint daarvan, een tweede upload geeft 409.
 
+### Wie koppelt een aanmelding aan een zaal? (12 sep 2026)
+
+Niemand, was het antwoord. De koppeling (`event_submissions.venue_id`) werd
+precies één keer gelegd: bij het aanmelden, met een exacte vergelijking op de
+genormaliseerde naam. Maakte je de zaal daarná aan in de admin, dan bleef de
+aanmelding voorgoed losgekoppeld — en dus zonder beeld. Van de drie
+aanmeldingen had er één een zaal.
+
+Drie dingen veranderd:
+
+1. **Fuzzy bij het aanmelden.** Lukt de exacte match niet, dan trigram-gelijkenis
+   boven 0,55 (`findVenueId()`). "Paradiso 2" en "de roma" vinden nu hun zaal.
+2. **Een nieuwe zaal koppelt z'n wachtenden.** `POST /admin/venues` zet
+   achteraf `venue_id` op elke losse aanmelding met diezelfde naam.
+3. **Bestaande data bijgewerkt**: 1 exact, 1 op gelijkenis. Alle drie hebben nu
+   een zaal.
+
+Let op de volgende stap die hier logisch uit volgt: hetzelfde geldt voor
+**events**. Wordt een aanmelding later alsnog gescrapet, dan zou `event_id`
+vanzelf gezet moeten worden. Dat kan pas veilig als het ticket meeverhuist —
+zie het openstaande punt daarover — want anders blijft het kaartje achter op de
+`sub-…`-sleutel terwijl de kaart naar het echte event verspringt.
+
 ### Meerdere bestanden in één share (11 sep 2026)
 
 Je koopt drie kaartjes en krijgt drie losse PDF's. Dat kon niet: iOS liet de
