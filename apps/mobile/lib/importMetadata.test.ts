@@ -25,6 +25,7 @@ const VENUES = [
   'OT301',
   'Concertgebouw',
   'Bimhuis',
+  'Cinetol',
 ];
 
 const TODAY = new Date(2026, 8, 11); // 11 september 2026
@@ -247,4 +248,50 @@ test('adresregel zonder postcode laat de stad leeg in plaats van te gokken', () 
   );
   assert.equal(draft.venue, 'Ergens');
   assert.equal(draft.city, null);
+});
+
+/**
+ * Stager-kaartje voor Cinetol, zoals het op 12 sep 2026 uit de app kwam.
+ * Het adres staat hier op twee regels onder elkaar in plaats van achter
+ * elkaar op één — en daardoor werd "1074 VM Amsterdam" de titel: de
+ * postcoderegel is de eerste regel boven de datum.
+ */
+const STAGER_CINETOL = ocr([
+  [45, '(ITL'],
+  [36, 'De Nachtelijke Escapades +\nsupport: Scout'],
+  [13, 'Cinetol'],
+  [13, 'Tolstraat 182\n1074 VM Amsterdam'],
+  [23, 'Saturday\n12 September 2026\nOpen\n20:00 20:30\nStart'],
+  [15, 'Ticket number\n1/2-ST5935570925479'],
+  [10, 'Order number'],
+  [15, '13898453'],
+  [13, 'Date of purchase\n19-07-2026'],
+  [17, 'Name of ticket holder\nDiederik Huijstee'],
+  [12, 'Ticket'],
+  [18, 'Price (incl. VAT) € 15.25\nService Fees (incl. VAT) € 1.75'],
+  [42, 'Stager.'],
+]);
+
+test('ticket met het adres onder elkaar: de postcode is geen titel', () => {
+  const draft = extractEventDraft(STAGER_CINETOL, {
+    venueNames: VENUES,
+    today: TODAY,
+    isTicket: true,
+  });
+  assert.equal(draft.title, 'De Nachtelijke Escapades');
+  assert.equal(draft.venue, 'Cinetol');
+  assert.equal(draft.date, '2026-09-12');
+  assert.equal(draft.time, '20:30'); // Start, niet Open
+  assert.equal(draft.city, 'Amsterdam');
+  assert.deepEqual(draft.artists, ['De Nachtelijke Escapades', 'Scout']);
+});
+
+test('een zaal die Andreas niet kent staat boven z\'n eigen adres', () => {
+  const draft = extractEventDraft(STAGER_CINETOL, {
+    venueNames: [],
+    today: TODAY,
+    isTicket: true,
+  });
+  assert.equal(draft.venue, 'Cinetol');
+  assert.equal(draft.title, 'De Nachtelijke Escapades');
 });

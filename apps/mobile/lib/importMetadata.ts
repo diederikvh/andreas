@@ -303,13 +303,17 @@ function parseSupport(lines: Line[]): string[] {
  */
 function findLocationLine(
   lines: Line[]
-): { venue: string | null; city: string | null; index: number } | null {
+): { venue: string | null; city: string | null; indices: number[] } | null {
   // NL: 1017 SG Amsterdam · BE: 2140 Borgerhout · DE: 10178 Berlin.
   // De stad is wat ná de postcode komt; die eruit knippen en de rest
   // houden gaf het hele adres terug ("Turnhoutsebaan 286 - Borgerhout").
   const CITY_AFTER_POSTCODE =
     /\b(?:\d{4}\s?[A-Z]{2}|\d{4,5})\s+([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ'’ -]{1,38})\s*$/;
   const STREET = /\b[a-zà-ÿ]{3,}\s+\d+([-–]\d+)?\b/i;
+  // Dezelfde postcode+plaats, maar dan als hele regel: een ticketprovider
+  // drukt het adres vaak onder elkaar af in plaats van achter elkaar.
+  const POSTCODE_CITY =
+    /^\s*(?:\d{4}\s?[A-Z]{2}|\d{4,5})\s+([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ'’ -]{1,38})\s*$/;
   // OCR levert wisselende streepjes: hyphen, en dash, em dash, minus,
   // soms een bullet. Allemaal hetzelfde scheidingsteken.
   const SEPARATOR = /\s+[-–—‒−•·]\s+|,\s*/;
@@ -326,25 +330,58 @@ function findLocationLine(
       .split(SEPARATOR)
       .map((p) => p.trim())
       .filter((p) => p.length > 0);
-    if (parts.length < 2) continue;
 
-    // Stad: het laatste segment dat op "postcode + naam" eindigt. Zit die
-    // vorm er niet in, dan laten we de stad leeg — een gok op basis van
-    // "het laatste woord" levert een straatnaam op.
-    let city: string | null = null;
-    for (const part of [...parts].reverse()) {
-      const m = part.match(CITY_AFTER_POSTCODE);
-      if (m) {
-        city = m[1].trim();
-        break;
+    if (parts.length >= 2) {
+      // Stad: het laatste segment dat op "postcode + naam" eindigt. Zit
+      // die vorm er niet in, dan laten we de stad leeg — een gok op basis
+      // van "het laatste woord" levert een straatnaam op.
+      let city: string | null = null;
+      for (const part of [...parts].reverse()) {
+        const m = part.match(CITY_AFTER_POSTCODE);
+        if (m) {
+          city = m[1].trim();
+          break;
+        }
       }
+
+      // Venue: het eerste segment zonder cijfers. Staat er geen naam voor
+      // het adres, dan blijft dit leeg in plaats van de straat te pakken.
+      const venue = /\d/.test(parts[0]) ? null : parts[0];
+      if (venue || city) return { venue, city, indices: [i] };
     }
 
-    // Venue: het eerste segment zonder cijfers. Staat er geen naam voor
-    // het adres, dan blijft dit leeg in plaats van de straat te pakken.
-    const venue = /\d/.test(parts[0]) ? null : parts[0];
-    if (!venue && !city) continue;
-    return { venue, city, index: i };
+    // Hetzelfde adres, maar onder elkaar afgedrukt:
+    //
+    //     Cinetol
+    //     Tolstraat 182
+    //     1074 VM Amsterdam
+    //
+    // Zonder deze tak telt geen van die regels als "al gebruikt", en op
+    // een ticket zoeken we de titel bóven de datum — dan werd "1074 VM
+    // Amsterdam" de titel van je avond (Stager-kaartje, 12 sep 2026).
+    const below = lines[i + 1];
+    const postcode =
+      below && !isMostlyDate(below.text)
+        ? below.text.match(POSTCODE_CITY)
+        : null;
+    if (!postcode) continue;
+
+    // De regel erboven is de zaal. Alleen als het er ook naar uitziet:
+    // geen cijfers, geen datum, geen ticketopschrift.
+    const above = lines[i - 1];
+    const venueAbove =
+      above &&
+      !/\d/.test(above.text) &&
+      !isMostlyDate(above.text) &&
+      !LABELS.test(above.text)
+        ? above.text
+        : null;
+
+    return {
+      venue: venueAbove,
+      city: postcode[1].trim(),
+      indices: venueAbove ? [i - 1, i, i + 1] : [i, i + 1],
+    };
   }
   return null;
 }
@@ -460,7 +497,7 @@ export function extractEventDraft(
     }
   });
 
-  if (location) used.add(location.index);
+  for (const index of location?.indices ?? []) used.add(index);
 
   // Op een ticket zoeken we de titel bóven de datum. Daarvoor moeten we
   // weten welke regel de datum is.
@@ -468,11 +505,12 @@ export function extractEventDraft(
     opts.isTicket && date
       ? lines.findIndex((l) => isMostlyDate(l.text) && /\d/.test(l.text))
       : -1;
-  const title = findTitle(
-    lines,
-    used,
-    dateLineIndex > 0 ? dateLineIndex : undefined
-  );
+  // "De Nachtelijke Escapades +" — dat plusje hoort bij de support-regel
+  // eronder, die we net als aparte artiest hebben gelezen.
+  const title =
+    findTitle(lines, used, dateLineIndex > 0 ? dateLineIndex : undefined)
+      ?.replace(/\s*[+&,]\s*$/, '')
+      .trim() || null;
 
   // Stad: alleen als ze het zelf zeggen, of als de venue uit onze
   // Amsterdamse lijst kwam — dan is het geen gok maar een gevolg.
