@@ -16,11 +16,20 @@ import { inArray, sql } from 'drizzle-orm';
 import { db, schema } from '../src/db/index.js';
 
 const APPLY = process.argv.includes('--apply');
+/** Komma-lijst: `--venue=de-brakke-grond`. Zonder filter pakt dit script
+    alle venues tegelijk, en dat is zelden wat je wilt als je voor één
+    venue iets hebt opgeruimd. */
+const VENUES = process.argv
+  .find((a) => a.startsWith('--venue='))
+  ?.split('=')[1]
+  ?.split(',')
+  .filter(Boolean);
 
 const rows: any = await db.execute(sql`
   SELECT e.id, e.venue_id, e.title, e.created_at
   FROM events e
   WHERE NOT EXISTS (SELECT 1 FROM occurrences o WHERE o.event_id = e.id)
+    AND (${VENUES?.length ? sql`e.venue_id IN (${sql.join(VENUES.map((v) => sql`${v}`), sql`, `)})` : sql`true`})
   ORDER BY e.venue_id, e.id
 `);
 const orphans = (rows.rows ?? rows) as { id: string; venue_id: string; title: string }[];

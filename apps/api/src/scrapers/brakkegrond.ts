@@ -60,7 +60,16 @@ function slugify(s: string): string {
     .slice(0, 80);
 }
 
-async function harvestShowUrls(browser: Browser): Promise<string[]> {
+type AgendaCard = { url: string; category: string };
+
+/**
+ * De agendakaart draagt het type in een eigen element
+ * (`.card-default__category`, of `.event-highlights__categories` op de
+ * uitgelichte kaart): "Voorstelling", "Expositie", "Festival | Te gast",
+ * "Residentie". Op de detailpagina staat dat nergens, dus het moet hier
+ * mee — en daardoor hoeven residenties niet eens opgehaald te worden.
+ */
+async function harvestShowUrls(browser: Browser): Promise<AgendaCard[]> {
   const ctx = await browser.newContext({ userAgent: UA });
   const page = await ctx.newPage();
   try {
@@ -71,17 +80,24 @@ async function harvestShowUrls(browser: Browser): Promise<string[]> {
       await page.evaluate(`window.scrollTo(0, document.body.scrollHeight * ${(i + 1) / 4})`);
       await page.waitForTimeout(500);
     }
-    const urls = (await page.evaluate(`(() => {
-      const links = Array.from(document.querySelectorAll('a[href*="/agenda/"]'));
-      const out = new Set();
-      const re = /\\/agenda\\/(\\d+)\\/[a-z][a-z0-9-]+$/;
-      for (const a of links) {
-        const href = a.href || '';
-        if (re.test(href)) out.add(href);
+    const cards = (await page.evaluate(`(() => {
+      var clean = function (el) { return el ? (el.textContent || '').replace(/\\s+/g, ' ').trim() : ''; };
+      var re = /\\/agenda\\/(\\d+)\\/[a-z][a-z0-9-]+$/;
+      var links = document.querySelectorAll('a[href*="/agenda/"]');
+      var seen = {};
+      var out = [];
+      for (var i = 0; i < links.length; i++) {
+        var a = links[i];
+        var href = a.href || '';
+        if (!re.test(href) || seen[href]) continue;
+        seen[href] = 1;
+        var card = a.closest('li,article,div');
+        var cat = card ? card.querySelector('.card-default__category, .event-highlights__categories') : null;
+        out.push({ url: href, category: clean(cat) });
       }
-      return Array.from(out);
-    })()`)) as string[];
-    return urls;
+      return out;
+    })()`)) as AgendaCard[];
+    return cards;
   } finally {
     await ctx.close();
   }
@@ -224,9 +240,9 @@ export async function scrapeBrakkeGrond(options?: {
 
   const browser = await chromium.launch();
   try {
-    const urls = await harvestShowUrls(browser);
-    result.fetched = urls.length;
-    if (urls.length === 0) {
+    const cards = await harvestShowUrls(browser);
+    result.fetched = cards.length;
+    if (cards.length === 0) {
       result.errors.push('geen show-URLs op /agenda');
       return [result];
     }
@@ -235,8 +251,25 @@ export async function scrapeBrakkeGrond(options?: {
     /** eventId → occurrence-ids die de bron dit rondje aanbood. */
     const seenOcc = new Map<string, Set<string>>();
 
-    for (const url of urls) {
+    for (const { url, category } of cards) {
       try {
+        // Een residentie is een werkperiode, geen voorstelling: geen
+        // tijd, geen kaartverkoop, niks om heen te gaan. De Brakke Grond
+        // zet ze wel op de agenda, wij niet.
+        //
+        // De ticketknop leek eerst het signaal, maar dat is 'ie niet:
+        // zeventien pagina's missen die knop en daar zitten gewone
+        // festivals bij (IDFA DocLab, Brainwash) die hun kaarten elders
+        // verkopen. Het categorie-label is wél eenduidig.
+        if (/residentie/i.test(category)) {
+          skip('residentie');
+          // Leeg in seenOcc zetten zodat de prune eerder ingelezen
+          // datums opruimt. Het event-rijtje blijft leeg achter; dat
+          // ruimt scripts/_prune-orphan-events.ts op.
+          const resId = url.match(/\/agenda\/(\d+)\//)?.[1];
+          if (resId) seenOcc.set(`evt-bg-${resId}`, new Set());
+          continue;
+        }
         const meta = await fetchShowMeta(browser, url);
         if (!meta) { skip('geen titel of geen datum in ticketblok'); continue; }
 
