@@ -477,3 +477,15 @@ test('android leest hetzelfde kaartje in een andere volgorde', () => {
   assert.equal(draft.time, '21:00');
   assert.equal(draft.city, 'Amsterdam');
 });
+
+test('de speeldata op een tourposter zijn geen tijd', () => {
+  const poster = [
+    '14.11 DUBLIN, IE',
+    '15.11 GLASGOW, UK',
+    '29.11 AMSTERDAM, NL',
+    '6.12 STOCKHOLM, SE',
+  ].join('\n');
+  assert.equal(parseTime(poster), null);
+  // Maar op een gewone poster blijft de punt wel een tijd.
+  assert.equal(parseTime('Deuren 19.30, aanvang 20.30'), '20:30');
+});

@@ -322,7 +322,17 @@ function asDate(year: number, month: number, day: number): string | null {
  * de eerste die er staat.
  */
 export function parseTime(text: string): string | null {
-  const matches = [...text.matchAll(/\b(\d{1,2})\s*[:.hu]\s*([\dOoIl)]{2})/gi)];
+  // Een tourposter staat vol met "14.11 DUBLIN, IE" — dat is een datum,
+  // geen tijd, en zonder dit werd de eerste speeldatum 14:11. Staan er
+  // drie of meer van die puntparen, dan is de punt in dit document een
+  // datumscheiding en luisteren we alleen nog naar de dubbele punt.
+  const dotDates = [...text.matchAll(/\b\d{1,2}\.\d{1,2}\b/g)].length;
+  const separator = dotDates >= 3 ? '[:hu]' : '[:.hu]';
+  const matches = [
+    ...text.matchAll(
+      new RegExp(`\\b(\\d{1,2})\\s*${separator}\\s*([\\dOoIl)]{2})`, 'gi')
+    ),
+  ];
   if (matches.length === 0) return null;
 
   const scored = matches
