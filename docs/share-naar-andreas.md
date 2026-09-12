@@ -199,6 +199,34 @@ valt af op `ok` — "Open 19:30" is geen titelregel — dus die plakt niet mee.
 Resultaat: **Stevie Wonder — 'Songs in The Key of Life' — Ziggo Dome, 28 okt**,
 de avond die op de poster naast Amsterdam staat.
 
+### Een ingezoomd ticket bleef ingezoomd — ook na sluiten (12 sep 2026)
+
+Zoom in op pagina 3, sluit het ticket, open het opnieuw: zwart scherm met
+paginanummers. Uitzoomen hielp niet, de app afsluiten wel.
+
+Wat er gebeurde: de zoom van een pagina zetten we met `scrollResponderZoomTo`,
+en dat is **native state van de scrollview, geen prop van ons**. React Native
+hergebruikt native views uit een pool, dus een verse `ZoomablePage` kan een
+scrollview krijgen die nog op 3× staat, gecentreerd op een punt van een andere
+pagina. Je ticket staat dan buiten beeld. De cyaan/magenta debugranden lieten het
+precies zien: de pagina zat op z'n plek, de inhoud erbinnen niet.
+
+Drie dingen opgelost:
+
+1. **Elke pagina zet zichzelf bij de eerste layout op z'n uitgangspunt**
+   (`onPageLayout`). Ná de layout, want zoomen naar een rechthoek in een view
+   zonder maat rekent met nul en geeft exact dezelfde scheve stand.
+2. **Een pagina die nét geboren wordt krijgt geen overgenomen uitsnede.**
+   `applied` begint op de focus die er bij de mount ligt. De zoom reist dus mee
+   naar kaartjes die al openstaan — precies wat er gebeurt als je veegt — en
+   niet naar pagina's die nog moeten renderen.
+3. **`zoom.current` houdt bij wat we zélf zetten.** `onScroll` vuurt niet
+   betrouwbaar bij een zoom die wij opdragen (zeker niet zonder animatie), en
+   dan denkt de volgende tik dat je uitgezoomd bent en zoomt hij nóg een keer
+   in — waarna je je ticket kwijt bent.
+
+Plus: een nieuw document (andere pagina-URI's) begint altijd zonder uitsnede.
+
 ### Meerdere bestanden in één share (11 sep 2026)
 
 Je koopt drie kaartjes en krijgt drie losse PDF's. Dat kon niet: iOS liet de

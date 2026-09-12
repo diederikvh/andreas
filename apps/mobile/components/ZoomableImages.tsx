@@ -114,6 +114,14 @@ export function ZoomableImages({
   // wil bij twee kaartjes: scannen, vegen, scannen.
   const [zoomed, setZoomed] = useState(false);
 
+  // Ander document, andere uitsnede. Zonder dit houdt een viewer die
+  // opnieuw opengaat de zoom van de vorige keer vast en land je op een
+  // stukje papier zonder te weten waar je bent.
+  const document = pages.map((p) => p.uri).join('|');
+  useEffect(() => {
+    setFocus(null);
+  }, [document]);
+
   return (
     <View
       style={[styles.root, { backgroundColor: background }]}
@@ -208,7 +216,13 @@ function ZoomablePage({
   const isIos = Platform.OS === 'ios';
   const view = useRef<ScrollView>(null);
   const zoom = useRef(1);
-  const applied = useRef<PageFocus>(null);
+  // Wat deze pagina al toont. Bij de mount is dat per definitie de
+  // uitsnede die er nú ligt: een pagina die nog geen layout heeft kan je
+  // niet naar een rechthoek zoomen — iOS rekent dan met nul en schuift
+  // het vel het beeld uit, waarna ook uitzoomen niets meer teruggeeft.
+  // De zoom reist dus mee naar pagina's die al openstaan (dat is precies
+  // het geval bij vegen), niet naar pagina's die nog geboren worden.
+  const applied = useRef<PageFocus>(focus);
 
   const scale = useSharedValue(1);
   const savedScale = useSharedValue(1);
@@ -239,14 +253,19 @@ function ZoomablePage({
       }) => void;
     } | null;
 
-  const showWhole = () => {
+  const showWhole = (animated = true) => {
     if (isIos) {
+      // Zelf bijhouden wat we zetten. `onScroll` vuurt niet betrouwbaar
+      // bij een zoom die wij opdragen (zeker niet zonder animatie), en
+      // dan denkt de volgende tik dat je nog uitgezoomd bent en zoomt hij
+      // nóg een keer in — waarna je je ticket kwijt bent.
+      zoom.current = 1;
       scroller()?.scrollResponderZoomTo?.({
         x: 0,
         y: 0,
         width,
         height,
-        animated: true,
+        animated,
       });
       return;
     }
@@ -254,14 +273,15 @@ function ZoomablePage({
     onZoom(false);
   };
 
-  const showPoint = (x: number, y: number) => {
+  const showPoint = (x: number, y: number, animated = true) => {
     if (isIos) {
+      zoom.current = TAP_ZOOM;
       scroller()?.scrollResponderZoomTo?.({
         x: x - width / TAP_ZOOM / 2,
         y: y - height / TAP_ZOOM / 2,
         width: width / TAP_ZOOM,
         height: height / TAP_ZOOM,
-        animated: true,
+        animated,
       });
       return;
     }
@@ -318,6 +338,28 @@ function ZoomablePage({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focus]);
 
+  /**
+   * Bij de eerste layout: zet deze pagina expliciet op z'n uitgangspunt.
+   *
+   * Twee redenen. React Native hergebruikt native views uit een pool, en
+   * de zoom die we met `scrollResponderZoomTo` zetten hoort bij de view en
+   * niet bij onze props — dus kan een pagina met de zoom van een vórig
+   * kaartje uit die pool komen. Je ziet dan niets: het vel staat buiten
+   * beeld en ook uitzoomen brengt het niet terug, want daar rekent iOS
+   * mee vanaf dezelfde scheve stand. Alleen de app afsluiten hielp.
+   *
+   * En het moet ná de layout: zoomen naar een rechthoek in een view die
+   * nog geen maat heeft rekent met nul en levert precies dezelfde scheve
+   * stand op.
+   */
+  const laidOut = useRef(false);
+  const onPageLayout = () => {
+    if (laidOut.current) return;
+    laidOut.current = true;
+    if (focus) showPoint(focus.x, focus.y, false);
+    else showWhole(false);
+  };
+
   const pinch = Gesture.Pinch()
     .onUpdate((e) => {
       const next = savedScale.value * e.scale;
@@ -365,6 +407,7 @@ function ZoomablePage({
     return (
       <ScrollView
         ref={view}
+        onLayout={onPageLayout}
         style={{ width, height }}
         contentContainerStyle={{ width, height }}
         maximumZoomScale={MAX_ZOOM}
