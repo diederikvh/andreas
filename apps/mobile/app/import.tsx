@@ -642,17 +642,23 @@ function SharePreview({
   // Deelde je meer dan één bestand, dan is het aantal het enige dat je
   // hier wil lezen: één naam noemen suggereert dat de rest niet meekomt.
   const sharedCount = shareFileUris(share).length;
-  const sourceLabel =
-    sharedCount > 1
-      ? t(`${sharedCount} bestanden`, `${sharedCount} files`)
-      : (share.title ??
-        (share.kind === 'url'
-          ? share.url
-          : share.kind === 'text'
-            ? share.text
-            : share.kind === 'image'
-              ? null
-              : share.fileName));
+  // Onder wat je deelde staat niet hóe het bestand heet — dat zie je al —
+  // maar waar het blijft. Die ene regel vervangt de lange privacyzin die
+  // eerder onder de kop stond.
+  const sourceLabel = share.fileUri
+    ? [
+        sharedCount > 1
+          ? t(`${sharedCount} bestanden`, `${sharedCount} files`)
+          : null,
+        t('Blijft op je toestel', 'Stays on your device'),
+      ]
+        .filter(Boolean)
+        .join(' · ')
+    : share.kind === 'url'
+      ? share.url
+      : share.kind === 'text'
+        ? (share.text ?? share.title)
+        : share.title;
   const thumbUri =
     share.kind === 'image' ? share.fileUri : (pdfCover?.uri ?? null);
   const showThumb = Boolean(thumbUri) && !imageFailed;
@@ -919,7 +925,6 @@ function SharePreview({
             busy={busy}
             match={match}
             draftDate={safe.date}
-            hasFile={Boolean(share.fileUri)}
             pendingMatches={pendingMatches ?? []}
             onJoinPending={joinPending}
             onPick={onPickCandidate}
@@ -1121,7 +1126,6 @@ function ChooseStep({
   busy,
   match,
   draftDate,
-  hasFile,
   pendingMatches,
   onJoinPending,
   onPick,
@@ -1131,7 +1135,6 @@ function ChooseStep({
   match: MatchResult | null;
   /** Alleen om "andere avond" bij een zoekresultaat te kunnen zetten. */
   draftDate: string | null;
-  hasFile: boolean;
   /** Avonden die iemand zelf heeft toegevoegd en die op deze titel of
       venue lijken. Horen in dezelfde lijst als de echte events: voor wie
       kiest is het verschil niet interessant. */
@@ -1183,14 +1186,6 @@ function ChooseStep({
             ? t('Dit kent Andreas nog niet', 'Andreas does not know this yet')
             : t('Selecteer het event', 'Select the event')}
         </Text>
-        {hasFile ? (
-          <Text style={[styles.privacy, { color: roles.fgMuted }]}>
-            {t(
-              'Dit bestand blijft op je toestel en wordt niet met Andreas gedeeld.',
-              'This file stays on your device and is not shared with Andreas.',
-            )}
-          </Text>
-        ) : null}
       </View>
 
       {/* Kandidaten en "geen van deze" in één lijst met dezelfde tussenruimte:
@@ -2630,12 +2625,6 @@ const styles = StyleSheet.create({
     paddingTop: 12,
     borderTopWidth: 1,
     gap: 10,
-  },
-  privacy: {
-    fontFamily: fontFamily.body,
-    fontSize: 12,
-    lineHeight: 17,
-    textAlign: 'center',
   },
   dockRow: { flexDirection: 'row', gap: 8 },
   closeNarrow: { flex: 0, paddingHorizontal: 26 },
