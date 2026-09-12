@@ -360,13 +360,17 @@ test('logo achter de QR: de bestandsnaam weet wie er speelt', () => {
   assert.deepEqual(draft.artists, ['The Afghan Whigs']);
 });
 
-test('zonder bestandsnaam blijft het logo staan — dat is de reden', () => {
+test('ook zonder bestandsnaam: logo en ticketboer zijn geen titel', () => {
   const draft = extractEventDraft(PARADISO_PAYLOGIC, {
     venueNames: VENUES,
     today: TODAY,
     isTicket: true,
   });
-  assert.equal(draft.title, 'Pagadiso');
+  // "Pagadiso" is de zaal met één verkeerde letter, "Paylogic" de
+  // ticketboer, en de datum staat achter de prijs geplakt. Alle drie
+  // zaten ze eerder in de weg.
+  assert.equal(draft.title, 'The Afghan Whigs');
+  assert.equal(draft.venue, 'Paradiso');
 });
 
 test('de bestandsnaam wint alleen als hij iets anders zegt', () => {

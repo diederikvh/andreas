@@ -905,7 +905,6 @@ function SharePreview({
           <ChooseStep
             busy={busy}
             match={match}
-            draftTitle={draft?.title ?? null}
             draftDate={safe.date}
             hasFile={Boolean(share.fileUri)}
             pendingMatches={pendingMatches ?? []}
@@ -1108,7 +1107,6 @@ function pendingDateLabel(p: PendingEvent, locale: Locale): string | null {
 function ChooseStep({
   busy,
   match,
-  draftTitle,
   draftDate,
   hasFile,
   pendingMatches,
@@ -1118,7 +1116,6 @@ function ChooseStep({
 }: {
   busy: boolean;
   match: MatchResult | null;
-  draftTitle: string | null;
   /** Alleen om "andere avond" bij een zoekresultaat te kunnen zetten. */
   draftDate: string | null;
   hasFile: boolean;
@@ -1186,27 +1183,15 @@ function ChooseStep({
       {/* Kandidaten en "geen van deze" in één lijst met dezelfde tussenruimte:
           het zijn allemaal keuzes, dus ze horen even ver uit elkaar. */}
       <View style={{ gap: 8, marginTop: 8 }}>
+        {/* Vonden we niets, dan staat er niets. Vertellen wat we dáchten
+            te lezen helpt je niet vooruit — de knop eronder wel. */}
         {candidates.length > 0 ? (
           <OptionList
             candidates={candidates}
             pickedId={null}
             onPick={(id) => onPick(id)}
           />
-        ) : pendingMatches.length > 0 ? null : (
-          <Text
-            style={[styles.stepLead, styles.centered, { color: roles.fgMuted }]}
-          >
-            {draftTitle
-              ? t(
-                  `We lazen "${draftTitle}" — meld het aan en we voegen het toe.`,
-                  `We read "${draftTitle}" — submit it and we will add it.`,
-                )
-              : t(
-                  'We konden er geen event uit halen. Vul het zelf aan.',
-                  'We could not read an event from this. Fill it in yourself.',
-                )}
-          </Text>
-        )}
+        ) : null}
 
         {/* Al toegevoegd — door jou of door iemand anders die hetzelfde
             affiche scande. Zelfde rij als een echt event: wie kiest wil

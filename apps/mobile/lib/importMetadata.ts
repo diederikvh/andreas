@@ -58,6 +58,15 @@ type Line = { text: string; height: number; block: number };
 const LABELS =
   /^(e-?\s*ticket|ticket|tickets|admission|toegang|entree|entrance|order|bestelling|bestelbon|factuur|invoice|barcode|qr[- ]?code|scan|voorverkoop|presale)\b/i;
 
+/**
+ * Woorden die op een kaartje het *soort* kaartje beschrijven, of de
+ * ticketboer die het drukte. Nooit de naam van wat je gaat zien, wél vaak
+ * in een groot lettertype — op een Paylogic-kaartje staat "Paylogic
+ * Customer Care" vier keer zo groot als de band.
+ */
+const TICKET_TYPE =
+  /^(normaal|normal|standaard|standard|regulier|regular|early\s*bird|vroege\s*vogel|student|senior|kind|child|combi|dagticket|weekendticket|staanplaats|zitplaats|entree|toegang)\b|lidmaatschap|membership|paylogic|stager|eventix|ticketmaster|see\s*tickets|eventbrite|weeztix|ticketswap|yourticketprovider|active\s*tickets/i;
+
 /** Regels die alleen ticket-administratie zijn. */
 const TICKET_DATA =
   /(ticket|order|bestel|boeking|reference|klant)\s*(nr|no|nummer|number|id)?\.?\s*[:#]?\s*[\w-]*\d{4}/i;
@@ -149,6 +158,29 @@ function toLines(ocr: OcrResult): Line[] {
  * Geeft de index in `lines` terug, niet alleen de naam: de aanroeper moet
  * weten wélke regel het was om de adresregel eronder mee uit te sluiten.
  */
+/**
+ * Hoeveel tekens er tussen twee woorden zitten. Klein en zonder
+ * optimalisaties: we vergelijken een handvol regels met een paar honderd
+ * zaalnamen, geen woordenboeken.
+ */
+function editDistance(a: string, b: string): number {
+  if (a === b) return 0;
+  if (Math.abs(a.length - b.length) > 2) return 3;
+  let prev = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i += 1) {
+    const row = [i];
+    for (let j = 1; j <= b.length; j += 1) {
+      row[j] = Math.min(
+        prev[j] + 1,
+        row[j - 1] + 1,
+        prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)
+      );
+    }
+    prev = row;
+  }
+  return prev[b.length];
+}
+
 function findVenue(
   lines: Line[],
   venueNames: string[]
@@ -174,7 +206,53 @@ function findVenue(
     if (hit) return { name: hit.name, index };
   }
 
+  // 3. Bijna goed. Een logo waar een QR doorheen loopt levert "Pagadiso"
+  //    op, en dat is geen titel maar een zaal met één verkeerde letter.
+  //    Alleen op een hele regel vergelijken en alleen bij namen die lang
+  //    genoeg zijn: bij korte namen is één letter verschil een ander
+  //    woord.
+  for (const [index, line] of lines.entries()) {
+    const haystack = normalize(line.text);
+    if (haystack.length < 5) continue;
+    const hit = candidates.find((v) => {
+      if (v.key.length < 5) return false;
+      const room = v.key.length >= 8 ? 2 : 1;
+      return editDistance(haystack, v.key) <= room;
+    });
+    if (hit) return { name: hit.name, index };
+  }
+
   return null;
+}
+
+/**
+ * Elke regel die een zaal noemt, of er één letter naast zit.
+ *
+ * `findVenue` stopt bij de eerste treffer, want die vult het veld. Voor de
+ * titel moeten we ze allemaal weten: op het Paradiso-kaartje kwam de zaal
+ * uit het adresblok terwijl het logo bovenaan — met een QR er dwars
+ * doorheen, gelezen als "Pagadiso" — de grootste regel was en dus titel
+ * werd. Een zaalnaam is nooit de naam van wat je gaat zien.
+ */
+function venueLikeLines(lines: Line[], venueNames: string[]): number[] {
+  const keys = venueNames
+    .map((name) => ({ words: normalizeWords(name), key: normalize(name) }))
+    .filter((v) => v.key.length >= 3);
+  const hits: number[] = [];
+  for (const [index, line] of lines.entries()) {
+    const words = ` ${normalizeWords(line.text)} `;
+    const flat = normalize(line.text);
+    const hit = keys.some(
+      (v) =>
+        words.includes(` ${v.words} `) ||
+        (v.key.length >= 8 && flat.includes(v.key)) ||
+        (v.key.length >= 5 &&
+          flat.length >= 5 &&
+          editDistance(flat, v.key) <= (v.key.length >= 8 ? 2 : 1))
+    );
+    if (hit) hits.push(index);
+  }
+  return hits;
 }
 
 /**
@@ -408,6 +486,7 @@ function findTitle(
     !used.has(index) &&
     !LABELS.test(l.text) &&
     !TICKET_DATA.test(l.text) &&
+    !TICKET_TYPE.test(l.text) &&
     // Een regel die alleen een datum of tijd is, is geen titel.
     !/^[\s\d:.\-/u]+$/i.test(l.text) &&
     !isMostlyDate(l.text);
@@ -547,6 +626,9 @@ export function extractEventDraft(
   // niet naar boven — op een poster kan de titel bóven de venuenaam in
   // hetzelfde blok staan en die willen we juist houden.
   const used = new Set<number>();
+  // Geen enkele zaalnaam is een titel — ook niet die ene die we niet als
+  // venue gebruikten.
+  for (const index of venueLikeLines(lines, venueNames)) used.add(index);
   if (venueHit) {
     const block = lines[venueHit.index].block;
     for (let i = venueHit.index; i < lines.length && lines[i].block === block; i++) {
@@ -568,9 +650,15 @@ export function extractEventDraft(
 
   // Op een ticket zoeken we de titel bóven de datum. Daarvoor moeten we
   // weten welke regel de datum is.
+  //
+  // Zoek de regel waar diezelfde datum in staat, niet de regel die er
+  // alléén een datum is: op een Paylogic-kaartje staat hij achter de
+  // prijs geplakt ("Prijs: € 34,30 EUR* Datum: 28 september 2026 21:00")
+  // en dan vonden we geen anker, waarna de grootste regel won — het logo
+  // van de ticketboer.
   const dateLineIndex =
     opts.isTicket && date
-      ? lines.findIndex((l) => isMostlyDate(l.text) && /\d/.test(l.text))
+      ? lines.findIndex((l) => /\d/.test(l.text) && parseDate(l.text, today) === date)
       : -1;
   // "De Nachtelijke Escapades +" — dat plusje hoort bij de support-regel
   // eronder, die we net als aparte artiest hebben gelezen.
