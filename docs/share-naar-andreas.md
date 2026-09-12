@@ -854,9 +854,20 @@ kiezen expliciet is en dat "Bedoel je een van deze?" niets automatisch vastzet.
 
 ## Fase 8 — Poster scanner (Feature 13)
 
-- [ ] **8.1 — `app/scan.tsx`** — camera-shell gekopieerd van `/add-friend`, daarna
-      exact dezelfde pipeline als fase 2-4. Geen aparte herkennings-code.
-- [ ] **8.2 — Ingang** vanaf de homepage of het Meer-menu. Niet een zesde tab.
+- [x] **8.1 — `app/scan.tsx`** (12 sep 2026) — camera, sluiterknop, klaar. De foto
+      gaat via `pendingShareFromPhoto()` langs precies dezelfde weg als een gedeelde
+      afbeelding: kopie in `import/`, `setPending`, `/import`. **Geen tweede
+      herkenningspad**, en dat moet zo blijven — alles wat de import beter maakt
+      (geleerde zalen, fuzzy zoeken, zelf aanmaken) komt zo gratis mee.
+      `replace` naar `/import`, niet `push`: sluit je het vel, dan wil je niet
+      terug in de zoeker staan. Geen bestandsnaam meegeven — de camera verzint
+      `IMG_0042` en dat is geen titel.
+- [x] **8.2 — Ingang** in Meer, boven "Nieuwe aanwinsten". Geen zesde tab en geen
+      knop op de hero: je scant een poster een paar keer per maand.
+
+      Let op: `expo-camera` zat er al (vriend-QR) en de permissie ook, dus dit kon
+      als OTA. De **tekst** van de iOS-permissie ging wel mee (`app.json`, ging over
+      alleen de vriend-QR) en die landt pas in de volgende store-build.
 
 ---
 

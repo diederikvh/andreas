@@ -195,6 +195,36 @@ async function copyIntoImportDir(
 }
 
 /**
+ * Een foto die we zelf net gemaakt hebben (de poster-scanner).
+ *
+ * Verder exact dezelfde route als een gedeelde poster: kopie in onze eigen
+ * map, `setPending`, en `/import` doet de rest. Geen tweede
+ * herkenningspad — wat de scanner ziet is een afbeelding, net als een
+ * screenshot uit Instagram.
+ *
+ * Zonder `fileName`: de camera verzint een naam als `IMG_0042` en dat is
+ * geen titel, terwijl de import de bestandsnaam wél als titelbron gebruikt.
+ */
+export async function pendingShareFromPhoto(photo: {
+  uri: string;
+  width?: number | null;
+  height?: number | null;
+}): Promise<PendingShare | null> {
+  const copied = await copyIntoImportDir(photo.uri, 'scan.jpg', 'image/jpeg');
+  if (!copied) return null;
+  return {
+    kind: 'image',
+    fileUri: copied.uri,
+    fileName: null,
+    mimeType: 'image/jpeg',
+    size: copied.size,
+    width: photo.width ?? null,
+    height: photo.height ?? null,
+    receivedAt: Date.now(),
+  };
+}
+
+/**
  * `ShareIntent` → onze eigen vorm, met het bestand al gekopieerd.
  *
  * expo-share-intent geeft `type: 'weburl' | 'text' | 'media' | 'file'`; wij

@@ -107,7 +107,7 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "Andreas gebruikt de camera alleen om een vriend-QR te scannen.",
+          "cameraPermission": "Andreas gebruikt de camera om een poster te scannen of een vriend-QR te lezen.",
           "recordAudioAndroid": false
         }
       ],
