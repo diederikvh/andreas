@@ -575,6 +575,7 @@ function SharePreview({
       title: e.title,
       venueName: e.nextOccurrenceVenue?.name ?? e.venue.name,
       startsAt: e.startsAt,
+      imageUrl: e.posterUrl ?? e.imageUrl ?? e.venue.imageUrl ?? null,
     }));
     return matchEvent(safe, candidates);
   }, [matches, safe]);
@@ -1227,9 +1228,7 @@ function ChooseStep({
         >
           <View style={{ flex: 1, gap: 3 }}>
             <Text style={[styles.optionTitle, { color: roles.fg }]}>
-              {candidates.length === 0
-                ? t('Zelf toevoegen', 'Add it yourself')
-                : t('Geen van deze', 'None of these')}
+              {t('Event aanmaken', 'Create event')}
             </Text>
             <Text style={[styles.optionMeta, { color: roles.fgMuted }]}>
               {t(
@@ -1482,6 +1481,7 @@ function SearchFallback({
           title: e.title,
           venueName: e.nextOccurrenceVenue?.name ?? e.venue.name,
           startsAt: e.startsAt,
+          imageUrl: e.posterUrl ?? e.imageUrl ?? e.venue.imageUrl ?? null,
         };
         return {
           candidate,
@@ -1502,7 +1502,7 @@ function SearchFallback({
           { backgroundColor: isNacht ? palette.noir2 : palette.paper2 },
         ]}
       >
-        <Ionicons name="search" size={16} color={roles.fgMuted} />
+        <Ionicons name="search" size={18} color={roles.fgMuted} />
         <TextInput
           value={typed}
           onChangeText={setTyped}
@@ -1581,6 +1581,21 @@ function OptionList({
               },
             ]}
           >
+            {/* Het beeld van het event. Kennen we de avond, dan kennen we
+                'm ook aan z'n foto — sneller dan de titel lezen. Geen
+                beeld? Dan schuift de tekst gewoon naar links; een lege
+                grijze vlek zegt niets. */}
+            {candidate.imageUrl ? (
+              <Image
+                source={{ uri: candidate.imageUrl }}
+                style={[
+                  styles.optionThumb,
+                  { backgroundColor: isNacht ? palette.noir3 : palette.paper3 },
+                ]}
+                contentFit="cover"
+                transition={140}
+              />
+            ) : null}
             <View style={{ flex: 1, gap: 3 }}>
               <Text
                 numberOfLines={2}
@@ -2414,20 +2429,24 @@ const styles = StyleSheet.create({
   option: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-    padding: 14,
+    gap: 12,
+    padding: 12,
     borderRadius: 14,
     borderWidth: 1,
   },
-  // Zelfde blok als een optie, maar dan om in te typen. Geen rand: het is
-  // een veld, geen keuze die je al gemaakt kan hebben.
+  // Zelfde vorm als de thumb in `EventListRow`, een maat kleiner: deze
+  // rij heeft twee regels tekst, geen vier.
+  optionThumb: { width: 56, height: 56, borderRadius: 10 },
+  // Een veld, geen keuze — dus de vorm van de zoekpil elders in de app
+  // (rond, 44 hoog) in plaats van die van de keuzerijen eromheen. Iets
+  // ruimer dan die pil, want hij staat hier tussen rijen van 80.
   searchRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 13,
-    borderRadius: 14,
+    paddingHorizontal: 18,
+    height: 52,
+    borderRadius: 999,
   },
   searchInput: {
     flex: 1,

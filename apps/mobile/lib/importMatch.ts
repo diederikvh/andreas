@@ -30,6 +30,10 @@ export type MatchCandidate = {
   venueName: string;
   /** ISO-string van de eerstvolgende occurrence. */
   startsAt: string;
+  /** Alleen om te tonen; weegt niet mee in de score. Zelfde prioriteit
+      als elders in een lijst: poster, anders het eventbeeld, anders de
+      zaal. */
+  imageUrl?: string | null;
 };
 
 export type MatchParts = {
