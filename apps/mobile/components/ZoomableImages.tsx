@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Platform,
   Pressable,
@@ -27,6 +27,18 @@ export type ViewerPage = {
   height: number | null;
 };
 
+/** Waar iemand op inzoomde, en op wat voor pagina. */
+type PageFocus = { x: number; y: number; aspect: number } | null;
+
+/** Lijkt deze pagina genoeg op die waar de zoom vandaan komt? We kunnen
+    niet zien wat er staat, dus we vergelijken de vorm. Twee procent speling
+    voor een render die net iets anders uitpakt. */
+function sameShape(page: ViewerPage, focus: PageFocus): boolean {
+  if (!focus || !page.width || !page.height) return false;
+  const aspect = page.width / page.height;
+  return Math.abs(aspect - focus.aspect) / focus.aspect < 0.02;
+}
+
 const MAX_ZOOM = 5;
 
 /** Hoe ver één tik inzoomt. Drie is genoeg om een QR van een A4 het halve
@@ -43,6 +55,15 @@ const TAP_ZOOM = 3;
  * meer waar hij was. Nu veeg je opzij voor de volgende pagina en is
  * verticaal vrij voor de pagina zelf. Bij meer dan één pagina staan de
  * nummers onderaan; daarmee spring je direct naar het tweede kaartje.
+ *
+ * **De zoom reist mee naar een kaartje dat er hetzelfde uitziet.** Twee
+ * tickets uit dezelfde bestelling hebben hun code op dezelfde plek: zoom
+ * je in op de code van het eerste, dan staat die van het tweede na een
+ * veeg meteen goed — scannen, vegen, scannen. Bij een pagina van een
+ * ander formaat (de voorwaarden achterop, een lidmaatschapsvel) klopt die
+ * aanname niet en begint hij weer bij het hele vel. Zelfde verhouding is
+ * onze maat voor "hetzelfde kaartje"; wat er stáát kunnen we niet
+ * vergelijken zonder de pixels te lezen.
  *
  * **Tikken zoomt in op wat je aanwijst.** Op een kaartje staat de echte
  * informatie in één hoek — de code die de scanner moet lezen — en die
@@ -77,10 +98,17 @@ export function ZoomableImages({
 }) {
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
+  const isIos = Platform.OS === 'ios';
   const pager = useRef<ScrollView>(null);
   const [current, setCurrent] = useState(0);
-  // Ingezoomd staat het bladeren uit: anders is dezelfde veeg zowel
-  // "verschuif het beeld" als "volgende pagina".
+  // Waar je op inzoomde, in de coördinaten van een pagina, plus de
+  // verhouding van de pagina waar het op sloeg.
+  const [focus, setFocus] = useState<PageFocus>(null);
+  // Op Android staat het bladeren uit zodra je inzoomt: daar is het
+  // verschuiven een eigen gebaar en zou dezelfde veeg twee dingen
+  // betekenen. Op iOS regelt de scrollview dat zelf — ben je aan de rand
+  // van je ingezoomde kaartje, dan neemt de pager het over. Dát is wat je
+  // wil bij twee kaartjes: scannen, vegen, scannen.
   const [zoomed, setZoomed] = useState(false);
 
   return (
@@ -89,7 +117,7 @@ export function ZoomableImages({
         ref={pager}
         horizontal
         pagingEnabled
-        scrollEnabled={!zoomed && pages.length > 1}
+        scrollEnabled={pages.length > 1 && (isIos || !zoomed)}
         showsHorizontalScrollIndicator={false}
         onMomentumScrollEnd={(e) =>
           setCurrent(Math.round(e.nativeEvent.contentOffset.x / width))
@@ -101,6 +129,8 @@ export function ZoomableImages({
             page={page}
             width={width}
             height={height}
+            focus={sameShape(page, focus) ? focus : null}
+            onFocus={setFocus}
             onZoom={setZoomed}
           />
         ))}
@@ -155,16 +185,22 @@ function ZoomablePage({
   page,
   width,
   height,
+  focus,
+  onFocus,
   onZoom,
 }: {
   page: ViewerPage;
   width: number;
   height: number;
+  /** De zoom van een pagina die er hetzelfde uitziet, of niets. */
+  focus: PageFocus;
+  onFocus: (focus: PageFocus) => void;
   onZoom: (zoomed: boolean) => void;
 }) {
   const isIos = Platform.OS === 'ios';
   const view = useRef<ScrollView>(null);
   const zoom = useRef(1);
+  const applied = useRef<PageFocus>(null);
 
   const scale = useSharedValue(1);
   const savedScale = useSharedValue(1);
@@ -183,49 +219,42 @@ function ZoomablePage({
     savedTy.value = 0;
   };
 
-  /**
-   * Eén tik: inzoomen op het punt waar je tikte, of terug naar de hele
-   * pagina als je al ingezoomd zat.
-   *
-   * Bewust een gewone `Pressable` en geen tik-gebaar van gesture-handler:
-   * die vuurde binnen een ScrollView op iOS niet. `locationX/Y` komen
-   * binnen in de coördinaten van de pagina zelf.
-   */
-  const zoomTo = (x: number, y: number) => {
+  /** Wat iOS nodig heeft om naar een rechthoek te zoomen. */
+  const scroller = () =>
+    view.current as unknown as {
+      scrollResponderZoomTo?: (rect: {
+        x: number;
+        y: number;
+        width: number;
+        height: number;
+        animated?: boolean;
+      }) => void;
+    } | null;
+
+  const showWhole = () => {
     if (isIos) {
-      const scroller = view.current as unknown as {
-        scrollResponderZoomTo?: (rect: {
-          x: number;
-          y: number;
-          width: number;
-          height: number;
-          animated?: boolean;
-        }) => void;
-      } | null;
-      if (!scroller?.scrollResponderZoomTo) return;
-      if (zoom.current > 1.02) {
-        scroller.scrollResponderZoomTo({
-          x: 0,
-          y: 0,
-          width,
-          height,
-          animated: true,
-        });
-        return;
-      }
-      scroller.scrollResponderZoomTo({
+      scroller()?.scrollResponderZoomTo?.({
+        x: 0,
+        y: 0,
+        width,
+        height,
+        animated: true,
+      });
+      return;
+    }
+    reset();
+    onZoom(false);
+  };
+
+  const showPoint = (x: number, y: number) => {
+    if (isIos) {
+      scroller()?.scrollResponderZoomTo?.({
         x: x - width / TAP_ZOOM / 2,
         y: y - height / TAP_ZOOM / 2,
         width: width / TAP_ZOOM,
         height: height / TAP_ZOOM,
         animated: true,
       });
-      return;
-    }
-
-    if (scale.value > 1.02) {
-      reset();
-      onZoom(false);
       return;
     }
     // De verschuiving die het punt onder je vinger naar het midden
@@ -241,6 +270,45 @@ function ZoomablePage({
     savedTy.value = dy;
     onZoom(true);
   };
+
+  /**
+   * Eén tik: inzoomen op het punt waar je tikte, of terug naar de hele
+   * pagina als je al ingezoomd zat. Wat je koos gaat naar boven, zodat een
+   * kaartje dat er hetzelfde uitziet dezelfde uitsnede krijgt.
+   *
+   * Bewust een gewone `Pressable` en geen tik-gebaar van gesture-handler:
+   * die vuurde binnen een ScrollView op iOS niet. `locationX/Y` komen
+   * binnen in de coördinaten van de pagina zelf.
+   */
+  const tapAt = (x: number, y: number) => {
+    const zoomedIn = isIos ? zoom.current > 1.02 : scale.value > 1.02;
+    if (zoomedIn) {
+      showWhole();
+      applied.current = null;
+      onFocus(null);
+      return;
+    }
+    showPoint(x, y);
+    const next = {
+      x,
+      y,
+      aspect: page.width && page.height ? page.width / page.height : 1,
+    };
+    applied.current = next;
+    onFocus(next);
+  };
+
+  // De uitsnede van een pagina die er hetzelfde uitziet overnemen — of
+  // terug naar het hele vel als er niets (meer) gekozen is. `applied`
+  // houdt bij wat deze pagina al toont, zodat de pagina waar de tik
+  // vandaan kwam niet nog een keer animeert.
+  useEffect(() => {
+    if (focus === applied.current) return;
+    applied.current = focus;
+    if (focus) showPoint(focus.x, focus.y);
+    else showWhole();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focus]);
 
   const pinch = Gesture.Pinch()
     .onUpdate((e) => {
@@ -274,7 +342,7 @@ function ZoomablePage({
 
   const image = (
     <Pressable
-      onPress={(e) => zoomTo(e.nativeEvent.locationX, e.nativeEvent.locationY)}
+      onPress={(e) => tapAt(e.nativeEvent.locationX, e.nativeEvent.locationY)}
       style={{ width, height }}
     >
       <Image
@@ -329,27 +397,31 @@ const styles = StyleSheet.create({
     // lichte knop met lichte rand verdween daar volledig in.
     backgroundColor: 'rgba(0,0,0,0.55)',
   },
-  // De nummers van je kaartjes. Zelfde donkere vlak als de kruisknop, om
-  // dezelfde reden: hieronder ligt wit papier.
+  // De nummers van je kaartjes, in één donkere balk. Die balk is geen
+  // versiering: hieronder ligt wit papier, en een lichte knop op wit is
+  // geen knop. Ingezoomd ligt hij over je ticket heen, dus hij moet ook
+  // dán leesbaar zijn.
   pages: {
     position: 'absolute',
     alignSelf: 'center',
     flexDirection: 'row',
-    gap: 8,
+    gap: 2,
+    padding: 4,
+    borderRadius: 999,
+    backgroundColor: 'rgba(0,0,0,0.82)',
   },
   page: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(0,0,0,0.55)',
   },
   pageOn: { backgroundColor: palette.paper3 },
   pageNum: {
     fontFamily: fontFamily.mono,
     fontSize: 13,
-    color: palette.paper3,
+    color: 'rgba(242,242,239,0.9)',
   },
   pageNumOn: { color: palette.noir },
 });
