@@ -16,7 +16,7 @@ import {
 import { safeBack } from '@/lib/navigation';
 import { useSheetTop } from '@/lib/sheetInset';
 import { useRoles } from '@/store/mode';
-import { useTickets, useTicketsFor } from '@/store/tickets';
+import { ticketFileUri, useTickets, useTicketsFor } from '@/store/tickets';
 import { fontFamily } from '@/theme/tokens';
 
 /**
@@ -73,12 +73,13 @@ export default function TicketScreen() {
       // pagina 1, en met z'n tweeën heb je twee bestanden.
       const all: PdfRender[] = [];
       for (const item of tickets) {
+        const uri = ticketFileUri(item.fileUri);
         if (item.mimeType === 'application/pdf') {
-          const result = await renderPdfPages(item.fileUri);
+          const result = await renderPdfPages(uri);
           rendered = [...rendered, ...result];
           all.push(...result);
         } else {
-          all.push({ uri: item.fileUri, width: 0, height: 0 });
+          all.push({ uri, width: 0, height: 0 });
         }
       }
       if (cancelled) {

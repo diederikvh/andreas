@@ -7,7 +7,6 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  useWindowDimensions,
   View,
 } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
@@ -96,7 +95,11 @@ export function ZoomableImages({
   onClose?: () => void;
   background?: string;
 }) {
-  const { width, height } = useWindowDimensions();
+  // Het vlak dat we echt krijgen, niet het hele scherm. Op schermhoogte
+  // gemaakte pagina's steken onder de viewer uit: je ticket plakt dan aan
+  // de onderkant en de bovenkant valt weg.
+  const [box, setBox] = useState({ width: 0, height: 0 });
+  const { width, height } = box;
   const insets = useSafeAreaInsets();
   const isIos = Platform.OS === 'ios';
   const pager = useRef<ScrollView>(null);
@@ -112,7 +115,11 @@ export function ZoomableImages({
   const [zoomed, setZoomed] = useState(false);
 
   return (
-    <View style={[styles.root, { backgroundColor: background }]}>
+    <View
+      style={[styles.root, { backgroundColor: background }]}
+      onLayout={(e) => setBox(e.nativeEvent.layout)}
+    >
+      {width > 0 ? (
       <ScrollView
         ref={pager}
         horizontal
@@ -135,6 +142,7 @@ export function ZoomableImages({
           />
         ))}
       </ScrollView>
+      ) : null}
 
       {pages.length > 1 ? (
         <View style={[styles.pages, { bottom: insets.bottom + 16 }]}>
@@ -375,11 +383,16 @@ function ZoomablePage({
   }
 
   return (
-    <GestureDetector gesture={Gesture.Simultaneous(pinch, pan)}>
-      <Animated.View style={[{ width, height }, zoomStyle]}>
-        {image}
-      </Animated.View>
-    </GestureDetector>
+    // Knippen op de pagina zelf: een ingezoomd vel is groter dan z'n
+    // plek in de pager en lag anders over het volgende kaartje heen —
+    // wit papier dwars over de code die je net had aangewezen.
+    <View style={{ width, height, overflow: 'hidden' }}>
+      <GestureDetector gesture={Gesture.Simultaneous(pinch, pan)}>
+        <Animated.View style={[{ width, height }, zoomStyle]}>
+          {image}
+        </Animated.View>
+      </GestureDetector>
+    </View>
   );
 }
 

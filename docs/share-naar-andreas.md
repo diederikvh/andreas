@@ -102,6 +102,30 @@ een importscherm met een preview. Geen AI, geen OCR, niets naar de backend.
       `content://`-URI uit de shell werkt niet (`SecurityException`) — delen moet
       echt via de share-sheet van de Files-app.
 
+### Een bewaard pad overleeft geen update (12 sep 2026)
+
+Een ticket bewaarde het volledige pad naar z'n bestand, en op iOS zit daar de
+UUID van de app-container in:
+
+```
+.../Application/90666336-1A06-.../Documents/import/poster.PNG
+```
+
+Die UUID verandert bij **elke installatie** — dus ook bij elke update uit de
+App Store. Het bestand verhuist mee, het opgeslagen pad niet. Gevolg: de viewer
+toonde niets, en erger, `pruneImportDir` herkende het bestand niet meer als
+ticket (`isTicketFile` vergeleek hele paden) en gooide het bij de eerstvolgende
+navigatie weg. Van vijf bewaarde tickets op het testtoestel wezen er vier naar
+een container die niet meer bestond.
+
+Opgelost door het pad **bij het lezen** opnieuw op te bouwen: `ticketFileUri()`
+in `store/tickets.ts` pakt de bestandsnaam en zet die tegen de huidige
+`Documents/import/`. `isTicketFile` vergelijkt sindsdien op bestandsnaam. Geen
+migratie nodig, oude tickets werken weer — mits het bestand nog bestaat.
+
+Regel voor de toekomst: **bewaar nooit een absoluut pad in de document-dir.**
+Alleen de naam, en resolven bij gebruik.
+
 ### Meerdere bestanden in één share (11 sep 2026)
 
 Je koopt drie kaartjes en krijgt drie losse PDF's. Dat kon niet: iOS liet de

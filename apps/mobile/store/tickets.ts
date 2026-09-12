@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { File } from 'expo-file-system';
+import { Directory, File, Paths } from 'expo-file-system';
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 
@@ -76,7 +76,7 @@ export const useTickets = create<State>()(
       detach: (occurrenceId, fileUri) => {
         const current = get().tickets[occurrenceId] ?? [];
         for (const t of current) {
-          if (!fileUri || t.fileUri === fileUri) deleteFile(t.fileUri);
+          if (!fileUri || t.fileUri === fileUri) deleteFile(ticketFileUri(t.fileUri));
         }
         const keep = fileUri
           ? current.filter((t) => t.fileUri !== fileUri)
@@ -134,6 +134,28 @@ export function useTicketsFor(occurrenceId: string | null | undefined) {
     array en rendert alles wat 'm gebruikt oneindig door. */
 const EMPTY: StoredTicket[] = [];
 
+function fileName(uri: string | null | undefined): string | null {
+  return uri?.split('/').pop() || null;
+}
+
+/**
+ * Waar dit ticket **nu** staat.
+ *
+ * Het pad dat we bewaarden bevat op iOS de UUID van de app-container, en
+ * die verandert bij elke installatie — bij elke update uit de store dus.
+ * Het bestand verhuist mee, het opgeslagen pad niet, en dan wijst een
+ * bewaard ticket naar een map die niet meer bestaat: de viewer toont niets
+ * en het opruimen ziet er geen ticket meer in. Dus zoeken we het bij het
+ * lezen opnieuw op, onder z'n eigen naam.
+ *
+ * De mapnaam staat ook in `lib/pendingShare.ts`; die hier niet importeren,
+ * want dat bestand leest {@link isTicketFile} en dan krijg je een kringetje.
+ */
+export function ticketFileUri(uri: string): string {
+  const name = fileName(uri);
+  return name ? new File(new Directory(Paths.document, 'import'), name).uri : uri;
+}
+
 /**
  * Hoort dit bestand bij een bewaard ticket? Gebruikt door het opruimen in
  * `pendingShare.ts`, dat anders het ticket zou wissen dat de gebruiker net
@@ -142,8 +164,9 @@ const EMPTY: StoredTicket[] = [];
  * Buiten React leesbaar (via `getState`) omdat de opruimers geen hooks zijn.
  */
 export function isTicketFile(uri: string | null | undefined): boolean {
-  if (!uri) return false;
+  const name = fileName(uri);
+  if (!name) return false;
   return Object.values(useTickets.getState().tickets).some((list) =>
-    list.some((t) => t.fileUri === uri),
+    list.some((t) => fileName(t.fileUri) === name),
   );
 }
