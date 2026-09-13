@@ -380,7 +380,15 @@ export default function EventDetail() {
           </View>
           {/* Locatie links, venue rechts: dan staat de chevron aan de
               buitenrand van de rij in plaats van er middenin. */}
-          <View style={[styles.metaRow, styles.metaRowLast]}>
+          {/* Staan er genre-pills onder, dan hoort die rij nog bij dit
+              blok: dezelfde 8pt als tussen de twee meta-rijen, en de
+              afsluitende marge komt van de pill-rij zelf. */}
+          <View
+            style={[
+              styles.metaRow,
+              !(event.genres && event.genres.length > 0) && styles.metaRowLast,
+            ]}
+          >
             <View style={styles.metaCellWrap}>
               <MetaCell
                 label={t('Locatie', 'Location')}
@@ -2116,8 +2124,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 6,
-    marginTop: 4,
-    marginBottom: 18,
+    marginBottom: 20,
   },
   genrePill: {
     height: 26,
