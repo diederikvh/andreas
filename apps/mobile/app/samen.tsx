@@ -4,11 +4,11 @@ import { useMemo } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { AccountWall } from '@/components/AccountWall';
 import { AppHeader, HEADER_HEIGHT } from '@/components/AppHeader';
 import { EventListRow } from '@/components/EventListRow';
 import { SpinningCross } from '@/components/SpinningCross';
 import { useIsRegistered } from '@/lib/authClient';
+import { softTap } from '@/lib/haptics';
 import type { ApiFeedEvent, ApiFriendBadge, SavedApiEvent } from '@/lib/api';
 import {
   CATEGORY_TICK,
@@ -99,7 +99,11 @@ export default function SamenScreen() {
   const t = useT();
   const authed = useIsRegistered();
 
-  const { data: saves, isLoading: loadingSaves } = useMySaves({ enabled: authed });
+  // Je eigen lijst werkt zonder account: een anonieme sessie heeft
+  // gewoon saves. Alleen de vrienden-helft vraagt om een persoon, en dat
+  // zegt de banner hierboven — in plaats van een muur voor een lijst die
+  // je wél mag zien.
+  const { data: saves, isLoading: loadingSaves } = useMySaves();
   const { data: feed, isLoading: loadingFeed } = useSocialFeed({ enabled: authed });
 
   const rows = useMemo<Row[]>(() => {
@@ -137,26 +141,7 @@ export default function SamenScreen() {
     </Pressable>
   );
 
-  if (!authed) {
-    return (
-      <View style={[styles.root, { backgroundColor: roles.bg }]}>
-        <AccountWall
-          title={t('Jij & vrienden', 'You & friends')}
-          body={t(
-            'Hiervoor moet Andreas weten wie je vrienden zijn.',
-            'For this, Andreas needs to know who your friends are.',
-          )}
-        />
-        <AppHeader
-          title={t('Jij & vrienden', 'You & friends')}
-          hideAvatar
-          rightSlot={closeBtn}
-        />
-      </View>
-    );
-  }
-
-  const loading = loadingSaves || loadingFeed;
+  const loading = loadingSaves || (authed && loadingFeed);
 
   return (
     <View style={[styles.root, { backgroundColor: roles.bg }]}>
@@ -166,6 +151,44 @@ export default function SamenScreen() {
           paddingBottom: insets.bottom + 96,
         }}
       >
+        {/* Geen muur maar een uitnodiging: wat je hebt zie je gewoon,
+            en dit zegt wat erbij komt. Eén keer bovenaan, niet tussen de
+            rijen — het is een mededeling, geen rij. */}
+        {!authed ? (
+          <Pressable
+            onPress={() => {
+              softTap();
+              router.push('/jij' as never);
+            }}
+            style={[styles.banner, { backgroundColor: roles.bgChip }]}
+          >
+            <View
+              style={[
+                styles.bannerIcon,
+                { backgroundColor: `${roles.accent}22` },
+              ]}
+            >
+              <Ionicons name="people" size={18} color={roles.accent} />
+            </View>
+            <View style={{ flex: 1, gap: 2 }}>
+              <Text style={[styles.bannerTitle, { color: roles.fg }]}>
+                {t('Ook zien wat zij reden?', 'See what they saved too?')}
+              </Text>
+              <Text style={[styles.bannerText, { color: roles.fgMuted }]}>
+                {t(
+                  'Dit is nu alleen jouw lijst. Met een account komen je vrienden erbij.',
+                  'This is just your list for now. With an account your friends join in.',
+                )}
+              </Text>
+            </View>
+            <Ionicons
+              name="chevron-forward"
+              size={16}
+              color={roles.fgPlaceholder}
+            />
+          </Pressable>
+        ) : null}
+
         {loading && rows.length === 0 ? (
           <View style={styles.center}>
             <SpinningCross size={24} color={roles.fgMuted} />
@@ -174,10 +197,15 @@ export default function SamenScreen() {
 
         {!loading && rows.length === 0 ? (
           <Text style={[styles.empty, { color: roles.fgMuted }]}>
-            {t(
-              'Nog niets gered — door jou niet en door je vrienden niet. Tik op het hartje bij een avond en hij staat hier.',
-              'Nothing saved yet — not by you and not by your friends. Tap the heart on a night and it will be here.',
-            )}
+            {authed
+              ? t(
+                  'Nog niets gered — door jou niet en door je vrienden niet. Tik op het hartje bij een avond en hij staat hier.',
+                  'Nothing saved yet — not by you and not by your friends. Tap the heart on a night and it will be here.',
+                )
+              : t(
+                  'Nog niets gered. Tik op het hartje bij een avond en hij staat hier.',
+                  'Nothing saved yet. Tap the heart on a night and it will be here.',
+                )}
           </Text>
         ) : null}
 
@@ -242,6 +270,29 @@ function SamenRow({ row }: { row: Row }) {
 const styles = StyleSheet.create({
   root: { flex: 1 },
   center: { paddingTop: 60, alignItems: 'center' },
+  banner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginHorizontal: 22,
+    marginBottom: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderRadius: 14,
+  },
+  bannerIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bannerTitle: {
+    fontFamily: fontFamily.bold,
+    fontSize: 14,
+    letterSpacing: -0.2,
+  },
+  bannerText: { fontFamily: fontFamily.body, fontSize: 12.5, lineHeight: 17 },
   empty: {
     fontFamily: fontFamily.body,
     fontSize: 14,

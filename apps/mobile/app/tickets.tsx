@@ -1,4 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
+import { Image } from 'expo-image';
+import * as ImagePicker from 'expo-image-picker';
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -8,7 +10,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppHeader, HEADER_HEIGHT } from '@/components/AppHeader';
 import { useLocale, useT } from '@/lib/i18n';
 import { dowMixed, monthShort } from '@/lib/eventDisplay';
-import { useRoles } from '@/store/mode';
+import { softTap } from '@/lib/haptics';
+import { pendingShareFromPhoto, usePendingShare } from '@/lib/pendingShare';
+import { useMode, useRoles } from '@/store/mode';
+import { TONE, pendingTone } from '@/theme/tones';
 import {
   ticketFileUri,
   useAllTickets,
@@ -95,6 +100,7 @@ export default function TicketsScreen() {
     ).toLowerCase()} ${d.getFullYear()}`;
 
   const Row = ({ ticket }: { ticket: StoredTicket }) => {
+    const mode = useMode();
     const when = ticket.startsAt ? new Date(ticket.startsAt) : null;
     // Kaartjes van vóór deze lijst weten hun avond niet. Dan maar zeggen
     // wanneer je 'm bewaarde: dat is genoeg om 'm te herkennen, en het is
@@ -122,11 +128,28 @@ export default function TicketsScreen() {
           gone ? styles.rowGone : null,
         ]}
       >
-        <Ionicons
-          name={gone ? 'alert-circle-outline' : 'ticket-outline'}
-          size={20}
-          color={roles.fgMuted}
-        />
+        {/* Zelfde taal als je plannen: een beeld als we er een hebben,
+            anders de eerste letter op een gekleurd vlak. De kleur hangt
+            aan de avond, dus dezelfde avond heeft overal dezelfde kleur. */}
+        <View
+          style={[
+            styles.thumb,
+            { backgroundColor: TONE[mode][pendingTone(ticket.occurrenceId)] },
+          ]}
+        >
+          {!gone && ticket.mimeType?.startsWith('image/') ? (
+            <Image
+              source={{ uri: ticketFileUri(ticket.fileUri) }}
+              style={StyleSheet.absoluteFill}
+              contentFit="cover"
+              transition={140}
+            />
+          ) : (
+            <Text style={styles.thumbLetter}>
+              {(ticket.eventTitle ?? '?').trim().charAt(0)}
+            </Text>
+          )}
+        </View>
         <View style={{ flex: 1, gap: 3 }}>
           <Text numberOfLines={1} style={[styles.rowTitle, { color: roles.fg }]}>
             {ticket.eventTitle ?? t('Naamloos', 'Untitled')}
@@ -162,10 +185,47 @@ export default function TicketsScreen() {
     );
   };
 
-  const closeBtn = (
-    <Pressable onPress={() => router.back()} hitSlop={8} style={styles.closeBtn}>
-      <Ionicons name="close" size={20} color={roles.fg} />
-    </Pressable>
+  /**
+   * Zelf een kaartje toevoegen, zonder de omweg via het deelvenster van
+   * een andere app. Kiest een afbeelding uit je bibliotheek en zet 'm op
+   * dezelfde route als een gedeelde poster: kopie in onze map, dan
+   * `/import`, dat er zelf het event bij zoekt.
+   *
+   * Alleen afbeeldingen: een PDF kiezen vraagt `expo-document-picker` en
+   * dat is een native module, dus die komt pas in een volgende build.
+   * Een PDF-ticket deel je zolang via de Bestanden-app.
+   */
+  const addTicket = async () => {
+    softTap();
+    const picked = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      quality: 1,
+    });
+    if (picked.canceled || !picked.assets[0]) return;
+    const asset = picked.assets[0];
+    const pending = await pendingShareFromPhoto({
+      uri: asset.uri,
+      width: asset.width,
+      height: asset.height,
+    });
+    if (!pending) return;
+    usePendingShare.getState().setPending(pending);
+    router.push('/import' as never);
+  };
+
+  const headerButtons = (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
+      <Pressable
+        onPress={() => void addTicket()}
+        hitSlop={8}
+        style={styles.closeBtn}
+      >
+        <Ionicons name="add" size={24} color={roles.fg} />
+      </Pressable>
+      <Pressable onPress={() => router.back()} hitSlop={8} style={styles.closeBtn}>
+        <Ionicons name="close" size={20} color={roles.fg} />
+      </Pressable>
+    </View>
   );
 
   return (
@@ -219,7 +279,7 @@ export default function TicketsScreen() {
         ) : null}
       </ScrollView>
 
-      <AppHeader title={t('Kaartjes', 'Tickets')} hideAvatar rightSlot={closeBtn} />
+      <AppHeader title={t('Kaartjes', 'Tickets')} hideAvatar rightSlot={headerButtons} />
     </View>
   );
 }
@@ -230,9 +290,22 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
     borderRadius: 14,
+  },
+  thumb: {
+    width: 52,
+    height: 52,
+    borderRadius: 10,
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  thumbLetter: {
+    fontFamily: fontFamily.display,
+    fontSize: 22,
+    color: 'rgba(0,0,0,0.55)',
   },
   // Weg is weg, maar de rij blijft staan tot jij 'm weghaalt: zo zie je
   // wat er ooit was in plaats van dat het stil verdwijnt.
