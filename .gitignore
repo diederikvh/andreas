@@ -4,10 +4,11 @@
 # macOS
 .DS_Store
 
-# Local env files
+# Local env files. Bewust breed: een backup als `.env.prod-bak` viel
+# buiten `.env.*.local` en zou dus door een `git add -A` meegaan.
 .env
-.env.local
-.env.*.local
+.env.*
+!.env.example
 
 # Node
 node_modules/
@@ -28,3 +29,11 @@ dist/
 # Stray root configs (eas/app.json belong in apps/mobile/)
 /eas.json
 /app.json
+
+# Wegwerp-scripts. `_probe-` en `_check-` zijn hier een bewuste
+# conventie en blijven getrackt; `_tmp-` en `_diag-` zijn van één sessie
+# en horen niet in de historie. Ze stonden in apps/api/scripts, waar een
+# `git add -A` vanaf de repo-root ze drie keer meenam.
+_tmp-*
+_diag-*
+!apps/api/scripts/_diag-dupe-kinds.ts
