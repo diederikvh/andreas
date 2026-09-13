@@ -47,6 +47,7 @@ import {
   eventImageUrl,
   eventStillUrl,
   formatDateRange,
+  formatPlace,
   formatPrice,
   formatTimeRange,
   ticketSourceLabel,
@@ -375,6 +376,7 @@ export default function EventDetail() {
               <MetaCell
                 label={t('Venue', 'Venue')}
                 value={view.venue}
+                sub={view.venuePlace}
                 onPress={() => router.push(`/venue/${event.venue.slug}`)}
               />
             </View>
@@ -1527,6 +1529,8 @@ type ViewModel = {
   time: string;
   allDay: boolean;
   venue: string;
+  /** "Amsterdam · Noord" — null als de venue geen plaats heeft. */
+  venuePlace: string | null;
   description: string | null;
   photo: string | null;
   price: string;
@@ -1568,6 +1572,12 @@ function toViewModel(
     // single-venue events (concerts/theater) is occ.venue gelijk aan
     // event.venue zodat dit niets verandert.
     venue: occ?.venue?.name ?? event.venue.name,
+    // Plaats van de venue die deze rij tóónt — bij films is dat de
+    // bioscoop, niet de venue die het event scrapete.
+    venuePlace: formatPlace(
+      occ?.venue?.city ?? event.venue.city,
+      occ?.venue?.wijk ?? event.venue.wijk
+    ),
     description: event.description,
     // Voor de hero willen we het sfeerbeeld (still/backdrop) — geeft
     // meer atmosfeer dan een poster. eventStillUrl prefereert
@@ -1779,10 +1789,14 @@ function DetailFallback({
 function MetaCell({
   label,
   value,
+  sub,
   onPress,
 }: {
   label: string;
   value: string;
+  /** Tweede regel onder de waarde, kleiner en gedempt. Gebruikt voor de
+      plaats onder een venue-naam: "Amsterdam · Noord". */
+  sub?: string | null;
   onPress?: () => void;
 }) {
   const mode = useMode();
@@ -1807,6 +1821,9 @@ function MetaCell({
     >
       <Text style={[styles.metaLabel, { color: roles.fgMuted }]}>{label}</Text>
       <Text style={[styles.metaValue, { color: roles.fg }]}>{value}</Text>
+      {sub ? (
+        <Text style={[styles.metaSub, { color: roles.fgMuted }]}>{sub}</Text>
+      ) : null}
     </Wrap>
   );
 }
@@ -1913,6 +1930,12 @@ const styles = StyleSheet.create({
     fontSize: 14,
     letterSpacing: -0.21,
     marginTop: 4,
+  },
+  metaSub: {
+    fontFamily: fontFamily.body,
+    fontSize: 12,
+    letterSpacing: -0.12,
+    marginTop: 2,
   },
 
   bodyText: {

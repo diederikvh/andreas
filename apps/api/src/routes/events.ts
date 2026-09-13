@@ -20,6 +20,15 @@ import type { PreferenceProfile } from '../zoek/types.js';
 
 type EventCategory = 'Muziek' | 'Theater' | 'Literatuur' | 'Film' | 'Kunst' | 'Lezing';
 const VALID_CATEGORIES = new Set(['Muziek', 'Theater', 'Literatuur', 'Film', 'Kunst', 'Lezing']);
+const VALID_CITIES = new Set([
+  'amsterdam', 'amstelveen', 'diemen', 'zaandam', 'haarlem',
+  'utrecht', 'rotterdam', 'den-haag', 'eindhoven', 'groningen', 'antwerpen',
+]);
+const VALID_WIJKEN = new Set([
+  'centrum', 'noord', 'oost', 'west', 'zuid', 'zuidoost', 'nieuw-west',
+  // amstelveen/zaandam/haarlem/diemen stonden hier tot migratie 0058 ook
+  // in; die zijn nu een stad, geen stadsdeel.
+]);
 const VALID_VENUE_TYPES = new Set([
   'galerie', 'museum', 'podium', 'club', 'film', 'ruimte', 'boekhandel-cafe',
 ]);
@@ -166,6 +175,7 @@ eventsRoute.get('/', async (c) => {
             // wijk gebruikt door clubs/live/theater venue-header
             // ("Club · Noord"). 1 short string per event.
             wijk: schema.venues.wijk,
+            city: schema.venues.city,
           },
         })
         .from(schema.events)
@@ -193,6 +203,7 @@ eventsRoute.get('/', async (c) => {
             lng: schema.venues.lng,
             type: schema.venues.type,
             wijk: schema.venues.wijk,
+            city: schema.venues.city,
             scene: schema.venues.scene,
             subtype: schema.venues.subtype,
             imageUrl: schema.venues.imageUrl,
@@ -345,6 +356,8 @@ eventsRoute.get('/', async (c) => {
 type AgendaFilters = {
   categories: EventCategory[];
   venueTypes: string[];
+  cities: string[];
+  wijken: string[];
   blocks: string[];
   q: string | null;
   onlyFollowed: boolean;
@@ -361,10 +374,14 @@ function parseAgendaFilters(c: Context): AgendaFilters {
   const blocks = (c.req.queries('block') ?? []).filter((v) =>
     VALID_TIME_BLOCKS.has(v)
   );
+  const cities = (c.req.queries('city') ?? []).filter((v) => VALID_CITIES.has(v));
+  const wijken = (c.req.queries('wijk') ?? []).filter((v) => VALID_WIJKEN.has(v));
   const q = c.req.query('q')?.trim();
   return {
     categories: cats,
     venueTypes: vts,
+    cities,
+    wijken,
     blocks,
     q: q && q.length > 0 ? q : null,
     onlyFollowed: c.req.query('onlyFollowed') === 'true',
@@ -454,6 +471,37 @@ function buildAgendaWhere(opts: {
           )})`
     );
   }
+  // Stad en stadsdeel, op dezelfde venue als hierboven: de rij toont de
+  // venue van de occurrence, dus daar moet je 'm op kunnen vinden.
+  //
+  // Stad en wijk staan náást elkaar, niet onder elkaar. Kies je
+  // "Amsterdam" plus "Noord", dan is dat een OR: alles in Amsterdam én
+  // alles in Noord — wat op hetzelfde neerkomt zolang Noord alleen in
+  // Amsterdam bestaat. Kies je "Utrecht" plus "Noord", dan krijg je
+  // Utrecht erbij, niet Utrecht-Noord. Een echte hiërarchie vraagt
+  // stadsdelen per stad, en die hebben we nog niet.
+  const plaatsClauses = [];
+  if (opts.filters.cities.length > 0) {
+    plaatsClauses.push(
+      sql`COALESCE(
+            (SELECT ov.city FROM venues ov WHERE ov.id = ${schema.occurrences.venueId}),
+            ${schema.venues.city}
+          ) IN (${sql.join(opts.filters.cities.map((v) => sql`${v}`), sql`, `)})`
+    );
+  }
+  if (opts.filters.wijken.length > 0) {
+    plaatsClauses.push(
+      sql`COALESCE(
+            (SELECT ov.wijk FROM venues ov WHERE ov.id = ${schema.occurrences.venueId}),
+            ${schema.venues.wijk}
+          ) IN (${sql.join(opts.filters.wijken.map((v) => sql`${v}`), sql`, `)})`
+    );
+  }
+  if (plaatsClauses.length === 1) conditions.push(plaatsClauses[0]!);
+  else if (plaatsClauses.length > 1) {
+    conditions.push(sql`(${sql.join(plaatsClauses, sql` OR `)})`);
+  }
+
   if (opts.filters.blocks.length > 0) {
     // Per blok: set NL-local uren. Union over alle gekozen blokken.
     // EXTRACT(HOUR FROM ts AT TIME ZONE 'Europe/Amsterdam') geeft het
@@ -680,6 +728,8 @@ eventsRoute.get('/agenda', async (c) => {
       eventVenueId: schema.venues.id,
       eventVenueName: schema.venues.name,
       eventVenueType: schema.venues.type,
+      eventVenueCity: schema.venues.city,
+      eventVenueWijk: schema.venues.wijk,
       eventVenueImageUrl: schema.venues.imageUrl,
     })
     .from(schema.occurrences)
@@ -711,7 +761,13 @@ eventsRoute.get('/agenda', async (c) => {
   ];
   const occVenueMap = new Map<
     string,
-    { name: string; type: string | null; imageUrl: string | null }
+    {
+      name: string;
+      type: string | null;
+      imageUrl: string | null;
+      city: string;
+      wijk: string | null;
+    }
   >();
   if (overrideVenueIds.length > 0) {
     const vrows = await db
@@ -720,11 +776,18 @@ eventsRoute.get('/agenda', async (c) => {
         name: schema.venues.name,
         type: schema.venues.type,
         imageUrl: schema.venues.imageUrl,
+        // Plaats van de bioscoop, niet van de venue die de film
+        // scrapete — de rij toont die bioscoop ook.
+        city: schema.venues.city,
+        wijk: schema.venues.wijk,
       })
       .from(schema.venues)
       .where(inArray(schema.venues.id, overrideVenueIds));
     for (const v of vrows)
-      occVenueMap.set(v.id, { name: v.name, type: v.type, imageUrl: v.imageUrl });
+      occVenueMap.set(v.id, {
+        name: v.name, type: v.type, imageUrl: v.imageUrl,
+        city: v.city, wijk: v.wijk,
+      });
   }
 
   const occIds = rows.map((r) => r.occId);
@@ -758,6 +821,8 @@ eventsRoute.get('/agenda', async (c) => {
       venueId,
       venueName: override?.name ?? r.eventVenueName,
       venueType: override?.type ?? r.eventVenueType ?? null,
+      venueCity: override?.city ?? r.eventVenueCity ?? null,
+      venueWijk: override?.wijk ?? r.eventVenueWijk ?? null,
       // Venue-image als fallback voor de thumb wanneer event.imageUrl
       // ontbreekt — voorkomt de lege-thumb-shift in de agenda-lijst.
       venueImageUrl: override?.imageUrl ?? r.eventVenueImageUrl ?? null,
@@ -992,6 +1057,7 @@ eventsRoute.get('/for-you', async (c) => {
         lng: schema.venues.lng,
         type: schema.venues.type,
         wijk: schema.venues.wijk,
+        city: schema.venues.city,
         scene: schema.venues.scene,
         subtype: schema.venues.subtype,
         imageUrl: schema.venues.imageUrl,
@@ -1412,6 +1478,7 @@ eventsRoute.get('/new', async (c) => {
       venueId: schema.venues.id,
       scene: schema.venues.scene,
       wijk: schema.venues.wijk,
+      city: schema.venues.city,
       genres: displayGenres,
       lane: LANE_SQL,
     })
@@ -1447,6 +1514,7 @@ eventsRoute.get('/new', async (c) => {
     venueId: string;
     scene: string | null;
     wijk: string | null;
+    city: string;
     genres: string[];
     /** Smaak-score; 0 zolang je nog geen profiel hebt. */
     score: number;
@@ -1464,6 +1532,7 @@ eventsRoute.get('/new', async (c) => {
         venueId: row.venueId,
         scene: row.scene,
         wijk: row.wijk,
+        city: row.city,
         genres: row.genres ?? [],
         score: 0,
       });
@@ -1607,6 +1676,7 @@ eventsRoute.get('/new', async (c) => {
         type: schema.venues.type,
         imageUrl: schema.venues.imageUrl,
         wijk: schema.venues.wijk,
+        city: schema.venues.city,
       },
     })
     .from(schema.events)

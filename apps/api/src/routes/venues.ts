@@ -132,6 +132,7 @@ venuesRoute.get('/', async (c) => {
       type: schema.venues.type,
       dayNight: schema.venues.dayNight,
       wijk: schema.venues.wijk,
+      city: schema.venues.city,
       scene: schema.venues.scene,
       capacity: schema.venues.capacity,
       subtype: schema.venues.subtype,
@@ -238,6 +239,7 @@ venuesRoute.get('/musea', async (c) => {
       name: schema.venues.name,
       type: schema.venues.type,
       wijk: schema.venues.wijk,
+      city: schema.venues.city,
       venueImageUrl: schema.venues.imageUrl,
       eventId: schema.events.id,
       eventTitle: schema.events.title,
@@ -285,6 +287,7 @@ venuesRoute.get('/musea', async (c) => {
     name: string;
     type: string | null;
     wijk: string | null;
+    city: string;
     imageUrl: string | null;
     exhibitions: Show[];
   };
@@ -298,6 +301,7 @@ venuesRoute.get('/musea', async (c) => {
         name: r.name,
         type: r.type ?? null,
         wijk: r.wijk ?? null,
+        city: r.city,
         imageUrl: r.venueImageUrl,
         exhibitions: [],
       };

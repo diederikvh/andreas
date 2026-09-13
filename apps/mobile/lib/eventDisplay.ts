@@ -297,6 +297,37 @@ export function translateVenueCapacity(
  * herkenbaarder dan "North / Centre"). We capitaliseren alleen de
  * DB-waarden ("nieuw-west" → "Nieuw-West", "centrum" → "Centrum").
  */
+const CITY_LABEL: Record<string, string> = {
+  'amsterdam': 'Amsterdam',
+  'amstelveen': 'Amstelveen',
+  'diemen': 'Diemen',
+  'zaandam': 'Zaandam',
+  'haarlem': 'Haarlem',
+  'utrecht': 'Utrecht',
+  'rotterdam': 'Rotterdam',
+  'den-haag': 'Den Haag',
+  'eindhoven': 'Eindhoven',
+  'groningen': 'Groningen',
+  'antwerpen': 'Antwerpen',
+};
+
+/**
+ * De plaatsregel onder een venue-naam: "Amsterdam · Noord" of, buiten
+ * Amsterdam waar we geen stadsdelen hebben, alleen "Antwerpen".
+ *
+ * Geeft null als er niks te tonen valt, zodat de aanroeper de hele regel
+ * kan weglaten in plaats van een lege ruimte te reserveren.
+ */
+export function formatPlace(
+  city?: string | null,
+  wijk?: string | null
+): string | null {
+  const stad = city ? (CITY_LABEL[city] ?? formatWijk(city)) : null;
+  const deel = wijk ? formatWijk(wijk) : null;
+  if (stad && deel) return `${stad} · ${deel}`;
+  return stad ?? deel ?? null;
+}
+
 export function formatWijk(wijk: string): string {
   return wijk
     .split('-')

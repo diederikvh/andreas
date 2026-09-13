@@ -110,6 +110,24 @@ export const wijk = pgEnum('wijk', [
   'haarlem',
   'diemen',
 ]);
+/** Stad waar de venue staat. Los van `wijk`, dat het stadsdeel bínnen
+    een stad is. Tot migratie 0058 stonden buitengemeenten (amstelveen,
+    zaandam, haarlem, diemen) als "wijk" in de lijst; dat hield het niet
+    meer met De Roma in Antwerpen erbij. Uitbreiden met
+    `ALTER TYPE ... ADD VALUE`, zoals migratie 0021 voor wijk deed. */
+export const city = pgEnum('city', [
+  'amsterdam',
+  'amstelveen',
+  'diemen',
+  'zaandam',
+  'haarlem',
+  'utrecht',
+  'rotterdam',
+  'den-haag',
+  'eindhoven',
+  'groningen',
+  'antwerpen',
+]);
 export const venueScene = pgEnum('venue_scene', [
   'mainstream',
   'alternatief',
@@ -238,7 +256,12 @@ export const venues = pgTable('venues', {
       gefilterd op de huidige app-modus zodat dag-modus geen clubs
       voorstelt en nacht-modus geen musea. `both` is altijd zichtbaar. */
   dayNight: dayNight(),
-  /** Stadsdeel — voor "in de buurt"-filter. Optioneel. */
+  /** Stad. Default amsterdam; gevuld voor élke venue. Bepaalt samen met
+      `wijk` het locatie-filter op de Agenda. */
+  city: city().notNull().default('amsterdam'),
+  /** Stadsdeel bínnen de stad — voor "in de buurt"-filter. Optioneel, en
+      alleen gevuld voor Amsterdam: een venue in Haarlem heeft een stad,
+      geen stadsdeel. */
   wijk: wijk(),
   /** Scene-as: mainstream / alternatief / underground / fringe.
       Onderscheidt Paradiso (mainstream) van OCCII (underground) van

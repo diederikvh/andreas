@@ -55,6 +55,10 @@ export type ApiOccurrence = {
     lat: number;
     lng: number;
     type: string | null;
+    /** Plaats van déze venue — bij films de bioscoop, niet de venue die
+        het event scrapete. Samen met `wijk` de regel onder de naam. */
+    city?: VenueCity | null;
+    wijk?: VenueWijk | null;
   } | null;
   /** Vrienden die specifiek díe occurrence hebben gesaved. Een save
       voor de woensdag-voorstelling laat alleen daar de pill zien, niet
@@ -122,6 +126,10 @@ export type ApiEvent = {
     lat: number;
     lng: number;
     type: string | null;
+    /** Plaats van déze venue — bij films de bioscoop, niet de venue die
+        het event scrapete. Samen met `wijk` de regel onder de naam. */
+    city?: VenueCity | null;
+    wijk?: VenueWijk | null;
   } | null;
   venue: {
     id: string;
@@ -138,6 +146,8 @@ export type ApiEvent = {
         events-list endpoints zodat de venue-header op /clubs /live
         /theater 'm naast venue-type kan tonen. */
     wijk?: VenueWijk | null;
+    /** Stad van de venue. Samen met `wijk` de plaatsregel onder de naam. */
+    city?: VenueCity | null;
     /** Scene (mainstream/alternatief/underground/fringe). Gebruikt door
         Vandaag-rails om galleries te splitsen op professioneel vs DIY. */
     scene?: VenueScene | null;
@@ -376,6 +386,7 @@ export type ApiSearchVenue = {
   address: string;
   type: VenueType | null;
   wijk: VenueWijk | null;
+  city: VenueCity | null;
   imageUrl: string | null;
   lat: number;
   lng: number;
@@ -607,6 +618,9 @@ export type AgendaRow = {
   venueId: string;
   venueName: string;
   venueType: VenueType | null;
+  /** Plaats van de venue die déze rij toont. */
+  venueCity: VenueCity | null;
+  venueWijk: VenueWijk | null;
   /** Venue-image als fallback voor de thumb wanneer event.imageUrl
       ontbreekt — voorkomt lege thumb in agenda-rijen. */
   venueImageUrl: string | null;
@@ -674,6 +688,10 @@ export type VenueType =
 
 export type VenueDayNight = 'day' | 'night' | 'both';
 
+/** Stadsdeel bínnen een stad. De buitengemeenten die hier vroeger in
+    stonden (amstelveen, zaandam, haarlem, diemen) zijn sinds migratie
+    0058 een `VenueCity` — een venue in Haarlem heeft een stad, geen
+    stadsdeel. */
 export type VenueWijk =
   | 'centrum'
   | 'noord'
@@ -681,10 +699,21 @@ export type VenueWijk =
   | 'west'
   | 'zuid'
   | 'zuidoost'
-  | 'nieuw-west'
+  | 'nieuw-west';
+
+/** Stad waar de venue staat. Altijd gevuld; default amsterdam. */
+export type VenueCity =
+  | 'amsterdam'
   | 'amstelveen'
+  | 'diemen'
   | 'zaandam'
-  | 'haarlem';
+  | 'haarlem'
+  | 'utrecht'
+  | 'rotterdam'
+  | 'den-haag'
+  | 'eindhoven'
+  | 'groningen'
+  | 'antwerpen';
 
 export type VenueScene =
   'mainstream' | 'alternatief' | 'underground' | 'fringe';
@@ -704,6 +733,7 @@ export type ApiVenue = {
   type: VenueType | null;
   dayNight: VenueDayNight | null;
   wijk: VenueWijk | null;
+  city: VenueCity | null;
   scene: VenueScene | null;
   capacity: VenueCapacity | null;
   subtype: string[];
@@ -738,6 +768,7 @@ export async function getVenues(
     type?: VenueType;
     dayNight?: VenueDayNight;
     wijk?: VenueWijk;
+    city?: VenueCity;
     scene?: VenueScene;
   } = {},
 ): Promise<ApiVenueListItem[]> {
