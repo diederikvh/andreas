@@ -41,7 +41,7 @@ import { socialRoute } from './routes/social.js';
 import { venueFollowsRoute } from './routes/venue-follows.js';
 import { venuesRoute } from './routes/venues.js';
 import { uploadToBunny } from './storage/bunny.js';
-import { Jimp } from 'jimp';
+import sharp from 'sharp';
 
 const app = new Hono();
 
@@ -343,13 +343,17 @@ app.post('/me/avatar', async (c) => {
   let outType = contentType;
   let ext = contentType.includes('png') ? 'png' : 'jpg';
   try {
-    const image = await Jimp.read(original);
-    image.cover({ w: AVATAR_SIZE, h: AVATAR_SIZE });
-    body = Buffer.from(await image.getBuffer('image/jpeg', { quality: 82 }));
+    // `rotate()` zonder hoek past de EXIF-oriëntatie toe. Zonder dat
+    // staat een foto van een telefoon zijwaarts in je profiel.
+    body = await sharp(original)
+      .rotate()
+      .resize(AVATAR_SIZE, AVATAR_SIZE, { fit: 'cover' })
+      .jpeg({ quality: 82 })
+      .toBuffer();
     outType = 'image/jpeg';
     ext = 'jpg';
   } catch {
-    // Kan Jimp het niet lezen (exotisch formaat), dan liever de foto
+    // Kan sharp het niet lezen (exotisch formaat), dan liever de foto
     // ongewijzigd opslaan dan de upload laten mislukken. Groot, maar er.
   }
 
