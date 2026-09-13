@@ -1,15 +1,18 @@
 import { eq } from 'drizzle-orm';
-import { chromium } from 'playwright';
 
 import { db, schema } from '../db/index.js';
 import { uploadToBunny } from '../storage/bunny.js';
+import { parseRadioRadioEvents } from './_radioradio-payload.js';
 import { enrichEvent, refineKindByDuration } from './enrich.js';
 
 /**
  * Radio Radio (Westerpark) — eigen Nuxt-site `radioradio.radio/club`.
  *
- * Strategie: de page is een Nuxt-app met de hele DatoCMS-payload inline
- * in `window.__NUXT__.data.{key}.data.allEvents`. Elke event-record bevat:
+ * Strategie: de pagina is een Nuxt-app met de hele DatoCMS-payload
+ * inline in `<script id="__NUXT_DATA__">`, devalue-geserialiseerd. Sinds
+ * 13 sep 2026 lezen we die met een kale fetch in plaats van met een
+ * browser; zie _radioradio-payload.ts voor het uitpakken. Elke
+ * event-record bevat:
  *  - `title`, `description`, `date` (YYYY-MM-DD), `startTime`/`endTime` (HH:MM)
  *  - `ticket` (directe Weeztix/RA-URL)
  *  - `image.responsiveImage.src` (DatoCMS image)
@@ -49,27 +52,12 @@ function slugifyId(s: string): string {
 }
 
 async function fetchAllEvents(): Promise<DatoEvent[]> {
-  const browser = await chromium.launch();
-  try {
-    const ctx = await browser.newContext({ userAgent: UA });
-    const page = await ctx.newPage();
-    await page.goto(PROGRAM_URL, { waitUntil: 'domcontentloaded', timeout: 30000 });
-    await page.waitForTimeout(2500);
-    const events = (await page.evaluate(`(() => {
-      const nuxt = window.__NUXT__;
-      if (!nuxt || !nuxt.data) return [];
-      for (const k of Object.keys(nuxt.data)) {
-        const v = nuxt.data[k];
-        if (v?.data?.allEvents && Array.isArray(v.data.allEvents)) {
-          return v.data.allEvents;
-        }
-      }
-      return [];
-    })()`)) as DatoEvent[];
-    return events;
-  } finally {
-    await browser.close();
-  }
+  const r = await fetch(PROGRAM_URL, {
+    headers: { 'user-agent': UA, 'accept-language': 'nl-NL' },
+    signal: AbortSignal.timeout(30000),
+  });
+  if (!r.ok) throw new Error(`club-pagina HTTP ${r.status}`);
+  return parseRadioRadioEvents(await r.text()) as DatoEvent[];
 }
 
 /** "2026-05-09" + "23:00" → Date in Amsterdam (CEST/CET via +02:00). */
