@@ -34,6 +34,7 @@ import type {
   VenueType,
 } from '@/lib/api';
 import {
+  getCityChips,
   getVenueTypeChips,
   monthShort,
   translateVenueScene,
@@ -130,11 +131,13 @@ export default function Venues() {
   const activeDn = useVenuesFilters((s) => s.activeDn);
   const activeType = useVenuesFilters((s) => s.activeType);
   const activeScene = useVenuesFilters((s) => s.activeScene);
+  const activeCities = useVenuesFilters((s) => s.activeCities);
   const activeSubtypes = useVenuesFilters((s) => s.activeSubtypes);
   const onlyVolgend = useVenuesFilters((s) => s.onlyVolgend);
   const setActiveDn = useVenuesFilters((s) => s.setActiveDn);
   const setActiveType = useVenuesFilters((s) => s.setActiveType);
   const setActiveScene = useVenuesFilters((s) => s.setActiveScene);
+  const setActiveCities = useVenuesFilters((s) => s.setActiveCities);
   const setActiveSubtypes = useVenuesFilters((s) => s.setActiveSubtypes);
   const setOnlyVolgend = useVenuesFilters((s) => s.setOnlyVolgend);
 
@@ -167,6 +170,9 @@ export default function Venues() {
       if (activeScene.length > 0) {
         if (!v.scene || !activeScene.includes(v.scene)) return false;
       }
+      if (activeCities.length > 0) {
+        if (!v.city || !activeCities.includes(v.city)) return false;
+      }
       if (activeSubtypes.length > 0) {
         // Array-overlap: venue moet minstens één van de gekozen
         // subtypes hebben.
@@ -175,7 +181,7 @@ export default function Venues() {
       }
       return true;
     });
-  }, [venuesAll, onlyVolgend, activeDn, activeType, activeScene, activeSubtypes]);
+  }, [venuesAll, onlyVolgend, activeDn, activeType, activeScene, activeCities, activeSubtypes]);
 
   // Toon de Volgen-quick-toggle in de chip-row alleen als de gebruiker
   // ook daadwerkelijk venues volgt — anders heeft 'ie geen functie.
@@ -298,6 +304,8 @@ export default function Venues() {
                     : activeDn.length +
                           activeType.length +
                           activeScene.length +
+    activeCities.length +
+                          activeCities.length +
                           activeSubtypes.length >
                         0
                       ? tx(
@@ -335,12 +343,14 @@ export default function Venues() {
           activeDn={activeDn}
           activeType={activeType}
           activeScene={activeScene}
+          activeCities={activeCities}
           activeSubtypes={activeSubtypes}
           onlyVolgend={onlyVolgend}
           showVolgendChip={showVolgendChip}
           onDn={setActiveDn}
           onType={setActiveType}
           onScene={setActiveScene}
+          onCities={setActiveCities}
           onSubtypes={setActiveSubtypes}
           onVolgend={setOnlyVolgend}
         />
@@ -501,12 +511,14 @@ function ChipRow({
   activeDn,
   activeType,
   activeScene,
+  activeCities,
   activeSubtypes,
   onlyVolgend,
   showVolgendChip,
   onDn,
   onType,
   onScene,
+  onCities,
   onSubtypes,
   onVolgend,
 }: {
@@ -515,12 +527,14 @@ function ChipRow({
   activeDn: VenueDayNight[];
   activeType: VenueType[];
   activeScene: VenueScene[];
+  activeCities: string[];
   activeSubtypes: string[];
   onlyVolgend: boolean;
   showVolgendChip: boolean;
   onDn: (next: VenueDayNight[]) => void;
   onType: (next: VenueType[]) => void;
   onScene: (next: VenueScene[]) => void;
+  onCities: (next: string[]) => void;
   onSubtypes: (next: string[]) => void;
   onVolgend: (next: boolean) => void;
 }) {
@@ -545,6 +559,7 @@ function ChipRow({
     activeDn.length +
     activeType.length +
     activeScene.length +
+    activeCities.length +
     activeSubtypes.length;
   // Als de huidige filter-staat exact matcht met een opgeslagen
   // venue-zoekopdracht-chip, dan licht díe chip al op — de filter-knop
@@ -756,12 +771,14 @@ function ChipRow({
           activeDn={activeDn}
           activeType={activeType}
           activeScene={activeScene}
+          activeCities={activeCities}
           activeSubtypes={activeSubtypes}
           onlyVolgend={onlyVolgend}
           query={query}
           onDn={onDn}
           onType={onType}
           onScene={onScene}
+          onCities={onCities}
           onSubtypes={onSubtypes}
           onVolgend={onVolgend}
           onClose={() => setFilterOpen(false)}
@@ -775,12 +792,14 @@ function FilterSheet({
   activeDn,
   activeType,
   activeScene,
+  activeCities,
   activeSubtypes,
   onlyVolgend,
   query,
   onDn,
   onType,
   onScene,
+  onCities,
   onSubtypes,
   onVolgend,
   onClose,
@@ -788,12 +807,14 @@ function FilterSheet({
   activeDn: VenueDayNight[];
   activeType: VenueType[];
   activeScene: VenueScene[];
+  activeCities: string[];
   activeSubtypes: string[];
   onlyVolgend: boolean;
   query: string;
   onDn: (next: VenueDayNight[]) => void;
   onType: (next: VenueType[]) => void;
   onScene: (next: VenueScene[]) => void;
+  onCities: (next: string[]) => void;
   onSubtypes: (next: string[]) => void;
   onVolgend: (next: boolean) => void;
   onClose: () => void;
@@ -864,6 +885,11 @@ function FilterSheet({
       if (next.length !== activeSubtypes.length) onSubtypes(next);
     } else onType([...activeType, v]);
   };
+  const cityChips = getCityChips();
+  const toggleCity = (c: string) => {
+    if (activeCities.includes(c)) onCities(activeCities.filter((x) => x !== c));
+    else onCities([...activeCities, c]);
+  };
   const toggleScene = (v: VenueScene) => {
     if (activeScene.includes(v)) onScene(activeScene.filter((x) => x !== v));
     else onScene([...activeScene, v]);
@@ -880,6 +906,7 @@ function FilterSheet({
     activeDn.length +
     activeType.length +
     activeScene.length +
+    activeCities.length +
     activeSubtypes.length;
 
   const onClearAll = () => {
@@ -937,12 +964,6 @@ function FilterSheet({
         <Text style={[styles.sheetTitle, { color: roles.fg }]}>
           {t('Filter', 'Filter')}
         </Text>
-        <Text style={[styles.sheetLead, { color: roles.fgMuted }]}>
-          {t(
-            "Combineer dag/nacht, type, sub-type, scene en volg-status. Sla 'm op om de combinatie als chip te bewaren.",
-            'Combine day/night, type, sub-type, scene and follow-status. Save it to keep the combination as a chip.'
-          )}
-        </Text>
       </View>
 
       <ScrollView
@@ -951,25 +972,13 @@ function FilterSheet({
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
-        <Text style={[styles.sheetSectionHead, { color: roles.fgMuted }]}>
-          {t('Dag of Nacht', 'Day or Night')}
-        </Text>
-        <View style={styles.sheetWrap}>
-          {daynightChips.map((c) => (
-            <FilterChip
-              key={c.value}
-              label={c.label}
-              active={activeDn.includes(c.value)}
-              onPress={() => toggleDn(c.value)}
-            />
-          ))}
-        </View>
-
+        {/* Dag/nacht stond hier tot 13 sep als eerste sectie. Eruit: de
+            keuze zei weinig over een venue (de meeste staan op `both`)
+            en kostte de bovenste schermvulling. De state blijft bestaan
+            zodat opgeslagen zoekopdrachten met een dn-waarde blijven
+            werken, en "wis alles" ruimt 'm op. */}
         <Text
-          style={[
-            styles.sheetSectionHead,
-            { color: roles.fgMuted, marginTop: 22 },
-          ]}
+          style={[styles.sheetSectionHead, { color: roles.fgMuted }]}
         >
           {t('Type', 'Type')}
         </Text>
@@ -999,6 +1008,25 @@ function FilterSheet({
               label={c.label}
               active={activeScene.includes(c.value)}
               onPress={() => toggleScene(c.value)}
+            />
+          ))}
+        </View>
+
+        <Text
+          style={[
+            styles.sheetSectionHead,
+            { color: roles.fgMuted, marginTop: 22 },
+          ]}
+        >
+          {t('Stad', 'City')}
+        </Text>
+        <View style={styles.sheetWrap}>
+          {cityChips.map((c) => (
+            <FilterChip
+              key={c.value}
+              label={c.label}
+              active={activeCities.includes(c.value)}
+              onPress={() => toggleCity(c.value)}
             />
           ))}
         </View>

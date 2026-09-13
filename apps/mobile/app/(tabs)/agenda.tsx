@@ -562,12 +562,6 @@ function DateRangeSheet({
           <Text style={[styles.sheetTitle, { color: roles.fg }]}>
             {t('Periode', 'Range')}
           </Text>
-          <Text style={[styles.sheetLead, { color: roles.fgMuted }]}>
-            {t(
-              'Kies een vaste periode, of tik een begin- en einddatum aan.',
-              'Pick a preset range, or tap a start and end date.'
-            )}
-          </Text>
         </View>
 
         <ScrollView
@@ -1241,12 +1235,6 @@ function FilterSheet({
       <View style={styles.sheetHead}>
         <Text style={[styles.sheetTitle, { color: roles.fg }]}>
           {t('Filter', 'Filter')}
-        </Text>
-        <Text style={[styles.sheetLead, { color: roles.fgMuted }]}>
-          {t(
-            "Combineer categorie, tijd en genre. Sla 'm op om de combinatie als chip te bewaren.",
-            'Combine category, time and genre. Save it to keep the combination as a chip.'
-          )}
         </Text>
       </View>
 

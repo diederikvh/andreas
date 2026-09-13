@@ -13,12 +13,16 @@ type VenuesFiltersState = {
   activeDn: VenueDayNight[];
   activeType: VenueType[];
   activeScene: VenueScene[];
+  /** Stad. Client-side gefilterd, net als type en scene — de lijst
+      draagt `city` al mee. */
+  activeCities: string[];
   activeSubtypes: string[];
   onlyVolgend: boolean;
   setQuery: (q: string) => void;
   setActiveDn: (next: VenueDayNight[]) => void;
   setActiveType: (next: VenueType[]) => void;
   setActiveScene: (next: VenueScene[]) => void;
+  setActiveCities: (next: string[]) => void;
   setActiveSubtypes: (next: string[]) => void;
   setOnlyVolgend: (next: boolean) => void;
   reset: () => void;
@@ -29,12 +33,14 @@ export const useVenuesFilters = create<VenuesFiltersState>((set) => ({
   activeDn: [],
   activeType: [],
   activeScene: [],
+  activeCities: [],
   activeSubtypes: [],
   onlyVolgend: false,
   setQuery: (q) => set({ query: q }),
   setActiveDn: (next) => set({ activeDn: next }),
   setActiveType: (next) => set({ activeType: next }),
   setActiveScene: (next) => set({ activeScene: next }),
+  setActiveCities: (next) => set({ activeCities: next }),
   setActiveSubtypes: (next) => set({ activeSubtypes: next }),
   setOnlyVolgend: (next) => set({ onlyVolgend: next }),
   reset: () =>
@@ -43,6 +49,7 @@ export const useVenuesFilters = create<VenuesFiltersState>((set) => ({
       activeDn: [],
       activeType: [],
       activeScene: [],
+      activeCities: [],
       activeSubtypes: [],
       onlyVolgend: false,
     }),

@@ -298,16 +298,21 @@ export function translateVenueCapacity(
  * DB-waarden ("nieuw-west" → "Nieuw-West", "centrum" → "Centrum").
  */
 /**
- * Steden die we daadwerkelijk in de database hebben. Bewust een korte
- * lijst en niet het hele enum: chips voor Utrecht en Rotterdam tonen
- * terwijl daar nog geen venue staat levert alleen lege resultaten op.
+ * Steden waar we daadwerkelijk venues hebben. Bewust niet het hele
+ * enum: chips voor een stad zonder venues leveren alleen lege
+ * resultaten op.
  *
- * ponytail: met de hand bijhouden. Zodra dit meer dan een handvol
- * steden wordt is het beter om ze uit een endpoint te halen met een
- * telling erbij.
+ * LET OP: deze lijst moet mee als je een venue in een nieuwe stad
+ * toevoegt. Dat is binnen drie uur al een keer misgegaan — Rotterdam en
+ * Groningen kwamen erbij en stonden hier niet, dus ze waren niet te
+ * filteren terwijl de events er wel waren.
+ *
+ * ponytail: zodra dit vaker misgaat hoort het uit een endpoint te komen
+ * met een telling per stad, afgeleid van de venues-tabel.
  */
 export const CITY_VALUES = [
-  'amsterdam', 'amstelveen', 'diemen', 'zaandam', 'haarlem', 'antwerpen',
+  'amsterdam', 'amstelveen', 'diemen', 'zaandam', 'haarlem',
+  'rotterdam', 'groningen', 'antwerpen',
 ] as const;
 
 /**
