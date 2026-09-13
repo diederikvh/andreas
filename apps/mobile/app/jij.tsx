@@ -263,43 +263,52 @@ export default function Jij() {
   const [avatarUploading, setAvatarUploading] = useState(false);
   const onPickAvatar = async () => {
     if (avatarUploading) return;
-    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!perm.granted) {
-      setError(
-        t(
-          'Geen toegang tot foto-bibliotheek.',
-          'No access to photo library.'
-        )
-      );
-      return;
-    }
+    /*
+     * Geen toestemming vragen. Dat lijkt slordig maar is het tegendeel:
+     * sinds iOS 14 draait de fotokiezer buiten de app, en krijgen wij
+     * alleen wat jij aanwijst. Toestemming vrágen zet je op "beperkte
+     * toegang" zodra je ooit "Selecteer foto's" koos, en dán toont iOS
+     * een andere, krappe kiezer waarin één tik niets doet en de
+     * bevestigknop achter de Dynamic Island valt. Precies de bug die
+     * Diederik zag: je kon geen profielfoto meer kiezen.
+     */
+    /*
+     * Geen uitsnede-stap. Die stond er voor een net vierkant, maar je
+     * foto wordt hier toch in een rondje getoond met `cover` — er valt
+     * dus niets te winnen, en er viel wel wat te verliezen: na het
+     * croppen komt op iOS soms "geannuleerd" terug in plaats van de
+     * foto, en dan gebeurt er precies niets. Dat is wat Diederik zag.
+     */
     const picked = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
-      allowsEditing: true,
-      aspect: [1, 1],
       quality: 0.8,
+      allowsMultipleSelection: false,
+      selectionLimit: 1,
     });
-    // eslint-disable-next-line no-console
-    console.log('[avatar] picked', picked);
     if (picked.canceled) return;
     const asset = picked.assets[0];
-    if (!asset) return;
+    if (!asset) {
+      // Kwam de kiezer terug zonder foto, zeg dat dan. Een scherm dat
+      // niets doet is het ergste antwoord.
+      setError(t('Geen foto ontvangen.', 'No photo received.'));
+      return;
+    }
     setAvatarUploading(true);
     setError(null);
     try {
-      // eslint-disable-next-line no-console
-      console.log('[avatar] uploading', asset.uri, asset.mimeType);
       const updated = await uploadAvatar({
         uri: asset.uri,
         mimeType: asset.mimeType ?? 'image/jpeg',
       });
-      // eslint-disable-next-line no-console
-      console.log('[avatar] uploaded', updated.avatarUrl);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       await refetchMe();
     } catch (e) {
-      // eslint-disable-next-line no-console
-      console.warn('[avatar] failed', e);
+      // Een melding, niet alleen een regeltje onder je naam: dit is een
+      // handeling die je bewust startte en die dan mislukt.
+      Alert.alert(
+        t('Foto niet opgeslagen', 'Photo not saved'),
+        e instanceof Error ? e.message : String(e),
+      );
       setError(
         e instanceof Error
           ? e.message
