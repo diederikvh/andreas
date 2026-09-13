@@ -345,6 +345,11 @@ export default function EventDetail() {
             </>
           )}
 
+          {/* Twee rijen van twee. Was één rij van drie, maar dan is de
+              venue-cel een derde breed en breekt een naam als
+              "Het Concertgebouw" met z'n plaats eronder over vier
+              regels. Nu staat de plaats naast de venue in plaats van
+              eronder. */}
           <View style={styles.metaRow}>
             <View style={styles.metaCellWrap}>
               <MetaCell
@@ -372,11 +377,21 @@ export default function EventDetail() {
                 value={view.time}
               />
             </View>
+          </View>
+          {/* Locatie links, venue rechts: dan staat de chevron aan de
+              buitenrand van de rij in plaats van er middenin. */}
+          <View style={[styles.metaRow, styles.metaRowLast]}>
+            <View style={styles.metaCellWrap}>
+              <MetaCell
+                label={t('Locatie', 'Location')}
+                value={view.venuePlace ?? '—'}
+              />
+            </View>
             <View style={styles.metaCellWrap}>
               <MetaCell
                 label={t('Venue', 'Venue')}
                 value={view.venue}
-                sub={view.venuePlace}
+                chevron
                 onPress={() => router.push(`/venue/${event.venue.slug}`)}
               />
             </View>
@@ -1789,25 +1804,22 @@ function DetailFallback({
 function MetaCell({
   label,
   value,
-  sub,
+  chevron,
   onPress,
 }: {
   label: string;
   value: string;
-  /** Tweede regel onder de waarde, kleiner en gedempt. Gebruikt voor de
-      plaats onder een venue-naam: "Amsterdam · Noord". */
-  sub?: string | null;
+  /** Pijltje rechtsonder. Markeert dat de cel ergens heen gaat, in
+      plaats van de hele rand te laten oplichten — dat trok meer
+      aandacht dan de titel erboven. */
+  chevron?: boolean;
   onPress?: () => void;
 }) {
   const mode = useMode();
   const roles = useRoles();
   const isNacht = mode === 'nacht';
   const Wrap = onPress ? Pressable : View;
-  const borderColor = onPress
-    ? roles.accent
-    : isNacht
-      ? '#232327'
-      : palette.paper;
+  const borderColor = isNacht ? '#232327' : palette.paper;
   return (
     <Wrap
       onPress={onPress}
@@ -1819,11 +1831,20 @@ function MetaCell({
         },
       ]}
     >
-      <Text style={[styles.metaLabel, { color: roles.fgMuted }]}>{label}</Text>
-      <Text style={[styles.metaValue, { color: roles.fg }]}>{value}</Text>
-      {sub ? (
-        <Text style={[styles.metaSub, { color: roles.fgMuted }]}>{sub}</Text>
-      ) : null}
+      {/* Rij over de hele cel, niet alleen over de waarde: zo staat de
+          chevron verticaal in het midden van het kader in plaats van op
+          de onderregel te hangen. */}
+      <View style={styles.metaCellInner}>
+        <View style={styles.metaCellText}>
+          <Text style={[styles.metaLabel, { color: roles.fgMuted }]}>
+            {label}
+          </Text>
+          <Text style={[styles.metaValue, { color: roles.fg }]}>{value}</Text>
+        </View>
+        {chevron ? (
+          <Ionicons name="chevron-forward" size={14} color={roles.fgMuted} />
+        ) : null}
+      </View>
     </Wrap>
   );
 }
@@ -1907,7 +1928,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'stretch',
     gap: 8,
-    marginBottom: 20,
+    marginBottom: 8,
   },
   // Animated.View wrapper rond MetaCell — flex hier zodat de cells
   // gelijkmatig 1/3 ruimte krijgen, en de pulse-animatie alleen op
@@ -1931,12 +1952,18 @@ const styles = StyleSheet.create({
     letterSpacing: -0.21,
     marginTop: 4,
   },
-  metaSub: {
-    fontFamily: fontFamily.body,
-    fontSize: 12,
-    letterSpacing: -0.12,
-    marginTop: 2,
+  metaCellInner: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
   },
+  // flexShrink zodat een lange venue-naam afbreekt in plaats van de
+  // chevron uit de cel te duwen.
+  metaCellText: { flex: 1, flexShrink: 1 },
+  // De tweede rij draagt de ruimte naar wat eronder komt; de eerste
+  // houdt alleen de 8 tussen de twee rijen.
+  metaRowLast: { marginBottom: 20 },
 
   bodyText: {
     fontFamily: fontFamily.body,
