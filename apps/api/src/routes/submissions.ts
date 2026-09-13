@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, isNull, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, inArray, isNull, sql } from 'drizzle-orm';
 import { Hono, type Context } from 'hono';
 
 import { auth } from '../auth.js';
@@ -164,6 +164,45 @@ submissionsRoute.post('/', async (c) => {
  * drempel ligt hoog genoeg dat twee verschillende zalen niet op één hoop
  * belanden, en een verkeerde koppeling is voor de admin één klik.
  */
+/**
+ * De avond bij een aanmelding die inmiddels een echt event is.
+ *
+ * Een aanmelding gaat over één avond, een event heeft er soms dertig. We
+ * kiezen die op dezelfde kalenderdag (Amsterdamse tijd); staat er geen
+ * datum op de aanmelding, dan de eerstvolgende. Dit is de sleutel waar het
+ * ticket naartoe moet, want een ticket hangt aan een occurrence.
+ */
+async function occurrencesFor(
+  rows: { eventId: string | null; date: string | null }[]
+): Promise<Map<string, string>> {
+  const ids = [...new Set(rows.map((r) => r.eventId).filter((id): id is string => Boolean(id)))];
+  if (ids.length === 0) return new Map();
+  const occ = await db
+    .select({
+      id: schema.occurrences.id,
+      eventId: schema.occurrences.eventId,
+      day: sql<string>`to_char(${schema.occurrences.startsAt} at time zone 'Europe/Amsterdam', 'YYYY-MM-DD')`,
+      startsAt: schema.occurrences.startsAt,
+    })
+    .from(schema.occurrences)
+    .where(
+      and(
+        inArray(schema.occurrences.eventId, ids),
+        sql`${schema.occurrences.status} <> 'cancelled'`
+      )
+    )
+    .orderBy(asc(schema.occurrences.startsAt));
+
+  const byEvent = new Map<string, string>();
+  for (const row of rows) {
+    if (!row.eventId || byEvent.has(row.eventId)) continue;
+    const mine = occ.filter((o) => o.eventId === row.eventId);
+    const hit = (row.date && mine.find((o) => o.day === row.date)) || mine[0];
+    if (hit) byEvent.set(row.eventId, hit.id);
+  }
+  return byEvent;
+}
+
 export async function findVenueId(name: string | null): Promise<string | null> {
   if (!name) return null;
   const [exact] = await db
@@ -194,6 +233,7 @@ function toCard(row: {
   eventId: string | null;
   imageUrl?: string | null;
   venueImageUrl?: string | null;
+  occurrenceId?: string | null;
 }) {
   return {
     id: row.id,
@@ -211,6 +251,11 @@ function toCard(row: {
         staat het ook gewoon in je plannen en mag deze kaart weg. */
     published: Boolean(row.eventId),
     eventId: row.eventId,
+    /** De avond bij dat echte event. Hier verhuist het ticket naartoe:
+        dat hangt aan een occurrence, niet aan een event. Bewust niet
+        `occurrenceId`: in de app onderscheidt dat veld een echt plan van
+        een aanmelding. */
+    linkedOccurrenceId: row.occurrenceId ?? null,
     status: row.status,
   };
 }
@@ -256,7 +301,15 @@ submissionsRoute.get('/mine', async (c) => {
     )
     .orderBy(desc(schema.submissionGoing.createdAt));
 
-  return c.json({ submissions: rows.map(toCard) });
+  const occurrences = await occurrencesFor(rows);
+  return c.json({
+    submissions: rows.map((row) =>
+      toCard({
+        ...row,
+        occurrenceId: row.eventId ? (occurrences.get(row.eventId) ?? null) : null,
+      })
+    ),
+  });
 });
 
 /**
@@ -322,7 +375,15 @@ submissionsRoute.get('/match', async (c) => {
     )
     .limit(5);
 
-  return c.json({ submissions: rows.map(toCard) });
+  const occurrences = await occurrencesFor(rows);
+  return c.json({
+    submissions: rows.map((row) =>
+      toCard({
+        ...row,
+        occurrenceId: row.eventId ? (occurrences.get(row.eventId) ?? null) : null,
+      })
+    ),
+  });
 });
 
 /**

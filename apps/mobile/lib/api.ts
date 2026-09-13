@@ -1171,6 +1171,10 @@ export type PendingEvent = {
   /** Waar geworden: er is een echt event van gemaakt. */
   published: boolean;
   eventId: string | null;
+  /** De avond bij dat echte event — daar verhuist je ticket naartoe.
+      Niet `occurrenceId`: dat veld onderscheidt elders een echt plan van
+      een aanmelding. */
+  linkedOccurrenceId: string | null;
   status: string;
   /** De poster die de aanmelder meegaf, of anders de foto van de zaal.
       Leeg? Dan tekent de app een lettertegel. */

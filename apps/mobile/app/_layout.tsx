@@ -31,6 +31,7 @@ import { useMe } from '@/lib/queries';
 import { ModeCurtain } from '@/components/ModeCurtain';
 import { PushManager } from '@/components/PushManager';
 import { SentryUserBinder } from '@/components/SentryUserBinder';
+import { TicketRehome } from '@/components/TicketRehome';
 import { ShareImportCapture } from '@/components/ShareImportCapture';
 import { ShareInviteClaimer } from '@/components/ShareInviteClaimer';
 import { UpdateBanner } from '@/components/UpdateBanner';
@@ -161,6 +162,7 @@ function RootLayout() {
                   <SeenWindowSync />
                   <ShareInviteClaimer />
                   <ShareImportCapture />
+                  <TicketRehome />
                   <UpdateBanner />
                   <StatusBar style={mode === 'nacht' ? 'light' : 'dark'} />
                 </InboxToastProvider>

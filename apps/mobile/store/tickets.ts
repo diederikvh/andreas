@@ -45,6 +45,8 @@ type State = {
   /** Ontkoppelen én het bestand weggooien — de gebruiker wil het weg.
       Zonder `fileUri` gaan ze allemaal weg. */
   detach: (occurrenceId: string, fileUri?: string) => void;
+  /** Verhuis alles wat onder `from` hangt naar `to`. */
+  move: (from: string, to: string) => void;
 };
 
 function deleteFile(uri: string): void {
@@ -72,6 +74,30 @@ export const useTickets = create<State>()(
               [ticket.occurrenceId]: [...current, ticket],
             },
           };
+        }),
+      /**
+       * Je aanmelding is een echt event geworden.
+       *
+       * Het bestand blijft staan waar het staat; alleen de sleutel
+       * verandert, van `sub-…` naar de occurrence. Zonder dit blijft je
+       * ticket hangen aan een kaart die uit beeld verdwijnt zodra de
+       * echte avond in je plannen verschijnt.
+       */
+      move: (from, to) =>
+        set((s) => {
+          const moving = s.tickets[from];
+          if (!moving || moving.length === 0 || from === to) return s;
+          const next = { ...s.tickets };
+          delete next[from];
+          const already = next[to] ?? [];
+          const names = new Set(already.map((t) => t.fileUri.split('/').pop()));
+          next[to] = [
+            ...already,
+            ...moving
+              .filter((t) => !names.has(t.fileUri.split('/').pop()))
+              .map((t) => ({ ...t, occurrenceId: to })),
+          ];
+          return { tickets: next };
         }),
       detach: (occurrenceId, fileUri) => {
         const current = get().tickets[occurrenceId] ?? [];

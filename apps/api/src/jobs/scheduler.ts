@@ -12,6 +12,7 @@
  * bewust wél intern, zodat een push niet afhangt van een tweede systeem.
  */
 import { sendDailyNewPush } from './daily-new-push.js';
+import { linkSubmissionsToEvents } from './linkSubmissions.js';
 
 /** Lokale tijd waarop de aanwinsten-push de deur uit gaat. */
 const PUSH_HOUR = 10;
@@ -59,6 +60,21 @@ export function startScheduler(): void {
   };
 
   const run = async () => {
+    // Eerst koppelen, dan pas de push: een aanmelding die vandaag een echt
+    // event is geworden hoort in die melding thuis als het echte event, niet
+    // als losse kaart.
+    try {
+      const linked = await linkSubmissionsToEvents();
+      if (linked.length > 0) {
+        console.log(
+          `[scheduler] ${linked.length} aanmelding(en) gekoppeld: ` +
+            linked.map((l) => `${l.title ?? l.id} → ${l.eventId}`).join(', ')
+        );
+      }
+    } catch (err) {
+      console.error('[scheduler] koppelen mislukt', err);
+    }
+
     try {
       const result = await sendDailyNewPush();
       console.log(

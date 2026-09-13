@@ -277,11 +277,30 @@ Drie dingen veranderd:
 3. **Bestaande data bijgewerkt**: 1 exact, 1 op gelijkenis. Alle drie hebben nu
    een zaal.
 
-Let op de volgende stap die hier logisch uit volgt: hetzelfde geldt voor
-**events**. Wordt een aanmelding later alsnog gescrapet, dan zou `event_id`
-vanzelf gezet moeten worden. Dat kan pas veilig als het ticket meeverhuist —
-zie het openstaande punt daarover — want anders blijft het kaartje achter op de
-`sub-…`-sleutel terwijl de kaart naar het echte event verspringt.
+En dezelfde vraag voor **events** — beantwoord, in die volgorde:
+
+**Eerst: het ticket verhuist mee.** Een ticket hangt aan een sleutel: bij een
+aanmelding `sub-…`, bij een echt event de occurrence. Werd er een event van
+gemaakt, dan versprong je plan en bleef het kaartje achter op een sleutel die
+nergens meer in beeld kwam. `components/TicketRehome.tsx` verplaatst 'm nu
+zodra de server een `linkedOccurrenceId` meestuurt (de avond van dat event op
+dezelfde kalenderdag als de aanmelding, anders de eerstvolgende). Het bestand
+blijft staan waar het staat; alleen de sleutel verandert. Het veld heet bewust
+niet `occurrenceId`: in de app onderscheidt dát veld een echt plan van een
+aanmelding (`'occurrenceId' in item`).
+
+**Daarna: automatisch koppelen.** `jobs/linkSubmissions.ts` draait dagelijks,
+vlak vóór de aanwinsten-push. Voorwaarden expres streng, want een verkeerde
+koppeling is erger dan geen: dezelfde zaal (op `venue_id`), dezelfde
+kalenderdag in Amsterdamse tijd, titelgelijkenis boven 0,6 — en **precies één**
+event dat aan dat alles voldoet. Twee kandidaten op dezelfde avond in dezelfde
+zaal? Dan laat de machine het liggen. `status` blijft staan, dus het blijft in
+de admin-lijst zichtbaar en je kan het terugdraaien.
+
+Droog gedraaid op de echte database: "LOWERTOWN 2" (Paradiso, 12 sep) koppelt
+aan het echte "Lowertown" met gelijkenis 0,83 en één kandidaat; "Roosbeef" (De
+Roma, april 2027) blijft liggen omdat dat event nog niet bestaat. Precies de
+bedoeling.
 
 ### Meerdere bestanden in één share (11 sep 2026)
 
