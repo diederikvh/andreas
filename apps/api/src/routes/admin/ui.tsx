@@ -60,6 +60,23 @@ type VenueType = (typeof VENUE_TYPES)[number];
 const DAY_NIGHT = ['day', 'night', 'both'] as const;
 type DayNight = (typeof DAY_NIGHT)[number];
 
+const CITIES = [
+  'amsterdam',
+  'amstelveen',
+  'diemen',
+  'zaandam',
+  'haarlem',
+  'utrecht',
+  'rotterdam',
+  'den-haag',
+  'eindhoven',
+  'groningen',
+  'antwerpen',
+] as const;
+type City = (typeof CITIES)[number];
+
+/** Stadsdelen bínnen een stad. De buitengemeenten die hier tot
+    migratie 0058 in stonden zijn nu een `City`. */
 const WIJKEN = [
   'centrum',
   'noord',
@@ -68,9 +85,6 @@ const WIJKEN = [
   'zuid',
   'zuidoost',
   'nieuw-west',
-  'amstelveen',
-  'zaandam',
-  'haarlem',
 ] as const;
 type Wijk = (typeof WIJKEN)[number];
 
@@ -1440,6 +1454,7 @@ adminUi.get('/venues', async (c) => {
             <th>Type</th>
             <th>Scene</th>
             <th>Dag/nacht</th>
+            <th>Stad</th>
             <th>Wijk</th>
             <th>Status</th>
             <th class="status-cell"></th>
@@ -1489,6 +1504,7 @@ adminUi.get('/venues', async (c) => {
               <td style="font-size:12px;">{v.type ?? '—'}</td>
               <td style="font-size:12px;">{v.scene ?? '—'}</td>
               <td style="font-size:12px;">{v.dayNight ?? '—'}</td>
+              <td style="font-size:12px;">{v.city ?? '—'}</td>
               <td style="font-size:12px;">{v.wijk ?? '—'}</td>
               <td><PublishedPill published={v.published} /></td>
               <td class="status-cell"><span data-status></span></td>
@@ -1550,6 +1566,7 @@ adminUi.post('/venues/new', async (c) => {
     categories: parseCategoriesField(String(form.categories ?? '')),
     type: parseEnumField(VENUE_TYPES, String(form.type ?? '')) ?? undefined,
     dayNight: parseEnumField(DAY_NIGHT, String(form.dayNight ?? '')) ?? undefined,
+    city: parseEnumField(CITIES, String(form.city ?? '')) ?? 'amsterdam',
     wijk: parseEnumField(WIJKEN, String(form.wijk ?? '')) ?? undefined,
     scene: parseEnumField(SCENES, String(form.scene ?? '')) ?? undefined,
     capacity: parseEnumField(CAPACITIES, String(form.capacity ?? '')) ?? undefined,
@@ -1764,6 +1781,7 @@ adminUi.post('/venues/:id', async (c) => {
       categories: parseCategoriesField(String(form.categories ?? '')),
       type: parseEnumField(VENUE_TYPES, String(form.type ?? '')),
       dayNight: parseEnumField(DAY_NIGHT, String(form.dayNight ?? '')),
+      city: parseEnumField(CITIES, String(form.city ?? '')) ?? 'amsterdam',
       wijk: parseEnumField(WIJKEN, String(form.wijk ?? '')),
       scene: parseEnumField(SCENES, String(form.scene ?? '')),
       capacity: parseEnumField(CAPACITIES, String(form.capacity ?? '')),
@@ -1969,6 +1987,16 @@ function VenueForm({
             <option value="" selected={!venue?.dayNight}>—</option>
             {DAY_NIGHT.map((d) => (
               <option value={d} selected={venue?.dayNight === d}>{d}</option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Stad
+          <select name="city">
+            {CITIES.map((c) => (
+              <option value={c} selected={(venue?.city ?? 'amsterdam') === c}>
+                {c}
+              </option>
             ))}
           </select>
         </label>

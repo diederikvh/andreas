@@ -46,6 +46,23 @@ type VenueType = (typeof VENUE_TYPES)[number];
 const DAY_NIGHT = ['day', 'night', 'both'] as const;
 type DayNight = (typeof DAY_NIGHT)[number];
 
+const CITIES = [
+  'amsterdam',
+  'amstelveen',
+  'diemen',
+  'zaandam',
+  'haarlem',
+  'utrecht',
+  'rotterdam',
+  'den-haag',
+  'eindhoven',
+  'groningen',
+  'antwerpen',
+] as const;
+type City = (typeof CITIES)[number];
+
+/** Stadsdelen bínnen een stad. De buitengemeenten die hier tot
+    migratie 0058 in stonden zijn nu een `City`. */
 const WIJKEN = [
   'centrum',
   'noord',
@@ -54,9 +71,6 @@ const WIJKEN = [
   'zuid',
   'zuidoost',
   'nieuw-west',
-  'amstelveen',
-  'zaandam',
-  'haarlem',
 ] as const;
 type Wijk = (typeof WIJKEN)[number];
 
@@ -607,6 +621,7 @@ adminApi.post('/venues', async (c) => {
         categories: parseCategoryArr(body.categories),
         type: parseEnum(VENUE_TYPES, body.type) ?? undefined,
         dayNight: parseEnum(DAY_NIGHT, body.dayNight) ?? undefined,
+        city: parseEnum(CITIES, body.city) ?? 'amsterdam',
         wijk: parseEnum(WIJKEN, body.wijk) ?? undefined,
         scene: parseEnum(SCENES, body.scene) ?? undefined,
         capacity: parseEnum(CAPACITIES, body.capacity) ?? undefined,
@@ -662,6 +677,7 @@ adminApi.patch('/venues/:id', async (c) => {
   if ('categories' in body) updates.categories = parseCategoryArr(body.categories);
   if ('type' in body) updates.type = parseEnum(VENUE_TYPES, body.type);
   if ('dayNight' in body) updates.dayNight = parseEnum(DAY_NIGHT, body.dayNight);
+  if ('city' in body) updates.city = parseEnum(CITIES, body.city) ?? 'amsterdam';
   if ('wijk' in body) updates.wijk = parseEnum(WIJKEN, body.wijk);
   if ('scene' in body) updates.scene = parseEnum(SCENES, body.scene);
   if ('capacity' in body) updates.capacity = parseEnum(CAPACITIES, body.capacity);
