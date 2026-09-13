@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useMemo } from 'react';
 import { Directory, File, Paths } from 'expo-file-system';
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
@@ -29,6 +30,10 @@ export type StoredTicket = {
   fileUri: string;
   fileName: string | null;
   mimeType: string | null;
+  /** Wanneer die avond is (ISO). Nodig om afgelopen kaartjes te kunnen
+      tonen en opruimen: zonder dit weet een ticket alleen dat het bestaat.
+      Leeg bij kaartjes van vóór 13 sep 2026. */
+  startsAt?: string | null;
   /** Welke codetypes er lokaal gevonden zijn — niet de inhoud ervan.
       De viewer gebruikt het alleen om te zeggen "scan de code op je
       ticket" in plaats van te doen alsof hij hem kent. */
@@ -146,6 +151,25 @@ export const useTickets = create<State>()(
 export function useTicketFor(occurrenceId: string | null | undefined) {
   return useTickets((s) =>
     occurrenceId ? s.tickets[occurrenceId]?.[0] : undefined,
+  );
+}
+
+/**
+ * Alles wat je bewaard hebt, nieuwste eerst.
+ *
+ * De enige plek waar je je kaartjes als lijst ziet. Dat was met opzet
+ * lang niet zo — ze horen bij een avond — maar na die avond verdwijnt de
+ * avond uit je plannen en was het bestand onbereikbaar: je kon het niet
+ * meer tonen én niet meer weggooien.
+ */
+export function useAllTickets(): StoredTicket[] {
+  const tickets = useTickets((s) => s.tickets);
+  return useMemo(
+    () =>
+      Object.values(tickets)
+        .flat()
+        .sort((a, b) => b.addedAt - a.addedAt),
+    [tickets]
   );
 }
 

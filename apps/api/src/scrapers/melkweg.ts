@@ -6,10 +6,18 @@ import { enrichEvent, refineKindByDuration } from './enrich.js';
 import { loadVenueTitleMap, resolveEventId } from './_title-dedup.js';
 
 /**
- * Melkweg scraper. Hun /agenda is een Next.js SPA achter Cloudflare —
- * een platte fetch geeft 0 bytes. We gebruiken Playwright (headless
- * Chromium) om de pagina te renderen, parsen `__NEXT_DATA__` voor de
- * `initialEvents` array, en lopen die door.
+ * Melkweg scraper. Hun /agenda is een Next.js-pagina die de eerste
+ * pagina events server-side meestuurt in `__NEXT_DATA__`. We halen 'm
+ * op met een kale fetch en lezen daar `initialEvents` uit.
+ *
+ * Dit liep tot 13 sep 2026 via Playwright, omdat Cloudflare een platte
+ * fetch destijds op 0 bytes zette. Hermeten op 13 sep: 200 OK, 816 kB,
+ * 279 events, met zowel een browser-UA als onze eigen. Dus geen browser
+ * meer, en daarmee kan deze scraper mee in de nachtelijke Action in
+ * plaats van te wachten op een openstaande laptop.
+ *
+ * Komt die blokkade terug, dan faalt dit luid: geen `__NEXT_DATA__` in
+ * de HTML gooit een error die in het scrape-resultaat landt.
  *
  * `__NEXT_DATA__.props.pageProps.pageData.attributes.content[0]
  *  .attributes.initialEvents` geeft ~200 events met velden:
@@ -56,39 +64,31 @@ type MelkwegEvent = {
 const UA =
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36';
 
-/** 1× Playwright voor de listing — return events + buildId.
- *  buildId is nodig om per-event JSON direct via fetch op te halen
- *  zonder elke keer een browser te starten. */
+/** Listing + buildId in één kale fetch. buildId is nodig om per-event
+ *  JSON op te halen via `_next/data`. */
 async function fetchInitialEvents(): Promise<{
   events: MelkwegEvent[];
   buildId: string;
 }> {
-  const { chromium } = await import('playwright');
-  const browser = await chromium.launch({ headless: true });
-  try {
-    const ctx = await browser.newContext({ userAgent: UA, locale: 'nl-NL' });
-    const page = await ctx.newPage();
-    await page.goto('https://www.melkweg.nl/agenda', {
-      waitUntil: 'domcontentloaded',
-      timeout: 30000,
-    });
-    await page.waitForTimeout(2000);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const data: any = await page.evaluate(`(() => {
-      const el = document.getElementById('__NEXT_DATA__');
-      return el ? JSON.parse(el.textContent || '{}') : null;
-    })()`);
-    if (!data) throw new Error('__NEXT_DATA__ niet gevonden');
-    const buildId = data?.buildId;
-    if (!buildId) throw new Error('buildId niet gevonden');
-    const events: MelkwegEvent[] | undefined =
-      data?.props?.pageProps?.pageData?.attributes?.content?.[0]?.attributes
-        ?.initialEvents;
-    if (!Array.isArray(events)) throw new Error('initialEvents niet gevonden');
-    return { events, buildId };
-  } finally {
-    await browser.close();
-  }
+  const r = await fetch('https://www.melkweg.nl/agenda', {
+    headers: { 'user-agent': UA, 'accept-language': 'nl-NL' },
+    signal: AbortSignal.timeout(30000),
+  });
+  if (!r.ok) throw new Error(`agenda HTTP ${r.status}`);
+  const html = await r.text();
+  const m = html.match(
+    /<script id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/
+  );
+  if (!m) throw new Error('__NEXT_DATA__ niet gevonden');
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const data: any = JSON.parse(m[1]!);
+  const buildId = data?.buildId;
+  if (!buildId) throw new Error('buildId niet gevonden');
+  const events: MelkwegEvent[] | undefined =
+    data?.props?.pageProps?.pageData?.attributes?.content?.[0]?.attributes
+      ?.initialEvents;
+  if (!Array.isArray(events)) throw new Error('initialEvents niet gevonden');
+  return { events, buildId };
 }
 
 /** Strip HTML naar plain text. Behoudt paragraph-breaks. */
@@ -208,7 +208,7 @@ export async function scrapeMelkweg(options?: {
     events = fetched.events;
     buildId = fetched.buildId;
   } catch (e) {
-    result.errors.push(`playwright: ${(e as Error).message}`);
+    result.errors.push(`listing: ${(e as Error).message}`);
     return [result];
   }
   result.fetched = events.length;

@@ -115,6 +115,15 @@ export default function MeerScreen() {
       hint: t('Zet \'m op je lijst', 'Put it on your list'),
       onPress: go('/scan'),
     },
+    {
+      // Na de avond verdwijnt het event uit je plannen en was je kaartje
+      // onbereikbaar — tonen kon niet meer, weggooien ook niet.
+      key: 'tickets',
+      icon: <Ionicons name="ticket-outline" size={22} color={roles.accent} />,
+      label: t('Je kaartjes', 'Your tickets'),
+      hint: t('Alles wat je bewaarde', 'Everything you saved'),
+      onPress: go('/tickets'),
+    },
   ];
 
   const vrienden: Entry[] = [

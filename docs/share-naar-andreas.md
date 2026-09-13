@@ -320,6 +320,26 @@ Twee dingen:
    van Diederik: liever een tel wachten dan een kaartje dat scheef staat op het
    moment dat je het nodig hebt.
 
+### Toch een ticketlijst (13 sep 2026)
+
+"Er is geen losse ticketlijst (ze hangen altijd aan een avond, met opzet)" —
+die keuze klopte tot het moment dat de avond voorbij is. Dan verdwijnt het event
+uit je plannen en is het bestand onbereikbaar: je kan het niet meer tonen én niet
+meer weggooien, terwijl het er nog staat met je naam en een code erop.
+
+`app/tickets.tsx`, te vinden onder Meer → **Je kaartjes**. Alles wat je bewaarde,
+avonden die geweest zijn apart, per stuk weggooien of in één keer opruimen.
+
+**Automatisch weggooien doen we niet**, en dat is een keuze en geen vergeetpost:
+een kaartje is ook een bonnetje en een herinnering, en stilletjes iemands
+bestand wissen kan je niet terugdraaien. Onderaan de lijst staat dat er ook:
+*"Deze bestanden staan alleen op dit toestel. Andreas gooit ze nooit uit zichzelf
+weg."*
+
+`StoredTicket` bewaart daarvoor sinds nu ook `startsAt`. Kaartjes van vóór deze
+lijst hebben dat niet; die tonen "bewaard op <datum>" en blijven bij het bovenste
+groepje staan. Ze vallen dus nooit stil onder "geweest" op een gok.
+
 ### Meerdere bestanden in één share (11 sep 2026)
 
 Je koopt drie kaartjes en krijgt drie losse PDF's. Dat kon niet: iOS liet de
