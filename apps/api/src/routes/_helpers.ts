@@ -335,6 +335,9 @@ type OccurrenceVenueLite = {
   /** Voor de venue-tone-pill in de kaart-sheet bij een per-occurrence
       MapEvent. */
   type: string | null;
+  /** Plaatsregel onder de venue-naam: "Amsterdam · Noord". */
+  city: string;
+  wijk: string | null;
 };
 
 function toShape(
@@ -375,6 +378,10 @@ async function loadOccurrenceVenues(
       lat: schema.venues.lat,
       lng: schema.venues.lng,
       type: schema.venues.type,
+      // Plaats van déze venue — bij films de bioscoop, en die wijkt af
+      // van het event-level venue.
+      city: schema.venues.city,
+      wijk: schema.venues.wijk,
     })
     .from(schema.venues)
     .where(inArray(schema.venues.id, ids));

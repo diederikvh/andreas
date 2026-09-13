@@ -474,15 +474,18 @@ function buildAgendaWhere(opts: {
   // Stad en stadsdeel, op dezelfde venue als hierboven: de rij toont de
   // venue van de occurrence, dus daar moet je 'm op kunnen vinden.
   //
-  // Stad en wijk staan náást elkaar, niet onder elkaar. Kies je
-  // "Amsterdam" plus "Noord", dan is dat een OR: alles in Amsterdam én
-  // alles in Noord — wat op hetzelfde neerkomt zolang Noord alleen in
-  // Amsterdam bestaat. Kies je "Utrecht" plus "Noord", dan krijg je
-  // Utrecht erbij, niet Utrecht-Noord. Een echte hiërarchie vraagt
-  // stadsdelen per stad, en die hebben we nog niet.
-  const plaatsClauses = [];
+  // De twee stapelen: "Amsterdam" plus "Noord" is Amsterdam-Noord, niet
+  // alles in Amsterdam plus alles wat Noord heet. Daarom een AND.
+  //
+  // Dat werkt ook voor steden die we nog niet hebben: `noord` in het
+  // wijk-enum is geen Amsterdams begrip, dus zodra er Utrechtse venues
+  // in staan geeft city=utrecht + wijk=noord vanzelf Utrecht-Noord.
+  //
+  // Gevolg van AND: een venue zonder stadsdeel valt af zodra je er een
+  // kiest. Dat is bedoeld — De Roma heeft geen wijk, dus "Antwerpen +
+  // Noord" hoort leeg te zijn.
   if (opts.filters.cities.length > 0) {
-    plaatsClauses.push(
+    conditions.push(
       sql`COALESCE(
             (SELECT ov.city FROM venues ov WHERE ov.id = ${schema.occurrences.venueId}),
             ${schema.venues.city}
@@ -490,16 +493,12 @@ function buildAgendaWhere(opts: {
     );
   }
   if (opts.filters.wijken.length > 0) {
-    plaatsClauses.push(
+    conditions.push(
       sql`COALESCE(
             (SELECT ov.wijk FROM venues ov WHERE ov.id = ${schema.occurrences.venueId}),
             ${schema.venues.wijk}
           ) IN (${sql.join(opts.filters.wijken.map((v) => sql`${v}`), sql`, `)})`
     );
-  }
-  if (plaatsClauses.length === 1) conditions.push(plaatsClauses[0]!);
-  else if (plaatsClauses.length > 1) {
-    conditions.push(sql`(${sql.join(plaatsClauses, sql` OR `)})`);
   }
 
   if (opts.filters.blocks.length > 0) {
@@ -1767,6 +1766,9 @@ eventsRoute.get('/:id', async (c) => {
         lat: schema.venues.lat,
         lng: schema.venues.lng,
         type: schema.venues.type,
+        // Plaats onder de venue-naam op het eventscherm.
+        city: schema.venues.city,
+        wijk: schema.venues.wijk,
         scene: schema.venues.scene,
         subtype: schema.venues.subtype,
         description: schema.venues.description,

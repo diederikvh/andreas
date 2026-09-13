@@ -310,10 +310,30 @@ export const CITY_VALUES = [
   'amsterdam', 'amstelveen', 'diemen', 'zaandam', 'haarlem', 'antwerpen',
 ] as const;
 
-/** Stadsdelen. Alleen Amsterdam heeft ze. */
+/**
+ * Stadsdelen. De namen zijn niet Amsterdams — Utrecht heeft ook een
+ * Noord en een Zuid — dus zodra er venues in een andere stad staan met
+ * een wijk ingevuld, geeft stad + stadsdeel vanzelf "Utrecht · Noord".
+ *
+ * Welke steden stadsdelen hébben staat in CITIES_WITH_WIJK. Nu alleen
+ * Amsterdam: de rest heeft te weinig venues om op te delen.
+ */
 export const WIJK_VALUES = [
   'centrum', 'noord', 'oost', 'west', 'zuid', 'zuidoost', 'nieuw-west',
 ] as const;
+
+export const CITIES_WITH_WIJK: string[] = ['amsterdam'];
+
+/**
+ * Heeft het zin om stadsdelen te tonen bij deze stadskeuze? Zonder
+ * stadskeuze wel (je filtert dan over alle steden heen), met een stad
+ * die geen stadsdelen kent niet — chips die gegarandeerd niets opleveren
+ * zijn erger dan geen chips.
+ */
+export function showsWijkChips(activeCities: string[]): boolean {
+  if (activeCities.length === 0) return true;
+  return activeCities.some((c) => CITIES_WITH_WIJK.includes(c));
+}
 
 export function getCityChips(): { value: string; label: string }[] {
   return CITY_VALUES.map((value) => ({ value, label: CITY_LABEL[value] ?? value }));

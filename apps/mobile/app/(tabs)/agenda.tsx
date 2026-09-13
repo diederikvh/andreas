@@ -39,6 +39,7 @@ import {
   getCityChips,
   getVenueTypeChips,
   getWijkChips,
+  showsWijkChips,
   translateVenueType,
   dowMixed,
   rowTimeLabel,
@@ -1170,8 +1171,13 @@ function FilterSheet({
   const cityChips = getCityChips();
   const wijkChips = getWijkChips();
   const toggleCity = (c: string) => {
-    if (activeCities.includes(c)) onCities(activeCities.filter((x) => x !== c));
-    else onCities([...activeCities, c]);
+    const next = activeCities.includes(c)
+      ? activeCities.filter((x) => x !== c)
+      : [...activeCities, c];
+    onCities(next);
+    // Stap je over op een stad zonder stadsdelen, dan zou een actief
+    // stadsdeel de lijst leegmaken zonder dat je de chip nog ziet staan.
+    if (activeWijken.length > 0 && !showsWijkChips(next)) onWijken([]);
   };
   const toggleWijk = (w: string) => {
     if (activeWijken.includes(w)) onWijken(activeWijken.filter((x) => x !== w));
@@ -1302,24 +1308,32 @@ function FilterSheet({
           ))}
         </View>
 
-        <Text
-          style={[
-            styles.sheetSectionHead,
-            { color: roles.fgMuted, marginTop: 22 },
-          ]}
-        >
-          {t('Stadsdeel', 'District')}
-        </Text>
-        <View style={styles.genreWrap}>
-          {wijkChips.map((c) => (
-            <FilterChip
-              key={c.value}
-              label={c.label}
-              active={activeWijken.includes(c.value)}
-              onPress={() => toggleWijk(c.value)}
-            />
-          ))}
-        </View>
+        {/* Stadsdeel verfijnt de stad: "Amsterdam" plus "Noord" is
+            Amsterdam-Noord. Kies je een stad die we niet hebben
+            opgedeeld, dan verdwijnt deze sectie — anders staan er chips
+            die gegarandeerd niets opleveren. */}
+        {showsWijkChips(activeCities) && (
+          <>
+            <Text
+              style={[
+                styles.sheetSectionHead,
+                { color: roles.fgMuted, marginTop: 22 },
+              ]}
+            >
+              {t('Stadsdeel', 'District')}
+            </Text>
+            <View style={styles.genreWrap}>
+              {wijkChips.map((c) => (
+                <FilterChip
+                  key={c.value}
+                  label={c.label}
+                  active={activeWijken.includes(c.value)}
+                  onPress={() => toggleWijk(c.value)}
+                />
+              ))}
+            </View>
+          </>
+        )}
 
         <Text
           style={[
