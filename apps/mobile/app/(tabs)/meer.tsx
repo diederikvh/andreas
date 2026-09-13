@@ -32,7 +32,6 @@ type Entry = {
   key: string;
   icon: ReactNode;
   label: string;
-  hint?: string;
   badge?: number;
   onPress: () => void;
 };
@@ -74,7 +73,6 @@ export default function MeerScreen() {
             key: 'gids',
             icon: <Cross20 color={roles.accent} />,
             label: t('Vraag Andreas', 'Ask Andreas'),
-            hint: t('Zeg waar je zin in hebt', 'Say what you feel like'),
             onPress: () => {
               softTap();
               openGuide();
@@ -88,22 +86,19 @@ export default function MeerScreen() {
       key: 'going',
       icon: <Ionicons name="checkmark-circle-outline" size={22} color={roles.accent} />,
       label: t('Waar je heen gaat', "Where you're going"),
-      hint: t('Je eigen agenda', 'Your own agenda'),
       onPress: go('/going'),
     },
     {
       key: 'new',
       icon: <Ionicons name="flash-outline" size={22} color={roles.accent} />,
-      label: t('Nieuwe aanwinsten', 'New additions'),
-      hint: t('Beoordeel wat er bij kwam', 'Rate what came in'),
+      label: t('Nieuw binnengekomen', 'New in Andreas'),
       badge: newCount,
       onPress: go('/new'),
     },
     {
       key: 'voor-jou',
       icon: <Ionicons name="heart-outline" size={22} color={roles.accent} />,
-      label: t('Aanbevolen', 'Recommended'),
-      hint: t('Op basis van je smaak', 'Based on your taste'),
+      label: t('Voor jou', 'For you'),
       onPress: go('/voor-jou'),
     },
     {
@@ -112,7 +107,6 @@ export default function MeerScreen() {
       key: 'scan',
       icon: <Ionicons name="scan-outline" size={22} color={roles.accent} />,
       label: t('Scan een poster', 'Scan a poster'),
-      hint: t('Zet \'m op je lijst', 'Put it on your list'),
       onPress: go('/scan'),
     },
     {
@@ -121,7 +115,6 @@ export default function MeerScreen() {
       key: 'tickets',
       icon: <Ionicons name="ticket-outline" size={22} color={roles.accent} />,
       label: t('Je kaartjes', 'Your tickets'),
-      hint: t('Alles wat je bewaarde', 'Everything you saved'),
       onPress: go('/tickets'),
     },
   ];
@@ -249,11 +242,6 @@ function Row({ entry, last }: { entry: Entry; last: boolean }) {
       <View style={styles.rowIcon}>{entry.icon}</View>
       <View style={styles.rowBody}>
         <Text style={[styles.rowLabel, { color: roles.fg }]}>{entry.label}</Text>
-        {entry.hint && (
-          <Text style={[styles.rowHint, { color: roles.fgMuted }]}>
-            {entry.hint}
-          </Text>
-        )}
       </View>
       {entry.badge ? (
         <View style={[styles.badge, { backgroundColor: roles.accent }]}>

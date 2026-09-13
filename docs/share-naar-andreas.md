@@ -336,6 +336,18 @@ bestand wissen kan je niet terugdraaien. Onderaan de lijst staat dat er ook:
 *"Deze bestanden staan alleen op dit toestel. Andreas gooit ze nooit uit zichzelf
 weg."*
 
+**Delen zit in het ticketscherm, niet in de lijst** — een kaartje is ook een
+bonnetje, en vóór je het weggooit wil je het soms nog declareren. Via het
+deelvenster van het toestel, dus de gebruiker kiest waar het heen gaat; wij
+sturen niets. Gebruikt `Share` uit React Native met een `file://`-url: dat werkt
+op iOS en kost geen nieuwe native module, dus het kon als OTA mee. **Op Android
+doet die API niets met een bestand** — daar staat de knop niet, en dat vraagt
+`expo-sharing` in een volgende native build.
+
+Een rij waarvan het bestand er niet meer is (weggegooid door de oude opruimer,
+zie hierboven) zegt dat: gedimd, "bestand is er niet meer", alleen nog een
+prullenbak. Van de zeven kaartjes op het testtoestel waren er vier zo.
+
 `StoredTicket` bewaart daarvoor sinds nu ook `startsAt`. Kaartjes van vóór deze
 lijst hebben dat niet; die tonen "bewaard op <datum>" en blijven bij het bovenste
 groepje staan. Ze vallen dus nooit stil onder "geweest" op een gok.

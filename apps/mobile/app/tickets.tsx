@@ -1,13 +1,20 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
+import { useEffect, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { File } from 'expo-file-system';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppHeader, HEADER_HEIGHT } from '@/components/AppHeader';
 import { useLocale, useT } from '@/lib/i18n';
 import { dowMixed, monthShort } from '@/lib/eventDisplay';
 import { useRoles } from '@/store/mode';
-import { useAllTickets, useTickets, type StoredTicket } from '@/store/tickets';
+import {
+  ticketFileUri,
+  useAllTickets,
+  useTickets,
+  type StoredTicket,
+} from '@/store/tickets';
 import { fontFamily } from '@/theme/tokens';
 
 /**
@@ -30,6 +37,25 @@ export default function TicketsScreen() {
   const locale = useLocale();
   const tickets = useAllTickets();
   const detach = useTickets((s) => s.detach);
+
+  // Welke bestanden staan er nog écht? Een kaartje van vóór 13 sep kan
+  // door de oude opruimer gewist zijn (die vergeleek hele paden, en het
+  // pad naar de document-map verandert bij elke installatie). De rij mag
+  // dan niet doen alsof er nog iets te tonen valt.
+  const [missing, setMissing] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    const gone = new Set<string>();
+    for (const ticket of tickets) {
+      try {
+        if (!new File(ticketFileUri(ticket.fileUri)).exists) {
+          gone.add(ticket.fileUri);
+        }
+      } catch {
+        gone.add(ticket.fileUri);
+      }
+    }
+    setMissing(gone);
+  }, [tickets]);
 
   // De avond is voorbij als hij meer dan een halve nacht geleden begon.
   // Zonder datum (kaartjes van vóór deze lijst) gokken we niet: die staan
@@ -81,18 +107,35 @@ export default function TicketsScreen() {
             `Saved on ${dayLabel(new Date(ticket.addedAt))}`,
           );
 
+    const gone = missing.has(ticket.fileUri);
+
     return (
       <Pressable
-        onPress={() => router.push(`/ticket/${ticket.occurrenceId}` as never)}
-        style={[styles.row, { backgroundColor: roles.bgChip }]}
+        onPress={() =>
+          gone
+            ? null
+            : router.push(`/ticket/${ticket.occurrenceId}` as never)
+        }
+        style={[
+          styles.row,
+          { backgroundColor: roles.bgChip },
+          gone ? styles.rowGone : null,
+        ]}
       >
-        <Ionicons name="ticket-outline" size={20} color={roles.fgMuted} />
+        <Ionicons
+          name={gone ? 'alert-circle-outline' : 'ticket-outline'}
+          size={20}
+          color={roles.fgMuted}
+        />
         <View style={{ flex: 1, gap: 3 }}>
           <Text numberOfLines={1} style={[styles.rowTitle, { color: roles.fg }]}>
             {ticket.eventTitle ?? t('Naamloos', 'Untitled')}
           </Text>
-          <Text style={[styles.rowMeta, { color: roles.fgMuted }]}>{label}</Text>
+          <Text style={[styles.rowMeta, { color: roles.fgMuted }]}>
+            {gone ? t('Bestand is er niet meer', 'File is gone') : label}
+          </Text>
         </View>
+
         <Pressable
           hitSlop={10}
           onPress={() =>
@@ -191,6 +234,9 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderRadius: 14,
   },
+  // Weg is weg, maar de rij blijft staan tot jij 'm weghaalt: zo zie je
+  // wat er ooit was in plaats van dat het stil verdwijnt.
+  rowGone: { opacity: 0.55 },
   rowTitle: { fontFamily: fontFamily.bold, fontSize: 15, letterSpacing: -0.2 },
   rowMeta: { fontFamily: fontFamily.body, fontSize: 12 },
   groupHead: {

@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Brightness from 'expo-brightness';
 import { useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Platform, Pressable, Share, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { SpinningCross } from '@/components/SpinningCross';
@@ -176,6 +176,20 @@ export default function TicketScreen() {
         <Text style={[styles.title, { color: roles.fg }]} numberOfLines={1}>
           {ticket?.eventTitle ?? t('Je ticket', 'Your ticket')}
         </Text>
+        {/* Delen vóór je weggooit: een kaartje is ook een bonnetje. Via
+            het deelvenster van het toestel, dus jij kiest waar het heen
+            gaat — wij sturen niets. */}
+        {ticket && Platform.OS === 'ios' ? (
+          <Pressable
+            onPress={() => {
+              void Share.share({ url: ticketFileUri(ticket.fileUri) });
+            }}
+            hitSlop={10}
+            style={styles.close}
+          >
+            <Ionicons name="share-outline" size={20} color={roles.fg} />
+          </Pressable>
+        ) : null}
         <Pressable onPress={onDelete} hitSlop={10} style={styles.close}>
           <Ionicons name="trash-outline" size={20} color={roles.fg} />
         </Pressable>
