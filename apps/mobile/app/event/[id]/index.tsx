@@ -1993,8 +1993,9 @@ const styles = StyleSheet.create({
   // De tweede rij draagt de ruimte naar wat eronder komt; de eerste
   // houdt alleen de 8 tussen de twee rijen.
   metaRowLast: { marginBottom: 20 },
-  // De pills lezen als onderschrift bij de kaders, niet als eigen blok.
-  metaRowBeforeGenres: { marginBottom: 4 },
+  // Tussen de 20pt van metaRowLast (las als eigen blok) en de 8pt van
+  // een meta-rij onderling (plakte tegen de kaders aan).
+  metaRowBeforeGenres: { marginBottom: 14 },
 
   bodyText: {
     fontFamily: fontFamily.body,
