@@ -17,11 +17,12 @@
 # Volgorde: zwaarste eerst, zodat een timeout laat in de rit niet de
 # grote venues raakt. Duurt in z'n geheel ~10 minuten.
 #
-# Paradiso staat hier niet meer bij: die draait sinds 12 sep mee in de
-# nachtelijke GitHub Action, want hij heeft geen browser meer nodig.
+# Paradiso (12 sep) en Melkweg (13 sep) staan hier niet meer bij: die
+# draaien mee in de nachtelijke GitHub Action, want ze hebben geen
+# browser meer nodig.
 set -uo pipefail
 
-DEFAULT="muziekgebouw melkweg ot301 thuishaven weticket radioradio
+DEFAULT="muziekgebouw ot301 thuishaven weticket radioradio
          qfactory bimhuis brakkegrond ontheroof ketelhuis thepulse athenaeum foam"
 
 cd "$(dirname "$0")/.." || exit 1   # apps/api

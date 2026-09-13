@@ -356,7 +356,7 @@ Wel `scrapers/index.ts`, niet `.github/workflows/scrape-stager.yml` matrix. Somm
 **Pure-HTTP, vergeten toe te voegen aan matrix:**
 denieuweanita, amsterdammuseum, arti, cbkzuidoost, cobramuseum, nieuwekerk, nxtmuseum, oudekerk, rijksmuseum, straatmuseum, vangoghmuseum, wereldmuseum, badhuistheater, bettyasfalt, bourbonstreet, brakkegrond, qfactory, theatermascini, thuishaven, weticket.
 
-**Playwright (bewust niet in matrix):** bimhuis, melkweg, muziekgebouw, ontheroof, radioradio, foam — runnen lokaal via `pnpm scrape <name>`, dagelijks 09:00 via `apps/api/scripts/scrape-local.sh` + launchd. fourvenues en paradiso zaten hier ook in tot ze naar HTTP gingen.
+**Playwright (bewust niet in matrix):** bimhuis, muziekgebouw, ontheroof, radioradio, foam — runnen lokaal via `pnpm scrape <name>`, dagelijks 09:00 via `apps/api/scripts/scrape-local.sh` + launchd. fourvenues, paradiso en melkweg zaten hier ook in tot ze naar HTTP gingen.
 
 ---
 
