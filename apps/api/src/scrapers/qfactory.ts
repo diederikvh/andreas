@@ -1,8 +1,8 @@
 import { eq } from 'drizzle-orm';
-import { chromium } from 'playwright';
 
 import { db, schema } from '../db/index.js';
 import { uploadToBunny } from '../storage/bunny.js';
+import { parseQfactoryTiles } from './_qfactory-agenda.js';
 import { enrichEvent, refineKindByDuration } from './enrich.js';
 
 /**
@@ -90,63 +90,17 @@ function unwrapNextImage(src: string): string {
 }
 
 async function fetchTiles(): Promise<Tile[]> {
-  const browser = await chromium.launch();
-  const ctx = await browser.newContext({ userAgent: UA });
-  const page = await ctx.newPage();
-  try {
-    await page.goto(AGENDA_URL, { waitUntil: 'domcontentloaded', timeout: 30000 });
-    await page.waitForTimeout(2500);
-    for (let i = 0; i < 4; i++) {
-      await page.evaluate(`window.scrollTo(0, document.body.scrollHeight * ${(i + 1) / 4})`);
-      await page.waitForTimeout(500);
-    }
-    const tiles = (await page.evaluate(`(() => {
-      const section = document.getElementById('all-events-section');
-      if (!section) return [];
-      // Tiles zijn divs met class 'border-t' + 'cursor-pointer' + image inside
-      const all = Array.from(section.querySelectorAll('div.cursor-pointer'));
-      const out = [];
-      for (const tile of all) {
-        const img = tile.querySelector('img');
-        if (!img) continue;
-        // Span elements within tile geven de structured data
-        const spans = Array.from(tile.querySelectorAll('span')).map(s => (s.textContent || '').trim()).filter(Boolean);
-        // First span looks like date "Za.09.Mei"
-        // Then title, then description, room, tags
-        const dateSpan = spans.find(s => /^(Ma|Di|Wo|Do|Vr|Za|Zo)\\.\\d{1,2}\\./.test(s));
-        if (!dateSpan) continue;
-        // h-elements voor titel
-        const heading = tile.querySelector('h1, h2, h3, [id^="SH"]');
-        const title = heading ? (heading.textContent || '').trim() : '';
-        // Volledige tekst minus titel/datum
-        const fullText = (tile.textContent || '').replace(/\\s+/g, ' ').trim();
-        // strip "Date|Title|Description|Room|Tag1|Tag2"
-        // Vind description: alles tussen title en room/tags
-        let description = '';
-        const titleIdx = fullText.indexOf(title);
-        if (titleIdx >= 0 && title) {
-          description = fullText.slice(titleIdx + title.length).trim();
-        }
-        // The last few spans zijn tags + room
-        const lastSpans = spans.slice(-6);
-        const knownRooms = ['Grote Zaal', 'Q-Cafe', 'Loungezaal', 'Foyer', 'Kleine Zaal'];
-        const room = lastSpans.find(s => knownRooms.includes(s)) || '';
-        const tags = lastSpans.filter(s => !/^(Ma|Di|Wo|Do|Vr|Za|Zo)\\./.test(s) && s !== title && s !== room && s.length < 40 && !/keert terug|terug|tijdens/i.test(s));
-        out.push({
-          date: dateSpan,
-          title,
-          description: description.replace(room, '').trim().slice(0, 600),
-          room,
-          tags: Array.from(new Set(tags)).slice(0, 5),
-          imageUrl: img.src || '',
-        });
-      }
-      return out;
-    })()`)) as Tile[];
-    return tiles;
-  } finally {
-    await browser.close();
-  }
+  // De agenda is server-rendered; tot 13 sep 2026 werd dit met
+  // Playwright uit de DOM gelezen. Naast elkaar gelegd komen datum,
+  // titel, zaal, image en tags exact overeen. De description verschilt
+  // in witruimte: `textContent` plakte aangrenzende elementen aan
+  // elkaar ("Tabber.ConcertK-Pop"), deze versie zet er spaties tussen.
+  const r = await fetch(AGENDA_URL, {
+    headers: { 'user-agent': UA, 'accept-language': 'nl-NL' },
+    signal: AbortSignal.timeout(30000),
+  });
+  if (!r.ok) throw new Error(`agenda HTTP ${r.status}`);
+  return parseQfactoryTiles(await r.text()) as Tile[];
 }
 
 async function mirrorImage(sourceUrl: string, slug: string): Promise<string | null> {

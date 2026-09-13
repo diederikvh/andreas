@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { parseTicketSlots, type Slot } from './_brakkegrond-dates.js';
+import { parseTicketSlots, type Slot } from './_brakkegrond-page.js';
 
 /** Wall-time in Amsterdam, zodat een test niet afhangt van de tz van de
     machine die 'm draait. */

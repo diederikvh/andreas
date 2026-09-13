@@ -96,10 +96,14 @@ export default function MeerScreen() {
       onPress: go('/new'),
     },
     {
-      key: 'voor-jou',
+      // Was "Voor jou": aanbevelingen op basis van smaak. Die vraag —
+      // "wat zou je leuk vinden?" — is niet de vraag die je stelt. Dit
+      // wel: wat vinden wij leuk. Geen model, twee lijsten die we al
+      // hebben.
+      key: 'samen',
       icon: <Ionicons name="heart-outline" size={22} color={roles.accent} />,
-      label: t('Voor jou', 'For you'),
-      onPress: go('/voor-jou'),
+      label: t('Jij & vrienden', 'You & friends'),
+      onPress: go('/samen'),
     },
     {
       // Een poster in de stad kan je niet delen — je staat ervoor. Hier,

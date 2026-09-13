@@ -1,4 +1,3 @@
-import { chromium } from 'playwright';
 
 import { db, schema } from '../db/index.js';
 import { uploadToBunny } from '../storage/bunny.js';
@@ -73,26 +72,23 @@ function cleanTitle(name: string): { title: string; soldOut: boolean } {
 async function fetchUpcomingEvents(
   listingUrl: string,
 ): Promise<WeTicketShop[]> {
-  const browser = await chromium.launch();
+  // WeTicket is Next.js en zet de events server-side in __NEXT_DATA__.
+  // Dit liep tot 13 sep 2026 via Playwright; een kale fetch geeft
+  // dezelfde payload, zelfde patroon als melkweg.ts.
+  const r = await fetch(listingUrl, {
+    headers: { 'user-agent': UA, 'accept-language': 'nl-NL' },
+    signal: AbortSignal.timeout(30000),
+  });
+  if (!r.ok) throw new Error(`listing HTTP ${r.status}`);
+  const html = await r.text();
+  const m = html.match(/<script id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/);
+  if (!m) return [];
   try {
-    const ctx = await browser.newContext({ userAgent: UA });
-    const page = await ctx.newPage();
-    await page.goto(listingUrl, {
-      waitUntil: 'domcontentloaded',
-      timeout: 30000,
-    });
-    await page.waitForTimeout(3500);
-    const events = (await page.evaluate(`(() => {
-      const s = document.querySelector('script#__NEXT_DATA__');
-      if (!s) return [];
-      try {
-        const json = JSON.parse(s.textContent);
-        return json.props?.pageProps?.organisationWithShops?.upcoming_events ?? [];
-      } catch { return []; }
-    })()`)) as WeTicketShop[];
-    return events;
-  } finally {
-    await browser.close();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const json: any = JSON.parse(m[1]!);
+    return json?.props?.pageProps?.organisationWithShops?.upcoming_events ?? [];
+  } catch {
+    return [];
   }
 }
 

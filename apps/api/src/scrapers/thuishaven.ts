@@ -1,5 +1,4 @@
 import { eq } from 'drizzle-orm';
-import { chromium } from 'playwright';
 
 import { db, schema } from '../db/index.js';
 import { uploadToBunny } from '../storage/bunny.js';
@@ -72,30 +71,20 @@ function parseDateFromUrl(url: string): { date: Date | null; slugTail: string } 
 }
 
 async function harvestEventUrls(): Promise<string[]> {
-  const browser = await chromium.launch();
-  const ctx = await browser.newContext({ userAgent: UA });
-  const page = await ctx.newPage();
-  try {
-    await page.goto(HOME_URL, { waitUntil: 'domcontentloaded', timeout: 30000 });
-    await page.waitForTimeout(2500);
-    for (let i = 0; i < 5; i++) {
-      await page.evaluate(`window.scrollTo(0, document.body.scrollHeight * ${(i + 1) / 5})`);
-      await page.waitForTimeout(600);
-    }
-    const urls = (await page.evaluate(`(() => {
-      const links = Array.from(document.querySelectorAll('a'));
-      const out = new Set();
-      const re = /^https:\\/\\/thuishaven\\.nl\\/\\d{1,2}-[a-z]+-[a-z][a-z0-9-]+\\/?$/i;
-      for (const a of links) {
-        const href = a.href || '';
-        if (re.test(href)) out.add(href.replace(/\\/$/, '') + '/');
-      }
-      return Array.from(out);
-    })()`)) as string[];
-    return urls;
-  } finally {
-    await browser.close();
-  }
+  // De homepage is server-rendered: de dertien event-links staan in de
+  // HTML die je terugkrijgt. Dit liep tot 13 sep 2026 via Playwright
+  // met vijf scroll-stappen; gemeten geeft een kale fetch exact dezelfde
+  // dertien URLs.
+  const r = await fetch(HOME_URL, {
+    headers: { 'user-agent': UA, 'accept-language': 'nl-NL' },
+    signal: AbortSignal.timeout(30000),
+  });
+  if (!r.ok) throw new Error(`homepage HTTP ${r.status}`);
+  const html = await r.text();
+  const re = /https:\/\/thuishaven\.nl\/\d{1,2}-[a-z]+-[a-z][a-z0-9-]+\/?/gi;
+  const uniek = new Set<string>();
+  for (const m of html.match(re) ?? []) uniek.add(m.replace(/\/$/, '') + '/');
+  return [...uniek];
 }
 
 function decodeEntities(s: string): string {

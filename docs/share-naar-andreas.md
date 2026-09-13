@@ -352,6 +352,24 @@ prullenbak. Van de zeven kaartjes op het testtoestel waren er vier zo.
 lijst hebben dat niet; die tonen "bewaard op <datum>" en blijven bij het bovenste
 groepje staan. Ze vallen dus nooit stil onder "geweest" op een gok.
 
+### "Voor jou" werd "Jij & vrienden" (13 sep 2026)
+
+De aanbevelingen werden niet begrepen en niet gebruikt: *"ik begrijp de
+aanbevelingen niet, ik heb hier dan liever gewoon wat ik en mijn vrienden hebben
+geliked."* `app/samen.tsx` doet precies dat — `useMySaves` + `useSocialFeed`
+samengevoegd op occurrence-niveau, één rij per avond met een vrienden-pil. Geen
+model, geen score, twee lijsten die we al hadden.
+
+`app/voor-jou.tsx` blijft bestaan maar hangt nergens meer aan. Weghalen of
+opnieuw bedenken is een aparte beslissing.
+
+En de aanleiding eronder: hij kijkt in de praktijk gewoon in de **agenda,
+gefilterd op z'n eigen zalen**. Die chip staat nu vóór de filterknop, en de
+twee filters die over *wie* gaan — "mijn venues" en "vrienden" — worden bewaard
+tussen sessies. De rest (datum, zoekterm, categorieën, types) blijft
+sessie-state: een agenda die je na een week opent met een vergeten filter erop
+lijkt leeg.
+
 ### Meerdere bestanden in één share (11 sep 2026)
 
 Je koopt drie kaartjes en krijgt drie losse PDF's. Dat kon niet: iOS liet de
