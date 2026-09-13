@@ -1,15 +1,23 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { create } from 'zustand';
+import { createJSONStorage, persist } from 'zustand/middleware';
 
 import type { ApiEvent, VenueType } from '@/lib/api';
 import type { TimeBlock } from '@/lib/eventDisplay';
 
 /**
- * Filter-keuze op de Agenda-tab — leeft alleen tijdens app-runtime.
- * GEEN persist meer (was in v1/v2). Filter-state wordt geRESET wanneer
- * je via de tab-bar weggaat van Agenda; bij stack-pushes (tap op
- * event → terug) blijft 't intact zodat je niet je verfijning
- * verliest. Reset-logica zit in app/(tabs)/agenda.tsx — store is
- * agnostisch.
+ * Filter-keuze op de Agenda-tab.
+ *
+ * Het meeste leeft alleen tijdens de sessie: datum, zoekterm,
+ * categorieën, types en tijdblokken beginnen bij een koude start weer
+ * blanco. Dat is met opzet — een agenda die je na een week opent met een
+ * vergeten filter erop lijkt leeg.
+ *
+ * **Twee uitzonderingen: "mijn venues" en "vrienden".** Die gaan niet
+ * over wát je zoekt maar over wíé je volgt, en dat verandert niet per
+ * sessie. Wie z'n agenda altijd op z'n eigen zalen bekijkt, wil dat niet
+ * elke keer opnieuw aanzetten. Alleen die twee worden bewaard; `reset()`
+ * ("wis filters") zet ze wel gewoon uit, want dat is een expliciete daad.
  */
 /** YYYY-MM-DD in NL-lokale tijd. */
 export type DateRange = { from: string; to: string };
@@ -56,7 +64,9 @@ type AgendaFiltersState = {
   reset: () => void;
 };
 
-export const useAgendaFilters = create<AgendaFiltersState>((set, get) => ({
+export const useAgendaFilters = create<AgendaFiltersState>()(
+  persist(
+    (set, get) => ({
   query: '',
   range: defaultRange(),
   onlyFriends: false,
@@ -89,4 +99,15 @@ export const useAgendaFilters = create<AgendaFiltersState>((set, get) => ({
       activeCats: [],
       activeTypes: [],
         }),
-}));
+    }),
+    {
+      name: 'andreas:agenda-filters.v3',
+      storage: createJSONStorage(() => AsyncStorage),
+      // Alleen wie, niet wat: zie de toelichting bovenaan.
+      partialize: (s) => ({
+        onlyFavorites: s.onlyFavorites,
+        onlyFriends: s.onlyFriends,
+      }),
+    }
+  )
+);

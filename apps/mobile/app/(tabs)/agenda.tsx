@@ -928,46 +928,9 @@ function ChipRow({
             {formatRange(range, locale, t)}
           </Text>
         </Pressable>
-        <Pressable
-          onPress={() => {
-            softTap();
-            // Eerste keer dat de filter geopend wordt: dismiss de
-            // hint-coachmark zodat-ie niet meer terugkomt.
-            useModeStore.getState().dismissFilterHint();
-            setFilterOpen(true);
-          }}
-          style={[
-            styles.catChip,
-            {
-              borderColor: filterActive
-                ? roles.accent
-                : isNacht
-                  ? '#2a2a2d'
-                  : palette.paper,
-              backgroundColor: filterActive
-                ? `${isNacht ? palette.acid : palette.red}1f`
-                : isNacht
-                  ? palette.noir2
-                  : palette.paper2,
-              flexDirection: 'row',
-              gap: 4,
-            },
-          ]}
-        >
-          <Ionicons
-            name="options-outline"
-            size={16}
-            color={filterActive ? roles.accent : roles.fgMuted}
-          />
-          <Text
-            style={[
-              styles.catChipText,
-              { color: filterActive ? roles.accent : roles.fgMuted },
-            ]}
-          >
-            {filterLabel}
-          </Text>
-        </Pressable>
+        {/* Mijn venues vóór de filterknop: dit is het filter dat je
+            elke keer aanzet, en het onthoudt zichzelf. De algemene
+            filterknop is voor de keer dat je iets specifieks zoekt. */}
         {showFavoritesChip && (
           <Pressable
             accessibilityLabel={
@@ -1012,6 +975,46 @@ function ChipRow({
             </Text>
           </Pressable>
         )}
+        <Pressable
+          onPress={() => {
+            softTap();
+            // Eerste keer dat de filter geopend wordt: dismiss de
+            // hint-coachmark zodat-ie niet meer terugkomt.
+            useModeStore.getState().dismissFilterHint();
+            setFilterOpen(true);
+          }}
+          style={[
+            styles.catChip,
+            {
+              borderColor: filterActive
+                ? roles.accent
+                : isNacht
+                  ? '#2a2a2d'
+                  : palette.paper,
+              backgroundColor: filterActive
+                ? `${isNacht ? palette.acid : palette.red}1f`
+                : isNacht
+                  ? palette.noir2
+                  : palette.paper2,
+              flexDirection: 'row',
+              gap: 4,
+            },
+          ]}
+        >
+          <Ionicons
+            name="options-outline"
+            size={16}
+            color={filterActive ? roles.accent : roles.fgMuted}
+          />
+          <Text
+            style={[
+              styles.catChipText,
+              { color: filterActive ? roles.accent : roles.fgMuted },
+            ]}
+          >
+            {filterLabel}
+          </Text>
+        </Pressable>
         {saved.map((s) => {
           const active = isSavedSearchActive(s, current);
           return (
