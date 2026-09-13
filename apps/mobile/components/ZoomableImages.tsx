@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Platform,
   Pressable,
@@ -18,6 +18,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { SpinningCross } from '@/components/SpinningCross';
 import { fontFamily, palette } from '@/theme/tokens';
 
 export type ViewerPage = {
@@ -120,13 +121,24 @@ export function ZoomableImages({
   const document = pages.map((p) => p.uri).join('|');
   useEffect(() => {
     setFocus(null);
+    setReady(0);
   }, [document]);
+
+  // Hoeveel pagina's hebben zichzelf goed gezet. Pas als ze er allemaal
+  // zijn, laten we het zien. Anders zie je een halve tel een kaartje dat
+  // nog moet inschuiven — of, erger, eentje die scheef blijft staan.
+  const [ready, setReady] = useState(0);
+  const onPageReady = useCallback(() => setReady((n) => n + 1), []);
+  const settled = width > 0 && ready >= pages.length;
 
   return (
     <View
       style={[styles.root, { backgroundColor: background }]}
       onLayout={(e) => setBox(e.nativeEvent.layout)}
     >
+      {/* Niet unmounten maar onzichtbaar: de pagina's moeten juist
+          renderen en zichzelf zetten terwijl jij naar de spinner kijkt. */}
+      <View style={[StyleSheet.absoluteFill, settled ? null : styles.hidden]}>
       {width > 0 ? (
       <ScrollView
         ref={pager}
@@ -147,12 +159,20 @@ export function ZoomableImages({
             focus={sameShape(page, focus) ? focus : null}
             onFocus={setFocus}
             onZoom={setZoomed}
+            onReady={onPageReady}
           />
         ))}
       </ScrollView>
       ) : null}
+      </View>
 
-      {pages.length > 1 ? (
+      {settled ? null : (
+        <View style={styles.waiting} pointerEvents="none">
+          <SpinningCross size={24} color={palette.paper3} />
+        </View>
+      )}
+
+      {settled && pages.length > 1 ? (
         <View style={[styles.pages, { bottom: insets.bottom + 16 }]}>
           {pages.map((page, index) => (
             <Pressable
@@ -204,6 +224,7 @@ function ZoomablePage({
   focus,
   onFocus,
   onZoom,
+  onReady,
 }: {
   page: ViewerPage;
   width: number;
@@ -212,6 +233,10 @@ function ZoomablePage({
   focus: PageFocus;
   onFocus: (focus: PageFocus) => void;
   onZoom: (zoomed: boolean) => void;
+  /** Deze pagina staat goed. Tot dat van álle pagina's binnen is toont de
+      viewer een spinner: liever een tel wachten dan een kaartje dat
+      scheef staat op het moment dat je 'm nodig hebt. */
+  onReady: () => void;
 }) {
   const isIos = Platform.OS === 'ios';
   const view = useRef<ScrollView>(null);
@@ -356,8 +381,15 @@ function ZoomablePage({
   const onPageLayout = () => {
     if (laidOut.current) return;
     laidOut.current = true;
-    if (focus) showPoint(focus.x, focus.y, false);
-    else showWhole(false);
+    // Een frame wachten. `onLayout` zegt dat de inhoud een maat heeft,
+    // maar de scrollview verwerkt z'n contentSize pas in de volgende
+    // teken-beurt; zoomen naar een rechthoek dáárvoor pakt soms wel en
+    // soms niet. Dat was de "een op de drie".
+    requestAnimationFrame(() => {
+      if (focus) showPoint(focus.x, focus.y, false);
+      else showWhole(false);
+      onReady();
+    });
   };
 
   const pinch = Gesture.Pinch()
@@ -393,6 +425,7 @@ function ZoomablePage({
   const image = (
     <Pressable
       onPress={(e) => tapAt(e.nativeEvent.locationX, e.nativeEvent.locationY)}
+      onLayout={onPageLayout}
       style={{ width, height }}
     >
       <Image
@@ -407,7 +440,6 @@ function ZoomablePage({
     return (
       <ScrollView
         ref={view}
-        onLayout={onPageLayout}
         style={{ width, height }}
         contentContainerStyle={{ width, height }}
         maximumZoomScale={MAX_ZOOM}
@@ -441,6 +473,10 @@ function ZoomablePage({
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
+  // Opacity, geen display: de pagina's moeten hun layout krijgen — daar
+  // hangt de hele zet-jezelf-goed-stap aan.
+  hidden: { opacity: 0 },
+  waiting: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center' },
   close: {
     position: 'absolute',
     right: 14,

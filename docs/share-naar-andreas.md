@@ -302,6 +302,24 @@ aan het echte "Lowertown" met gelijkenis 0,83 en één kandidaat; "Roosbeef" (De
 Roma, april 2027) blijft liggen omdat dat event nog niet bestaat. Precies de
 bedoeling.
 
+### Liever een tel wachten dan een scheef kaartje (13 sep 2026)
+
+Na de fix van de recyclede scrollview bleef er een restje: ongeveer een op de
+drie keer stond een pagina bij het openen toch niet goed. De reset hing aan
+`onLayout` van de scrollview, en dat is te vroeg — de view heeft dan wel een
+maat, maar z'n *contentSize* verwerkt hij pas in de volgende teken-beurt. Zoomen
+naar een rechthoek daarvóór pakt soms wel en soms niet.
+
+Twee dingen:
+
+1. De reset hangt nu aan de layout van de **inhoud** en gebeurt een
+   `requestAnimationFrame` later.
+2. **De viewer wacht tot alle pagina's zichzelf gezet hebben** en toont tot die
+   tijd een spinner. De pagina's renderen gewoon door (opacity 0, niet
+   unmounted — anders krijgen ze nooit een layout). Dat is de expliciete keuze
+   van Diederik: liever een tel wachten dan een kaartje dat scheef staat op het
+   moment dat je het nodig hebt.
+
 ### Meerdere bestanden in één share (11 sep 2026)
 
 Je koopt drie kaartjes en krijgt drie losse PDF's. Dat kon niet: iOS liet de
