@@ -215,10 +215,11 @@ export default function SamenScreen() {
       </ScrollView>
 
       <AppHeader
-          title={t('Jij & vrienden', 'You & friends')}
-          hideAvatar
-          rightSlot={closeBtn}
-        />
+        wordmark={t('Jij', 'You')}
+        title={t('Vrienden', 'Friends')}
+        hideAvatar
+        rightSlot={closeBtn}
+      />
     </View>
   );
 }

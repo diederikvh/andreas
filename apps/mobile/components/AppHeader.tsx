@@ -38,6 +38,12 @@ type AppHeaderProps = {
    */
   title?: string;
   /**
+   * Vervangt "Andreas" vóór het kruis. Alleen voor een scherm dat niet
+   * over de app gaat maar over jou: "JIJ ✕ VRIENDEN". Overal anders
+   * blijft de wordmark staan — dat is de identiteit, geen sjabloon.
+   */
+  wordmark?: string;
+  /**
    * Verbergt de avatar-knop rechtsboven. Default false. Aan zetten op
    * /jij zelf zodat 'r geen "avatar → /jij → zelfde avatar → /jij"-
    * loop ontstaat.
@@ -65,6 +71,7 @@ export function AppHeader({
   children,
   solid = false,
   title,
+  wordmark,
   hideAvatar = false,
   rightSlot,
 }: AppHeaderProps = {}) {
@@ -170,7 +177,9 @@ export function AppHeader({
       )}
       <View style={styles.header} pointerEvents="box-none">
         <View style={styles.logoLockup} pointerEvents="none">
-          <Text style={[styles.wordmark, { color: roles.fg }]}>Andreas</Text>
+          <Text style={[styles.wordmark, { color: roles.fg }]}>
+            {wordmark ?? 'Andreas'}
+          </Text>
           <View style={styles.logoCross}>
             <Cross size={16} thickness={4} color={roles.accent} />
           </View>
