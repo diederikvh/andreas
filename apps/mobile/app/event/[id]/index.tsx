@@ -386,7 +386,9 @@ export default function EventDetail() {
           <View
             style={[
               styles.metaRow,
-              !(event.genres && event.genres.length > 0) && styles.metaRowLast,
+              event.genres && event.genres.length > 0
+                ? styles.metaRowBeforeGenres
+                : styles.metaRowLast,
             ]}
           >
             <View style={styles.metaCellWrap}>
@@ -1991,6 +1993,8 @@ const styles = StyleSheet.create({
   // De tweede rij draagt de ruimte naar wat eronder komt; de eerste
   // houdt alleen de 8 tussen de twee rijen.
   metaRowLast: { marginBottom: 20 },
+  // De pills lezen als onderschrift bij de kaders, niet als eigen blok.
+  metaRowBeforeGenres: { marginBottom: 4 },
 
   bodyText: {
     fontFamily: fontFamily.body,
