@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { and, eq, gt, inArray } from 'drizzle-orm';
 
 import { db, schema } from '../db/index.js';
 import { uploadToBunny } from '../storage/bunny.js';
@@ -198,6 +198,7 @@ async function mirrorImage(sourceUrl: string, slug: string): Promise<string | nu
 }
 
 export type OperaballetResult = {
+  occurrencesPruned: number;
   venueId: string;
   fetched: number;
   inserted: number;
@@ -216,6 +217,7 @@ export async function scrapeOperaballet(options?: {
     fetched: 0,
     inserted: 0,
     occurrencesUpserted: 0,
+    occurrencesPruned: 0,
     skipped: 0,
     errors: [],
   };
@@ -231,6 +233,8 @@ export async function scrapeOperaballet(options?: {
 
   const showUrls = await harvestShowUrls();
   result.fetched = showUrls.length;
+  /** eventId → occurrence-ids die de bron dit rondje aanbood. */
+  const seenOcc = new Map<string, Set<string>>();
   if (showUrls.length === 0) {
     result.errors.push('geen show-URLs in sitemap');
     return [result];
@@ -367,6 +371,9 @@ export async function scrapeOperaballet(options?: {
               },
             });
           result.occurrencesUpserted++;
+          const gezien = seenOcc.get(eventId) ?? new Set<string>();
+          gezien.add(occurrenceId);
+          seenOcc.set(eventId, gezien);
         } catch (e) {
           result.errors.push(`occurrence ${meta.nodeId}/${slot.startsAt.toISOString()}: ${(e as Error).message}`);
           result.skipped++;
@@ -375,6 +382,44 @@ export async function scrapeOperaballet(options?: {
     } catch (e) {
       result.errors.push(`show ${url}: ${(e as Error).message}`);
       result.skipped++;
+    }
+  }
+
+  // Toekomstige datums weghalen die de bron niet meer aanbiedt. Nodig
+  // sinds de tijdzone-fix: het occurrence-id bevat het UTC-tijdstip
+  // (`occ-ob-{nodeId}-{isoSlot}`), dus een gecorrigeerde winterdatum
+  // krijgt een ander id. Zonder prune blijven de 179 oude rijen naast
+  // de nieuwe staan.
+  //
+  // Alleen voor events die we dit rondje écht gezien hebben — een
+  // pagina die timeout't raakt seenOcc nooit en blijft onaangeraakt.
+  const pruneCutoff = new Date(cutoff);
+  for (const [eventId, keep] of seenOcc) {
+    try {
+      const bestaand = await db
+        .select({ id: schema.occurrences.id })
+        .from(schema.occurrences)
+        .where(
+          and(
+            eq(schema.occurrences.eventId, eventId),
+            gt(schema.occurrences.startsAt, pruneCutoff)
+          )
+        );
+      const drop = bestaand.map((r) => r.id).filter((id) => !keep.has(id));
+      if (!drop.length) continue;
+      // Saves hangen aan occurrence-ids: liever een verlopen rij dan
+      // een verdwenen save.
+      const saved = await db
+        .select({ occurrenceId: schema.saves.occurrenceId })
+        .from(schema.saves)
+        .where(inArray(schema.saves.occurrenceId, drop));
+      const savedIds = new Set(saved.map((r) => r.occurrenceId));
+      const finalDrop = drop.filter((id) => !savedIds.has(id));
+      if (!finalDrop.length) continue;
+      await db.delete(schema.occurrences).where(inArray(schema.occurrences.id, finalDrop));
+      result.occurrencesPruned += finalDrop.length;
+    } catch (e) {
+      result.errors.push(`prune ${eventId}: ${(e as Error).message}`);
     }
   }
 
