@@ -107,6 +107,29 @@ test('eindtijd vóór de starttijd telt niet', () => {
   assert.equal(ev?.endsAt, null);
 });
 
+test('afgelaste show komt terug met cancelled, niet als niets', () => {
+  // 013 haalt de pagina niet weg en houdt de titel schoon ("6lack", niet
+  // "6lack [AFGELAST]"), dus de centrale titel-sweep ziet hier niks.
+  const ev = parse013Page(
+    ldBlok(
+      musicEvent({
+        eventStatus: 'https://schema.org/EventCancelled',
+        offers: { availability: 'https://schema.org/OutOfStock', url: 'https://t' },
+      })
+    ),
+    'https://x'
+  );
+  assert.ok(ev);
+  assert.equal(ev.cancelled, true);
+  assert.equal(ev.title, 'Extince');
+  // Uitverkocht blijft ook waar, maar de scraper laat afgelast winnen.
+  assert.equal(ev.soldOut, true);
+});
+
+test('een gewone show is niet afgelast', () => {
+  assert.equal(parse013Page(ldBlok(musicEvent()), 'https://x')?.cancelled, false);
+});
+
 test('pagina zonder bruikbare JSON-LD geeft null', () => {
   assert.equal(parse013Page('<html><body>404</body></html>', 'https://x'), null);
   // Wel een event-blok, maar zonder identifier: het SEO-samenvattings-

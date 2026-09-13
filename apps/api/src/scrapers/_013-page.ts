@@ -30,6 +30,11 @@ export type Event013 = {
   room: string | null;
   priceCents: number | null;
   soldOut: boolean;
+  /** 013 haalt een afgelaste show niet van de site: de pagina blijft
+      staan met een schone titel en `eventStatus: EventCancelled`. Zonder
+      dit veld zou de rij die we eerder schreven op `scheduled` blijven
+      staan, want de scraper ziet 'm dan nooit meer. */
+  cancelled: boolean;
 };
 
 const LINK_RE =
@@ -136,11 +141,11 @@ function tekstUitHtml(s: string): string {
 
 /**
  * Eén detailpagina → één event. Geeft null als de pagina geen bruikbare
- * JSON-LD heeft (afgelaste events laat de extractor zelf al vallen, die
- * verdwijnen dan via de prune).
+ * JSON-LD heeft. Afgelaste shows komen wél terug, met `cancelled: true`
+ * — zie de toelichting bij dat veld.
  */
 export function parse013Page(html: string, url: string): Event013 | null {
-  const [ev] = extractJsonLdEvents(html);
+  const [ev] = extractJsonLdEvents(html, { includeCancelled: true });
   if (!ev) return null;
   const extra = extraVelden(html);
   if (!extra.id) return null;
@@ -156,5 +161,6 @@ export function parse013Page(html: string, url: string): Event013 | null {
     room: extra.room,
     priceCents: prijsCents(html),
     soldOut: extra.soldOut,
+    cancelled: ev.cancelled,
   };
 }

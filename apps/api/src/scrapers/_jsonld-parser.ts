@@ -20,6 +20,10 @@ export type ParsedJsonLdEvent = {
   ticketUrl: string | null;
   /** Schema.org eventStatus URL — gebruikt om cancelled events te skippen. */
   eventStatus: string | null;
+  /** True als `eventStatus` op EventCancelled staat. Alleen gevuld als
+   *  de caller `includeCancelled` meegaf; anders komt zo'n event niet
+   *  terug en is dit altijd false. */
+  cancelled: boolean;
   /** True als startDate `YYYY-MM-DD` was (geen tijd). Caller bepaalt wat
    *  voor default-tijd plausibel is voor de venue (club = avond, museum
    *  = ochtend, etc.). */
@@ -234,7 +238,26 @@ function extractPerformers(value: unknown): string[] {
   return [];
 }
 
-export function extractJsonLdEvents(html: string): ParsedJsonLdEvent[] {
+export type ExtractOptions = {
+  /**
+   * Geef afgelaste events óók terug, met `cancelled: true`.
+   *
+   * Default false, en dat blijft zo voor de bestaande callers: de meeste
+   * venues halen een afgelaste show gewoon van hun site, en dan is
+   * weglaten hetzelfde als wat er gebeurt. Maar 013 laat de pagina staan
+   * met `eventStatus: EventCancelled` en een schone titel — daar is
+   * weglaten schadelijk: de rij die we eerder schreven blijft dan op
+   * `scheduled` staan, want de scraper ziet 'm nooit meer. Venues die
+   * "[GEANNULEERD]" in de titel plakken (PAARD) worden al door de
+   * centrale sweep in _cancellations.ts gevangen; dit is voor de rest.
+   */
+  includeCancelled?: boolean;
+};
+
+export function extractJsonLdEvents(
+  html: string,
+  options: ExtractOptions = {}
+): ParsedJsonLdEvent[] {
   const events: ParsedJsonLdEvent[] = [];
   const re = /<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
   let match: RegExpExecArray | null;
@@ -273,9 +296,9 @@ export function extractJsonLdEvents(html: string): ParsedJsonLdEvent[] {
       // eventStatus: skip cancelled.
       const eventStatus =
         typeof ev.eventStatus === 'string' ? ev.eventStatus : null;
-      if (eventStatus && eventStatus.toLowerCase().includes('cancelled')) {
-        continue;
-      }
+      const cancelled = !!eventStatus &&
+        eventStatus.toLowerCase().includes('cancelled');
+      if (cancelled && !options.includeCancelled) continue;
 
       const ticketUrl = pickTicketUrl(ev.offers, null);
       const eventUrl = typeof ev.url === 'string' ? ev.url : null;
@@ -318,6 +341,7 @@ export function extractJsonLdEvents(html: string): ParsedJsonLdEvent[] {
         imageUrl,
         ticketUrl: ticketUrl ?? eventUrl,
         eventStatus,
+        cancelled,
         isDateOnly,
         performers,
         htmlStartTime: null,

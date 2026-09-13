@@ -132,8 +132,6 @@ export async function scrape013(options?: {
     }
     foutenOpRij = 0;
     const ev = parse013Page(html, url);
-    // Afgelaste events laat de JSON-LD-extractor zelf al vallen; die
-    // verdwijnen verderop via de prune.
     if (!ev) { skip('geen bruikbare JSON-LD'); continue; }
     events.push(ev);
   }
@@ -199,7 +197,14 @@ export async function scrape013(options?: {
         }
       }
 
-      const status = ev.soldOut ? 'sold_out' : 'scheduled';
+      // Afgelast weegt zwaarder dan uitverkocht: 013 laat de
+      // ticket-availability op OutOfStock staan als een show niet
+      // doorgaat, en "uitverkocht" zou dan het verkeerde verhaal zijn.
+      const status = ev.cancelled
+        ? 'cancelled'
+        : ev.soldOut
+          ? 'sold_out'
+          : 'scheduled';
       try {
         await db
           .insert(schema.occurrences)
