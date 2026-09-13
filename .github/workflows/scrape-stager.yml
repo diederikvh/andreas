@@ -23,7 +23,7 @@ jobs:
       # Alle pure-HTTP-scrapers parallel — ze schrijven naar verschillende
       # venue-id's, geen conflict. `fail-fast: false` zorgt dat een crash
       # van één scraper de andere niet meeneemt. Playwright-scrapers
-      # (muziekgebouw, ontheroof) draaien lokaal —
+      # (ontheroof e.a.) draaien lokaal —
       # die zitten niet in de Dockerfile op Fly.
       # `max-parallel: 6` bakent de gelijktijdige load op de Fly-VM af:
       # 57 curls tegelijk OOM-de de 512mb machine (alle in-flight requests
@@ -34,8 +34,10 @@ jobs:
       fail-fast: false
       max-parallel: 6
       matrix:
-        scraper: [stager, ical, jsonld, ticketmaster, theater, concertgebouw, fourvenues, paradiso, melkweg, boomchicago, concertgemaal, wptheatre, p60, patronaat, ziggodome, ita, operaballet, podiummozaiek, celebratix, weeztix, shelter, sieraad, garagenoord, krakeling, eventscalendar, volkshotel, akhnaton, dezwijger, debalie, felixmeritis, rijksakademie, deceuvel, lima, perdu, nieuweboekhandel, eventbrite, aaservices, vrijburcht, munganga, westweelde, veronica, supper, gashouder, levenslang, clubup, ijland, odessa, fullhouse, bostheater, eye, kriterion, themovies, studiok, filmhallen, lab111, uitkijk, fchyena, rialto, cinecenter, cinemadevlugt, cavia]
+        scraper: [stager, ical, jsonld, ticketmaster, theater, concertgebouw, fourvenues, paradiso, melkweg, muziekgebouw, boomchicago, concertgemaal, wptheatre, p60, patronaat, ziggodome, ita, operaballet, podiummozaiek, celebratix, weeztix, shelter, sieraad, garagenoord, krakeling, eventscalendar, volkshotel, akhnaton, dezwijger, debalie, felixmeritis, rijksakademie, deceuvel, lima, perdu, nieuweboekhandel, eventbrite, aaservices, vrijburcht, munganga, westweelde, veronica, supper, gashouder, levenslang, clubup, ijland, odessa, fullhouse, bostheater, eye, kriterion, themovies, studiok, filmhallen, lab111, uitkijk, fchyena, rialto, cinecenter, cinemadevlugt, cavia]
         # Niet in cron: bimhuis, ot301, radioradio, ketelhuis, thepulse (Playwright, niet in Fly Dockerfile).
+        # muziekgebouw zit er sinds 13 sep in: de agenda is server-rendered, dus de
+        # eventCards zijn zonder browser te lezen.
         # melkweg zit er sinds 13 sep in: Cloudflare blokkeert een platte fetch op /agenda
         # niet meer, dus __NEXT_DATA__ is zonder browser te lezen.
         # paradiso zit er sinds 12 sep in: die ging van Playwright naar een kale fetch op de

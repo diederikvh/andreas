@@ -15,14 +15,14 @@
 #            ./scripts/scrape-local.sh foam     — één, om te testen
 #
 # Volgorde: zwaarste eerst, zodat een timeout laat in de rit niet de
-# grote venues raakt. Duurt in z'n geheel ~10 minuten.
+# grote venues raakt. Duurt in z'n geheel ~5 minuten.
 #
-# Paradiso (12 sep) en Melkweg (13 sep) staan hier niet meer bij: die
-# draaien mee in de nachtelijke GitHub Action, want ze hebben geen
-# browser meer nodig.
+# Paradiso, Melkweg en Muziekgebouw staan hier niet meer bij: die
+# draaien sinds 12/13 sep mee in de nachtelijke GitHub Action, want ze
+# hebben geen browser meer nodig. Dat scheelde de drie zwaarste.
 set -uo pipefail
 
-DEFAULT="muziekgebouw ot301 thuishaven weticket radioradio
+DEFAULT="ot301 thuishaven weticket radioradio
          qfactory bimhuis brakkegrond ontheroof ketelhuis thepulse athenaeum foam"
 
 cd "$(dirname "$0")/.." || exit 1   # apps/api

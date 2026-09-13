@@ -4,14 +4,24 @@ import { eq } from 'drizzle-orm';
 
 import { db, schema } from '../db/index.js';
 import { uploadToBunny } from '../storage/bunny.js';
+import { parseAgendaCards } from './_muziekgebouw-agenda.js';
 import { enrichEvent, refineKindByDuration } from './enrich.js';
 
 /**
- * Muziekgebouw aan 't IJ scraper. Hun /nl/agenda is een SPA op het
- * "Peppered" CMS van CultureSuite. Pagination via ?page=N. Per
- * event-card extracten we titel/datum/tijd/zaal/image; voor nieuwe
- * events fetchen we de detail-pagina voor de rijke description in
- * <div class="richtext">.
+ * Muziekgebouw aan 't IJ scraper. Hun /nl/agenda draait op het
+ * "Peppered" CMS van CultureSuite en is server-rendered: twintig
+ * eventCards per pagina, doorbladeren via ?page=N. Per kaart lezen we
+ * titel/datum/tijd/zaal/image; voor nieuwe events halen we de
+ * detailpagina op voor de rijke description in <div class="richtext">.
+ *
+ * Dit liep tot 13 sep 2026 via Playwright. Onnodig: de kaarten staan
+ * gewoon in de HTML die je terugkrijgt. Naast elkaar gelegd op vijf
+ * pagina's — 84 kaarten, 672 veldwaarden — komt de HTTP-versie op 667
+ * gelijke uit; de vijf verschillen zijn een lege subtitle die nu null
+ * is in plaats van "", wat verderop hetzelfde behandeld wordt.
+ *
+ * Daarmee kan deze scraper mee in de nachtelijke Action in plaats van
+ * te wachten op een openstaande laptop.
  *
  * Title-grouping: Muziekgebouw geeft dezelfde productie op verschillende
  * dates UNIEKE slugs (bv. "Birdsong" → birdsong-16xq + birdsong-ltqs).
@@ -88,74 +98,31 @@ function shiftToLocalTime(y: number, mo: number, d: number, h: number, mi: numbe
 
 /** Render één agenda-pagina via Playwright en pak alle event-cards.
  *  Pagination via ?page=N URL param (standaard Peppered/CultureSuite). */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function fetchAgendaPage(browser: any, pageNum: number): Promise<{
+async function fetchAgendaPage(pageNum: number): Promise<{
   cards: AgendaCard[];
   hasNext: boolean;
 }> {
-  const ctx = await browser.newContext({ locale: 'nl-NL', userAgent: UA });
-  const page = await ctx.newPage();
-  try {
-    const url = pageNum === 1 ? `${BASE}/nl/agenda` : `${BASE}/nl/agenda?page=${pageNum}`;
-    await page.goto(url, {
-      waitUntil: 'networkidle',
-      timeout: 30000,
+  const url = pageNum === 1 ? `${BASE}/nl/agenda` : `${BASE}/nl/agenda?page=${pageNum}`;
+  const html = await fetchHtml(url);
+  if (!html) return { cards: [], hasNext: false };
+  const result = parseAgendaCards(html);
+
+  const cards: AgendaCard[] = [];
+  for (const raw of result.cards) {
+    if (!raw.title || !raw.dateText || !raw.href) continue;
+    const startsAt = parseDateTime(raw.dateText, raw.timeText);
+    if (!startsAt) continue;
+    cards.push({
+      title: raw.title,
+      subtitle: raw.subtitle ?? null,
+      startsAtIso: startsAt.toISOString(),
+      href: raw.href,
+      imageUrl: raw.imageUrl ?? null,
+      room: raw.room ?? null,
+      tagline: raw.tagline ?? null,
     });
-    // Wacht tot eventCards renderen of tot 5 sec (mogelijk leeg)
-    try {
-      await page.waitForSelector('li.eventCard', { timeout: 5000 });
-    } catch {
-      return { cards: [], hasNext: false };
-    }
-    await page.waitForTimeout(1000);
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const result: { cards: AgendaCard[]; hasNext: boolean } = await page.evaluate(`(function(){
-      var cards = Array.from(document.querySelectorAll('li.eventCard')).map(function(c){
-        var title = c.querySelector('.title');
-        var sub = c.querySelector('.subtitle');
-        var date = c.querySelector('.start');
-        var time = c.querySelector('.time');
-        var venue = c.querySelector('.venue');
-        var tagline = c.querySelector('.tagline');
-        var link = c.querySelector('a.desc');
-        var img = c.querySelector('img');
-        return {
-          title: title ? title.textContent.trim() : null,
-          subtitle: sub ? sub.textContent.trim() : null,
-          dateText: date ? date.textContent.trim() : null,
-          timeText: time ? time.textContent.trim() : null,
-          room: venue ? venue.textContent.trim() : null,
-          tagline: tagline ? tagline.textContent.replace(/\\s+/g,' ').trim() : null,
-          href: link ? link.getAttribute('href') : null,
-          imageUrl: img ? img.getAttribute('src') : null,
-        };
-      });
-      var hasNext = !!document.querySelector('a.btn.next, a.next.btn');
-      return { cards: cards, hasNext: hasNext };
-    })()`);
-
-    const cards: AgendaCard[] = [];
-    for (const c of result.cards) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const raw: any = c;
-      if (!raw.title || !raw.dateText || !raw.href) continue;
-      const startsAt = parseDateTime(raw.dateText, raw.timeText);
-      if (!startsAt) continue;
-      cards.push({
-        title: raw.title,
-        subtitle: raw.subtitle ?? null,
-        startsAtIso: startsAt.toISOString(),
-        href: raw.href,
-        imageUrl: raw.imageUrl ?? null,
-        room: raw.room ?? null,
-        tagline: raw.tagline ?? null,
-      });
-    }
-    return { cards, hasNext: result.hasNext };
-  } finally {
-    await ctx.close();
   }
+  return { cards, hasNext: result.hasNext };
 }
 
 async function fetchHtml(url: string): Promise<string | null> {
@@ -242,169 +209,163 @@ export async function scrapeMuziekgebouw(options?: {
     return [result];
   }
 
-  const { chromium } = await import('playwright');
-  const browser = await chromium.launch({ headless: true });
 
-  try {
-    // Paginate via ?page=N URL param. Stop wanneer geen "Volgende"
-    // knop meer of geen nieuwe slugs (cycle-detectie als safety).
-    const seenSlugs = new Set<string>();
-    const allCards: AgendaCard[] = [];
+  // Paginate via ?page=N URL param. Stop wanneer geen "Volgende"
+  // knop meer of geen nieuwe slugs (cycle-detectie als safety).
+  const seenSlugs = new Set<string>();
+  const allCards: AgendaCard[] = [];
 
-    for (let pageNum = 1; pageNum <= 30; pageNum++) {
-      const { cards, hasNext } = await fetchAgendaPage(browser, pageNum);
-      if (cards.length === 0) break;
-      let newInBatch = 0;
-      for (const c of cards) {
-        const slug = c.href.match(/\/nl\/agenda\/([^/?]+)/)?.[1];
-        if (!slug || seenSlugs.has(slug)) continue;
-        seenSlugs.add(slug);
-        allCards.push(c);
-        newInBatch++;
+  for (let pageNum = 1; pageNum <= 30; pageNum++) {
+    const { cards, hasNext } = await fetchAgendaPage(pageNum);
+    if (cards.length === 0) break;
+    let newInBatch = 0;
+    for (const c of cards) {
+      const slug = c.href.match(/\/nl\/agenda\/([^/?]+)/)?.[1];
+      if (!slug || seenSlugs.has(slug)) continue;
+      seenSlugs.add(slug);
+      allCards.push(c);
+      newInBatch++;
+    }
+    if (newInBatch === 0 || !hasNext) break;
+  }
+
+  result.fetched = allCards.length;
+  const venueCategory = venue.categories?.[0] ?? 'Muziek';
+
+  // Title-grouping: dezelfde productie op meerdere dates krijgt
+  // unieke slugs van Muziekgebouw maar identieke titel+subtitle.
+  // Groepeer op genormaliseerde titel; 1 event-record per groep, N
+  // occurrences (één per slug/date).
+  const groups = new Map<string, AgendaCard[]>();
+  for (const c of allCards) {
+    const key = normalizeTitle(c.title, c.subtitle);
+    const arr = groups.get(key) ?? [];
+    arr.push(c);
+    groups.set(key, arr);
+  }
+
+  for (const [normalizedTitle, instances] of groups) {
+    instances.sort(
+      (a, b) => new Date(a.startsAtIso).getTime() - new Date(b.startsAtIso).getTime()
+    );
+    const first = instances[0];
+    const groupHash = shortHash(`mg|${normalizedTitle}`);
+    const eventId = `evt-mg-${VENUE_ID}-${groupHash}`;
+
+    try {
+      // Existing-check: skip dure detail-fetch + Claude voor
+      // bestaande events. Per instance wel occurrence upserten.
+      const [existing] = await db
+        .select({ id: schema.events.id })
+        .from(schema.events)
+        .where(eq(schema.events.id, eventId))
+        .limit(1);
+
+      if (existing) {
+        for (const inst of instances) {
+          const slug = inst.href.match(/\/nl\/agenda\/([^/?]+)/)?.[1] ?? '';
+          const occurrenceId = `occ-mg-${VENUE_ID}-${shortHash(`${normalizedTitle}|${slug}`)}`;
+          const startsAt = new Date(inst.startsAtIso);
+          const detailUrl = inst.href.startsWith('http') ? inst.href : `${BASE}${inst.href}`;
+          await db
+            .insert(schema.occurrences)
+            .values({
+              id: occurrenceId,
+              eventId,
+              startsAt,
+              endsAt: null,
+              priceCents: null,
+              priceNote: null,
+              ticketUrl: detailUrl,
+              room: inst.room,
+              lineup: null,
+              status: 'scheduled',
+            })
+            .onConflictDoUpdate({
+              target: schema.occurrences.id,
+              set: { startsAt, ticketUrl: detailUrl, room: inst.room },
+            });
+          result.occurrencesUpserted++;
+        }
+        continue;
       }
-      if (newInBatch === 0 || !hasNext) break;
-    }
 
-    result.fetched = allCards.length;
-    const venueCategory = venue.categories?.[0] ?? 'Muziek';
+      // Nieuw event — fetch detail-pagina (van eerste instance) voor
+      // rich description + Claude enrich.
+      const firstSlug = first.href.match(/\/nl\/agenda\/([^/?]+)/)?.[1] ?? groupHash;
+      const detailUrl = first.href.startsWith('http') ? first.href : `${BASE}${first.href}`;
+      const detailHtml = await fetchHtml(detailUrl);
+      const richDesc = detailHtml ? extractRichDescription(detailHtml) : null;
+      const ogDesc = detailHtml ? extractOg(detailHtml, 'description') : null;
+      const description = richDesc ?? ogDesc ?? first.tagline;
 
-    // Title-grouping: dezelfde productie op meerdere dates krijgt
-    // unieke slugs van Muziekgebouw maar identieke titel+subtitle.
-    // Groepeer op genormaliseerde titel; 1 event-record per groep, N
-    // occurrences (één per slug/date).
-    const groups = new Map<string, AgendaCard[]>();
-    for (const c of allCards) {
-      const key = normalizeTitle(c.title, c.subtitle);
-      const arr = groups.get(key) ?? [];
-      arr.push(c);
-      groups.set(key, arr);
-    }
+      const enriched = await enrichEvent({
+        title: first.title,
+        description,
+        venueName: venue.name,
+        venueCategory,
+      });
 
-    for (const [normalizedTitle, instances] of groups) {
-      instances.sort(
-        (a, b) => new Date(a.startsAtIso).getTime() - new Date(b.startsAtIso).getTime()
-      );
-      const first = instances[0];
-      const groupHash = shortHash(`mg|${normalizedTitle}`);
-      const eventId = `evt-mg-${VENUE_ID}-${groupHash}`;
+      let imageUrl: string | null = null;
+      if (first.imageUrl) {
+        imageUrl = (await mirrorImage(first.imageUrl, firstSlug)) ?? first.imageUrl;
+      }
 
-      try {
-        // Existing-check: skip dure detail-fetch + Claude voor
-        // bestaande events. Per instance wel occurrence upserten.
-        const [existing] = await db
-          .select({ id: schema.events.id })
-          .from(schema.events)
-          .where(eq(schema.events.id, eventId))
-          .limit(1);
+      const startsAt = new Date(first.startsAtIso);
+      const refinedKind = refineKindByDuration(enriched.kind, startsAt, null);
+      const fullTitle = first.subtitle ? `${first.title} — ${first.subtitle}` : first.title;
 
-        if (existing) {
-          for (const inst of instances) {
-            const slug = inst.href.match(/\/nl\/agenda\/([^/?]+)/)?.[1] ?? '';
-            const occurrenceId = `occ-mg-${VENUE_ID}-${shortHash(`${normalizedTitle}|${slug}`)}`;
-            const startsAt = new Date(inst.startsAtIso);
-            const detailUrl = inst.href.startsWith('http') ? inst.href : `${BASE}${inst.href}`;
-            await db
-              .insert(schema.occurrences)
-              .values({
-                id: occurrenceId,
-                eventId,
-                startsAt,
-                endsAt: null,
-                priceCents: null,
-                priceNote: null,
-                ticketUrl: detailUrl,
-                room: inst.room,
-                lineup: null,
-                status: 'scheduled',
-              })
-              .onConflictDoUpdate({
-                target: schema.occurrences.id,
-                set: { startsAt, ticketUrl: detailUrl, room: inst.room },
-              });
-            result.occurrencesUpserted++;
-          }
-          continue;
-        }
-
-        // Nieuw event — fetch detail-pagina (van eerste instance) voor
-        // rich description + Claude enrich.
-        const firstSlug = first.href.match(/\/nl\/agenda\/([^/?]+)/)?.[1] ?? groupHash;
-        const detailUrl = first.href.startsWith('http') ? first.href : `${BASE}${first.href}`;
-        const detailHtml = await fetchHtml(detailUrl);
-        const richDesc = detailHtml ? extractRichDescription(detailHtml) : null;
-        const ogDesc = detailHtml ? extractOg(detailHtml, 'description') : null;
-        const description = richDesc ?? ogDesc ?? first.tagline;
-
-        const enriched = await enrichEvent({
-          title: first.title,
-          description,
-          venueName: venue.name,
-          venueCategory,
+      await db.transaction(async (tx) => {
+        await tx.insert(schema.events).values({
+          id: eventId,
+          venueId: venue.id,
+          title: fullTitle,
+          description: enriched.cleanedDescription ?? description,
+          kind: refinedKind,
+          imageUrl,
+          category: enriched.category ?? venueCategory,
+          featured: false,
+          genres: enriched.genres,
+          published: true,
         });
+        result.inserted++;
 
-        let imageUrl: string | null = null;
-        if (first.imageUrl) {
-          imageUrl = (await mirrorImage(first.imageUrl, firstSlug)) ?? first.imageUrl;
-        }
-
-        const startsAt = new Date(first.startsAtIso);
-        const refinedKind = refineKindByDuration(enriched.kind, startsAt, null);
-        const fullTitle = first.subtitle ? `${first.title} — ${first.subtitle}` : first.title;
-
-        await db.transaction(async (tx) => {
-          await tx.insert(schema.events).values({
-            id: eventId,
-            venueId: venue.id,
-            title: fullTitle,
-            description: enriched.cleanedDescription ?? description,
-            kind: refinedKind,
-            imageUrl,
-            category: enriched.category ?? venueCategory,
-            featured: false,
-            genres: enriched.genres,
-            published: true,
-          });
-          result.inserted++;
-
-          for (const inst of instances) {
-            const slug = inst.href.match(/\/nl\/agenda\/([^/?]+)/)?.[1] ?? '';
-            const occurrenceId = `occ-mg-${VENUE_ID}-${shortHash(`${normalizedTitle}|${slug}`)}`;
-            const instStarts = new Date(inst.startsAtIso);
-            const instUrl = inst.href.startsWith('http') ? inst.href : `${BASE}${inst.href}`;
-            await tx
-              .insert(schema.occurrences)
-              .values({
-                id: occurrenceId,
-                eventId,
+        for (const inst of instances) {
+          const slug = inst.href.match(/\/nl\/agenda\/([^/?]+)/)?.[1] ?? '';
+          const occurrenceId = `occ-mg-${VENUE_ID}-${shortHash(`${normalizedTitle}|${slug}`)}`;
+          const instStarts = new Date(inst.startsAtIso);
+          const instUrl = inst.href.startsWith('http') ? inst.href : `${BASE}${inst.href}`;
+          await tx
+            .insert(schema.occurrences)
+            .values({
+              id: occurrenceId,
+              eventId,
+              startsAt: instStarts,
+              endsAt: null,
+              priceCents: null,
+              priceNote: enriched.priceNote,
+              ticketUrl: instUrl,
+              room: inst.room ?? enriched.room,
+              lineup: enriched.lineup,
+              status: 'scheduled',
+            })
+            .onConflictDoUpdate({
+              target: schema.occurrences.id,
+              set: {
                 startsAt: instStarts,
-                endsAt: null,
-                priceCents: null,
                 priceNote: enriched.priceNote,
                 ticketUrl: instUrl,
                 room: inst.room ?? enriched.room,
                 lineup: enriched.lineup,
-                status: 'scheduled',
-              })
-              .onConflictDoUpdate({
-                target: schema.occurrences.id,
-                set: {
-                  startsAt: instStarts,
-                  priceNote: enriched.priceNote,
-                  ticketUrl: instUrl,
-                  room: inst.room ?? enriched.room,
-                  lineup: enriched.lineup,
-                },
-              });
-            result.occurrencesUpserted++;
-          }
-        });
-      } catch (e) {
-        result.errors.push(`group ${normalizedTitle}: ${(e as Error).message}`);
-        result.skipped++;
-      }
+              },
+            });
+          result.occurrencesUpserted++;
+        }
+      });
+    } catch (e) {
+      result.errors.push(`group ${normalizedTitle}: ${(e as Error).message}`);
+      result.skipped++;
     }
-  } finally {
-    await browser.close();
   }
 
   return [result];
