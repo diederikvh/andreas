@@ -15,15 +15,23 @@
 #            ./scripts/scrape-local.sh foam     — één, om te testen
 #
 # Volgorde: zwaarste eerst, zodat een timeout laat in de rit niet de
-# grote venues raakt. Duurt in z'n geheel ~5 minuten.
+# grote venues raakt. Duurt in z'n geheel ~3 minuten.
 #
-# Paradiso, Melkweg en Muziekgebouw staan hier niet meer bij: die
-# draaien sinds 12/13 sep mee in de nachtelijke GitHub Action, want ze
-# hebben geen browser meer nodig. Dat scheelde de drie zwaarste.
+# Wat hier nog staat heeft de browser écht nodig:
+#   ot301      lege 19 kB-shell, alles via jQuery
+#   thepulse   films staan in de HTML, de screening-ids komen van Finsweet
+#   bimhuis    20 van de 40 tegels server-side, rest via JS
+#   athenaeum  Cloudflare fingerprint't de TLS-handshake: python komt
+#              erdoor, node's fetch en curl krijgen 403
+#   radioradio geserialiseerde __NUXT__ (er zit een supabase achter,
+#              tabelnamen nog onbekend)
+#   ontheroof  weeztix-shop is een vue-SPA achter een queue
+#   foam       niet te meten, geeft 429 bij herhaald ophalen
+#
+# De rest is naar de nachtelijke GitHub Action verhuisd.
 set -uo pipefail
 
-DEFAULT="ot301 thuishaven weticket radioradio
-         qfactory bimhuis brakkegrond ontheroof ketelhuis thepulse athenaeum foam"
+DEFAULT="ot301 thepulse bimhuis athenaeum radioradio ontheroof foam"
 
 cd "$(dirname "$0")/.." || exit 1   # apps/api
 echo "════ sweep gestart $(date '+%F %T') ════"

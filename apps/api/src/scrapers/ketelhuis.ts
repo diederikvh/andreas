@@ -1,9 +1,12 @@
 /**
  * Het Ketelhuis scraper.
  *
- * Westergasfabriek, hét NL-film-podium. Hun /agenda/ rendert pas
- * client-side — we gebruiken Playwright (lokaal, niet in Fly
- * Dockerfile) om de pagina's te renderen.
+ * Westergasfabriek, hét NL-film-podium. De /films/-index en de
+ * detailpagina's zijn server-rendered en dragen hun voorstellingen in
+ * JSON-LD, dus een kale fetch volstaat. Dit liep tot 13 sep 2026 via
+ * Playwright; naast elkaar gelegd geeft de HTTP-versie exact dezelfde
+ * 32 film-URLs en op vijf detailpagina's dezelfde JSON-LD, og:image,
+ * h1 en eerste alinea.
  *
  * Plan:
  *   1. Open /films/ → 30+ film-URLs.
@@ -24,6 +27,7 @@
 
 import { eq } from 'drizzle-orm';
 
+import { parseFilmPage, parseFilmUrls } from './_ketelhuis-page.js';
 import { db, schema } from '../db/index.js';
 import {
   findOrCreateFilmEvent,
@@ -32,6 +36,18 @@ import {
 } from './_film-dedup.js';
 
 const FILMS_INDEX_URL = 'https://www.ketelhuis.nl/films/';
+
+async function fetchPagina(url: string): Promise<string | null> {
+  try {
+    const r = await fetch(url, {
+      headers: { 'user-agent': UA, 'accept-language': 'nl-NL' },
+      signal: AbortSignal.timeout(20000),
+    });
+    return r.ok ? await r.text() : null;
+  } catch {
+    return null;
+  }
+}
 const VENUE_ID = 'ketelhuis';
 const UA =
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36';
@@ -73,58 +89,28 @@ export async function scrapeKetelhuis(): Promise<KetelhuisResult[]> {
     errors: [],
   };
 
-  const { chromium } = await import('playwright');
-  const browser = await chromium.launch({ headless: true });
-  try {
-    const ctx = await browser.newContext({ userAgent: UA, locale: 'nl-NL' });
-    const page = await ctx.newPage();
-
-    // Stap 1: alle film-URLs.
-    await page.goto(FILMS_INDEX_URL, {
-      waitUntil: 'networkidle',
-      timeout: 30000,
-    });
-    await page.waitForTimeout(2000);
-    const filmUrls = (await page.evaluate(`(() => {
-      const links = [...document.querySelectorAll('a[href*="/films/"]')]
-        .map((a) => a.getAttribute('href'))
-        .filter((h) => Boolean(h && /\\/films\\/[^/]+\\/?$/.test(h)));
-      return [...new Set(links)];
-    })()`)) as string[];
+  // Server-rendered, dus geen browser nodig. Naast elkaar gelegd op de
+  // index en vijf detailpagina's: exact dezelfde 32 URLs en dezelfde
+  // JSON-LD, og:image, h1 en eerste alinea.
+  const indexHtml = await fetchPagina(FILMS_INDEX_URL);
+  if (!indexHtml) {
+    result.errors.push('films-index niet op te halen');
+    return [result];
+  }
+  const filmUrls = parseFilmUrls(indexHtml);
+  {
 
     const dedupeMap = await loadFilmDedupeMap();
     const now = Date.now();
     for (const filmUrl of filmUrls) {
       try {
-        await page.goto(filmUrl, {
-          waitUntil: 'domcontentloaded',
-          timeout: 30000,
-        });
-        await page.waitForTimeout(800);
+        const filmHtml = await fetchPagina(
+          filmUrl.startsWith('http') ? filmUrl : `https://www.ketelhuis.nl${filmUrl}`
+        );
+        if (!filmHtml) { result.skipped += 1; continue; }
         result.fetched += 1;
 
-        const data = (await page.evaluate(`(() => {
-          const blocks = [
-            ...document.querySelectorAll('script[type="application/ld+json"]'),
-          ]
-            .map((s) => s.textContent ?? '')
-            .filter(Boolean);
-          const ogImage =
-            document
-              .querySelector('meta[property="og:image"]')
-              ?.getAttribute('content') ?? null;
-          const titleH1 = document.querySelector('h1')?.textContent?.trim() ?? null;
-          const descP =
-            document
-              .querySelector('.single-film p, main p, article p')
-              ?.textContent?.trim() ?? null;
-          return { blocks, ogImage, titleH1, descP };
-        })()`)) as {
-          blocks: string[];
-          ogImage: string | null;
-          titleH1: string | null;
-          descP: string | null;
-        };
+        const data = parseFilmPage(filmHtml);
 
         // Parse alle Event-items uit JSON-LD; ze hebben name (filmtitel),
         // startDate (ISO), description, image. Verzamel uniques per
@@ -245,8 +231,6 @@ export async function scrapeKetelhuis(): Promise<KetelhuisResult[]> {
         );
       }
     }
-  } finally {
-    await browser.close();
   }
 
   return [result];
