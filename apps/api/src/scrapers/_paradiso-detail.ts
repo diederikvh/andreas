@@ -1,6 +1,12 @@
 const UA = 'Andreas-Scraper/1.0 (+https://andreas.amsterdam)';
 
 /**
+ * Pure helpers voor de Paradiso-scraper: omschrijving uit de HTML, plus
+ * zaal en line-up uit de GraphQL. Apart van paradiso.ts zodat de tests
+ * geen DB-verbinding nodig hebben.
+ */
+
+/**
  * Omschrijving uit de HTML van een Paradiso-detailpagina trekken.
  * Apart van paradiso.ts zodat de test geen DB-verbinding nodig heeft.
  */
@@ -79,4 +85,57 @@ function decodeEntities(s: string): string {
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
     .replace(/&amp;/g, '&');
+}
+
+
+export type ParadisoArea = { label: string | null; value: string | null };
+export type LineupItem = { name: string; role?: 'dj' | 'support' | 'headliner' | 'act' };
+
+/**
+ * Zaal uit `areas`. De labels zijn "Venue - Zaal": "Paradiso - Grote
+ * Zaal", "Tolhuistuin - Club", "Bitterzoet - Concertzaal".
+ *
+ * Staat het venue-deel gelijk aan de venue waar we dit event al naartoe
+ * routeren, dan is de rest de zaal en kan het voorvoegsel weg. Staat er
+ * iets anders — "Zonnehuis - Theaterzaal" bij een Tolhuistuin-event —
+ * dan is dat een ánder gebouw, en dan is juist dat voorvoegsel het
+ * belangrijkste dat er staat: dat blijft dus heel.
+ *
+ * "Extern - Overig" zegt niets over waar je moet zijn en wordt null.
+ */
+export function roomFromAreas(areas: ParadisoArea[] | null | undefined, locationTitle: string): string | null {
+  const label = areas?.[0]?.label?.trim();
+  if (!label || /^extern\b/i.test(label)) return null;
+  const m = label.match(/^(.+?)\s+-\s+(.+)$/);
+  if (!m) return label;
+  const [, gebouw, zaal] = m;
+  return gebouw!.toLowerCase() === locationTitle.trim().toLowerCase() ? zaal!.trim() : label;
+}
+
+/**
+ * Line-up uit `relatedArtists`. Bewust géén rol op basis van volgorde:
+ * gemeten over 469 events komt `relatedArtists[0]` bij 70 ervan niet
+ * overeen met de eventtitel, en bij "Mayhem - Death over Europe" staat
+ * de support (Marduk) zelfs vooraan terwijl `supportAct` dat rechtzet.
+ *
+ * Dus alleen een rol als `supportAct` het met zoveel woorden zegt: wie
+ * daarin genoemd wordt is support, en de rest is dan headliner. Zegt
+ * Paradiso niets, dan laten wij de rol ook leeg — een clubnacht met
+ * acht dj's heeft sowieso geen headliner. Gemeten: 36 van de 92
+ * meerkoppige events hebben een supportAct, en in 33 daarvan staat die
+ * naam ook echt in de artiestenlijst.
+ */
+export function lineupFromArtists(
+  artists: { title: string | null }[] | null | undefined,
+  supportAct: string | null
+): LineupItem[] | null {
+  const namen = (artists ?? []).map((a) => a?.title?.trim()).filter((x): x is string => !!x);
+  if (!namen.length) return null;
+  const support = (supportAct ?? '').trim().toLowerCase();
+  const isSupport = (n: string) => !!support && support.includes(n.toLowerCase());
+  const iemandIsSupport = namen.some(isSupport);
+  return namen.map((name) => {
+    if (!iemandIsSupport) return { name };
+    return isSupport(name) ? { name, role: 'support' as const } : { name, role: 'headliner' as const };
+  });
 }

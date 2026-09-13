@@ -1,9 +1,14 @@
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 
 import { db, schema } from '../db/index.js';
 import { uploadToBunny } from '../storage/bunny.js';
 import { enrichEvent, refineKindByDuration } from './enrich.js';
-import { DETAIL_SPACING_MS, fetchDescription } from './_paradiso-detail.js';
+import {
+  DETAIL_SPACING_MS,
+  fetchDescription,
+  lineupFromArtists,
+  roomFromAreas,
+} from './_paradiso-detail.js';
 import { loadVenueTitleMap, resolveEventId } from './_title-dedup.js';
 
 /**
@@ -78,6 +83,10 @@ type ParadisoGqlEvent = {
   supportAct: string | null;
   soldOut: 'yes' | 'no' | string;
   location: { id: string; title: string }[];
+  /** "Paradiso - Grote Zaal". Zie roomFromAreas. */
+  areas: { label: string | null; value: string | null }[] | null;
+  /** Hoofdact én support, maar niet betrouwbaar in die volgorde. */
+  relatedArtists: { title: string | null }[] | null;
   image: ParadisoImageVariant[];
 };
 
@@ -91,6 +100,8 @@ async function fetchAllEvents(): Promise<ParadisoGqlEvent[]> {
       events {
         id uri title subtitle text startDateTime date eventStatus highlight supportAct soldOut sort
         location { id title }
+        areas { label value }
+        relatedArtists { title }
         image { desktop desktop2x desktopXL desktopXL2x type }
       }
     }
@@ -272,6 +283,11 @@ export async function scrapeParadiso(options?: {
       // Vroege existing-check: bestaat dit event al, dan alleen
       // de occurrence updaten (tijd/status kan wijzigen). Skip
       // de dure renderDetail() + enrichEvent() en image-mirror.
+      // Zaal en line-up komen uit de GraphQL. Die is gezaghebbender dan
+      // wat enrichEvent eruit leest, dus die krijgt voorrang.
+      const apiRoom = roomFromAreas(ev.areas, locTitle);
+      const apiLineup = lineupFromArtists(ev.relatedArtists, ev.supportAct);
+
       const [existing] = await db
         .select({ id: schema.events.id })
         .from(schema.events)
@@ -289,8 +305,8 @@ export async function scrapeParadiso(options?: {
             priceCents: null,
             priceNote: null,
             ticketUrl,
-            room: null,
-            lineup: null,
+            room: apiRoom,
+            lineup: apiLineup,
             status,
           })
           .onConflictDoUpdate({
@@ -298,7 +314,23 @@ export async function scrapeParadiso(options?: {
             // eventId meenemen: occurrences die nog aan een
             // per-avond-event hingen verhuizen zo zelf naar het
             // canonieke event.
-            set: { eventId, startsAt, ticketUrl, status },
+            set: {
+              eventId,
+              startsAt,
+              ticketUrl,
+              status,
+              room: apiRoom,
+              // Lineup alleen aanvullen, nooit overschrijven:
+              // _artists-enrich.ts hangt er `artistId` aan, en een blinde
+              // update zou die verrijking elke nacht weggooien.
+              // ponytail: daardoor landt een later toegevoegde support-act
+              // niet meer. Merge op naam als dat gaat opvallen.
+              ...(apiLineup
+                ? {
+                    lineup: sql`coalesce(${schema.occurrences.lineup}, ${JSON.stringify(apiLineup)}::jsonb)`,
+                  }
+                : {}),
+            },
           });
         r.occurrencesUpserted++;
         continue;
@@ -356,8 +388,8 @@ export async function scrapeParadiso(options?: {
             priceCents: null,
             priceNote: enriched.priceNote,
             ticketUrl,
-            room: enriched.room,
-            lineup: enriched.lineup,
+            room: apiRoom ?? enriched.room,
+            lineup: apiLineup ?? enriched.lineup,
             status,
           })
           .onConflictDoUpdate({
@@ -367,8 +399,8 @@ export async function scrapeParadiso(options?: {
               startsAt,
               priceNote: enriched.priceNote,
               ticketUrl,
-              room: enriched.room,
-              lineup: enriched.lineup,
+              room: apiRoom ?? enriched.room,
+              lineup: apiLineup ?? enriched.lineup,
               status,
             },
           });
