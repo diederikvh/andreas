@@ -70,6 +70,7 @@ const CITIES = [
   'rotterdam',
   'den-haag',
   'eindhoven',
+  'tilburg',
   'groningen',
   'antwerpen',
 ] as const;

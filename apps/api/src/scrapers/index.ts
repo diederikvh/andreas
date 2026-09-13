@@ -52,6 +52,7 @@ import { scrapeBostheater, type BostheaterResult } from './bostheater.js';
 import { scrapeBrakkeGrond, type BrakkeGrondResult } from './brakkegrond.js';
 import { scrapeDeRoma, type DeRomaResult } from './deroma.js';
 import { scrapeTivoliVredenburg, type TivoliResult } from './tivolivredenburg.js';
+import { scrape013, type Scraper013Result } from './013.js';
 import { scrapeCelebratix, type CelebratixVenueResult } from './celebratix.js';
 import { scrapeClubUp, type ClubUpResult } from './clubup.js';
 import { scrapeConcertgemaal, type ConcertgemaalResult } from './concertgemaal.js';
@@ -124,6 +125,7 @@ export const scrapers = {
   brakkegrond: scrapeBrakkeGrond,
   deroma: scrapeDeRoma,
   tivolivredenburg: scrapeTivoliVredenburg,
+  '013': scrape013,
   qfactory: scrapeQFactory,
   thuishaven: scrapeThuishaven,
   celebratix: scrapeCelebratix,

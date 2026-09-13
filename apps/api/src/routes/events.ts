@@ -22,7 +22,8 @@ type EventCategory = 'Muziek' | 'Theater' | 'Literatuur' | 'Film' | 'Kunst' | 'L
 const VALID_CATEGORIES = new Set(['Muziek', 'Theater', 'Literatuur', 'Film', 'Kunst', 'Lezing']);
 const VALID_CITIES = new Set([
   'amsterdam', 'amstelveen', 'diemen', 'zaandam', 'haarlem',
-  'utrecht', 'rotterdam', 'den-haag', 'eindhoven', 'groningen', 'antwerpen',
+  'utrecht', 'rotterdam', 'den-haag', 'eindhoven', 'tilburg', 'groningen',
+  'antwerpen',
 ]);
 const VALID_WIJKEN = new Set([
   'centrum', 'noord', 'oost', 'west', 'zuid', 'zuidoost', 'nieuw-west',
