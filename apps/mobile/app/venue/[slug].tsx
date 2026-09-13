@@ -1261,8 +1261,13 @@ function openMaps(name: string, lat: number, lng: number) {
       ? `maps:0,0?q=${label}@${lat},${lng}`
       : `geo:${lat},${lng}?q=${lat},${lng}(${label})`;
   Linking.openURL(url).catch(() => {
-    // Final fallback: web Google Maps
-    Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${lat},${lng}`);
+    // Terugval: Google Maps op het web. Ook die kan weigeren — een
+    // toestel zonder browser, of een beheerd profiel dat de link
+    // blokkeert. Dan houdt het op, en dat is geen crash: de gebruiker
+    // wilde een kaart, niet een foutrapport.
+    void Linking.openURL(
+      `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`
+    ).catch(() => undefined);
   });
 }
 
