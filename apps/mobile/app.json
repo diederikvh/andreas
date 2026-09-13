@@ -101,13 +101,13 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "Andreas heeft toegang tot je foto's nodig om een profielfoto te kiezen."
+          "photosPermission": "Andreas opent je foto-bibliotheek als je zelf een profielfoto kiest."
         }
       ],
       [
         "expo-camera",
         {
-          "cameraPermission": "Andreas gebruikt de camera om een poster te scannen of een vriend-QR te lezen.",
+          "cameraPermission": "Andreas gebruikt de camera om een poster van een event te scannen of de QR-code van een vriend te lezen.",
           "recordAudioAndroid": false
         }
       ],

@@ -1,7 +1,7 @@
 {
   "NSLocationWhenInUseUsageDescription": "Andreas gebruikt je locatie alleen om events op de kaart in de buurt te tonen.",
   "NSLocationAlwaysAndWhenInUseUsageDescription": "Andreas gebruikt je locatie alleen om events op de kaart in de buurt te tonen.",
-  "NSCameraUsageDescription": "Andreas gebruikt de camera alleen om een vriend-QR te scannen.",
-  "NSPhotoLibraryUsageDescription": "Andreas heeft toegang tot je foto's nodig om een profielfoto te kiezen.",
+  "NSCameraUsageDescription": "Andreas gebruikt de camera om een poster van een event te scannen of de QR-code van een vriend te lezen.",
+  "NSPhotoLibraryUsageDescription": "Andreas opent je foto-bibliotheek als je zelf een profielfoto kiest.",
   "NSPhotoLibraryAddUsageDescription": "Andreas slaat je profielfoto op in je foto-bibliotheek."
 }
