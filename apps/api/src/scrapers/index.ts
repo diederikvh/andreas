@@ -50,6 +50,7 @@ import { scrapeNieuweKerk, type NieuweKerkResult } from './nieuwekerk.js';
 import { scrapeBoomChicago, type BoomChicagoResult } from './boomchicago.js';
 import { scrapeBostheater, type BostheaterResult } from './bostheater.js';
 import { scrapeBrakkeGrond, type BrakkeGrondResult } from './brakkegrond.js';
+import { scrapeDeRoma, type DeRomaResult } from './deroma.js';
 import { scrapeCelebratix, type CelebratixVenueResult } from './celebratix.js';
 import { scrapeClubUp, type ClubUpResult } from './clubup.js';
 import { scrapeConcertgemaal, type ConcertgemaalResult } from './concertgemaal.js';
@@ -120,6 +121,7 @@ export const scrapers = {
   ot301: scrapeOt301,
   podiummozaiek: scrapePodiumMozaiek,
   brakkegrond: scrapeBrakkeGrond,
+  deroma: scrapeDeRoma,
   qfactory: scrapeQFactory,
   thuishaven: scrapeThuishaven,
   celebratix: scrapeCelebratix,

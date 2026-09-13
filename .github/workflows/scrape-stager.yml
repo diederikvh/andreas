@@ -34,13 +34,15 @@ jobs:
       fail-fast: false
       max-parallel: 6
       matrix:
-        scraper: [stager, ical, jsonld, ticketmaster, theater, concertgebouw, fourvenues, paradiso, melkweg, muziekgebouw, thuishaven, weticket, qfactory, brakkegrond, ketelhuis, radioradio, boomchicago, concertgemaal, wptheatre, p60, patronaat, ziggodome, ita, operaballet, podiummozaiek, celebratix, weeztix, shelter, sieraad, garagenoord, krakeling, eventscalendar, volkshotel, akhnaton, dezwijger, debalie, felixmeritis, rijksakademie, deceuvel, lima, perdu, nieuweboekhandel, eventbrite, aaservices, vrijburcht, munganga, westweelde, veronica, supper, gashouder, levenslang, clubup, ijland, odessa, fullhouse, bostheater, eye, kriterion, themovies, studiok, filmhallen, lab111, uitkijk, fchyena, rialto, cinecenter, cinemadevlugt, cavia]
+        scraper: [stager, ical, jsonld, ticketmaster, theater, concertgebouw, fourvenues, paradiso, melkweg, muziekgebouw, thuishaven, weticket, qfactory, brakkegrond, ketelhuis, radioradio, deroma, boomchicago, concertgemaal, wptheatre, p60, patronaat, ziggodome, ita, operaballet, podiummozaiek, celebratix, weeztix, shelter, sieraad, garagenoord, krakeling, eventscalendar, volkshotel, akhnaton, dezwijger, debalie, felixmeritis, rijksakademie, deceuvel, lima, perdu, nieuweboekhandel, eventbrite, aaservices, vrijburcht, munganga, westweelde, veronica, supper, gashouder, levenslang, clubup, ijland, odessa, fullhouse, bostheater, eye, kriterion, themovies, studiok, filmhallen, lab111, uitkijk, fchyena, rialto, cinecenter, cinemadevlugt, cavia]
         # Niet in cron: bimhuis, ot301, thepulse, athenaeum, ontheroof, foam (Playwright, niet in Fly Dockerfile).
         # thuishaven, weticket, qfactory, brakkegrond en ketelhuis erbij op 13 sep: allemaal
         # server-rendered, per stuk naast de browser-versie gelegd voor ze overgingen.
         # Blijven lokaal (browser echt nodig): ot301 (lege shell), bimhuis (helft van de
         # tegels via JS), thepulse (screening-ids via Finsweet), athenaeum (Cloudflare
         # fingerprint't de TLS-handshake — python komt erdoor, node niet), ontheroof, foam.
+        # deroma erbij op 13 sep: De Roma in Borgerhout (Antwerpen), de eerste venue
+        # buiten Nederland. Server-rendered agenda, geen browser nodig.
         # radioradio erbij op 13 sep: de DatoCMS-payload staat devalue-geserialiseerd in
         # de HTML, uit te pakken zonder browser.
         # muziekgebouw zit er sinds 13 sep in: de agenda is server-rendered, dus de
