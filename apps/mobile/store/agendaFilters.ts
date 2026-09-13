@@ -53,6 +53,11 @@ type AgendaFiltersState = {
   activeBlocks: TimeBlock[];
   activeCats: ApiEvent['category'][];
   activeTypes: VenueType[];
+  /** Stad en stadsdeel staan náást elkaar, niet onder elkaar: de API
+      combineert ze met OR. Een echte hiërarchie vraagt stadsdelen per
+      stad en die hebben we alleen voor Amsterdam. */
+  activeCities: string[];
+  activeWijken: string[];
   setQuery: (q: string) => void;
   setRange: (next: DateRange) => void;
   setOnlyFriends: (next: boolean) => void;
@@ -60,6 +65,8 @@ type AgendaFiltersState = {
   setActiveBlocks: (next: TimeBlock[]) => void;
   setActiveCats: (next: ApiEvent['category'][]) => void;
   setActiveTypes: (next: VenueType[]) => void;
+  setActiveCities: (next: string[]) => void;
+  setActiveWijken: (next: string[]) => void;
   toggleType: (t: VenueType) => void;
   reset: () => void;
 };
@@ -74,6 +81,8 @@ export const useAgendaFilters = create<AgendaFiltersState>()(
   activeBlocks: [],
   activeCats: [],
   activeTypes: [],
+  activeCities: [],
+  activeWijken: [],
   setQuery: (q) => set({ query: q }),
   setRange: (next) => set({ range: next }),
   setOnlyFriends: (next) => set({ onlyFriends: next }),
@@ -81,6 +90,8 @@ export const useAgendaFilters = create<AgendaFiltersState>()(
   setActiveBlocks: (next) => set({ activeBlocks: next }),
   setActiveCats: (next) => set({ activeCats: next }),
   setActiveTypes: (next) => set({ activeTypes: next }),
+  setActiveCities: (next) => set({ activeCities: next }),
+  setActiveWijken: (next) => set({ activeWijken: next }),
   toggleType: (t) => {
     const { activeTypes } = get();
     set({
@@ -98,6 +109,8 @@ export const useAgendaFilters = create<AgendaFiltersState>()(
       activeBlocks: [],
       activeCats: [],
       activeTypes: [],
+      activeCities: [],
+      activeWijken: [],
         }),
     }),
     {

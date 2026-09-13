@@ -581,6 +581,10 @@ export async function getArtist(slug: string): Promise<ApiArtistDetail> {
 export type AgendaFilters = {
   categories?: ApiEvent['category'][];
   venueTypes?: VenueType[];
+  /** Stad en stadsdeel. Server-side gecombineerd met OR — zie de
+      toelichting bij buildAgendaWhere in de API. */
+  cities?: string[];
+  wijken?: string[];
   /** Time-blocks: ochtend (6-12), middag (12-18), avond (18-23),
       nacht (23-06). Server-side gefilterd zodat de day-strip kloppende
       tellingen toont. */
@@ -633,6 +637,8 @@ function buildAgendaQuery(filters: AgendaFilters): URLSearchParams {
   const p = new URLSearchParams();
   for (const c of filters.categories ?? []) p.append('category', c);
   for (const vt of filters.venueTypes ?? []) p.append('venueType', vt);
+  for (const c of filters.cities ?? []) p.append('city', c);
+  for (const w of filters.wijken ?? []) p.append('wijk', w);
   for (const b of filters.blocks ?? []) p.append('block', b);
   if (filters.q && filters.q.trim().length > 0) p.set('q', filters.q.trim());
   if (filters.onlyFollowed) p.set('onlyFollowed', 'true');

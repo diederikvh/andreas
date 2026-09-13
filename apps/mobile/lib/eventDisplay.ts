@@ -297,6 +297,32 @@ export function translateVenueCapacity(
  * herkenbaarder dan "North / Centre"). We capitaliseren alleen de
  * DB-waarden ("nieuw-west" → "Nieuw-West", "centrum" → "Centrum").
  */
+/**
+ * Steden die we daadwerkelijk in de database hebben. Bewust een korte
+ * lijst en niet het hele enum: chips voor Utrecht en Rotterdam tonen
+ * terwijl daar nog geen venue staat levert alleen lege resultaten op.
+ *
+ * ponytail: met de hand bijhouden. Zodra dit meer dan een handvol
+ * steden wordt is het beter om ze uit een endpoint te halen met een
+ * telling erbij.
+ */
+export const CITY_VALUES = [
+  'amsterdam', 'amstelveen', 'diemen', 'zaandam', 'haarlem', 'antwerpen',
+] as const;
+
+/** Stadsdelen. Alleen Amsterdam heeft ze. */
+export const WIJK_VALUES = [
+  'centrum', 'noord', 'oost', 'west', 'zuid', 'zuidoost', 'nieuw-west',
+] as const;
+
+export function getCityChips(): { value: string; label: string }[] {
+  return CITY_VALUES.map((value) => ({ value, label: CITY_LABEL[value] ?? value }));
+}
+
+export function getWijkChips(): { value: string; label: string }[] {
+  return WIJK_VALUES.map((value) => ({ value, label: formatWijk(value) }));
+}
+
 const CITY_LABEL: Record<string, string> = {
   'amsterdam': 'Amsterdam',
   'amstelveen': 'Amstelveen',

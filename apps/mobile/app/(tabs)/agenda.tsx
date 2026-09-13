@@ -36,7 +36,9 @@ import type { AgendaRow as AgendaRowData, ApiEvent, VenueType } from '@/lib/api'
 import {
   CATEGORY_TICK,
   VENUE_TYPE_TICK,
+  getCityChips,
   getVenueTypeChips,
+  getWijkChips,
   translateVenueType,
   dowMixed,
   rowTimeLabel,
@@ -147,12 +149,16 @@ export default function Agenda() {
   const activeBlocks = useAgendaFilters((s) => s.activeBlocks);
   const activeCats = useAgendaFilters((s) => s.activeCats);
   const activeTypes = useAgendaFilters((s) => s.activeTypes);
+  const activeCities = useAgendaFilters((s) => s.activeCities);
+  const activeWijken = useAgendaFilters((s) => s.activeWijken);
   const setQuery = useAgendaFilters((s) => s.setQuery);
   const setOnlyFriends = useAgendaFilters((s) => s.setOnlyFriends);
   const setOnlyFavorites = useAgendaFilters((s) => s.setOnlyFavorites);
   const setActiveBlocks = useAgendaFilters((s) => s.setActiveBlocks);
   const setActiveCats = useAgendaFilters((s) => s.setActiveCats);
   const setActiveTypes = useAgendaFilters((s) => s.setActiveTypes);
+  const setActiveCities = useAgendaFilters((s) => s.setActiveCities);
+  const setActiveWijken = useAgendaFilters((s) => s.setActiveWijken);
 
   // Filter-state blijft staan voor de duur van de app-session — geen
   // reset op tab-blur. Accent-styling op chip-row maakt zichtbaar wat
@@ -223,12 +229,14 @@ export default function Agenda() {
     () => ({
       categories: activeCats,
       venueTypes: activeTypes,
+      cities: activeCities,
+      wijken: activeWijken,
       blocks: activeBlocks,
       q: query || undefined,
       onlyFollowed: onlyFavorites,
       onlyFriends,
     }),
-    [activeCats, activeTypes, activeBlocks, query, onlyFavorites, onlyFriends]
+    [activeCats, activeTypes, activeCities, activeWijken, activeBlocks, query, onlyFavorites, onlyFriends]
   );
 
   // Eén reeks in plaats van dag-voor-dag. De day-strip liet je telkens
@@ -379,6 +387,8 @@ export default function Agenda() {
           query={query}
           activeBlocks={activeBlocks}
           activeTypes={activeTypes}
+          activeCities={activeCities}
+          activeWijken={activeWijken}
           onlyFriends={onlyFriends}
           showFriendsChip={showFriendsChip}
           onlyFavorites={onlyFavorites}
@@ -387,6 +397,8 @@ export default function Agenda() {
           onQuery={setQuery}
           onBlocks={setActiveBlocks}
           onTypes={setActiveTypes}
+          onCities={setActiveCities}
+          onWijken={setActiveWijken}
           onToggleFriends={() => setOnlyFriends(!onlyFriends)}
           onToggleFavorites={() => setOnlyFavorites(!onlyFavorites)}
         />
@@ -774,6 +786,8 @@ function ChipRow({
   query,
   activeBlocks,
   activeTypes,
+  activeCities,
+  activeWijken,
   onlyFriends,
   showFriendsChip,
   onlyFavorites,
@@ -782,6 +796,8 @@ function ChipRow({
   onQuery,
   onBlocks,
   onTypes,
+  onCities,
+  onWijken,
   onToggleFriends,
   onToggleFavorites,
 }: {
@@ -791,6 +807,8 @@ function ChipRow({
   query: string;
   activeBlocks: TimeBlock[];
   activeTypes: VenueType[];
+  activeCities: string[];
+  activeWijken: string[];
   onlyFriends: boolean;
   showFriendsChip: boolean;
   onlyFavorites: boolean;
@@ -799,6 +817,8 @@ function ChipRow({
   onQuery: (q: string) => void;
   onBlocks: (next: TimeBlock[]) => void;
   onTypes: (next: VenueType[]) => void;
+  onCities: (next: string[]) => void;
+  onWijken: (next: string[]) => void;
   onToggleFriends: () => void;
   onToggleFavorites: () => void;
 }) {
@@ -816,7 +836,8 @@ function ChipRow({
   // oude saved-searches.
 
   const filterCount =
-    activeCats.length + activeBlocks.length + activeTypes.length;
+    activeCats.length + activeBlocks.length + activeTypes.length +
+    activeCities.length + activeWijken.length;
   // Als de huidige filter-staat exact matcht met een opgeslagen
   // zoekopdracht-chip, dan licht díe chip al op — de filter-knop blijft
   // dan in z'n neutrale staat zodat 'r niet twee actieve knoppen naast
@@ -860,6 +881,8 @@ function ChipRow({
       onCats([]);
       onBlocks([]);
       onTypes([]);
+    onCities([]);
+    onWijken([]);
       onQuery('');
       return;
     }
@@ -1068,10 +1091,14 @@ function ChipRow({
           activeCats={activeCats}
           activeBlocks={activeBlocks}
           activeTypes={activeTypes}
+          activeCities={activeCities}
+          activeWijken={activeWijken}
           query={query}
           onCats={onCats}
           onBlocks={onBlocks}
           onTypes={onTypes}
+          onCities={onCities}
+          onWijken={onWijken}
           onClose={() => setFilterOpen(false)}
         />
       </Modal>
@@ -1083,19 +1110,27 @@ function FilterSheet({
   activeCats,
   activeBlocks,
   activeTypes,
+  activeCities,
+  activeWijken,
   query,
   onCats,
   onBlocks,
   onTypes,
+  onCities,
+  onWijken,
   onClose,
 }: {
   activeCats: ApiEvent['category'][];
   activeBlocks: TimeBlock[];
   activeTypes: VenueType[];
+  activeCities: string[];
+  activeWijken: string[];
   query: string;
   onCats: (next: ApiEvent['category'][]) => void;
   onBlocks: (next: TimeBlock[]) => void;
   onTypes: (next: VenueType[]) => void;
+  onCities: (next: string[]) => void;
+  onWijken: (next: string[]) => void;
   onClose: () => void;
 }) {
   const mode = useMode();
@@ -1131,6 +1166,16 @@ function FilterSheet({
   const toggleType = (vt: VenueType) => {
     if (activeTypes.includes(vt)) onTypes(activeTypes.filter((x) => x !== vt));
     else onTypes([...activeTypes, vt]);
+  };
+  const cityChips = getCityChips();
+  const wijkChips = getWijkChips();
+  const toggleCity = (c: string) => {
+    if (activeCities.includes(c)) onCities(activeCities.filter((x) => x !== c));
+    else onCities([...activeCities, c]);
+  };
+  const toggleWijk = (w: string) => {
+    if (activeWijken.includes(w)) onWijken(activeWijken.filter((x) => x !== w));
+    else onWijken([...activeWijken, w]);
   };
   const toggleBlock = (b: TimeBlock) => {
     if (activeBlocks.includes(b)) onBlocks(activeBlocks.filter((x) => x !== b));
@@ -1234,6 +1279,44 @@ function FilterSheet({
               label={c.label}
               active={activeTypes.includes(c.value)}
               onPress={() => toggleType(c.value)}
+            />
+          ))}
+        </View>
+
+        <Text
+          style={[
+            styles.sheetSectionHead,
+            { color: roles.fgMuted, marginTop: 22 },
+          ]}
+        >
+          {t('Stad', 'City')}
+        </Text>
+        <View style={styles.genreWrap}>
+          {cityChips.map((c) => (
+            <FilterChip
+              key={c.value}
+              label={c.label}
+              active={activeCities.includes(c.value)}
+              onPress={() => toggleCity(c.value)}
+            />
+          ))}
+        </View>
+
+        <Text
+          style={[
+            styles.sheetSectionHead,
+            { color: roles.fgMuted, marginTop: 22 },
+          ]}
+        >
+          {t('Stadsdeel', 'District')}
+        </Text>
+        <View style={styles.genreWrap}>
+          {wijkChips.map((c) => (
+            <FilterChip
+              key={c.value}
+              label={c.label}
+              active={activeWijken.includes(c.value)}
+              onPress={() => toggleWijk(c.value)}
             />
           ))}
         </View>
