@@ -312,7 +312,7 @@ export function translateVenueCapacity(
  */
 export const CITY_VALUES = [
   'amsterdam', 'amstelveen', 'diemen', 'zaandam', 'haarlem',
-  'utrecht', 'rotterdam', 'tilburg', 'groningen', 'antwerpen',
+  'utrecht', 'rotterdam', 'den-haag', 'tilburg', 'groningen', 'antwerpen',
 ] as const;
 
 /**

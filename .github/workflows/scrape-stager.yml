@@ -34,7 +34,7 @@ jobs:
       fail-fast: false
       max-parallel: 6
       matrix:
-        scraper: [stager, ical, jsonld, ticketmaster, theater, concertgebouw, fourvenues, paradiso, melkweg, muziekgebouw, thuishaven, weticket, qfactory, brakkegrond, ketelhuis, radioradio, deroma, tivolivredenburg, 013, boomchicago, concertgemaal, wptheatre, p60, patronaat, ziggodome, ita, operaballet, podiummozaiek, celebratix, weeztix, shelter, sieraad, garagenoord, krakeling, eventscalendar, volkshotel, akhnaton, dezwijger, debalie, felixmeritis, rijksakademie, deceuvel, lima, perdu, nieuweboekhandel, eventbrite, aaservices, vrijburcht, munganga, westweelde, veronica, supper, gashouder, levenslang, clubup, ijland, odessa, fullhouse, bostheater, eye, kriterion, themovies, studiok, filmhallen, lab111, uitkijk, fchyena, rialto, cinecenter, cinemadevlugt, cavia]
+        scraper: [stager, ical, jsonld, ticketmaster, theater, concertgebouw, fourvenues, paradiso, melkweg, muziekgebouw, thuishaven, weticket, qfactory, brakkegrond, ketelhuis, radioradio, deroma, tivolivredenburg, 013, paard, boomchicago, concertgemaal, wptheatre, p60, patronaat, ziggodome, ita, operaballet, podiummozaiek, celebratix, weeztix, shelter, sieraad, garagenoord, krakeling, eventscalendar, volkshotel, akhnaton, dezwijger, debalie, felixmeritis, rijksakademie, deceuvel, lima, perdu, nieuweboekhandel, eventbrite, aaservices, vrijburcht, munganga, westweelde, veronica, supper, gashouder, levenslang, clubup, ijland, odessa, fullhouse, bostheater, eye, kriterion, themovies, studiok, filmhallen, lab111, uitkijk, fchyena, rialto, cinecenter, cinemadevlugt, cavia]
         # Niet in cron: bimhuis, ot301, thepulse, athenaeum, ontheroof, foam (Playwright, niet in Fly Dockerfile).
         # thuishaven, weticket, qfactory, brakkegrond en ketelhuis erbij op 13 sep: allemaal
         # server-rendered, per stuk naast de browser-versie gelegd voor ze overgingen.
@@ -43,6 +43,9 @@ jobs:
         # fingerprint't de TLS-handshake — python komt erdoor, node niet), ontheroof, foam.
         # tivolivredenburg erbij op 13 sep: 873 events via hun RSS-feed. Hun HTML zit
         # achter Cloudflare (403 op node's fetch, ook vanaf Fly), /agenda/feed/ niet.
+        # paard erbij op 13 sep: PAARD in Den Haag. Zelfde vorm als 013 — /event/ is het
+        # hele komende programma, de JSON-LD op de detailpagina draagt de rest. Hun
+        # startDate heeft geen offset, dus wandklok via parseAmsterdamLocal.
         # 013 erbij op 13 sep: Tilburg. /programma is één server-rendered pagina met het
         # hele komende programma; de JSON-LD op de detailpagina's draagt de rest.
         # deroma erbij op 13 sep: De Roma in Borgerhout (Antwerpen), de eerste venue

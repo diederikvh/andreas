@@ -150,11 +150,29 @@ const NAMED_ENTITIES: Record<string, string> = {
   ldquo: '“',
   rdquo: '”',
   hellip: '…',
+  // Latin-1-letters met een accent. WordPress-CMS'en (PAARD, Patronaat)
+  // schrijven die als named entity weg, ook in JSON-LD-velden, en dan
+  // staat er "Caf&eacute;" als zaalnaam in de app.
+  eacute: 'é', egrave: 'è', ebreve: 'ĕ', ecirc: 'ê', euml: 'ë',
+  aacute: 'á', agrave: 'à', acirc: 'â', auml: 'ä', aring: 'å',
+  atilde: 'ã', aelig: 'æ', ccedil: 'ç',
+  iacute: 'í', igrave: 'ì', icirc: 'î', iuml: 'ï',
+  oacute: 'ó', ograve: 'ò', ocirc: 'ô', ouml: 'ö', otilde: 'õ', oslash: 'ø',
+  uacute: 'ú', ugrave: 'ù', ucirc: 'û', uuml: 'ü',
+  ntilde: 'ñ', yacute: 'ý', yuml: 'ÿ', szlig: 'ß',
+  Eacute: 'É', Egrave: 'È', Ecirc: 'Ê', Euml: 'Ë',
+  Aacute: 'Á', Agrave: 'À', Acirc: 'Â', Auml: 'Ä', Aring: 'Å',
+  Ccedil: 'Ç', Iacute: 'Í', Iuml: 'Ï',
+  Oacute: 'Ó', Ouml: 'Ö', Oslash: 'Ø',
+  Uacute: 'Ú', Uuml: 'Ü', Ntilde: 'Ñ',
+  deg: '°', euro: '€', pound: '£', middot: '·', bull: '•',
+  laquo: '«', raquo: '»', sbquo: '‚', bdquo: '„', dagger: '†',
+  times: '×', frac12: '½', frac14: '¼', sup2: '²', sup3: '³',
 };
 
 /** Decodeer veelvoorkomende HTML-entities (`&amp;`, `&#8211;`, `&#x2014;`).
  *  WordPress/JSON-LD-feeds laten deze regelmatig staan in titel-velden. */
-function decodeHtmlEntities(s: string): string {
+export function decodeHtmlEntities(s: string): string {
   return s
     .replace(/&#(\d+);/g, (_, code) => String.fromCodePoint(parseInt(code, 10)))
     .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) =>
