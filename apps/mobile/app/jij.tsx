@@ -910,7 +910,7 @@ function ProfileRow({
       }}
       style={[styles.profileRow, { backgroundColor: roles.bgChip }]}
     >
-      <Ionicons name={icon} size={20} color={roles.accent} />
+      <Ionicons name={icon} size={22} color={roles.accent} />
       <Text style={[styles.profileRowLabel, { color: roles.fg }]}>{label}</Text>
       <Ionicons name="chevron-forward" size={16} color={roles.fgPlaceholder} />
     </Pressable>
@@ -1773,20 +1773,23 @@ const styles = StyleSheet.create({
   // Losse kaartjes met ruimte ertussen, net als je bewaarde kaartjes:
   // het zijn allemaal dingen die je kan doen, dus ze mogen er ook zo
   // uitzien. Eén blok met streepjes leest als een instellingenlijst.
-  profileMenu: { marginHorizontal: 22, gap: 10, marginTop: 4 },
+  profileMenu: { marginHorizontal: 22, gap: 12, marginTop: 8 },
+  // Ruim: een rij is 60 hoog met 18 lucht boven en onder. Apple houdt
+  // 44 aan als ondergrens voor iets aantikbaars, en dit is geen lijst om
+  // te lezen maar om te raken.
   profileRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 14,
-    borderRadius: 14,
+    gap: 14,
+    paddingHorizontal: 18,
+    paddingVertical: 18,
+    borderRadius: 16,
   },
   profileRowLabel: {
     flex: 1,
     fontFamily: fontFamily.bold,
-    fontSize: 15,
-    letterSpacing: -0.2,
+    fontSize: 16,
+    letterSpacing: -0.24,
   },
   // Zelfde sluit-knop als op /films, /clubs, /theater en /going: 36×36
   // cirkel met een Ionicons-kruis. De kleinere ModalCloseBtn met het

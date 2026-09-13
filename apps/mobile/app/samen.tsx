@@ -215,8 +215,7 @@ export default function SamenScreen() {
       </ScrollView>
 
       <AppHeader
-        wordmark={t('Jij', 'You')}
-        title={t('Vrienden', 'Friends')}
+        title={t('Favorieten', 'Favourites')}
         hideAvatar
         rightSlot={closeBtn}
       />

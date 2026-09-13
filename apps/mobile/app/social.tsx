@@ -158,19 +158,33 @@ export default function Social() {
           in plaats van te pushen, dus 'ie schoof niet in beeld en `back`
           bracht je naar de vorige tab (Vandaag) in plaats van naar Meer. */}
       <AppHeader
-        title={t('Friends', 'Friends')}
+        title={t('Vrienden', 'Friends')}
         hideAvatar
         rightSlot={
-          <Pressable
-            onPress={() => router.back()}
-            hitSlop={8}
-            style={[
-              styles.closeBtn,
-              { backgroundColor: isNacht ? palette.noir2 : palette.paper2 },
-            ]}
-          >
-            <Ionicons name="close" size={20} color={roles.fg} />
-          </Pressable>
+          <View style={styles.headerActions}>
+            {/* Toevoegen stond als actie naast een kop "Vrienden" in de
+                lijst, terwijl de pagina al zo heet. Eén kop, en de plus
+                waar je 'm op elk ander scherm ook zoekt. */}
+            {authed ? (
+              <Pressable
+                onPress={() => router.push('/add-friend')}
+                hitSlop={8}
+                style={[styles.headerAdd, { backgroundColor: roles.accent }]}
+              >
+                <Ionicons name="add" size={20} color={roles.onAccent} />
+              </Pressable>
+            ) : null}
+            <Pressable
+              onPress={() => router.back()}
+              hitSlop={8}
+              style={[
+                styles.closeBtn,
+                { backgroundColor: isNacht ? palette.noir2 : palette.paper2 },
+              ]}
+            >
+              <Ionicons name="close" size={20} color={roles.fg} />
+            </Pressable>
+          </View>
         }
       />
     </View>
@@ -248,11 +262,6 @@ function FriendsPanel({
       )}
       {(hasFriends || (groups?.length ?? 0) > 0) && (
         <>
-          <SectionHead
-            label={t('Vrienden', 'Friends')}
-            action={t('Toevoegen', 'Add')}
-            onAction={() => router.push('/add-friend')}
-          />
           {/* Gecombineerde lijst, gesorteerd: groepen eerst, dan
               favorieten, dan overige vrienden. Per spec staan groep-
               en vriendrijen in dezelfde lijst zonder aparte koppen —
@@ -788,6 +797,14 @@ function PendingRow({ user }: { user: ApiFriendRequest }) {
 }
 
 const styles = StyleSheet.create({
+  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  headerAdd: {
+    width: 32,
+    height: 32,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   closeBtn: {
     width: 36,
     height: 36,
