@@ -45,7 +45,7 @@ Skill voor toevoegen van nieuwe scrapers: [.claude/skills/scraper-add/SKILL.md](
 - ⬜ **Warehouse Elementenstraat** — `weeztix` config gezet, shop momenteel leeg
 - ⬜ **Yellow House** — scraper nog te kiezen
 
-## Podia (54)
+## Podia (56)
 
 - ✅ **Amsterdamse Bostheater** (mainstream/groot/amstelveen) — 29 events · `bostheater` (custom WP-theme, `.event-card` HTML, multi-day support)
 
@@ -83,6 +83,8 @@ Skill voor toevoegen van nieuwe scrapers: [.claude/skills/scraper-add/SKILL.md](
 - ✅ **RAI Theater** (mainstream/groot/zuid) — 11 events · `ticketmaster`
 - ✅ **Q-Factory** (alternatief/middel/oost) — 10 events · Playwright (eigen site, Storyblok)
 - ✅ **TivoliVredenburg** (mainstream/groot/Utrecht) — 873 events · `tivolivredenburg` (RSS-feed `/agenda/feed/`, tien per pagina via `?paged=N`; elk item draagt de volledige productie-JSON uit hun CMS). Hun HTML zit achter Cloudflare — node's fetch krijgt 403, ook vanaf Fly.
+- ✅ **013** (mainstream/groot/Tilburg) — 151 events (162 occurrences) · `013` (`/programma` is één server-rendered pagina met het hele komende programma — geen paginatie, `?page=N` geeft dezelfde tegels; de JSON-LD `MusicEvent` op de detailpagina draagt datum mét offset, eindtijd, zaal, beeld, omschrijving en beschikbaarheid). Links absoluut én met niet-ASCII slugs (`axel-flóvent`, `käärijä`, `queensrÿche`) — matchen op `href="…"`, niet op het URL-patroon, anders vallen er zeven af. Categorie komt van de enrichment: 013 zet álles weg als `MusicEvent`, ook comedy. Prijs is het minimum uit het Entree-blok, want bij rangen staat de duurste bovenaan. Afgelaste shows houden een schone titel en zetten alleen `eventStatus` — vandaar `includeCancelled` op de JSON-LD-extractor; zonder dat bleef zo'n rij op `scheduled` staan omdat de scraper 'm nooit meer zag.
+- ✅ **PAARD** (mainstream/groot/Den Haag) — 163 events (165 occurrences) · `paard` (`/event/` is het hele komende programma, `page/2` geeft 404; JSON-LD `Event` per detailpagina). Hun `startDate` heeft géén offset, dus wandklok via `parseAmsterdamLocal` — `new Date()` zou op Fly twee uur schelen. Genres komen uit hun eigen tag-strip in de HTML en gaan vóór de enrichment; de leeftijdsgrens die ertussen staat is geen genre. Afgelastingen gaan vanzelf goed: PAARD plakt `[GEANNULEERD]` in de titel, wat de sweep in `_cancellations.ts` al vangt.
 - ✅ **De Roma** (alternatief/middel/Borgerhout, Antwerpen) — 135 events · `deroma` (server-rendered agenda, 10 pagina's van 16 tegels; detailpagina's leveren JSON-LD met omschrijving, zaal en eindtijd). Enige venue buiten Nederland; heeft geen `wijk`.
 - ✅ **De Brakke Grond** (mainstream/middel/centrum) — 41 events · Playwright per show. Datums komen uit `.event-detail__tickets-date` (reeks/los/komma-lijst) met de tijd uit `.event-detail__tickets-info`; mét tijd één occurrence per speeldag, zonder tijd één doorlopende periode. Tot 2026-09-11 las de parser de lopende tekst en pakte hij er 1 van de 41.
 - ✅ **On the Roof** (alternatief/klein/noord) — 8 events · Playwright (Weeztix per artist)
