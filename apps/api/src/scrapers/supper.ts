@@ -3,6 +3,7 @@ import { eq } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
 import { uploadToBunny } from '../storage/bunny.js';
 import { enrichEvent, refineKindByDuration } from './enrich.js';
+import { parseAmsterdamLocal } from './_amsterdam-tz.js';
 
 /**
  * Supper Club Amsterdam — events worden gerenderd als Elementor cards
@@ -79,10 +80,8 @@ function parseDateTime(text: string): { startsAt: Date; endsAt: Date | null } | 
   const startH = parseInt(m[4], 10);
   const startMin = parseInt(m[5], 10);
   // DST grof: mar-oct = +02, anders +01.
-  const dst = monIdx >= 2 && monIdx <= 9;
-  const off = dst ? '+02:00' : '+01:00';
   const datePart = `${year}-${String(monIdx + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-  const startsAt = new Date(`${datePart}T${String(startH).padStart(2, '0')}:${String(startMin).padStart(2, '0')}:00${off}`);
+  const startsAt = parseAmsterdamLocal(`${datePart}T${String(startH).padStart(2, '0')}:${String(startMin).padStart(2, '0')}:00`);
   if (Number.isNaN(startsAt.getTime())) return null;
 
   let endsAt: Date | null = null;
@@ -96,7 +95,7 @@ function parseDateTime(text: string): { startsAt: Date; endsAt: Date | null } | 
       d.setUTCDate(d.getUTCDate() + 1);
       endDate = d.toISOString().slice(0, 10);
     }
-    const e = new Date(`${endDate}T${String(endH).padStart(2, '0')}:${String(endMin).padStart(2, '0')}:00${off}`);
+    const e = parseAmsterdamLocal(`${endDate}T${String(endH).padStart(2, '0')}:${String(endMin).padStart(2, '0')}:00`);
     if (!Number.isNaN(e.getTime())) endsAt = e;
   }
   return { startsAt, endsAt };

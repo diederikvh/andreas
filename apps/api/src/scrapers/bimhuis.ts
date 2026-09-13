@@ -4,6 +4,7 @@ import { chromium, type Browser } from 'playwright';
 import { db, schema } from '../db/index.js';
 import { uploadToBunny } from '../storage/bunny.js';
 import { enrichEvent, refineKindByDuration } from './enrich.js';
+import { parseAmsterdamLocal } from './_amsterdam-tz.js';
 
 /**
  * Bimhuis (jazz, dagelijks). Calendar is een Next.js App Router page
@@ -231,7 +232,7 @@ export async function scrapeBimhuis(options?: {
           result.errors.push(`enrich ${group.title}: ${(e as Error).message}`);
         }
 
-        const headStart = new Date(`${head.date}T${head.time || '20:30'}:00+02:00`);
+        const headStart = parseAmsterdamLocal(`${head.date}T${head.time || '20:30'}:00`);
         const eventKind = refineKindByDuration(enriched?.kind ?? 'show', headStart, null);
 
         try {
@@ -257,7 +258,7 @@ export async function scrapeBimhuis(options?: {
       // Occurrences upsert
       for (const t of group.tiles) {
         try {
-          const startsAt = new Date(`${t.date}T${t.time || '20:30'}:00+02:00`);
+          const startsAt = parseAmsterdamLocal(`${t.date}T${t.time || '20:30'}:00`);
           if (isNaN(startsAt.getTime())) { result.skipped++; continue; }
           if (startsAt.getTime() < cutoff) { result.skipped++; continue; }
 

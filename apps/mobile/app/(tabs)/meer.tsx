@@ -21,7 +21,12 @@ import { AppHeader, HEADER_HEIGHT } from '@/components/AppHeader';
 import { useSession } from '@/lib/authClient';
 import { softTap } from '@/lib/haptics';
 import { useT } from '@/lib/i18n';
-import { useMe, useNewArrivalsSince, useSocialBadgeCount } from '@/lib/queries';
+import {
+  useFriendRequestCount,
+  useInviteActionCount,
+  useMe,
+  useNewArrivalsSince,
+} from '@/lib/queries';
 import { useNewFilters } from '@/store/newFilters';
 import { useMode, useRoles } from '@/store/mode';
 import { useNewBadgeSince } from '@/store/sessionTimestamps';
@@ -59,7 +64,8 @@ export default function MeerScreen() {
   // ik weghaalde; hier hoort 'ie weer.
   const { data: me } = useMe();
   const guideEnabled = me?.guideEnabled ?? false;
-  const socialCount = useSocialBadgeCount(Boolean(session?.user?.id));
+  const friendRequestCount = useFriendRequestCount(Boolean(session?.user?.id));
+  const inviteCount = useInviteActionCount(Boolean(session?.user?.id));
 
   const go = (path: string) => () => {
     softTap();
@@ -113,23 +119,31 @@ export default function MeerScreen() {
     },
   ];
 
+  // Volgorde: eerst de mensen, dan wat ze je vragen, dan wat jullie leuk
+  // vinden. Uitnodigingen stonden als derde kopje op /social — één scherm
+  // met vier soorten rijen terwijl je er maar één ding komt doen.
   const vrienden: Entry[] = [
-    {
-      // Was "Voor jou": aanbevelingen op basis van smaak. Die vraag —
-      // "wat zou je leuk vinden?" — is niet de vraag die je stelt. Dit
-      // wel: wat vinden wij leuk. Geen model, twee lijsten die we al
-      // hebben.
-      key: 'samen',
-      icon: <Ionicons name="heart-outline" size={22} color={roles.accent} />,
-      label: t('Jij & vrienden', 'You & friends'),
-      onPress: go('/samen'),
-    },
     {
       key: 'social',
       icon: <Ionicons name="people-outline" size={22} color={roles.accent} />,
       label: t('Vrienden', 'Friends'),
-      badge: socialCount,
+      badge: friendRequestCount,
       onPress: go('/social'),
+    },
+    {
+      key: 'uitnodigingen',
+      icon: <Ionicons name="mail-outline" size={22} color={roles.accent} />,
+      label: t('Uitnodigingen', 'Invitations'),
+      badge: inviteCount,
+      onPress: go('/uitnodigingen'),
+    },
+    {
+      // Was "Voor jou" (aanbevelingen), daarna "Jij & vrienden". Het is
+      // wat jullie hebben gered, dus: favorieten.
+      key: 'samen',
+      icon: <Ionicons name="heart-outline" size={22} color={roles.accent} />,
+      label: t('Favorieten', 'Favourites'),
+      onPress: go('/samen'),
     },
   ];
 

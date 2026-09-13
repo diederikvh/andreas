@@ -3,6 +3,7 @@ import { eq } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
 import { uploadToBunny } from '../storage/bunny.js';
 import { enrichEvent, refineKindByDuration } from './enrich.js';
+import { parseAmsterdamLocal } from './_amsterdam-tz.js';
 
 /**
  * Internationaal Theater Amsterdam (ITA). Hun /nl/agenda is volledig
@@ -199,7 +200,7 @@ export async function scrapeIta(options?: {
 
       // Skip als alle slots in het verleden zijn
       const futureEvents = group.events.filter((ev) => {
-        const t = new Date(`${(ev.startDateTime?.date ?? '').replace(' ', 'T')}+02:00`).getTime();
+        const t = parseAmsterdamLocal(`${(ev.startDateTime?.date ?? '').replace(' ', 'T')}`).getTime();
         return !isNaN(t) && t > cutoff;
       });
       if (futureEvents.length === 0) { result.skipped++; continue; }
@@ -234,11 +235,11 @@ export async function scrapeIta(options?: {
           imageUrl = (await mirrorImage(sourceImg, `${show.slug ?? showId}`)) ?? sourceImg;
         }
 
-        const headStart = new Date(
-          `${(futureEvents[0]!.startDateTime!.date).replace(' ', 'T')}+02:00`
+        const headStart = parseAmsterdamLocal(
+          `${(futureEvents[0]!.startDateTime!.date).replace(' ', 'T')}`
         );
         const headEnd = futureEvents[0]?.endDateTime?.date
-          ? new Date(`${futureEvents[0]!.endDateTime!.date.replace(' ', 'T')}+02:00`)
+          ? parseAmsterdamLocal(`${futureEvents[0]!.endDateTime!.date.replace(' ', 'T')}`)
           : null;
         eventKind = refineKindByDuration(enriched?.kind ?? 'show', headStart, headEnd);
 
@@ -272,10 +273,10 @@ export async function scrapeIta(options?: {
 
       for (const ev of futureEvents) {
         try {
-          const startsAt = new Date(`${ev.startDateTime!.date.replace(' ', 'T')}+02:00`);
+          const startsAt = parseAmsterdamLocal(`${ev.startDateTime!.date.replace(' ', 'T')}`);
           if (isNaN(startsAt.getTime())) { result.skipped++; continue; }
           const endsAt = ev.endDateTime?.date
-            ? new Date(`${ev.endDateTime.date.replace(' ', 'T')}+02:00`)
+            ? parseAmsterdamLocal(`${ev.endDateTime.date.replace(' ', 'T')}`)
             : null;
 
           const isoSlot = ev.startDateTime!.date.replace(' ', 'T').slice(0, 16).replace(':', '-');

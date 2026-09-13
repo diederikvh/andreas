@@ -21,8 +21,10 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import QRCode from 'react-native-qrcode-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { softTap } from '@/lib/haptics';
 import { BackButton } from '@/components/BackButton';
 import { Cross } from '@/components/Cross';
 import { ProfileAvatar } from '@/components/ProfileAvatar';
@@ -755,24 +757,59 @@ export default function Jij() {
           <Text style={[styles.profileHandle, { color: roles.fgMuted }]}>
             {displayHandle}
           </Text>
-          <View style={styles.profileActions}>
-            {/* Compacte pill-knop, zelfde footprint als de Volgend-
-                /Favoriet-knop op een vriend-profiel zodat eigen en
-                andermans profiel visueel matchen. */}
-            <Pressable
-              onPress={onEditProfile}
-              style={[styles.editProfileBtn, { borderColor: roles.bgChip }]}
-            >
-              <Ionicons name="pencil" size={14} color={roles.fg} />
-              <Text style={[styles.editProfileBtnText, { color: roles.fg }]}>
-                {t('Bewerk profiel', 'Edit profile')}
-              </Text>
-            </Pressable>
-          </View>
           {error && <Text style={styles.error}>{error}</Text>}
         </View>
 
-        {me && <MirrorSection authed={authedAndOnboarded} />}
+        {/* Je eigen QR: hiermee voegt iemand je toe zonder te typen.
+            Alleen als je een handle hebt — zonder handle wijst hij
+            nergens heen. */}
+        {me?.handle ? (
+          <View style={styles.qrBlock}>
+            <View
+              style={[
+                styles.qrTile,
+                { backgroundColor: isNacht ? palette.ink : palette.paper3 },
+              ]}
+            >
+              <QRCode
+                value={`https://andreas.amsterdam/u/${me.handle}`}
+                size={132}
+                color={palette.noir}
+                backgroundColor={isNacht ? palette.ink : palette.paper3}
+                ecl="H"
+              />
+            </View>
+          </View>
+        ) : null}
+
+        {/* Wat je hier komt doen, in de volgorde waarin je het doet.
+            De statistieken stonden hier uitgeklapt; dat is lezen, geen
+            doen, en het duwde alles naar beneden. */}
+        {me ? (
+          <View style={styles.profileMenu}>
+            <ProfileRow
+              icon="pencil"
+              label={t('Bewerk profiel', 'Edit profile')}
+              onPress={onEditProfile}
+            />
+            <ProfileRow
+              icon="qr-code-outline"
+              label={t('Scan QR-code', 'Scan QR code')}
+              onPress={() => router.push('/add-friend?scan=1' as never)}
+            />
+            <ProfileRow
+              icon="person-add-outline"
+              label={t('Verbind met vrienden', 'Connect with friends')}
+              onPress={() => router.push('/add-friend' as never)}
+            />
+            <ProfileRow
+              icon="stats-chart-outline"
+              label={t('Mijn statistieken', 'My statistics')}
+              onPress={() => router.push('/statistieken' as never)}
+              last
+            />
+          </View>
+        ) : null}
 
         {/* Logout zit visueel onder een divider om 'm écht van de
             rest van de instellingen te scheiden — laatste actie op de
@@ -854,6 +891,41 @@ export default function Jij() {
  *
  * Returns null als niet te normaliseren.
  */
+/** Eén regel in het profielmenu. Zelfde vorm als de rijen in Meer: dit
+    zijn ingangen, geen instellingen. */
+function ProfileRow({
+  icon,
+  label,
+  onPress,
+  last = false,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  onPress: () => void;
+  last?: boolean;
+}) {
+  const roles = useRoles();
+  return (
+    <Pressable
+      onPress={() => {
+        softTap();
+        onPress();
+      }}
+      style={[
+        styles.profileRow,
+        !last && {
+          borderBottomWidth: StyleSheet.hairlineWidth,
+          borderBottomColor: roles.bgChip,
+        },
+      ]}
+    >
+      <Ionicons name={icon} size={20} color={roles.accent} />
+      <Text style={[styles.profileRowLabel, { color: roles.fg }]}>{label}</Text>
+      <Ionicons name="chevron-forward" size={16} color={roles.fgPlaceholder} />
+    </Pressable>
+  );
+}
+
 function normalizePhone(input: string): string | null {
   const trimmed = input.replace(/[\s\-()]/g, '');
   if (trimmed.length === 0) return null;
@@ -1063,7 +1135,9 @@ function buildIdentitySentence(m: Mirror, locale: 'nl' | 'en'): string | null {
   return parts.join(' · ') + '.';
 }
 
-function MirrorSection({ authed }: { authed: boolean }) {
+/** De persoonlijke spiegel. Staat sinds 13 sep op een eigen scherm
+    (`/statistieken`): op je profiel wil je iets dóen, niet lezen. */
+export function MirrorSection({ authed }: { authed: boolean }) {
   const t = useT();
   const locale = useLocale();
   const roles = useRoles();
@@ -1701,6 +1775,26 @@ function SegmentPicker<T extends string>({
 }
 
 const styles = StyleSheet.create({
+  qrBlock: { alignItems: 'center', marginTop: 18, marginBottom: 22 },
+  qrTile: { padding: 14, borderRadius: 18 },
+  profileMenu: {
+    marginHorizontal: 22,
+    borderRadius: 16,
+    overflow: 'hidden',
+  },
+  profileRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 15,
+  },
+  profileRowLabel: {
+    flex: 1,
+    fontFamily: fontFamily.bold,
+    fontSize: 15,
+    letterSpacing: -0.2,
+  },
   // Zelfde sluit-knop als op /films, /clubs, /theater en /going: 36×36
   // cirkel met een Ionicons-kruis. De kleinere ModalCloseBtn met het
   // brand-kruis is voor sheets; dit is een vol scherm en hoort bij die

@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 
 import { db, schema } from '../db/index.js';
 import { enrichEvent, refineKindByDuration } from './enrich.js';
+import { parseAmsterdamLocal } from './_amsterdam-tz.js';
 
 /**
  * Het Sieraad — pure-HTTP scraper. De homepage rendert een serverside
@@ -76,7 +77,8 @@ function stripTags(s: string): string {
   return s.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
-/** "Friday 15 May 2026" + "11:00 PM" → Date in Amsterdam (CET, +02:00). */
+/** "Friday 15 May 2026" + "11:00 PM" → het juiste UTC-moment voor die
+    wandkloktijd in Amsterdam. */
 function buildDate(dateStr: string, time: string): Date | null {
   const m = dateStr.match(/(\d{1,2})\s+(\w+)\s+(\d{4})/);
   if (!m) return null;
@@ -91,8 +93,8 @@ function buildDate(dateStr: string, time: string): Date | null {
   const isPm = t[3].toUpperCase() === 'PM';
   if (hh === 12) hh = 0;
   if (isPm) hh += 12;
-  const iso = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}T${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}:00+02:00`;
-  const d = new Date(iso);
+  const iso = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}T${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}:00`;
+  const d = parseAmsterdamLocal(iso);
   return isNaN(d.getTime()) ? null : d;
 }
 

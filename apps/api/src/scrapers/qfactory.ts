@@ -4,6 +4,7 @@ import { db, schema } from '../db/index.js';
 import { uploadToBunny } from '../storage/bunny.js';
 import { parseQfactoryTiles } from './_qfactory-agenda.js';
 import { enrichEvent, refineKindByDuration } from './enrich.js';
+import { parseAmsterdamLocal } from './_amsterdam-tz.js';
 
 /**
  * Q-Factory (Amsterdam-Oost). Eigen site `q-factory.com/nl#all-events-section`
@@ -67,7 +68,7 @@ function parseDutchDate(s: string): Date | null {
   const now = new Date();
   for (const y of [now.getFullYear(), now.getFullYear() + 1]) {
     // Default 20:30 voor concerten als geen tijd in tile
-    const d = new Date(`${y}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}T20:30:00+02:00`);
+    const d = parseAmsterdamLocal(`${y}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}T20:30:00`);
     if (isNaN(d.getTime())) continue;
     const delta = d.getTime() - now.getTime();
     if (delta > -7 * 24 * 60 * 60 * 1000 && delta < 365 * 24 * 60 * 60 * 1000) return d;

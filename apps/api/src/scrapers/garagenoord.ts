@@ -3,6 +3,7 @@ import { eq } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
 import { uploadToBunny } from '../storage/bunny.js';
 import { enrichEvent, refineKindByDuration } from './enrich.js';
+import { parseAmsterdamLocal } from './_amsterdam-tz.js';
 
 /**
  * Garage Noord — pure-HTTP scraper.
@@ -67,10 +68,8 @@ function buildDate(dateStr: string): Date | null {
   const month = ENGLISH_MONTHS[m[2]];
   const year = parseInt(m[3], 10);
   if (!month) return null;
-  const dst = month >= 3 && month <= 10;
-  const off = dst ? '+02:00' : '+01:00';
-  const iso = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}T23:00:00${off}`;
-  const d = new Date(iso);
+  const iso = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}T23:00:00`;
+  const d = parseAmsterdamLocal(iso);
   return isNaN(d.getTime()) ? null : d;
 }
 
@@ -89,9 +88,7 @@ async function fetchWeticketFirstDate(shopUrl: string): Promise<Date | null> {
     if (!m) return null;
     const [, date, hh, mm] = m;
     const month = parseInt(date.slice(5, 7), 10);
-    const dst = month >= 3 && month <= 10;
-    const off = dst ? '+02:00' : '+01:00';
-    const d = new Date(`${date}T${hh}:${mm}:00${off}`);
+    const d = parseAmsterdamLocal(`${date}T${hh}:${mm}:00`);
     return isNaN(d.getTime()) ? null : d;
   } catch {
     return null;

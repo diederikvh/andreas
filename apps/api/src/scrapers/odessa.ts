@@ -4,6 +4,7 @@ import { db, schema } from '../db/index.js';
 import { uploadToBunny } from '../storage/bunny.js';
 import { enrichEvent, refineKindByDuration } from './enrich.js';
 import { loadVenueTitleMap, resolveEventId } from './_title-dedup.js';
+import { parseAmsterdamLocal } from './_amsterdam-tz.js';
 
 /**
  * Odessa Amsterdam (Veemkade) — Wix-site die zijn programma uit
@@ -56,15 +57,13 @@ function parseDate(label: string): Date | null {
   if (monIdx === undefined) return null;
   const now = new Date();
   let year = now.getFullYear();
-  const dst = monIdx >= 2 && monIdx <= 9;
-  let off = dst ? '+02:00' : '+01:00';
   // Ecstatic dance is typisch in de avond — default 19:00 NL.
-  let dt = new Date(`${year}-${String(monIdx + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}T19:00:00${off}`);
+  let dt = parseAmsterdamLocal(`${year}-${String(monIdx + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}T19:00:00`);
   if (Number.isNaN(dt.getTime())) return null;
   // Roll naar volgend jaar als parsed datum in 't verleden ligt
   if (dt.getTime() < now.getTime() - 60 * 24 * 60 * 60_000) {
     year += 1;
-    dt = new Date(`${year}-${String(monIdx + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}T19:00:00${off}`);
+    dt = parseAmsterdamLocal(`${year}-${String(monIdx + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}T19:00:00`);
     if (Number.isNaN(dt.getTime())) return null;
   }
   return dt;
@@ -233,11 +232,9 @@ export async function scrapeOdessa(_options?: {
         }).formatToParts(card.startsAt);
         const get = (t: string) => parts.find((p) => p.type === t)!.value;
         const mo = parseInt(get('month'), 10);
-        const dst = mo >= 3 && mo <= 10;
-        const off = dst ? '+02:00' : '+01:00';
         const hh = String(detail.startTime.hour).padStart(2, '0');
         const mm = String(detail.startTime.minute).padStart(2, '0');
-        startsAt = new Date(`${get('year')}-${get('month')}-${get('day')}T${hh}:${mm}:00${off}`);
+        startsAt = parseAmsterdamLocal(`${get('year')}-${get('month')}-${get('day')}T${hh}:${mm}:00`);
       }
 
       // Resolven ná de detail-fetch: die haalden we voor elk item toch al

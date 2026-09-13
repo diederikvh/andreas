@@ -3,6 +3,7 @@ import { eq } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
 import { uploadToBunny } from '../storage/bunny.js';
 import { enrichEvent, refineKindByDuration } from './enrich.js';
+import { parseAmsterdamLocal } from './_amsterdam-tz.js';
 
 /**
  * Amsterdamse Bostheater — WP-site, custom theme. Programma op
@@ -116,17 +117,13 @@ function parseCards(html: string): Card[] {
 
     // DST grof: mar-oct = +02, anders +01.
     const month = parseInt(fromDate.slice(5, 7), 10);
-    const dst = month >= 3 && month <= 10;
-    const off = dst ? '+02:00' : '+01:00';
-    const startsAt = new Date(`${fromDate}T20:00:00${off}`);
+    const startsAt = parseAmsterdamLocal(`${fromDate}T20:00:00`);
     if (Number.isNaN(startsAt.getTime())) continue;
 
     let endsAt: Date | null = null;
     if (endDate) {
       const endMonth = parseInt(endDate.slice(5, 7), 10);
-      const endDst = endMonth >= 3 && endMonth <= 10;
-      const endOff = endDst ? '+02:00' : '+01:00';
-      const e = new Date(`${endDate}T23:59:00${endOff}`);
+      const e = parseAmsterdamLocal(`${endDate}T23:59:00`);
       if (!Number.isNaN(e.getTime())) endsAt = e;
     }
 
@@ -273,11 +270,9 @@ export async function scrapeBostheater(_options?: {
         }).formatToParts(card.startsAt);
         const get = (t: string) => parts.find((p) => p.type === t)!.value;
         const m = parseInt(get('month'), 10);
-        const dst = m >= 3 && m <= 10;
-        const off = dst ? '+02:00' : '+01:00';
         const hh = String(realTime.hour).padStart(2, '0');
         const mm = String(realTime.minute).padStart(2, '0');
-        card.startsAt = new Date(`${get('year')}-${get('month')}-${get('day')}T${hh}:${mm}:00${off}`);
+        card.startsAt = parseAmsterdamLocal(`${get('year')}-${get('month')}-${get('day')}T${hh}:${mm}:00`);
       }
       const isoDate = card.startsAt.toISOString().slice(0, 10);
       const eventId = `evt-bos-${card.slug}`;

@@ -4,6 +4,7 @@ import { db, schema } from '../db/index.js';
 import { uploadToBunny } from '../storage/bunny.js';
 import { enrichEvent, refineKindByDuration } from './enrich.js';
 import { loadVenueTitleMap, resolveEventId } from './_title-dedup.js';
+import { parseIsoFlexible } from './_amsterdam-tz.js';
 
 /**
  * De Krakeling — kindertheater, pure-HTTP scraper.
@@ -69,9 +70,10 @@ function extractShowtimes(html: string): Date[] {
   const out: Date[] = [];
   const seen = new Set<number>();
   for (const m of html.matchAll(/<time[^>]+datetime=["']([^"']+)["']/g)) {
-    // Krakeling time-tags zijn lokale Amsterdam-tijd zonder TZ-suffix.
-    const iso = /Z|[+-]\d{2}:\d{2}$/.test(m[1]) ? m[1] : `${m[1]}+02:00`;
-    const d = new Date(iso);
+    // Krakeling time-tags zijn meestal lokale Amsterdam-tijd zonder
+    // TZ-suffix, maar niet altijd — parseIsoFlexible vertrouwt een
+    // expliciete marker en behandelt de rest als Amsterdam-lokaal.
+    const d = parseIsoFlexible(m[1]!);
     if (isNaN(d.getTime())) continue;
     if (seen.has(d.getTime())) continue;
     seen.add(d.getTime());

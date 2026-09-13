@@ -4,6 +4,7 @@ import { db, schema } from '../db/index.js';
 import { uploadToBunny } from '../storage/bunny.js';
 import { enrichEvent, refineKindByDuration } from './enrich.js';
 import { loadVenueTitleMap, resolveEventId } from './_title-dedup.js';
+import { parseAmsterdamLocal } from './_amsterdam-tz.js';
 
 /**
  * West Weelde (Westerpark) — SvelteKit-frontend, Sanity-CMS backend.
@@ -152,9 +153,7 @@ function defaultStartHour(category: string | null | undefined): number {
 function buildAmsDate(dateStr: string, hour: number, minute: number): Date {
   // dateStr = "YYYY-MM-DD". Bepaal DST grof: mar-oct = +02, anders +01.
   const m = parseInt(dateStr.slice(5, 7), 10);
-  const dst = m >= 3 && m <= 10;
-  const off = dst ? '+02:00' : '+01:00';
-  return new Date(`${dateStr}T${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}:00${off}`);
+  return parseAmsterdamLocal(`${dateStr}T${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}:00`);
 }
 
 async function mirrorImage(sourceUrl: string, slug: string): Promise<string | null> {

@@ -4,6 +4,7 @@ import { db, schema } from '../db/index.js';
 import { uploadToBunny } from '../storage/bunny.js';
 import { enrichEvent, refineKindByDuration } from './enrich.js';
 import { loadVenueTitleMap, resolveEventId } from './_title-dedup.js';
+import { parseAmsterdamLocal } from './_amsterdam-tz.js';
 
 /**
  * Nationale Opera & Ballet (Stopera). Drupal-CMS.
@@ -170,7 +171,7 @@ function parseDutchDate(dateStr: string, timeStr: string, anchor: Date | null): 
   // Year resolution: try anchor-year, then anchor-year+1
   const baseYear = anchor ? anchor.getFullYear() : new Date().getFullYear();
   for (const y of [baseYear, baseYear + 1, baseYear - 1]) {
-    const candidate = new Date(`${y}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}T${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}:00+02:00`);
+    const candidate = parseAmsterdamLocal(`${y}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}T${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}:00`);
     if (isNaN(candidate.getTime())) continue;
     // Accept als binnen ~6 maanden van anchor (of als anchor null, accept always)
     if (!anchor) return candidate;

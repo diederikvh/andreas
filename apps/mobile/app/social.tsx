@@ -77,15 +77,6 @@ export default function Social() {
   // die nog actie van mij vragen (incoming pending) bovenaan, daarna
   // de rest op event-datum (eerstvolgende eerst). Zo zie je direct
   // waar je nog op moet reageren.
-  const invites = invitations?.slice().sort((a, b) => {
-    const aAction = !a.isOutgoing && a.myStatus === 'pending' ? 0 : 1;
-    const bAction = !b.isOutgoing && b.myStatus === 'pending' ? 0 : 1;
-    if (aAction !== bAction) return aAction - bAction;
-    return (
-      new Date(a.occurrence.startsAt).getTime() -
-      new Date(b.occurrence.startsAt).getTime()
-    );
-  });
   const { data: friends } = useFriends({ enabled: authed });
   const { data: groups } = useGroups({ enabled: authed });
   const { data: outgoing } = useOutgoingFriendRequests({ enabled: authed });
@@ -152,7 +143,6 @@ export default function Social() {
         <FriendsPanel
           authed={authed}
           requests={requests}
-          invites={invites}
           friends={friends}
           groups={groups}
           outgoing={outgoing}
@@ -192,7 +182,6 @@ export default function Social() {
 function FriendsPanel({
   authed,
   requests,
-  invites,
   friends,
   groups,
   outgoing,
@@ -202,7 +191,6 @@ function FriendsPanel({
 }: {
   authed: boolean;
   requests: ApiFriendRequest[] | undefined;
-  invites: ApiInvitation[] | undefined;
   friends: ApiFriend[] | undefined;
   groups: ApiGroupSummary[] | undefined;
   outgoing: ApiFriendRequest[] | undefined;
@@ -213,10 +201,7 @@ function FriendsPanel({
   const roles = useRoles();
   const t = useT();
 
-
-
-  const hasInbox =
-    (invites && invites.length > 0) || (requests && requests.length > 0);
+  const hasInbox = requests && requests.length > 0;
   const hasFriends = friends && friends.length > 0;
   const hasOutgoing = outgoing && outgoing.length > 0;
 
@@ -258,14 +243,6 @@ function FriendsPanel({
               onDecline={() => onDeclineReq(r.id)}
               busy={busyReq}
             />
-          ))}
-        </>
-      )}
-      {invites && invites.length > 0 && (
-        <>
-          <SectionHead label={t('Uitnodigingen', 'Invitations')} />
-          {invites.map((inv) => (
-            <InviteRow key={inv.id} invite={inv} />
           ))}
         </>
       )}
@@ -444,7 +421,12 @@ function RequestRow({
   );
 }
 
-function InviteRow({ invite }: { invite: ApiInvitation }) {
+/**
+ * Eén uitnodiging. Staat hier en niet in `components/`: de rij leunt op de
+ * stylesheet van dit scherm, en die verhuizen is meer risico dan winst.
+ * `app/uitnodigingen.tsx` importeert 'm hiervandaan.
+ */
+export function InviteRow({ invite }: { invite: ApiInvitation }) {
   const roles = useRoles();
   const t = useT();
   const locale = useLocale();

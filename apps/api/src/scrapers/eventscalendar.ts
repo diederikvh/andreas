@@ -4,6 +4,7 @@ import { db, schema } from '../db/index.js';
 import { uploadToBunny } from '../storage/bunny.js';
 import { enrichEvent, refineKindByDuration } from './enrich.js';
 import { loadVenueTitleMap, resolveEventId } from './_title-dedup.js';
+import { parseAmsterdamLocal } from './_amsterdam-tz.js';
 
 /**
  * Generieke scraper voor sites op **The Events Calendar (Pro)** —
@@ -66,8 +67,9 @@ function stripHtml(s: string | null | undefined): string {
 }
 
 /** Parse "YYYY-MM-DD HH:mm:ss" met de TZ uit het event. Sites zijn
- *  meestal Europe/Amsterdam → +02:00 in CEST. We gebruiken utc_start_date
- *  als die er is, anders local + CEST-anchor. */
+ *  meestal Europe/Amsterdam. We gebruiken utc_start_date als die er is,
+ *  anders de lokale tijd via parseAmsterdamLocal — die kent de
+ *  klokwissel, een harde +02:00 zat in de winter een uur mis. */
 function buildDate(localStr: string, utcStr?: string): Date | null {
   if (utcStr) {
     const d = new Date(utcStr.replace(' ', 'T') + 'Z');
@@ -75,8 +77,8 @@ function buildDate(localStr: string, utcStr?: string): Date | null {
   }
   const m = localStr.match(/^(\d{4})-(\d{2})-(\d{2})\s+(\d{2}):(\d{2})(?::(\d{2}))?$/);
   if (!m) return null;
-  const iso = `${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:${m[6] ?? '00'}+02:00`;
-  const d = new Date(iso);
+  const iso = `${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:${m[6] ?? '00'}`;
+  const d = parseAmsterdamLocal(iso);
   return isNaN(d.getTime()) ? null : d;
 }
 

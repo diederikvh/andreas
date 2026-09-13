@@ -3,6 +3,7 @@ import { eq } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
 import { uploadToBunny } from '../storage/bunny.js';
 import { enrichEvent, refineKindByDuration } from './enrich.js';
+import { parseAmsterdamLocal } from './_amsterdam-tz.js';
 
 /**
  * Thuishaven (mainstream techno-club, NDSM). WooCommerce + WPBakery
@@ -62,7 +63,7 @@ function parseDateFromUrl(url: string): { date: Date | null; slugTail: string } 
   const now = new Date();
   for (const y of [now.getFullYear(), now.getFullYear() + 1]) {
     // Default 23:00 voor club-nights
-    const d = new Date(`${y}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}T23:00:00+02:00`);
+    const d = parseAmsterdamLocal(`${y}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}T23:00:00`);
     if (isNaN(d.getTime())) continue;
     const delta = d.getTime() - now.getTime();
     if (delta > -7 * 24 * 60 * 60 * 1000 && delta < 365 * 24 * 60 * 60 * 1000) return { date: d, slugTail: slug };
@@ -264,11 +265,9 @@ export async function scrapeThuishaven(options?: {
         }).formatToParts(slugDate);
         const get = (t: string) => parts.find((p) => p.type === t)!.value;
         const mo = parseInt(get('month'), 10);
-        const dst = mo >= 3 && mo <= 10;
-        const off = dst ? '+02:00' : '+01:00';
         const hh = String(meta.startTime.hour).padStart(2, '0');
         const mm = String(meta.startTime.minute).padStart(2, '0');
-        date = new Date(`${get('year')}-${get('month')}-${get('day')}T${hh}:${mm}:00${off}`);
+        date = parseAmsterdamLocal(`${get('year')}-${get('month')}-${get('day')}T${hh}:${mm}:00`);
       }
 
       if (!existing) {

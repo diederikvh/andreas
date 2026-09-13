@@ -1144,11 +1144,23 @@ export function useSetVenueFollow() {
  * lopen.
  */
 export function useSocialBadgeCount(enabled: boolean): number {
+  return useFriendRequestCount(enabled) + useInviteActionCount(enabled);
+}
+
+/** Mensen die vrienden met je willen worden. Hoort bij Vrienden. */
+export function useFriendRequestCount(enabled: boolean): number {
   const { data: requests } = useFriendRequests({ enabled });
+  return enabled ? (requests?.length ?? 0) : 0;
+}
+
+/** Uitnodigingen die nog een antwoord van jou vragen. Alleen binnenkomende
+    en alleen onbeantwoorde: een uitnodiging die jij verstuurde vraagt niets
+    van jou, en telt dus niet als iets wat je moet doen. */
+export function useInviteActionCount(enabled: boolean): number {
   const { data: invitations } = useInvitations({ enabled });
   if (!enabled) return 0;
-  const pendingForMe =
+  return (
     invitations?.filter((inv) => !inv.isOutgoing && inv.myStatus === 'pending')
-      .length ?? 0;
-  return (requests?.length ?? 0) + pendingForMe;
+      .length ?? 0
+  );
 }

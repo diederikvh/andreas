@@ -4,6 +4,7 @@ import { db, schema } from '../db/index.js';
 import { uploadToBunny } from '../storage/bunny.js';
 import { enrichEvent, refineKindByDuration } from './enrich.js';
 import { loadVenueTitleMap, resolveEventId } from './_title-dedup.js';
+import { parseAmsterdamLocal } from './_amsterdam-tz.js';
 
 /**
  * Teatro Munganga — Braziliaans cultureel centrum (1e Boerhaavestraat 4).
@@ -73,10 +74,8 @@ function parseTitleDate(raw: string): ParsedTitle | null {
   // ISO met Amsterdam-offset; ECMAScript Date kan niet parsen met DST-
   // aware zone, dus we kiezen offset op basis van maand (mar-oct = +02,
   // anders +01). Marginaal verschil rond DST-grens accepteren we.
-  const dstActive = monIdx >= 2 && monIdx <= 9;
-  const off = dstActive ? '+02:00' : '+01:00';
-  const iso = `${year}-${String(monIdx + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}T${String(h1).padStart(2, '0')}:${String(m1).padStart(2, '0')}:00${off}`;
-  const startsAt = new Date(iso);
+  const iso = `${year}-${String(monIdx + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}T${String(h1).padStart(2, '0')}:${String(m1).padStart(2, '0')}:00`;
+  const startsAt = parseAmsterdamLocal(iso);
   if (Number.isNaN(startsAt.getTime())) return null;
 
   let endsAt: Date | null = null;
@@ -88,8 +87,8 @@ function parseTitleDate(raw: string): ParsedTitle | null {
     let endHour = h2;
     let endDay = day;
     if (h2 < h1) { endDay += 1; }
-    const isoE = `${year}-${String(monIdx + 1).padStart(2, '0')}-${String(endDay).padStart(2, '0')}T${String(endHour).padStart(2, '0')}:${String(m2).padStart(2, '0')}:00${off}`;
-    const e = new Date(isoE);
+    const isoE = `${year}-${String(monIdx + 1).padStart(2, '0')}-${String(endDay).padStart(2, '0')}T${String(endHour).padStart(2, '0')}:${String(m2).padStart(2, '0')}:00`;
+    const e = parseAmsterdamLocal(isoE);
     if (!Number.isNaN(e.getTime())) endsAt = e;
   }
 

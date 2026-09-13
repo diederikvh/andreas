@@ -3,6 +3,7 @@ import { db, schema } from '../db/index.js';
 import { uploadToBunny } from '../storage/bunny.js';
 import { enrichEvent, refineKindByDuration } from './enrich.js';
 import { loadVenueTitleMap, resolveEventId } from './_title-dedup.js';
+import { parseAmsterdamLocal } from './_amsterdam-tz.js';
 
 /**
  * Generieke WeTicket-scraper voor venues met `scraperConfig.weticket =
@@ -53,9 +54,10 @@ function buildDate(s: string | null): Date | null {
   if (!s) return null;
   const m = s.match(/^(\d{4})-(\d{2})-(\d{2})\s+(\d{2}):(\d{2})$/);
   if (!m) return null;
-  // Amsterdam-anchor +02:00 (CEST) — zelfde aanname als andere scrapers.
-  const iso = `${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:00+02:00`;
-  const d = new Date(iso);
+  // Wandkloktijd in Amsterdam; parseAmsterdamLocal rekent de juiste
+  // offset uit, ook buiten de zomertijd.
+  const iso = `${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:00`;
+  const d = parseAmsterdamLocal(iso);
   return isNaN(d.getTime()) ? null : d;
 }
 

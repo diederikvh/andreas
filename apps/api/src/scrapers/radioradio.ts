@@ -4,6 +4,7 @@ import { db, schema } from '../db/index.js';
 import { uploadToBunny } from '../storage/bunny.js';
 import { parseRadioRadioEvents } from './_radioradio-payload.js';
 import { enrichEvent, refineKindByDuration } from './enrich.js';
+import { parseAmsterdamLocal } from './_amsterdam-tz.js';
 
 /**
  * Radio Radio (Westerpark) — eigen Nuxt-site `radioradio.radio/club`.
@@ -60,13 +61,15 @@ async function fetchAllEvents(): Promise<DatoEvent[]> {
   return parseRadioRadioEvents(await r.text()) as DatoEvent[];
 }
 
-/** "2026-05-09" + "23:00" → Date in Amsterdam (CEST/CET via +02:00). */
+/** "2026-05-09" + "23:00" → het juiste UTC-moment voor die wandkloktijd
+    in Amsterdam. Stond op een harde +02:00 en zat daardoor in de winter
+    een uur mis. */
 function buildDate(date: string, time: string): Date | null {
   const m = date.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   const t = time.match(/^(\d{1,2}):(\d{2})$/);
   if (!m || !t) return null;
-  const iso = `${m[1]}-${m[2]}-${m[3]}T${t[1].padStart(2, '0')}:${t[2]}:00+02:00`;
-  const d = new Date(iso);
+  const iso = `${m[1]}-${m[2]}-${m[3]}T${t[1].padStart(2, '0')}:${t[2]}:00`;
+  const d = parseAmsterdamLocal(iso);
   return isNaN(d.getTime()) ? null : d;
 }
 

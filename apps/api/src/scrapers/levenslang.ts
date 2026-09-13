@@ -3,6 +3,7 @@ import { eq } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
 import { uploadToBunny } from '../storage/bunny.js';
 import { enrichEvent, refineKindByDuration } from './enrich.js';
+import { parseAmsterdamLocal } from './_amsterdam-tz.js';
 
 /**
  * Levenslang (Watergraafsmeer) — Webflow CMS-collection op /programma.
@@ -67,16 +68,14 @@ function parseCards(html: string): Card[] {
     const month = parseInt(dateM[3], 10);
     const year = parseInt(dateM[4], 10);
     // Start-tijd niet in HTML → default 23:00 (club).
-    const dst = month >= 3 && month <= 10;
-    const off = dst ? '+02:00' : '+01:00';
-    const startsAt = new Date(`${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}T23:00:00${off}`);
+    const startsAt = parseAmsterdamLocal(`${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}T23:00:00`);
     if (Number.isNaN(startsAt.getTime())) continue;
 
     // End-tijd uit hidden field "2026-06-20 5:00"
     let endsAt: Date | null = null;
     const endM = block.match(/<div class="event-date-time-hidden">(\d{4}-\d{2}-\d{2})\s+(\d{1,2}):(\d{2})<\/div>/);
     if (endM) {
-      const e = new Date(`${endM[1]}T${endM[2].padStart(2, '0')}:${endM[3]}:00${off}`);
+      const e = parseAmsterdamLocal(`${endM[1]}T${endM[2].padStart(2, '0')}:${endM[3]}:00`);
       if (!Number.isNaN(e.getTime())) endsAt = e;
     }
 

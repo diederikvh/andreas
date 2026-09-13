@@ -3,6 +3,7 @@ import { eq } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
 import { uploadToBunny } from '../storage/bunny.js';
 import { enrichEvent, refineKindByDuration } from './enrich.js';
+import { parseAmsterdamLocal } from './_amsterdam-tz.js';
 
 /**
  * IJland (NDSM/Vasumweg) — Custom WP-theme, geen tribe-events. Events
@@ -69,8 +70,6 @@ async function parseCards(html: string): Promise<Card[]> {
     const day = parseInt(dateM[1], 10);
     const month = parseInt(dateM[2], 10);
     const year = parseInt(dateM[3], 10);
-    const dst = month >= 3 && month <= 10;
-    const off = dst ? '+02:00' : '+01:00';
 
     // Default 23:00 (club) maar detail-pagina kan overrulen via
     // `<span>HH:MM - HH:MM</span>` of `aanvang HH:MM`. Listing zelf
@@ -92,7 +91,7 @@ async function parseCards(html: string): Promise<Card[]> {
     } catch {
       /* gebruik default 23:00 */
     }
-    const startsAt = new Date(`${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}T${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}:00${off}`);
+    const startsAt = parseAmsterdamLocal(`${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}T${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}:00`);
     if (Number.isNaN(startsAt.getTime())) continue;
 
     // Title

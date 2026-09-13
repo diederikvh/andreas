@@ -4,6 +4,7 @@ import { db, schema } from '../db/index.js';
 import { uploadToBunny } from '../storage/bunny.js';
 import { enrichEvent, refineKindByDuration } from './enrich.js';
 import { loadVenueTitleMap, resolveEventId } from './_title-dedup.js';
+import { parseAmsterdamLocal } from './_amsterdam-tz.js';
 
 /**
  * Scraper voor Volkshotel-agenda's (Canvas / Doka / Werkplaats / etc.).
@@ -77,10 +78,11 @@ function buildStartDate(
   // Probeer huidige jaar; als de date al gepasseerd is meer dan 7 dagen
   // geleden, +1 jaar.
   let year = now.getUTCFullYear();
-  // Bouw als Amsterdam-lokaal (+02:00 CEST) → UTC.
+  // Wandkloktijd in Amsterdam → het juiste UTC-moment, ook buiten de
+  // zomertijd.
   const tryBuild = (y: number) =>
-    new Date(
-      `${y}-${String(mon + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}T${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}:00+02:00`,
+    parseAmsterdamLocal(
+      `${y}-${String(mon + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}T${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}:00`,
     );
   let d = tryBuild(year);
   if (
@@ -103,7 +105,12 @@ function buildEndDate(start: Date, timeText: string | null): Date {
   end.setUTCHours(end.getUTCHours()); // no-op anchor
   // Bouw als Amsterdam-lokaal van dezelfde of volgende dag.
   const endLocal = new Date(start.getTime());
-  // Trekken we uit de start een Amsterdam-tijd? makkelijker: +02:00 ISO.
+  // ponytail: deze eindtijd-berekening leest UTC-getters alsof het
+  // Amsterdam-tijd is en heeft de +2 in de rollover-check ingebakken
+  // (`eh + 2 < startHour`). In de winter zit dat een uur naast bij een
+  // voorstelling die over middernacht loopt; hij valt dan terug op
+  // start + 6u. Losse klus: eerst de wandkloktijd uitrekenen via Intl,
+  // dan pas vergelijken.
   const startLocalY = start.getUTCFullYear();
   const startLocalM = start.getUTCMonth() + 1;
   const startLocalD = start.getUTCDate();
@@ -111,8 +118,8 @@ function buildEndDate(start: Date, timeText: string | null): Date {
   const startHour = start.getUTCHours();
   let dayOffset = 0;
   if (eh + 2 < startHour) dayOffset = 1; // crude rollover
-  const target = new Date(
-    `${startLocalY}-${String(startLocalM).padStart(2, '0')}-${String(startLocalD + dayOffset).padStart(2, '0')}T${String(eh).padStart(2, '0')}:${String(em).padStart(2, '0')}:00+02:00`,
+  const target = parseAmsterdamLocal(
+    `${startLocalY}-${String(startLocalM).padStart(2, '0')}-${String(startLocalD + dayOffset).padStart(2, '0')}T${String(eh).padStart(2, '0')}:${String(em).padStart(2, '0')}:00`,
   );
   if (isNaN(target.getTime()) || target.getTime() <= start.getTime()) {
     return new Date(start.getTime() + 6 * 60 * 60 * 1000);

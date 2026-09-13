@@ -3,6 +3,7 @@ import { eq } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
 import { uploadToBunny } from '../storage/bunny.js';
 import { enrichEvent, refineKindByDuration } from './enrich.js';
+import { parseAmsterdamLocal } from './_amsterdam-tz.js';
 
 /**
  * Ticketmaster Discovery API scraper. Multi-venue: gebruikt
@@ -426,7 +427,7 @@ export async function scrapeTicketmaster(options?: {
           const localDate = ev.dates?.start?.localDate;
           if (!localDate) { result.skipped++; continue; }
           const startDateTime = ev.dates?.start?.dateTime;
-          const startsAt = startDateTime ? new Date(startDateTime) : new Date(`${localDate}T20:00:00+02:00`);
+          const startsAt = startDateTime ? new Date(startDateTime) : parseAmsterdamLocal(`${localDate}T20:00:00`);
           if (isNaN(startsAt.getTime())) { result.skipped++; continue; }
           const endDateTime = ev.dates?.end?.dateTime;
           const endsAt = endDateTime ? new Date(endDateTime) : null;

@@ -4,6 +4,7 @@ import { db, schema } from '../db/index.js';
 import { uploadToBunny } from '../storage/bunny.js';
 import { enrichEvent, refineKindByDuration } from './enrich.js';
 import { loadVenueTitleMap, resolveEventId } from './_title-dedup.js';
+import { parseAmsterdamLocal } from './_amsterdam-tz.js';
 
 /**
  * Shelter Amsterdam — directe WP REST API scraper.
@@ -144,7 +145,7 @@ export async function scrapeShelter(options?: { venueIds?: string[] }): Promise<
   for (const item of items) {
     try {
       // `date` is "2026-06-27T23:00:41" — geen TZ. Site is CET.
-      const startsAt = new Date(item.date + '+02:00');
+      const startsAt = parseAmsterdamLocal(item.date);
       if (isNaN(startsAt.getTime())) { result.skipped++; continue; }
       if (startsAt.getTime() < cutoff) { result.skipped++; continue; }
 

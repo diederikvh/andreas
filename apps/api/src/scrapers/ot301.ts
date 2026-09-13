@@ -4,6 +4,7 @@ import { chromium } from 'playwright';
 import { db, schema } from '../db/index.js';
 import { uploadToBunny } from '../storage/bunny.js';
 import { enrichEvent, refineKindByDuration } from './enrich.js';
+import { parseAmsterdamLocal } from './_amsterdam-tz.js';
 
 /**
  * OT301 (artist-run venue, voormalig kraakpand). Hun /nl/agenda is
@@ -72,7 +73,7 @@ function parseDutchDateTime(dayHeader: string, time: string): Date | null {
 
   const now = new Date();
   for (const y of [now.getFullYear(), now.getFullYear() + 1]) {
-    const d = new Date(`${y}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}T${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}:00+02:00`);
+    const d = parseAmsterdamLocal(`${y}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}T${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}:00`);
     if (isNaN(d.getTime())) continue;
     // Accept als binnen 1 jaar van nu
     const delta = d.getTime() - now.getTime();
