@@ -47,3 +47,21 @@ test('parseIsoFlexible vertrouwt een expliciete offset', () => {
 test('parseIsoFlexible behandelt een kale string als Amsterdam-lokaal', () => {
   assert.equal(parseIsoFlexible('2026-12-01T20:00:00').toISOString(), '2026-12-01T19:00:00.000Z');
 });
+
+import { amsterdamWallClock } from './_amsterdam-tz.js';
+
+test('wandklok: zomertijd telt twee uur op bij UTC', () => {
+  const w = amsterdamWallClock(new Date('2026-07-01T18:00:00Z'));
+  assert.deepEqual(w, { year: 2026, month: 7, day: 1, hour: 20, minute: 0 });
+});
+
+test('wandklok: wintertijd telt er één op', () => {
+  const w = amsterdamWallClock(new Date('2026-12-01T19:00:00Z'));
+  assert.deepEqual(w, { year: 2026, month: 12, day: 1, hour: 20, minute: 0 });
+});
+
+test('wandklok: net na middernacht valt op de volgende kalenderdag', () => {
+  // 31 dec 23:30 UTC is in Amsterdam al 1 januari 00:30.
+  const w = amsterdamWallClock(new Date('2026-12-31T23:30:00Z'));
+  assert.deepEqual(w, { year: 2027, month: 1, day: 1, hour: 0, minute: 30 });
+});

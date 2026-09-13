@@ -4,7 +4,7 @@ import { db, schema } from '../db/index.js';
 import { uploadToBunny } from '../storage/bunny.js';
 import { enrichEvent, refineKindByDuration } from './enrich.js';
 import { loadVenueTitleMap, resolveEventId } from './_title-dedup.js';
-import { parseAmsterdamLocal } from './_amsterdam-tz.js';
+import { amsterdamWallClock, parseAmsterdamLocal } from './_amsterdam-tz.js';
 
 /**
  * Scraper voor Volkshotel-agenda's (Canvas / Doka / Werkplaats / etc.).
@@ -101,31 +101,28 @@ function buildEndDate(start: Date, timeText: string | null): Date {
   if (!m) return new Date(start.getTime() + 6 * 60 * 60 * 1000);
   const eh = Number(m[1]);
   const em = Number(m[2]);
-  const end = new Date(start);
-  end.setUTCHours(end.getUTCHours()); // no-op anchor
-  // Bouw als Amsterdam-lokaal van dezelfde of volgende dag.
-  const endLocal = new Date(start.getTime());
-  // ponytail: deze eindtijd-berekening leest UTC-getters alsof het
-  // Amsterdam-tijd is en heeft de +2 in de rollover-check ingebakken
-  // (`eh + 2 < startHour`). In de winter zit dat een uur naast bij een
-  // voorstelling die over middernacht loopt; hij valt dan terug op
-  // start + 6u. Losse klus: eerst de wandkloktijd uitrekenen via Intl,
-  // dan pas vergelijken.
-  const startLocalY = start.getUTCFullYear();
-  const startLocalM = start.getUTCMonth() + 1;
-  const startLocalD = start.getUTCDate();
-  // Bouw end als dezelfde dag; if eh < startHour → next day.
-  const startHour = start.getUTCHours();
-  let dayOffset = 0;
-  if (eh + 2 < startHour) dayOffset = 1; // crude rollover
+
+  // Wandkloktijd van de start in Amsterdam. Niet de UTC-getters van de
+  // Date: die schelen een of twee uur, en rond middernacht is dat het
+  // verschil tussen vandaag en morgen.
+  const wand = amsterdamWallClock(start);
+  // "20:00 - 02:00" eindigt de volgende dag; "20:00 - 23:00" niet.
+  const volgendeDag = eh * 60 + em <= wand.hour * 60 + wand.minute;
+
+  // Dagrekenen via UTC, want dat kent geen klokwissel en rolt vanzelf
+  // over een maand- of jaargrens. De oude versie telde bij het
+  // dagnummer op en kwam zo op 31+1 = 32 uit, wat een ongeldige datum
+  // geeft en stilletjes op de +6u-terugval landde.
+  const dag = new Date(Date.UTC(wand.year, wand.month - 1, wand.day));
+  if (volgendeDag) dag.setUTCDate(dag.getUTCDate() + 1);
+  const pad = (n: number) => String(n).padStart(2, '0');
   const target = parseAmsterdamLocal(
-    `${startLocalY}-${String(startLocalM).padStart(2, '0')}-${String(startLocalD + dayOffset).padStart(2, '0')}T${String(eh).padStart(2, '0')}:${String(em).padStart(2, '0')}:00`,
+    `${dag.getUTCFullYear()}-${pad(dag.getUTCMonth() + 1)}-${pad(dag.getUTCDate())}T${pad(eh)}:${pad(em)}:00`
   );
   if (isNaN(target.getTime()) || target.getTime() <= start.getTime()) {
     return new Date(start.getTime() + 6 * 60 * 60 * 1000);
   }
   return target;
-  void endLocal;
 }
 
 function stripHtml(s: string): string {

@@ -64,3 +64,32 @@ export function parseIsoFlexible(iso: string | null | undefined): Date {
   }
   return parseAmsterdamLocal(iso);
 }
+
+
+/**
+ * De wandkloktijd in Amsterdam van een moment. Het omgekeerde van
+ * parseAmsterdamLocal: die gaat van wandklok naar UTC, deze terug.
+ *
+ * Nodig zodra je met een lokale kalender moet rekenen — "loopt deze
+ * eindtijd voorbij middernacht?" — want de UTC-getters van een Date
+ * schelen daar een of twee uur mee, en precies rond middernacht is dat
+ * het verschil tussen vandaag en morgen.
+ */
+export function amsterdamWallClock(d: Date): {
+  year: number; month: number; day: number; hour: number; minute: number;
+} {
+  const f = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Europe/Amsterdam',
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', hour12: false,
+  });
+  const p = Object.fromEntries(f.formatToParts(d).map((x) => [x.type, x.value]));
+  return {
+    year: Number(p.year),
+    month: Number(p.month),
+    day: Number(p.day),
+    // Sommige Intl-implementaties geven '24' voor middernacht.
+    hour: Number(p.hour) % 24,
+    minute: Number(p.minute),
+  };
+}
