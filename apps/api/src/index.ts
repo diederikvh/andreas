@@ -41,6 +41,7 @@ import { socialRoute } from './routes/social.js';
 import { venueFollowsRoute } from './routes/venue-follows.js';
 import { venuesRoute } from './routes/venues.js';
 import { uploadToBunny } from './storage/bunny.js';
+import { Jimp } from 'jimp';
 
 const app = new Hono();
 
@@ -308,11 +309,22 @@ app.post('/me/avatar', async (c) => {
     return c.json({ error: 'Bestand is geen afbeelding.' }, 400);
   }
 
-  const ext = contentType.includes('png')
-    ? 'png'
-    : contentType.includes('webp')
-      ? 'webp'
-      : 'jpg';
+  /*
+   * Verkleinen vóór we opslaan.
+   *
+   * We zetten hier hele telefoonfoto's neer — 4000 px breed, megabytes —
+   * en elk toestel rekende die daarna terug naar een rondje van 96 px.
+   * Op de hoofdthread: Sentry ving hangs van drie seconden, zes
+   * gebruikers sinds juni. Eén keer hier verkleinen is dat voorgoed weg.
+   *
+   * Jimp en niet sharp: pure JS, geen native binary die op alpine de
+   * verkeerde variant kan pakken. Een avatar uploaden gebeurt zelden, dus
+   * snelheid weegt hier niet op tegen een deploy die kan breken.
+   *
+   * 512 is ruim: de grootste plek waar een avatar staat is een
+   * profielfoto van ~96 pt, en dat is 288 px op een 3x-scherm.
+   */
+  const AVATAR_SIZE = 512;
   /*
    * Elke upload z'n eigen pad.
    *
@@ -326,9 +338,23 @@ app.post('/me/avatar', async (c) => {
    * omzeilen. De vorige bestanden blijven staan; een avatar is ~50 kB en
    * dit gebeurt zelden.
    */
+  const original = Buffer.from(await file.arrayBuffer());
+  let body: Buffer = original;
+  let outType = contentType;
+  let ext = contentType.includes('png') ? 'png' : 'jpg';
+  try {
+    const image = await Jimp.read(original);
+    image.cover({ w: AVATAR_SIZE, h: AVATAR_SIZE });
+    body = Buffer.from(await image.getBuffer('image/jpeg', { quality: 82 }));
+    outType = 'image/jpeg';
+    ext = 'jpg';
+  } catch {
+    // Kan Jimp het niet lezen (exotisch formaat), dan liever de foto
+    // ongewijzigd opslaan dan de upload laten mislukken. Groot, maar er.
+  }
+
   const path = `avatars/${session.user.id}-${Date.now()}.${ext}`;
-  const buffer = await file.arrayBuffer();
-  const avatarUrl = await uploadToBunny(path, buffer, contentType);
+  const avatarUrl = await uploadToBunny(path, body, outType);
 
   await db
     .update(schema.users)
