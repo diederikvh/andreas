@@ -700,6 +700,28 @@ export default function Jij() {
           paddingBottom: insets.bottom + 96,
         }}
       >
+        {/* Je eigen QR: hiermee voegt iemand je toe zonder te typen.
+            Alleen als je een handle hebt — zonder handle wijst hij
+            nergens heen. */}
+        {me?.handle ? (
+          <View style={styles.qrBlock}>
+            <View
+              style={[
+                styles.qrTile,
+                { backgroundColor: isNacht ? palette.ink : palette.paper3 },
+              ]}
+            >
+              <QRCode
+                value={`https://andreas.amsterdam/u/${me.handle}`}
+                size={132}
+                color={palette.noir}
+                backgroundColor={isNacht ? palette.ink : palette.paper3}
+                ecl="H"
+              />
+            </View>
+          </View>
+        ) : null}
+
         <View style={styles.head}>
           <Pressable
             onPress={onPickAvatar}
@@ -760,28 +782,6 @@ export default function Jij() {
           {error && <Text style={styles.error}>{error}</Text>}
         </View>
 
-        {/* Je eigen QR: hiermee voegt iemand je toe zonder te typen.
-            Alleen als je een handle hebt — zonder handle wijst hij
-            nergens heen. */}
-        {me?.handle ? (
-          <View style={styles.qrBlock}>
-            <View
-              style={[
-                styles.qrTile,
-                { backgroundColor: isNacht ? palette.ink : palette.paper3 },
-              ]}
-            >
-              <QRCode
-                value={`https://andreas.amsterdam/u/${me.handle}`}
-                size={132}
-                color={palette.noir}
-                backgroundColor={isNacht ? palette.ink : palette.paper3}
-                ecl="H"
-              />
-            </View>
-          </View>
-        ) : null}
-
         {/* Wat je hier komt doen, in de volgorde waarin je het doet.
             De statistieken stonden hier uitgeklapt; dat is lezen, geen
             doen, en het duwde alles naar beneden. */}
@@ -806,7 +806,6 @@ export default function Jij() {
               icon="stats-chart-outline"
               label={t('Mijn statistieken', 'My statistics')}
               onPress={() => router.push('/statistieken' as never)}
-              last
             />
           </View>
         ) : null}
@@ -897,12 +896,10 @@ function ProfileRow({
   icon,
   label,
   onPress,
-  last = false,
 }: {
   icon: keyof typeof Ionicons.glyphMap;
   label: string;
   onPress: () => void;
-  last?: boolean;
 }) {
   const roles = useRoles();
   return (
@@ -911,13 +908,7 @@ function ProfileRow({
         softTap();
         onPress();
       }}
-      style={[
-        styles.profileRow,
-        !last && {
-          borderBottomWidth: StyleSheet.hairlineWidth,
-          borderBottomColor: roles.bgChip,
-        },
-      ]}
+      style={[styles.profileRow, { backgroundColor: roles.bgChip }]}
     >
       <Ionicons name={icon} size={20} color={roles.accent} />
       <Text style={[styles.profileRowLabel, { color: roles.fg }]}>{label}</Text>
@@ -1775,19 +1766,21 @@ function SegmentPicker<T extends string>({
 }
 
 const styles = StyleSheet.create({
-  qrBlock: { alignItems: 'center', marginTop: 18, marginBottom: 22 },
+  // De QR eerst: dat is wat je iemand vóórhoudt. De foto eronder zegt
+  // wie je bent, en dat weet je zelf al.
+  qrBlock: { alignItems: 'center', marginBottom: 4 },
   qrTile: { padding: 14, borderRadius: 18 },
-  profileMenu: {
-    marginHorizontal: 22,
-    borderRadius: 16,
-    overflow: 'hidden',
-  },
+  // Losse kaartjes met ruimte ertussen, net als je bewaarde kaartjes:
+  // het zijn allemaal dingen die je kan doen, dus ze mogen er ook zo
+  // uitzien. Eén blok met streepjes leest als een instellingenlijst.
+  profileMenu: { marginHorizontal: 22, gap: 10, marginTop: 4 },
   profileRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 15,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    borderRadius: 14,
   },
   profileRowLabel: {
     flex: 1,
