@@ -313,12 +313,22 @@ app.post('/me/avatar', async (c) => {
     : contentType.includes('webp')
       ? 'webp'
       : 'jpg';
-  const path = `avatars/${session.user.id}.${ext}`;
+  /*
+   * Elke upload z'n eigen pad.
+   *
+   * Dit was `avatars/<id>.jpg` met een `?v=<tijd>` erachter als
+   * cache-buster. Dat werkt niet: onze pull zone negeert de querystring
+   * in z'n cachesleutel, dus dezelfde URL bleef dezelfde cache-hit. Een
+   * gebruiker uploadde een nieuwe foto, kreeg netjes een geslaagde
+   * upload terug — en bleef z'n oude foto zien, maanden lang.
+   *
+   * Een unieke naam is een nieuwe sleutel, en dan is er niets te
+   * omzeilen. De vorige bestanden blijven staan; een avatar is ~50 kB en
+   * dit gebeurt zelden.
+   */
+  const path = `avatars/${session.user.id}-${Date.now()}.${ext}`;
   const buffer = await file.arrayBuffer();
-  const publicBase = await uploadToBunny(path, buffer, contentType);
-
-  // Cache-bust querystring zodat ge-update profielfoto's direct laden.
-  const avatarUrl = `${publicBase}?v=${Date.now()}`;
+  const avatarUrl = await uploadToBunny(path, buffer, contentType);
 
   await db
     .update(schema.users)

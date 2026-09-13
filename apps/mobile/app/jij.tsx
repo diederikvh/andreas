@@ -272,15 +272,13 @@ export default function Jij() {
      * bevestigknop achter de Dynamic Island valt. Precies de bug die
      * Diederik zag: je kon geen profielfoto meer kiezen.
      */
-    /*
-     * Geen uitsnede-stap. Die stond er voor een net vierkant, maar je
-     * foto wordt hier toch in een rondje getoond met `cover` — er valt
-     * dus niets te winnen, en er viel wel wat te verliezen: na het
-     * croppen komt op iOS soms "geannuleerd" terug in plaats van de
-     * foto, en dan gebeurt er precies niets. Dat is wat Diederik zag.
-     */
     const picked = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
+      // Uitsnede blijft: je wil zelf kunnen bepalen wat er in het rondje
+      // staat. Hij was er even uit omdat ik dacht dat het daaraan lag —
+      // dat was het niet, de CDN serveerde je oude foto.
+      allowsEditing: true,
+      aspect: [1, 1],
       quality: 0.8,
       allowsMultipleSelection: false,
       selectionLimit: 1,
