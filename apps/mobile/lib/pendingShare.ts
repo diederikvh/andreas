@@ -195,35 +195,6 @@ async function copyIntoImportDir(
 }
 
 /**
- * Een bestand dat de gebruiker zelf koos (de plus bij je kaartjes).
- *
- * Zelfde route als een gedeeld bestand: kopie in onze eigen map, daarna
- * `/import`. De naam gaat mee — bij een ticket-PDF zit daar vaak de
- * artiest in, en dat is precies wat de herkenning gebruikt.
- */
-export async function pendingShareFromFile(file: {
-  uri: string;
-  name?: string | null;
-  mimeType?: string | null;
-  size?: number | null;
-}): Promise<PendingShare | null> {
-  const copied = await copyIntoImportDir(
-    file.uri,
-    file.name ?? undefined,
-    file.mimeType ?? undefined,
-  );
-  if (!copied) return null;
-  return {
-    kind: kindForMime(file.mimeType ?? undefined, file.name ?? copied.uri),
-    fileUri: copied.uri,
-    fileName: file.name ?? null,
-    mimeType: file.mimeType ?? null,
-    size: copied.size ?? file.size ?? null,
-    receivedAt: Date.now(),
-  };
-}
-
-/**
  * Een foto die we zelf net gemaakt hebben (de poster-scanner).
  *
  * Verder exact dezelfde route als een gedeelde poster: kopie in onze eigen

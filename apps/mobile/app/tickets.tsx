@@ -9,8 +9,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppHeader, HEADER_HEIGHT } from '@/components/AppHeader';
 import { useLocale, useT } from '@/lib/i18n';
 import { dowMixed, monthShort } from '@/lib/eventDisplay';
-import { softTap } from '@/lib/haptics';
-import { pendingShareFromFile, usePendingShare } from '@/lib/pendingShare';
 import { useMode, useRoles } from '@/store/mode';
 import { TONE, pendingTone } from '@/theme/tones';
 import {
@@ -184,67 +182,22 @@ export default function TicketsScreen() {
     );
   };
 
-  /**
-   * Zelf een kaartje toevoegen: kies een bestand.
+  /*
+   * Hier stond een plus die een bestand liet kiezen.
    *
-   * Een PDF, geen foto — dat is wat een ticket meestal is. Daarna
-   * dezelfde route als een gedeeld bestand: kopie in onze map, dan
-   * `/import`, dat er zelf het event bij zoekt.
+   * `expo-document-picker` komt in deze app op zónder navigatiebalk: geen
+   * titel, geen zoekveld en — het ergste — geen Annuleer. Je zat vast en
+   * moest de app afsluiten. Getest op een verse native build, met het
+   * scherm helemaal tot rust; het ligt dus niet aan de timing.
    *
-   * **De bestandskiezer is een native module.** Hij zit pas in de app
-   * vanaf de eerstvolgende store-build; een update over de lucht kan geen
-   * native code toevoegen. Op een oudere build zegt dit dat eerlijk, in
-   * plaats van een knop die niets doet — delen vanuit Bestanden werkt
-   * daar gewoon.
+   * Tot dat is uitgezocht staat de knop er niet: een doodlopend venster is
+   * erger dan een omweg die wél werkt. Delen vanuit Bestanden komt op
+   * precies dezelfde plek uit, en dat zegt de regel onderaan de lijst.
    */
-  const addTicket = async () => {
-    softTap();
-    try {
-      // Lazy: op een build zonder de module mag alleen deze tik
-      // stukgaan, niet het hele scherm.
-      const DocumentPicker = await import('expo-document-picker');
-      const picked = await DocumentPicker.getDocumentAsync({
-        type: ['application/pdf', 'image/*'],
-        copyToCacheDirectory: true,
-        multiple: false,
-      });
-      if (picked.canceled || !picked.assets?.[0]) return;
-      const asset = picked.assets[0];
-      const pending = await pendingShareFromFile({
-        uri: asset.uri,
-        name: asset.name,
-        mimeType: asset.mimeType,
-        size: asset.size,
-      });
-      if (!pending) return;
-      usePendingShare.getState().setPending(pending);
-      router.push('/import' as never);
-    } catch {
-      Alert.alert(
-        t('Kan nog geen bestand kiezen', 'Cannot pick a file yet'),
-        t(
-          'Dit werkt vanaf de volgende versie van Andreas. Deel je kaartje zolang vanuit Bestanden — dat komt op dezelfde plek terecht.',
-          'This works from the next version of Andreas. Until then, share your ticket from Files — it ends up in the same place.',
-        ),
-      );
-    }
-  };
-
   const headerButtons = (
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
-      {/* Accent, want dit is het enige dat je hier kán doen behalve
-          weggooien — en weggooien hoort geen nadruk te krijgen. */}
-      <Pressable
-        onPress={() => void addTicket()}
-        hitSlop={8}
-        style={[styles.addBtn, { backgroundColor: roles.accent }]}
-      >
-        <Ionicons name="add" size={20} color={roles.onAccent} />
-      </Pressable>
-      <Pressable onPress={() => router.back()} hitSlop={8} style={styles.closeBtn}>
-        <Ionicons name="close" size={20} color={roles.fg} />
-      </Pressable>
-    </View>
+    <Pressable onPress={() => router.back()} hitSlop={8} style={styles.closeBtn}>
+      <Ionicons name="close" size={20} color={roles.fg} />
+    </Pressable>
   );
 
   return (
@@ -260,8 +213,8 @@ export default function TicketsScreen() {
         {tickets.length === 0 ? (
           <Text style={[styles.empty, { color: roles.fgMuted }]}>
             {t(
-              'Je hebt nog geen kaartjes bewaard. Deel er een met Andreas en hij staat hier.',
-              'You have not saved any tickets yet. Share one with Andreas and it will be here.',
+              'Je hebt nog geen kaartjes bewaard. Deel er een met Andreas — vanuit Bestanden of je foto\'s — en hij staat hier.',
+              'You have not saved any tickets yet. Share one with Andreas — from Files or your photos — and it will be here.',
             )}
           </Text>
         ) : null}
@@ -358,13 +311,6 @@ const styles = StyleSheet.create({
     lineHeight: 17,
     marginTop: 18,
     textAlign: 'center',
-  },
-  addBtn: {
-    width: 30,
-    height: 30,
-    borderRadius: 999,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   closeBtn: {
     width: 36,

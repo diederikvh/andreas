@@ -370,6 +370,30 @@ tussen sessies. De rest (datum, zoekterm, categorieën, types) blijft
 sessie-state: een agenda die je na een week opent met een vergeten filter erop
 lijkt leeg.
 
+### De bestandskiezer komt kapot op (13 sep 2026)
+
+Een plus bij "Je kaartjes" waarmee je zelf een bestand kiest — een ticket is
+meestal een PDF, dus een fotokiezer is het verkeerde gereedschap. Gebouwd met
+`expo-document-picker`, en die **presenteert in deze app zonder navigatiebalk**:
+geen titel, geen zoekveld, en geen **Annuleer**. Je zat vast en moest de app
+afsluiten.
+
+Wat we weten:
+
+- Het ligt niet aan de versie: `pnpm add` pakte 57 (voor een nieuwere SDK),
+  waardoor de pod niet gelinkt werd en de app `Cannot find native module` gaf.
+  Met `npx expo install` staat er 14.0.8, de pod zit in `Podfile.lock` en de
+  kiezer opent. **Gebruik in dit project altijd `npx expo install`.**
+- Het ligt niet aan de timing: ook met het scherm helemaal tot rust (verse
+  native build, drie seconden wachten) komt hij er net zo op.
+- Het lijkt op een safe-area/rootcontroller-probleem: de inhoud begint op y=0 en
+  de navigatiebalk van de picker zit erboven, buiten beeld.
+
+**De knop staat er daarom niet.** Een doodlopend venster is erger dan een omweg
+die wel werkt: delen vanuit Bestanden komt op precies dezelfde plek uit, en dat
+zegt de lege lijst nu ook. `expo-document-picker` blijft in `package.json` staan
+zodat een volgende poging niet weer op de verkeerde versie begint.
+
 ### Meerdere bestanden in één share (11 sep 2026)
 
 Je koopt drie kaartjes en krijgt drie losse PDF's. Dat kon niet: iOS liet de
