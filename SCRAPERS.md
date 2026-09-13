@@ -82,6 +82,7 @@ Skill voor toevoegen van nieuwe scrapers: [.claude/skills/scraper-add/SKILL.md](
 - ✅ **Podium DE FLUX** (alternatief/middel) — 16 events · `wpTheatre`
 - ✅ **RAI Theater** (mainstream/groot/zuid) — 11 events · `ticketmaster`
 - ✅ **Q-Factory** (alternatief/middel/oost) — 10 events · Playwright (eigen site, Storyblok)
+- ✅ **TivoliVredenburg** (mainstream/groot/Utrecht) — 873 events · `tivolivredenburg` (RSS-feed `/agenda/feed/`, tien per pagina via `?paged=N`; elk item draagt de volledige productie-JSON uit hun CMS). Hun HTML zit achter Cloudflare — node's fetch krijgt 403, ook vanaf Fly.
 - ✅ **De Roma** (alternatief/middel/Borgerhout, Antwerpen) — 135 events · `deroma` (server-rendered agenda, 10 pagina's van 16 tegels; detailpagina's leveren JSON-LD met omschrijving, zaal en eindtijd). Enige venue buiten Nederland; heeft geen `wijk`.
 - ✅ **De Brakke Grond** (mainstream/middel/centrum) — 41 events · Playwright per show. Datums komen uit `.event-detail__tickets-date` (reeks/los/komma-lijst) met de tijd uit `.event-detail__tickets-info`; mét tijd één occurrence per speeldag, zonder tijd één doorlopende periode. Tot 2026-09-11 las de parser de lopende tekst en pakte hij er 1 van de 41.
 - ✅ **On the Roof** (alternatief/klein/noord) — 8 events · Playwright (Weeztix per artist)
