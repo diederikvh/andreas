@@ -79,7 +79,13 @@ async function harvestShowUrls(): Promise<string[]> {
     const xml = await fetchText(`${BASE}/sitemap.xml?page=${p}`);
     if (!xml) continue;
     for (const m of xml.matchAll(/<loc>\s*([^<\s]+)\s*<\/loc>/g)) {
-      if (SHOW_RE.test(m[1])) out.add(m[1]);
+      // Hun sitemap-generator zet er sinds kort `http://default/` voor
+      // in plaats van de echte host — een misconfiguratie aan hun kant.
+      // Zonder deze correctie matcht SHOW_RE niets en vond deze scraper
+      // nul voorstellingen, terwijl er 237 in de sitemap staan (46 voor
+      // 2025-2026, 27 voor 2026-2027). Vastgesteld 13 sep 2026.
+      const url = m[1]!.replace(/^https?:\/\/default\//, `${BASE}/`);
+      if (SHOW_RE.test(url)) out.add(url);
     }
   }
   return Array.from(out);
