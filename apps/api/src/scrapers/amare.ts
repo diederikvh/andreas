@@ -25,7 +25,8 @@ import { loadVenueTitleMap, resolveEventId } from './_title-dedup.js';
  *
  * Idempotency:
  *  - eventId      = `evt-am-{slug}`
- *  - occurrenceId = `occ-am-{slug}-{YYYY-MM-DD}`
+ *  - occurrenceId = `occ-am-{slug}-{YYYY-MM-DD-HHMM}` — mét tijd, want
+ *                   Amare speelt geregeld matinee én avond op één dag.
  */
 
 const VENUE_ID = 'amare';
@@ -89,12 +90,23 @@ async function mirrorImage(sourceUrl: string, slug: string): Promise<string | nu
   }
 }
 
-/** YYYY-MM-DD in Amsterdamse tijd, voor een leesbare occurrence-id. */
-function dagIso(d: Date): string {
-  return new Intl.DateTimeFormat('en-CA', {
+/**
+ * Dag én tijd in Amsterdamse tijd, als sleutel in de occurrence-id:
+ * `2026-12-13-1500`.
+ *
+ * De tijd moet erbij. Amare speelt geregeld twee keer op een dag — een
+ * matinee en een avondvoorstelling — en met alleen de datum overschreef
+ * de tweede de eerste. Bij de eerste run kostte dat 23 van de 404
+ * momenten.
+ */
+function momentSleutel(d: Date): string {
+  const delen = new Intl.DateTimeFormat('en-GB', {
     timeZone: 'Europe/Amsterdam',
     year: 'numeric', month: '2-digit', day: '2-digit',
-  }).format(d);
+    hour: '2-digit', minute: '2-digit', hour12: false,
+  }).formatToParts(d);
+  const p = (t: string) => delen.find((x) => x.type === t)?.value ?? '00';
+  return `${p('year')}-${p('month')}-${p('day')}-${p('hour')}${p('minute')}`;
 }
 
 export type AmareResult = {
@@ -217,7 +229,7 @@ export async function scrapeAmare(options?: {
       }
 
       for (const moment of toekomstig) {
-        const occurrenceId = `occ-am-${ev.slug}-${dagIso(moment.startsAt)}`;
+        const occurrenceId = `occ-am-${ev.slug}-${momentSleutel(moment.startsAt)}`;
         try {
           await db
             .insert(schema.occurrences)
