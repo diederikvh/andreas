@@ -719,6 +719,7 @@ export type VenueCity =
   | 'den-haag'
   | 'eindhoven'
   | 'tilburg'
+  | 'nijmegen'
   | 'groningen'
   | 'antwerpen';
 

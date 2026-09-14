@@ -312,7 +312,8 @@ export function translateVenueCapacity(
  */
 export const CITY_VALUES = [
   'amsterdam', 'amstelveen', 'diemen', 'zaandam', 'haarlem',
-  'utrecht', 'rotterdam', 'den-haag', 'tilburg', 'groningen', 'antwerpen',
+  'utrecht', 'rotterdam', 'den-haag', 'tilburg', 'nijmegen', 'groningen',
+  'antwerpen',
 ] as const;
 
 /**
@@ -359,6 +360,7 @@ const CITY_LABEL: Record<string, string> = {
   'den-haag': 'Den Haag',
   'eindhoven': 'Eindhoven',
   'tilburg': 'Tilburg',
+  'nijmegen': 'Nijmegen',
   'groningen': 'Groningen',
   'antwerpen': 'Antwerpen',
 };

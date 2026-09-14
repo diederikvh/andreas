@@ -126,6 +126,7 @@ export const city = pgEnum('city', [
   'den-haag',
   'eindhoven',
   'tilburg',
+  'nijmegen',
   'groningen',
   'antwerpen',
 ]);

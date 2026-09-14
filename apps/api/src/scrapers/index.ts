@@ -54,6 +54,7 @@ import { scrapeDeRoma, type DeRomaResult } from './deroma.js';
 import { scrapeTivoliVredenburg, type TivoliResult } from './tivolivredenburg.js';
 import { scrape013, type Scraper013Result } from './013.js';
 import { scrapePaard, type PaardResult } from './paard.js';
+import { scrapeDoornroosje, type DoornroosjeResult } from './doornroosje.js';
 import { scrapeCelebratix, type CelebratixVenueResult } from './celebratix.js';
 import { scrapeClubUp, type ClubUpResult } from './clubup.js';
 import { scrapeConcertgemaal, type ConcertgemaalResult } from './concertgemaal.js';
@@ -128,6 +129,7 @@ export const scrapers = {
   tivolivredenburg: scrapeTivoliVredenburg,
   '013': scrape013,
   paard: scrapePaard,
+  doornroosje: scrapeDoornroosje,
   qfactory: scrapeQFactory,
   thuishaven: scrapeThuishaven,
   celebratix: scrapeCelebratix,
