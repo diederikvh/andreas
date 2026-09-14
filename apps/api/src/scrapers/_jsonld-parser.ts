@@ -174,15 +174,29 @@ const NAMED_ENTITIES: Record<string, string> = {
   times: '×', frac12: '½', frac14: '¼', sup2: '²', sup3: '³',
 };
 
-/** Decodeer veelvoorkomende HTML-entities (`&amp;`, `&#8211;`, `&#x2014;`).
- *  WordPress/JSON-LD-feeds laten deze regelmatig staan in titel-velden. */
-export function decodeHtmlEntities(s: string): string {
+function decodeEenmaal(s: string): string {
   return s
     .replace(/&#(\d+);/g, (_, code) => String.fromCodePoint(parseInt(code, 10)))
     .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) =>
       String.fromCodePoint(parseInt(hex, 16))
     )
     .replace(/&([a-zA-Z]+);/g, (m, name) => NAMED_ENTITIES[name] ?? m);
+}
+
+/** Decodeer veelvoorkomende HTML-entities (`&amp;`, `&#8211;`, `&#x2014;`).
+ *  WordPress/JSON-LD-feeds laten deze regelmatig staan in titel-velden.
+ *
+ *  Twee rondes, en niet meer: WordPress codeert soms dubbel, zodat er
+ *  `&amp;#038;` in de JSON-LD staat. Eén ronde maakt daar `&#038;` van
+ *  en dan staat dat zo in de app (SPOT Groningen, "Yentl &#038; De
+ *  Boer"). De tweede ronde draait alleen als er ná de eerste nog een
+ *  entity over is, dus tekst die gewoon "&amp;" hoort te tonen blijft
+ *  na één ronde "&" en wordt niet verder uitgekleed. */
+export function decodeHtmlEntities(s: string): string {
+  const eenmaal = decodeEenmaal(s);
+  return /&(#\d+|#x[0-9a-fA-F]+|[a-zA-Z]+);/.test(eenmaal)
+    ? decodeEenmaal(eenmaal)
+    : eenmaal;
 }
 
 const DATE_ONLY_RE = /^\d{4}-\d{2}-\d{2}$/;

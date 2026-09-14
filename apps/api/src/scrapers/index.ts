@@ -56,6 +56,8 @@ import { scrape013, type Scraper013Result } from './013.js';
 import { scrapePaard, type PaardResult } from './paard.js';
 import { scrapeDoornroosje, type DoornroosjeResult } from './doornroosje.js';
 import { scrapeEffenaar, type EffenaarResult } from './effenaar.js';
+import { scrapeSpot, type SpotResult } from './spot.js';
+import { scrapeAmare, type AmareResult } from './amare.js';
 import { scrapeCelebratix, type CelebratixVenueResult } from './celebratix.js';
 import { scrapeClubUp, type ClubUpResult } from './clubup.js';
 import { scrapeConcertgemaal, type ConcertgemaalResult } from './concertgemaal.js';
@@ -132,6 +134,8 @@ export const scrapers = {
   paard: scrapePaard,
   doornroosje: scrapeDoornroosje,
   effenaar: scrapeEffenaar,
+  spot: scrapeSpot,
+  amare: scrapeAmare,
   qfactory: scrapeQFactory,
   thuishaven: scrapeThuishaven,
   celebratix: scrapeCelebratix,
