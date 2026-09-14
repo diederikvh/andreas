@@ -105,6 +105,11 @@ test('beschrijving: alinea\'s wel, voetregels niet', () => {
   assert.equal(tekst, lang);
 });
 
+test('het ruwe adres blijft bewaard voor de routering', () => {
+  const ev = parseSpotPage(pagina(), 'https://www.spotgroningen.nl/programma/x/');
+  assert.match(ev?.adres ?? '', /Trompsingel 27/);
+});
+
 test('pagina zonder Event geeft null', () => {
   assert.equal(parseSpotPage('<html><body>404</body></html>', 'https://www.spotgroningen.nl/programma/x/'), null);
 });

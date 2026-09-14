@@ -2,15 +2,22 @@ import { and, eq, gt, inArray } from 'drizzle-orm';
 
 import { db, schema } from '../db/index.js';
 import { uploadToBunny } from '../storage/bunny.js';
-import { parseSpotLinks, parseSpotPage, type SpotEvent } from './_spot-page.js';
+import {
+  parseSpotLinks,
+  parseSpotPage,
+  venueVoorAdres,
+  VENUE_IDS,
+  type SpotEvent,
+} from './_spot-page.js';
 import { enrichEvent, refineKindByDuration } from './enrich.js';
 import { loadVenueTitleMap, resolveEventId } from './_title-dedup.js';
 
 /**
- * SPOT Groningen — vier panden onder één programma: De Oosterpoort, de
- * Stadsschouwburg, De Machinefabriek en het A-Theater. Elk pand is bij
- * ons een eigen venue; de scraper leest het programma één keer en
- * verdeelt de events op basis van het adres in de JSON-LD.
+ * SPOT Groningen — zeven plekken onder één programma: De Oosterpoort,
+ * de Stadsschouwburg, De Machinefabriek, het A-Theater, de Lutherse
+ * Kerk, de Nieuwe Kerk en de USVA. Elk pand is bij ons een eigen venue;
+ * de scraper leest het programma één keer en verdeelt de events op basis
+ * van het adres in de JSON-LD.
  *
  * `/programma/` is één server-rendered pagina met ruim zeshonderd
  * permalinks, geen paginatie. De tegels noemen het pand niet, dus de
@@ -30,21 +37,6 @@ const PROGRAMMA_URL = 'https://www.spotgroningen.nl/programma/';
 const DETAIL_SPACING_MS = 150;
 const MAX_FOUTEN_OP_RIJ = 8;
 
-/** Pandnaam uit hun adresveld → onze venue. Wat hier niet in staat
-    (externe locaties, festivalterreinen) slaan we over. */
-const PAND_NAAR_VENUE: Record<string, string> = {
-  'de oosterpoort': 'de-oosterpoort',
-  oosterpoort: 'de-oosterpoort',
-  stadsschouwburg: 'spot-stadsschouwburg',
-  'de machinefabriek': 'spot-machinefabriek',
-  machinefabriek: 'spot-machinefabriek',
-  'a-theater': 'spot-a-theater',
-};
-
-function venueVoor(gebouw: string | null): string | null {
-  if (!gebouw) return null;
-  return PAND_NAAR_VENUE[gebouw.toLowerCase().trim()] ?? null;
-}
 
 async function fetchPagina(url: string): Promise<string | null> {
   for (let poging = 1; poging <= 3; poging++) {
@@ -92,7 +84,7 @@ export type SpotResult = {
 export async function scrapeSpot(options?: {
   venueIds?: string[];
 }): Promise<SpotResult[]> {
-  const venueIds = [...new Set(Object.values(PAND_NAAR_VENUE))];
+  const venueIds = [...VENUE_IDS];
   const doelen = options?.venueIds
     ? venueIds.filter((id) => options.venueIds!.includes(id))
     : venueIds;
@@ -160,7 +152,7 @@ export async function scrapeSpot(options?: {
     }
     if (!ev) continue;
 
-    const venueId = venueVoor(ev.gebouw);
+    const venueId = venueVoorAdres(ev.adres);
     // Externe locaties en festivalterreinen hebben bij ons geen venue;
     // die tellen we los zodat we zien of het de moeite wordt.
     if (!venueId || !doelen.includes(venueId)) { onbekendPand++; continue; }

@@ -29,8 +29,12 @@ export type SpotEvent = {
   endsAt: Date | null;
   imageUrl: string | null;
   ticketUrl: string | null;
-  /** "De Oosterpoort", "Stadsschouwburg", "De Machinefabriek", "A-Theater". */
+  /** "De Oosterpoort", "Stadsschouwburg", "De Machinefabriek", "A-Theater".
+      Niet altijd ingevuld — soms staat er alleen een straatadres. */
   gebouw: string | null;
+  /** Het hele adresveld, ongeschonden. De scraper routeert hierop en niet
+      op `gebouw`, want SPOT vult het veld niet consistent in. */
+  adres: string | null;
   /** "Grote zaal", "Kleine zaal" — niet elk pand heeft zaalnamen. */
   zaal: string | null;
   priceCents: number | null;
@@ -162,8 +166,47 @@ export function parseSpotPage(html: string, url: string): SpotEvent | null {
     imageUrl: ev.imageUrl,
     ticketUrl: ev.ticketUrl,
     gebouw,
+    adres: typeof extra.adres === 'string' ? extra.adres : null,
     zaal,
     priceCents: prijsCents(extra.price),
     soldOut: /outofstock|soldout/i.test(extra.availability),
   };
 }
+
+/**
+ * Adres → onze venue.
+ *
+ * Op de pandnaam én op de straat, want hun adresveld is niet consistent
+ * ingevuld: naast "SPOT/De Oosterpoort, Kleine zaal / Trompsingel 27"
+ * staat er ook kaal "Trompsingel 27, 9724 DA Groningen" — hetzelfde
+ * gebouw, geen naam. Op alleen de naam matchen kostte vijf
+ * Oosterpoort-voorstellingen. En "SPOT/Nieuwe Kerk ," heeft een spatie
+ * vóór de komma.
+ *
+ * Wat hier niet in staat blijft bewust buiten beeld: Martiniplaza is een
+ * eigen organisatie waar SPOT af en toe iets co-presenteert, en dan zou
+ * één show de indruk wekken dat we hun programma hebben. Stadspark is
+ * een park.
+ */
+const ADRES_NAAR_VENUE: Array<[RegExp, string]> = [
+  [/oosterpoort|trompsingel/i, 'de-oosterpoort'],
+  [/stadsschouwburg|turfsingel/i, 'spot-stadsschouwburg'],
+  [/machinefabriek|bloemsingel/i, 'spot-machinefabriek'],
+  [/a-theater|akerkstraat/i, 'spot-a-theater'],
+  [/lutherse\s*kerk|haddingestraat/i, 'spot-lutherse-kerk'],
+  [/nieuwe\s*kerk|nieuwe\s*kerkhof/i, 'spot-nieuwe-kerk'],
+  [/\busva\b|munnekeholm/i, 'spot-usva'],
+];
+
+export function venueVoorAdres(adres: string | null): string | null {
+  if (!adres) return null;
+  for (const [patroon, venueId] of ADRES_NAAR_VENUE) {
+    if (patroon.test(adres)) return venueId;
+  }
+  return null;
+}
+
+/** Alle venue-ids waar deze scraper naartoe schrijft. */
+export const VENUE_IDS: readonly string[] = [
+  ...new Set(ADRES_NAAR_VENUE.map(([, id]) => id)),
+];
