@@ -34,7 +34,7 @@ jobs:
       fail-fast: false
       max-parallel: 6
       matrix:
-        scraper: [stager, ical, jsonld, ticketmaster, theater, concertgebouw, fourvenues, paradiso, melkweg, muziekgebouw, thuishaven, weticket, qfactory, brakkegrond, ketelhuis, radioradio, deroma, tivolivredenburg, '013', paard, doornroosje, boomchicago, concertgemaal, wptheatre, p60, patronaat, ziggodome, ita, operaballet, podiummozaiek, celebratix, weeztix, shelter, sieraad, garagenoord, krakeling, eventscalendar, volkshotel, akhnaton, dezwijger, debalie, felixmeritis, rijksakademie, deceuvel, lima, perdu, nieuweboekhandel, eventbrite, aaservices, vrijburcht, munganga, westweelde, veronica, supper, gashouder, levenslang, clubup, ijland, odessa, fullhouse, bostheater, eye, kriterion, themovies, studiok, filmhallen, lab111, uitkijk, fchyena, rialto, cinecenter, cinemadevlugt, cavia]
+        scraper: [stager, ical, jsonld, ticketmaster, theater, concertgebouw, fourvenues, paradiso, melkweg, muziekgebouw, thuishaven, weticket, qfactory, brakkegrond, ketelhuis, radioradio, deroma, tivolivredenburg, '013', paard, doornroosje, effenaar, boomchicago, concertgemaal, wptheatre, p60, patronaat, ziggodome, ita, operaballet, podiummozaiek, celebratix, weeztix, shelter, sieraad, garagenoord, krakeling, eventscalendar, volkshotel, akhnaton, dezwijger, debalie, felixmeritis, rijksakademie, deceuvel, lima, perdu, nieuweboekhandel, eventbrite, aaservices, vrijburcht, munganga, westweelde, veronica, supper, gashouder, levenslang, clubup, ijland, odessa, fullhouse, bostheater, eye, kriterion, themovies, studiok, filmhallen, lab111, uitkijk, fchyena, rialto, cinecenter, cinemadevlugt, cavia]
         # Niet in cron: bimhuis, ot301, thepulse, athenaeum, ontheroof, foam (Playwright, niet in Fly Dockerfile).
         # thuishaven, weticket, qfactory, brakkegrond en ketelhuis erbij op 13 sep: allemaal
         # server-rendered, per stuk naast de browser-versie gelegd voor ze overgingen.
@@ -43,6 +43,9 @@ jobs:
         # fingerprint't de TLS-handshake — python komt erdoor, node niet), ontheroof, foam.
         # tivolivredenburg erbij op 13 sep: 873 events via hun RSS-feed. Hun HTML zit
         # achter Cloudflare (403 op node's fetch, ook vanaf Fly), /agenda/feed/ niet.
+        # effenaar erbij op 14 sep: Eindhoven. Niet via stager (effenaar.stager.co heeft
+        # geen shop; die link op hun site is van promotor Discophonic Orchestra). Hun
+        # /agenda draagt de hele Algolia-collectie mee in __NEXT_DATA__.
         # doornroosje erbij op 14 sep: Nijmegen, inclusief hun tweede zaal Merleyn. De
         # homepage is de agenda; de offset in hun JSON-LD liegt (altijd +00:00 bij een
         # Amsterdamse wandklok), dus parseAmsterdamLocal.
