@@ -292,6 +292,14 @@ function ZoomablePage({
         height,
         animated,
       });
+      // En de scrollstand erbij. `zoomToRect` rekent uit welke schaal er
+      // bij die rechthoek hoort, ziet dat we al op 1 staan en doet dan
+      // *niets* — ook niet aan de verschuiving. Een scrollview die uit de
+      // hergebruik-pool komt brengt die verschuiving wél mee, en dan hangt
+      // je ticket half buiten beeld op een scherm dat verder klopt. Dat is
+      // de stand die overleefde wat je ook deed: uitzoomen hielp niet, en
+      // sluiten en opnieuw openen ook niet.
+      view.current?.scrollTo({ x: 0, y: 0, animated });
       return;
     }
     reset();
@@ -377,10 +385,17 @@ function ZoomablePage({
    * nog geen maat heeft rekent met nul en levert precies dezelfde scheve
    * stand op.
    */
-  const laidOut = useRef(false);
+  const laidOut = useRef('');
   const onPageLayout = () => {
-    if (laidOut.current) return;
-    laidOut.current = true;
+    // Op maat, niet op "al een keer gedaan". Het vlak verandert na de
+    // eerste meting nog een keer — de sheet-inset komt binnen, de balk met
+    // paginanummers verschijnt — en een zoom hoort bij de maat waarin hij
+    // gezet is. Sloegen we die tweede keer over, dan bleef er een uitsnede
+    // staan die bij het oude vlak hoorde: verkeerd formaat, verkeerde plek.
+    const size = width + 'x' + height;
+    if (laidOut.current === size) return;
+    const first = laidOut.current === '';
+    laidOut.current = size;
     // Een frame wachten. `onLayout` zegt dat de inhoud een maat heeft,
     // maar de scrollview verwerkt z'n contentSize pas in de volgende
     // teken-beurt; zoomen naar een rechthoek dáárvoor pakt soms wel en
@@ -388,7 +403,7 @@ function ZoomablePage({
     requestAnimationFrame(() => {
       if (focus) showPoint(focus.x, focus.y, false);
       else showWhole(false);
-      onReady();
+      if (first) onReady();
     });
   };
 
