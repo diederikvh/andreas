@@ -511,6 +511,11 @@ export async function findEventsWithOccurrencesInRange(
     // Exhibitions hebben endsAt altijd gezet, dus die vallen hier vanzelf goed.
     sql`COALESCE(${schema.occurrences.endsAt}, ${schema.occurrences.startsAt} + CASE WHEN ${schema.events.category} = 'Muziek' THEN INTERVAL '4 hours' ELSE INTERVAL '1 hour' END) >= ${from}`,
     sql`${schema.occurrences.status} <> 'cancelled'`,
+    // Elke aanroeper geeft nu `eventIds` mee uit een eigen, al gefilterde
+    // query, dus deze regel verandert vandaag niets. Hij staat er voor de
+    // volgende aanroeper: wie hier zonder `eventIds` langskomt krijgt
+    // anders de hele agenda terug, niet-live events incluis.
+    eq(schema.events.published, true),
   ];
   if (to) conditions.push(lte(schema.occurrences.startsAt, to));
   if (options.eventIds && options.eventIds.length > 0) {

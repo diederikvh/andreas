@@ -49,6 +49,14 @@ artistsRoute.get('/:slug', async (c) => {
     .innerJoin(schema.venues, eq(schema.venues.id, schema.events.venueId))
     .where(
       and(
+        // Niet-live hoort nergens door te komen, ook niet hier. Dit was de
+        // enige publieke lijst zonder deze twee vlaggen: zette je een event
+        // in de admin uit, dan stond het nog op de pagina van iedereen die
+        // in de line-up stond. Afgelastte voorstellingen gingen om dezelfde
+        // reden mee — elke andere lijst in de app filtert die al weg.
+        eq(schema.events.published, true),
+        eq(schema.venues.published, true),
+        sql`${schema.occurrences.status} <> 'cancelled'`,
         eq(schema.events.category, 'Muziek'),
         gte(schema.occurrences.startsAt, sql`NOW()`),
         sql`${schema.occurrences.lineup} @> ${JSON.stringify([{ artistId: artist.id }])}::jsonb`
