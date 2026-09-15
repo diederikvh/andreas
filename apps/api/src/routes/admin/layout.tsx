@@ -272,6 +272,16 @@ export const Layout: FC<PropsWithChildren<{ title: string; active?: string }>> =
           </li>
           <li>
             <a
+              href="/admin/trefwoorden"
+              role="button"
+              class={active === 'trefwoorden' ? '' : 'outline'}
+              aria-current={active === 'trefwoorden' ? 'page' : undefined}
+            >
+              Trefwoorden
+            </a>
+          </li>
+          <li>
+            <a
               href="/admin/insights"
               role="button"
               class={active === 'insights' ? '' : 'outline'}

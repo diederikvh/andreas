@@ -16,6 +16,7 @@ import { enrichFilmsFromTmdb } from '../../scrapers/_tmdb-enrich.js';
 import { extractFromUrl } from '../../scrapers/extract-from-url.js';
 import { eventFromUrl, venueFromUrl } from '../../scrapers/extract-fields.js';
 import { scrapers, type ScraperName } from '../../scrapers/index.js';
+import { applyBlockedTerms } from '../../jobs/blockedTerms.js';
 import { uploadToBunny } from '../../storage/bunny.js';
 import { requireAdminAny } from './auth.js';
 import { adminSocial } from './social.js';
@@ -872,9 +873,28 @@ adminApi.post('/scrapers/run/:name', async (c) => {
   const startedAt = Date.now();
   try {
     const results = await runner();
+    // Meteen erna de trefwoorden, in dezelfde aanroep: zo is er geen moment
+    // waarop een net binnengehaald lunchconcert live staat. Eén plek voor
+    // alle 130+ scrapers, want ze schrijven allemaal zelf hun events weg en
+    // een haak per scraper zou 130 keer vergeten worden.
+    let blocked: Awaited<ReturnType<typeof applyBlockedTerms>> = {
+      hits: [],
+      unpublished: 0,
+    };
+    try {
+      blocked = await applyBlockedTerms();
+    } catch (e) {
+      // Een stukke filter mag een geslaagde sync niet als mislukt laten
+      // eindigen — je bent de events dan kwijt uit het verslag.
+      console.error('[scrapers] trefwoorden toepassen mislukt', e);
+    }
     return c.json({
       scraper: name,
       durationMs: Date.now() - startedAt,
+      blocked: {
+        unpublished: blocked.unpublished,
+        events: blocked.hits.map((h) => `${h.title} (${h.term})`),
+      },
       venues: results,
       totals: results.reduce(
         (acc, r) => ({

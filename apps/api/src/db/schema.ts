@@ -1369,3 +1369,28 @@ export const rateLimit = pgTable(
   },
   (t) => [index('rate_limit_key_idx').on(t.key)]
 );
+
+/**
+ * Trefwoorden die niet in het aanbod horen.
+ *
+ * Een sync haalt binnen wat een zaal publiceert, en dat is niet altijd wat
+ * Andreas wil tonen: een lunchconcert, een artiest waar je niet achter
+ * staat, een titel die te expliciet of te obscuur is. Dit is de lijst
+ * woorden die zo'n event bij binnenkomst op niet-live zet.
+ *
+ * **We laten het wél aanmaken.** Een scraper die iets overslaat heeft geen
+ * geheugen: de volgende run probeert het opnieuw, en jij ziet nooit wat er
+ * geweigerd is. Het event komt er dus in met `published = false` — precies
+ * de stand die je zelf ook zet, en die overal wordt weggefilterd. Blijkt
+ * een woord te grof, dan staat het event er nog en zet je 'm weer aan.
+ */
+export const blockedTerms = pgTable('blocked_terms', {
+  /** Het woord zelf is de sleutel — kleine letters, geen los id. Een
+      trefwoord wijzig je niet, je haalt het weg en zet een ander neer. */
+  term: text().primaryKey(),
+  /** Waarom dit woord er staat. Voor jezelf, over een half jaar. */
+  note: text(),
+  createdAt: timestamp({ withTimezone: true })
+    .notNull()
+    .default(sql`now()`),
+});

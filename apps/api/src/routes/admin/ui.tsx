@@ -31,6 +31,11 @@ import {
   sendDailyNewPush,
   sendNewPushToUserIds,
 } from '../../jobs/daily-new-push.js';
+import {
+  applyBlockedTerms,
+  listBlockedTerms,
+  normalizeTerm,
+} from '../../jobs/blockedTerms.js';
 import { uploadToBunny } from '../../storage/bunny.js';
 import {
   THEMES,
@@ -5454,4 +5459,280 @@ adminUi.post('/social/:id/regenerate', async (c) => {
       `/admin/social/${id}?error=` + encodeURIComponent((e as Error).message),
     );
   }
+});
+
+// ─── Trefwoorden ────────────────────────────────────────────────────────
+
+/**
+ * De lijst woorden die een event op niet-live zet.
+ *
+ * Twee dingen op één pagina, met opzet in deze volgorde: eerst een woord
+ * uitproberen, daarna de lijst. Een trefwoord is namelijk gevaarlijker dan
+ * het lijkt — "art" pakt ook Mozart — dus de droge run is hier geen extra
+ * knop maar de weg naar binnen. Je ziet wat een woord raakt vóór je 'm
+ * bewaart.
+ *
+ * Wat je hier doet werkt terug én vooruit: uitzetten geldt voor het aanbod
+ * dat er nu staat, en na elke sync draait dezelfde lijst nog een keer over
+ * wat er nieuw is binnengekomen.
+ */
+adminUi.get('/trefwoorden', async (c) => {
+  const terms = await listBlockedTerms();
+  const off = Number(c.req.query('off') ?? 0);
+  const added = c.req.query('added');
+  const removed = c.req.query('removed');
+
+  return c.html(
+    <Layout title="Trefwoorden" active="trefwoorden">
+      <h2>Trefwoorden</h2>
+      <p style="opacity:0.7;font-size:14px;margin-top:-8px;">
+        Woorden die niet in het aanbod horen. Een event met zo'n woord in de
+        titel of in de line-up gaat op <strong>niet-live</strong> — het blijft
+        wel bestaan, dus je kan het altijd terugzetten. De lijst draait na
+        elke sync automatisch over wat er nieuw binnenkwam.
+      </p>
+
+      {added ? (
+        <article style="padding:12px 16px;">
+          <strong>"{added}" toegevoegd</strong>
+          <div style="font-size:13px;opacity:0.75;margin-top:6px;">
+            {off === 0
+              ? 'Er stond niets live dat hierop matcht.'
+              : `${off} event${off === 1 ? '' : 's'} op niet-live gezet.`}
+          </div>
+        </article>
+      ) : null}
+      {removed ? (
+        <article style="padding:12px 16px;">
+          <strong>"{removed}" weggehaald</strong>
+          <div style="font-size:13px;opacity:0.75;margin-top:6px;">
+            Events die dit woord had uitgezet blijven uit — die zet je zelf
+            weer aan waar je ze wil hebben.
+          </div>
+        </article>
+      ) : null}
+      {!added && !removed && c.req.query('off') ? (
+        <article style="padding:12px 16px;">
+          <strong>
+            {off === 0
+              ? 'Niets te doen'
+              : `${off} event${off === 1 ? '' : 's'} op niet-live gezet`}
+          </strong>
+        </article>
+      ) : null}
+
+      <h3 style="margin-top:32px;">Woord uitproberen</h3>
+      <form method="post" action="/admin/trefwoorden/check">
+        <div class="grid">
+          <label>
+            Woord
+            <input
+              type="text"
+              name="term"
+              placeholder="lunch"
+              required
+              autofocus
+            />
+          </label>
+          <label>
+            Waarom (optioneel)
+            <input type="text" name="note" placeholder="geen lunchconcerten" />
+          </label>
+        </div>
+        <button type="submit">Kijken wat dit raakt</button>
+      </form>
+
+      <h3 style="margin-top:32px;">Lijst ({terms.length})</h3>
+      {terms.length === 0 ? (
+        <p style="opacity:0.7;font-size:14px;">Nog geen trefwoorden.</p>
+      ) : (
+        <table>
+          <thead>
+            <tr>
+              <th>Woord</th>
+              <th>Waarom</th>
+              <th>Sinds</th>
+              <th />
+            </tr>
+          </thead>
+          <tbody>
+            {terms.map((t) => (
+              <tr>
+                <td>
+                  <strong>{t.term}</strong>
+                </td>
+                <td style="opacity:0.75;">{t.note ?? ''}</td>
+                <td style="opacity:0.6;font-size:13px;">
+                  {fmtDate(t.createdAt)}
+                </td>
+                <td style="text-align:right;">
+                  <form method="post" action="/admin/trefwoorden/delete">
+                    <input type="hidden" name="term" value={t.term} />
+                    <button
+                      class="secondary outline"
+                      type="submit"
+                      style="padding:4px 10px;font-size:13px;"
+                    >
+                      Weghalen
+                    </button>
+                  </form>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+
+      {terms.length > 0 ? (
+        <div style="display:flex;gap:10px;margin-top:16px;">
+          <form method="post" action="/admin/trefwoorden/check">
+            <input type="hidden" name="all" value="1" />
+            <button class="secondary" type="submit">
+              Hele lijst droog draaien
+            </button>
+          </form>
+          <form
+            method="post"
+            action="/admin/trefwoorden/run"
+            onsubmit="return confirm('Hele lijst nu toepassen op het bestaande aanbod?')"
+          >
+            <button type="submit">Hele lijst nu uitzetten</button>
+          </form>
+        </div>
+      ) : null}
+    </Layout>
+  );
+});
+
+/**
+ * De droge run. Verandert niets en rendert z'n eigen uitkomst in plaats van
+ * terug te sturen met query-params: een lijst titels past niet in een URL,
+ * en een refresh doet hier niets dan opnieuw kijken.
+ */
+adminUi.post('/trefwoorden/check', async (c) => {
+  const form = await c.req.parseBody();
+  const whole = String(form.all ?? '') === '1';
+  const term = normalizeTerm(String(form.term ?? ''));
+  const note = String(form.note ?? '').trim();
+
+  if (!whole && term.length === 0) {
+    return c.redirect('/admin/trefwoorden');
+  }
+
+  const { hits } = await applyBlockedTerms({
+    dryRun: true,
+    terms: whole ? undefined : [term],
+  });
+
+  return c.html(
+    <Layout title="Droog gedraaid" active="trefwoorden">
+      <h2>{whole ? 'Hele lijst, droog' : `"${term}", droog`}</h2>
+      <p style="opacity:0.7;font-size:14px;margin-top:-8px;">
+        Er is niets gewijzigd. Dit is wat er op niet-live zou gaan.
+      </p>
+
+      <article style="padding:12px 16px;">
+        <strong>
+          {hits.length === 0
+            ? 'Geen enkel live event matcht'
+            : `${hits.length} event${hits.length === 1 ? '' : 's'}`}
+        </strong>
+      </article>
+
+      {hits.length > 0 ? (
+        <table>
+          <thead>
+            <tr>
+              <th>Event</th>
+              <th>Zaal</th>
+              <th>Woord</th>
+              <th>Gevonden in</th>
+            </tr>
+          </thead>
+          <tbody>
+            {hits.map((h) => (
+              <tr>
+                <td>
+                  <a href={`/admin/events/${h.eventId}`}>{h.title}</a>
+                </td>
+                <td style="opacity:0.75;">{h.venue}</td>
+                <td>
+                  <code>{h.term}</code>
+                </td>
+                <td style="opacity:0.6;font-size:13px;">{h.found}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      ) : null}
+
+      <div style="display:flex;gap:10px;margin-top:20px;">
+        {whole ? (
+          <form
+            method="post"
+            action="/admin/trefwoorden/run"
+            onsubmit="return confirm('Deze events nu op niet-live zetten?')"
+          >
+            <button type="submit" disabled={hits.length === 0}>
+              Nu uitzetten
+            </button>
+          </form>
+        ) : (
+          <form method="post" action="/admin/trefwoorden/add">
+            <input type="hidden" name="term" value={term} />
+            <input type="hidden" name="note" value={note} />
+            <button type="submit">
+              {hits.length === 0
+                ? 'Toch toevoegen aan de lijst'
+                : 'Toevoegen en uitzetten'}
+            </button>
+          </form>
+        )}
+        <a href="/admin/trefwoorden" role="button" class="secondary outline">
+          Terug
+        </a>
+      </div>
+    </Layout>
+  );
+});
+
+/** Woord opslaan én meteen toepassen — anders sta je met een lijst die
+    pas bij de volgende sync iets doet. */
+adminUi.post('/trefwoorden/add', async (c) => {
+  const form = await c.req.parseBody();
+  const term = normalizeTerm(String(form.term ?? ''));
+  const note = String(form.note ?? '').trim();
+  if (term.length === 0) return c.redirect('/admin/trefwoorden');
+
+  await db
+    .insert(schema.blockedTerms)
+    .values({ term, note: note || null })
+    .onConflictDoUpdate({
+      target: schema.blockedTerms.term,
+      set: { note: note || null },
+    });
+
+  const { unpublished } = await applyBlockedTerms({ terms: [term] });
+  const qs = new URLSearchParams({
+    added: term,
+    off: String(unpublished),
+  });
+  return c.redirect(`/admin/trefwoorden?${qs.toString()}`);
+});
+
+adminUi.post('/trefwoorden/delete', async (c) => {
+  const form = await c.req.parseBody();
+  const term = normalizeTerm(String(form.term ?? ''));
+  if (term.length === 0) return c.redirect('/admin/trefwoorden');
+  await db
+    .delete(schema.blockedTerms)
+    .where(eq(schema.blockedTerms.term, term));
+  return c.redirect(
+    `/admin/trefwoorden?removed=${encodeURIComponent(term)}`
+  );
+});
+
+adminUi.post('/trefwoorden/run', async (c) => {
+  const { unpublished } = await applyBlockedTerms();
+  return c.redirect(`/admin/trefwoorden?off=${unpublished}`);
 });
