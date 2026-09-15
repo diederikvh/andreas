@@ -61,7 +61,28 @@ import { useMode, useRoles } from '@/store/mode';
 import { fontFamily, palette } from '@/theme/tokens';
 
 /** Eén baan-sectie in de lijst; `onbekend` is de restbak. */
-type LaneSection = { lane: Lane | 'onbekend'; data: ApiEvent[] };
+type LaneSection = {
+  lane: Lane | 'onbekend';
+  data: ApiEvent[];
+  /** In welke lading deze sectie zit. 0 is wat je bij het openen zag. */
+  batch: number;
+  /** Eerste sectie van een nieuwe lading: die krijgt een scheiding. */
+  batchStart: boolean;
+};
+
+/**
+ * Hoeveel er per lading binnenkomt.
+ *
+ * Was 15, met een knop die de rest ophaalde. Dat cijfer kwam uit "de
+ * dagpagina moet áf kunnen", en dat blijft waar -- maar 15 is te weinig
+ * om een zaterdag mee door te komen en de knop maakte het erger dan de
+ * cap zelf.
+ */
+const PAGE = 40;
+
+/** Waar de server ophoudt (`/events/new`). Daarboven blijven vragen geeft
+    elke keer dezelfde lijst terug, en dan blijft de scroll-trigger vuren. */
+const SERVER_MAX = 600;
 
 export default function NewScreen() {
   const roles = useRoles();
@@ -122,9 +143,12 @@ export default function NewScreen() {
   const showNudge =
     !registered && !nudgeDismissed && ratedCount >= TASTE_NUDGE_THRESHOLD;
 
-  // De server capt op 15 zodat de lijst áf te maken is. Wie meer wil
-  // klapt uit; dat is een tweede request, geen client-side slice.
-  const [expanded, setExpanded] = useState(false);
+  // Hoeveel ladingen we hebben opgevraagd. Elke volgende vraagt een
+  // hogere `limit` op bij dezelfde `since`, en omdat de server binnen dat
+  // venster een stabiele volgorde teruggeeft (createdAt aflopend) zijn de
+  // eerste PAGE items van lading twee exact die van lading één. Daar hangt
+  // alles onder aan: zonder die stabiliteit kan je niet chunken.
+  const [pages, setPages] = useState(1);
 
   // Wat er nu te vinden is, uit één gedeelde hook — dezelfde die de
   // aanwinsten-strook op Vandaag voedt. Die twee mogen niet uit elkaar
@@ -138,7 +162,7 @@ export default function NewScreen() {
   } = useNewArrivals({
     enabled: authed,
     lanes: activeLanes,
-    limit: expanded ? 200 : undefined,
+    limit: Math.min(pages * PAGE, SERVER_MAX),
   });
   const rawEvents = active?.events;
   // Wat je deze sessie al beoordeeld hebt. De server haalt beoordeelde
@@ -221,16 +245,48 @@ export default function NewScreen() {
   // Daarnaast splitsen we op `venueFollowed`: items van venues die
   // jij volgt komen bovenaan onder hun eigen kop, daarna de rest.
   // Mooie persoonlijke filter zonder dat je écht items mist.
-  const events = useMemo(() => {
+  /**
+   * De lijst, in ladingen van PAGE.
+   *
+   * Hier zat het probleem. De server geeft op nieuwheid (createdAt
+   * aflopend), maar naast elke kaart staat de *event*-datum, en die
+   * sprong dan willekeurig rond -- dus hersorteerden we de hele lijst op
+   * startsAt. Zolang je één lading had was dat prima. Vroeg je de rest
+   * op, dan werden die 185 nieuwe items door de 15 die je al had
+   * beoordeeld heen gesorteerd, en moest je opnieuw zoeken waar je was.
+   *
+   * De oplossing is niet minder sorteren maar kleiner sorteren: we
+   * knippen op de serverordening in ladingen en sorteren *binnen* een
+   * lading. Zo blijft de datum leesbaar per blok, en komt een volgende
+   * lading er altijd onder -- nooit tussen wat je al gezien hebt.
+   *
+   * Het knippen gebeurt vóór het wegfilteren van wat je net beoordeelde.
+   * Andersom zou elke veeg de blokgrenzen opschuiven en dus rijen tussen
+   * blokken laten verspringen: precies hetzelfde probleem, maar dan per
+   * veeg in plaats van per knop.
+   */
+  const batched = useMemo(() => {
     if (!rawEvents) return undefined;
-    return [...rawEvents]
-      .filter((e) => !rated.has(e.id))
-      .sort((a, b) => {
-        const aT = a.startsAt ? new Date(a.startsAt).getTime() : Infinity;
-        const bT = b.startsAt ? new Date(b.startsAt).getTime() : Infinity;
-        return aT - bT;
-      });
+    const byStart = (a: ApiEvent, b: ApiEvent) => {
+      const aT = a.startsAt ? new Date(a.startsAt).getTime() : Infinity;
+      const bT = b.startsAt ? new Date(b.startsAt).getTime() : Infinity;
+      return aT - bT;
+    };
+    const out: { batch: number; events: ApiEvent[] }[] = [];
+    for (let i = 0; i < rawEvents.length; i += PAGE) {
+      const chunk = rawEvents
+        .slice(i, i + PAGE)
+        .filter((e) => !rated.has(e.id))
+        .sort(byStart);
+      if (chunk.length > 0) out.push({ batch: i / PAGE, events: chunk });
+    }
+    return out;
   }, [rawEvents, rated]);
+
+  const events = useMemo(
+    () => (batched ? batched.flatMap((b) => b.events) : undefined),
+    [batched]
+  );
 
   // Eén sectie per baan, in vaste volgorde zodat de lijst er elke dag
   // hetzelfde uitziet ongeacht welke scraper toevallig als laatste liep.
@@ -246,25 +302,38 @@ export default function NewScreen() {
   }, [events]);
 
   const sections = useMemo(() => {
-    if (!events) return [];
+    if (!batched) return [];
     const out: LaneSection[] = [];
-    for (const lane of LANES) {
-      const data = events.filter((e) => e.lane === lane);
-      if (data.length > 0)
+    // Per lading z'n eigen baan-indeling. De kopjes komen daardoor bij
+    // lading twee opnieuw voorbij, en dat is precies goed: het zegt "hier
+    // begint de volgende stapel" in plaats van je terug te sturen naar
+    // boven. De scheiding boven de eerste sectie van een lading maakt dat
+    // expliciet.
+    for (const { batch, events: chunk } of batched) {
+      let first = true;
+      for (const lane of LANES) {
+        const data = chunk.filter((e) => e.lane === lane);
+        if (data.length === 0) continue;
         out.push({
           lane,
+          batch,
+          batchStart: first,
           data: [
             ...data.filter((e) => e.venueFollowed),
             ...data.filter((e) => !e.venueFollowed),
           ],
         });
+        first = false;
+      }
+      // De fallback-query (`/events/new` zonder since) levert geen lane —
+      // die rijen vallen hier in één naamloze sectie.
+      const rest = chunk.filter((e) => !e.lane);
+      if (rest.length > 0) {
+        out.push({ lane: 'onbekend', batch, batchStart: first, data: rest });
+      }
     }
-    // De fallback-query (`/events/new` zonder since) levert geen lane —
-    // die rijen vallen hier in één naamloze sectie.
-    const rest = events.filter((e) => !e.lane);
-    if (rest.length > 0) out.push({ lane: 'onbekend', data: rest });
     return out;
-  }, [events]);
+  }, [batched]);
   const showSectionHeaders = sections.some((s) => s.lane !== 'onbekend');
 
   // "24 mei" / "May 24" (+ jaartal bij andere jaren). Concrete datum in
@@ -272,6 +341,22 @@ export default function NewScreen() {
   // wanneer er 0 items zijn helpt het te zien dat de teller wel klopt.
   const locale = useLocale();
   const sinceLabel = since ? formatSinceLabel(since, locale) : null;
+
+  // Nog een lading. `loadingMore` is puur voor de voetregel: de query
+  // houdt met keepPreviousData de vorige lijst staan, dus `isLoading` slaat
+  // hier niet aan en zonder eigen vlag gebeurt er zichtbaar niets.
+  const hasMore =
+    shown < total && (rawEvents?.length ?? 0) < SERVER_MAX;
+  const [loadingMore, setLoadingMore] = useState(false);
+  const loadMore = useCallback(() => {
+    if (!hasMore || loadingMore) return;
+    setLoadingMore(true);
+    setPages((p) => p + 1);
+  }, [hasMore, loadingMore]);
+  // De nieuwe lading is binnen zodra er meer rijen staan dan we vroegen.
+  useEffect(() => {
+    setLoadingMore(false);
+  }, [rawEvents]);
 
   const [refreshing, setRefreshing] = useState(false);
   const onRefresh = useCallback(async () => {
@@ -405,20 +490,45 @@ export default function NewScreen() {
               hint={item.id === hintId}
             />
           )}
-          renderSectionHeader={({ section }) =>
-            showSectionHeaders && section.lane !== 'onbekend' ? (
-              <View
-                style={[
-                  styles.sectionHead,
-                  { backgroundColor: roles.bg },
-                ]}
-              >
-                <Text style={[styles.sectionHeadText, { color: roles.fg }]}>
-                  {laneLabel(section.lane, t)}
-                </Text>
+          renderSectionHeader={({ section }) => {
+            const lane =
+              showSectionHeaders && section.lane !== 'onbekend' ? (
+                <View style={[styles.sectionHead, { backgroundColor: roles.bg }]}>
+                  <Text style={[styles.sectionHeadText, { color: roles.fg }]}>
+                    {laneLabel(section.lane, t)}
+                  </Text>
+                </View>
+              ) : null;
+            // Boven de eerste sectie van een volgende lading: een streep
+            // met het nummer erin. Zonder dat lijkt een tweede "Muziek"
+            // een fout, en juist hier moet je zien dat alles hieronder
+            // nieuw voor je is.
+            if (!section.batchStart || section.batch === 0) return lane;
+            return (
+              <View>
+                <View style={styles.batchBreak}>
+                  <View
+                    style={[
+                      styles.batchLine,
+                      { backgroundColor: roles.bgChip },
+                    ]}
+                  />
+                  <Text
+                    style={[styles.batchText, { color: roles.fgPlaceholder }]}
+                  >
+                    {t('vanaf hier nieuw', 'new from here')}
+                  </Text>
+                  <View
+                    style={[
+                      styles.batchLine,
+                      { backgroundColor: roles.bgChip },
+                    ]}
+                  />
+                </View>
+                {lane}
               </View>
-            ) : null
-          }
+            );
+          }}
           stickySectionHeadersEnabled={false}
           ListHeaderComponent={
             <View>
@@ -494,18 +604,40 @@ export default function NewScreen() {
               )}
             </View>
           }
+          // Scroll je naar de onderkant, dan komt de volgende lading er
+          // onder. De knop blijft staan als vangnet: `onEndReached` mist
+          // wel eens een keer, en dan is een lijst die stil blijft liggen
+          // erger dan een knop die je niet nodig had.
+          onEndReached={loadMore}
+          onEndReachedThreshold={0.6}
           ListFooterComponent={
-            shown < total ? (
+            // Op het plafond van de server. Niet zwijgend stoppen: de
+            // teller bovenaan noemt duizenden events en dan lijkt een
+            // lijst die ophoudt stuk. Dit zegt waar de grens zit en wat
+            // je eraan kan doen.
+            !hasMore && (rawEvents?.length ?? 0) >= SERVER_MAX ? (
+              <Text style={[styles.capNote, { color: roles.fgPlaceholder }]}>
+                {t(
+                  `Dit zijn de eerste ${SERVER_MAX}. Zet een baan of twee uit om de rest scherper te krijgen.`,
+                  `These are the first ${SERVER_MAX}. Turn off a lane or two to narrow the rest down.`
+                )}
+              </Text>
+            ) : hasMore ? (
               <Pressable
-                onPress={() => setExpanded(true)}
+                onPress={loadMore}
+                disabled={loadingMore}
                 style={[styles.moreBtn, { borderColor: roles.fgPlaceholder }]}
               >
-                <Text style={[styles.moreBtnText, { color: roles.fg }]}>
-                  {t(
-                    `Toon de resterende ${total - shown}`,
-                    `Show remaining ${total - shown}`
-                  )}
-                </Text>
+                {loadingMore ? (
+                  <SpinningCross size={18} color={roles.fgMuted} />
+                ) : (
+                  <Text style={[styles.moreBtnText, { color: roles.fg }]}>
+                    {t(
+                      `Nog ${total - shown} — tik of scroll verder`,
+                      `${total - shown} more — tap or keep scrolling`
+                    )}
+                  </Text>
+                )}
               </Pressable>
             ) : null
           }
@@ -789,6 +921,29 @@ const styles = StyleSheet.create({
     // Vult de vaste rijhoogte in de header, net als op /theater — zo
     // staan de chips verticaal gecentreerd zonder losse paddings.
     height: '100%',
+  },
+  capNote: {
+    fontFamily: fontFamily.body,
+    fontSize: 12.5,
+    lineHeight: 18,
+    paddingHorizontal: 32,
+    paddingTop: 22,
+    textAlign: 'center',
+  },
+  batchBreak: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 22,
+    paddingTop: 26,
+    paddingBottom: 6,
+  },
+  batchLine: { flex: 1, height: 1 },
+  batchText: {
+    fontFamily: fontFamily.display,
+    fontSize: 11,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   moreBtn: {
     marginHorizontal: 22,

@@ -1449,11 +1449,22 @@ eventsRoute.get('/new', async (c) => {
 
   // Cap op 15 met since: de dagpagina moet áf kunnen. Op een zaterdag
   // komen er 150 events binnen en dan is "alles" geen lijst maar een
-  // klus. De client vraagt een hogere limit op via de meer-knop.
+  // klus. De client vraagt hogere limits op terwijl je doorscrollt.
+  //
+  // Het bovenplafond stond op 200 en dat was te laag: /new meldde er 400
+  // en gaf er nooit meer dan 200, dus de laatste helft was onbereikbaar.
+  //
+  // ponytail: de client vraagt elke lading de hele lijst opnieuw op, dus
+  // lading tien haalt 400 events op om er 40 bij te krijgen. Dat mag,
+  // want de ronde-verdeling hieronder is prefix-stabiel -- een hogere
+  // limit levert dezelfde lijst plus staart, en dáár hangt aan dat er op
+  // /new niets verschuift wat je al beoordeeld hebt. Wordt dit een echte
+  // last, dan is `offset` erbij de volgende stap, maar dan moet de
+  // smaak-sortering ook stabiel over requests heen zijn.
   const defaultLimit = since ? 15 : 10;
   const limit = Math.min(
     Math.max(1, Number(c.req.query('limit') ?? defaultLimit) || defaultLimit),
-    200
+    600
   );
 
   const me = await maybeUserId(c);
