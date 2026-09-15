@@ -42,7 +42,11 @@ import {
   renderSiteFooter,
   renderSiteScripts,
   renderThumb,
+  cityCountry,
+  cityLabel,
+  isOutsideAmsterdam,
   streetAddress,
+  venuePlace,
   ticketDomain,
   venueSchemaType,
   venueTypeLabel,
@@ -142,6 +146,7 @@ shareRoute.get('/e/:id', async (c) => {
         lat: schema.venues.lat,
         lng: schema.venues.lng,
         type: schema.venues.type,
+        city: schema.venues.city,
         description: schema.venues.description,
         imageUrl: schema.venues.imageUrl,
         priceNote: schema.venues.priceNote,
@@ -421,6 +426,7 @@ shareRoute.get('/v/:slug', async (c) => {
           name: schema.venues.name,
           type: schema.venues.type,
           wijk: schema.venues.wijk,
+          city: schema.venues.city,
         })
         .from(schema.venues)
         .where(
@@ -494,6 +500,7 @@ type EventRow = {
     lat: number;
     lng: number;
     type: ApiVenueType;
+    city: string | null;
     description: string | null;
     imageUrl: string | null;
     priceNote: string | null;
@@ -562,7 +569,7 @@ function renderEventSeoPage(opts: {
   // Onder 60 tekens als kan; ankers: titel, venue, plaats, datum.
   const pageTitle = [
     event.title,
-    `${event.venue.name} Amsterdam`,
+    `${event.venue.name} ${cityLabel(event.venue.city)}`,
     dateShort,
   ]
     .filter(Boolean)
@@ -572,7 +579,7 @@ function renderEventSeoPage(opts: {
   // zodat we niet afhankelijk zijn van editor-input.
   const priceText = formatPrice(primaryOcc?.priceCents ?? null);
   const desc = [
-    `${event.title} in ${event.venue.name}, Amsterdam`,
+    `${event.title} in ${event.venue.name}, ${cityLabel(event.venue.city)}`,
     occLabel ? `op ${occLabel.toLowerCase()}` : '',
     priceText ? `Tickets ${priceText}.` : '',
     event.category === 'Muziek' && event.genres.length > 0
@@ -661,7 +668,9 @@ function renderEventSeoPage(opts: {
     '@context': 'https://schema.org',
     '@type': eventType,
     name: event.title,
-    description: event.description ?? `${event.title} in ${event.venue.name}, Amsterdam.`,
+    description:
+      event.description ??
+      `${event.title} in ${event.venue.name}, ${cityLabel(event.venue.city)}.`,
     startDate: primaryOcc?.startsAt ?? undefined,
     endDate: eventEndDate,
     eventStatus: primaryOcc?.status === 'cancelled'
@@ -685,8 +694,8 @@ function renderEventSeoPage(opts: {
       address: {
         '@type': 'PostalAddress',
         streetAddress: streetAddress(event.venue.address),
-        addressLocality: 'Amsterdam',
-        addressCountry: 'NL',
+        addressLocality: cityLabel(event.venue.city),
+        addressCountry: cityCountry(event.venue.city),
       },
       geo: {
         '@type': 'GeoCoordinates',
@@ -798,7 +807,7 @@ function renderEventSeoPage(opts: {
     );
   } else {
     leadParts.push(
-      `<strong>${escapeHtml(event.title)}</strong> in ${escapeHtml(event.venue.name)}, Amsterdam.`
+      `<strong>${escapeHtml(event.title)}</strong> in ${escapeHtml(event.venue.name)}, ${escapeHtml(cityLabel(event.venue.city))}.`
     );
   }
   if (priceText) leadParts.push(`${escapeHtml(priceText)}.`);
@@ -859,7 +868,7 @@ function renderEventSeoPage(opts: {
     `
     : `
       <h2>Over ${escapeHtml(event.venue.name)}</h2>
-      <p>${escapeHtml(event.venue.name)} ligt aan ${escapeHtml(event.venue.address)} in Amsterdam. <a href="/v/${escapeHtml(event.venue.slug)}">Bekijk de venue-pagina</a>.</p>
+      <p>${escapeHtml(event.venue.name)} ligt aan ${escapeHtml(event.venue.address)} in ${escapeHtml(cityLabel(event.venue.city))}. <a href="/v/${escapeHtml(event.venue.slug)}">Bekijk de venue-pagina</a>.</p>
     `;
 
   // Lineup-lijst. Items met een gematchte `artistId` worden klikbaar
@@ -1109,6 +1118,7 @@ type RelatedVenue = {
   name: string;
   type: ApiVenueType;
   wijk: string | null;
+  city: string | null;
 };
 
 function renderVenueSeoPage(opts: {
@@ -1123,9 +1133,14 @@ function renderVenueSeoPage(opts: {
 
   // ---------- titel + description ----------
 
-  const pageTitle = `${venue.name} Amsterdam — ${venue.address} | ANDREAS`;
+  // De echte stad, niet altijd Amsterdam. Dit stond hardcoded, dus de
+  // pagina van een zaal in Antwerpen of Groningen beweerde Amsterdam --
+  // in de titel, in de description en in de addressLocality van de
+  // JSON-LD, waar Google z'n lokale resultaten op baseert.
+  const city = cityLabel(venue.city);
+  const pageTitle = `${venue.name} ${city} — ${venue.address} | ANDREAS`;
   const desc = [
-    `${venue.name} in Amsterdam: agenda, info en route.`,
+    `${venue.name} in ${city}: agenda, info en route.`,
     venue.description ? venue.description.slice(0, 100) : '',
     upcoming.length > 0 ? `${upcoming.length} komende events.` : '',
   ]
@@ -1139,7 +1154,7 @@ function renderVenueSeoPage(opts: {
     '@context': 'https://schema.org',
     '@type': venueType,
     name: venue.name,
-    description: venue.description ?? `${venue.name} in Amsterdam.`,
+    description: venue.description ?? `${venue.name} in ${city}.`,
     url: `${PUBLIC_BASE_URL}/v/${venue.slug}`,
     // ImageObject met volledige rechten-attributie — de venue is z'n
     // eigen copyright-holder voor de eigen pers-foto. Bij ontbrekende
@@ -1159,8 +1174,8 @@ function renderVenueSeoPage(opts: {
     address: {
       '@type': 'PostalAddress',
       streetAddress: streetAddress(venue.address),
-      addressLocality: 'Amsterdam',
-      addressCountry: 'NL',
+      addressLocality: city,
+      addressCountry: cityCountry(venue.city),
     },
     geo: {
       '@type': 'GeoCoordinates',
@@ -1236,7 +1251,7 @@ function renderVenueSeoPage(opts: {
 
   const leadParts: string[] = [];
   leadParts.push(
-    `<strong>${escapeHtml(venue.name)}</strong> is een ${typeLabel ? escapeHtml(typeLabel.toLowerCase()) + ' ' : ''}in Amsterdam aan ${escapeHtml(streetAddress(venue.address))}.`
+    `<strong>${escapeHtml(venue.name)}</strong> is een ${typeLabel ? escapeHtml(typeLabel.toLowerCase()) + ' ' : ''}in ${escapeHtml(city)} aan ${escapeHtml(streetAddress(venue.address))}.`
   );
   if (upcoming.length > 0) {
     leadParts.push(
@@ -1247,6 +1262,9 @@ function renderVenueSeoPage(opts: {
   const facts: Array<[string, string]> = [
     ['Adres', escapeHtml(venue.address)],
   ];
+  // Alleen buiten Amsterdam: binnen de stad weet je dat al, en een
+  // feitenrij die voor 212 van de 240 zalen hetzelfde zegt is ruis.
+  if (isOutsideAmsterdam(venue.city)) facts.push(['Stad', escapeHtml(city)]);
   if (typeLabel) facts.push(['Type', escapeHtml(typeLabel)]);
   if (venue.scene) facts.push(['Scene', escapeHtml(String(venue.scene))]);
   if (venue.capacity) facts.push(['Capaciteit', escapeHtml(String(venue.capacity))]);
@@ -1348,7 +1366,7 @@ function renderVenueSeoPage(opts: {
         ${relatedVenues
           .map((v) => {
             const label = venueTypeLabel(v.type);
-            const meta = [label, v.wijk]
+            const meta = [label, venuePlace(v.city, v.wijk)]
               .filter(Boolean)
               .map((s) => escapeHtml(String(s)))
               .join(' · ');
@@ -1443,6 +1461,7 @@ shareRoute.get('/zoeken', async (c) => {
     name: string;
     type: ApiVenueType;
     wijk: string | null;
+    city: string | null;
   }> = [];
   let artists: Array<{
     id: string;
@@ -1484,6 +1503,7 @@ shareRoute.get('/zoeken', async (c) => {
           name: schema.venues.name,
           type: schema.venues.type,
           wijk: schema.venues.wijk,
+          city: schema.venues.city,
         })
         .from(schema.venues)
         .where(
@@ -1546,6 +1566,7 @@ function renderSearchPage(opts: {
     name: string;
     type: ApiVenueType;
     wijk: string | null;
+    city: string | null;
   }>;
   artists: Array<{ id: string; name: string; genres: string[] }>;
 }): string {
@@ -1601,7 +1622,7 @@ function renderSearchPage(opts: {
       </li>`;
   const venueRow = (v: typeof venues[number]) => {
     const label = venueTypeLabel(v.type);
-    const meta = [label, v.wijk]
+    const meta = [label, venuePlace(v.city, v.wijk)]
       .filter(Boolean)
       .map((s) => escapeHtml(String(s)))
       .join(' · ');
@@ -2311,13 +2332,13 @@ function renderArtistSeoPage(opts: {
 
   const upcomingHtml = upcoming.length > 0
     ? `
-      <h2>Komende shows in Amsterdam</h2>
+      <h2>Komende shows</h2>
       ${artistFeaturedHtml ? `<div class="featured-grid">${artistFeaturedHtml}</div>` : ''}
       ${artistListHtml ? `<ul class="lines">
         ${artistListHtml}
       </ul>` : ''}
     `
-    : `<p>Geen geplande shows in Amsterdam op dit moment. Bewaar ${escapeHtml(
+    : `<p>Geen geplande shows op dit moment. Bewaar ${escapeHtml(
         artist.name
       )} in de ANDREAS-app om een melding te krijgen zodra er één bij komt.</p>`;
 
@@ -2386,7 +2407,7 @@ function renderArtistsIndexPage(opts: {
   const { artists } = opts;
   const TOP_COUNT = 30;
 
-  const pageTitle = 'Artists in Amsterdam · Komende shows | ANDREAS';
+  const pageTitle = 'Artists · Komende shows | ANDREAS';
   const desc =
     `Wie staat er binnenkort in Amsterdam op de bühne? ${artists.length} ` +
     `artists met komende concerten en clubavonden — met links naar Spotify, ` +
@@ -2509,7 +2530,7 @@ function renderArtistsIndexPage(opts: {
     <article>
       ${breadcrumbHtml}
       <div class="hero">
-        <h1>Artists binnenkort in Amsterdam</h1>
+        <h1>Artists die binnenkort spelen</h1>
         <p class="lead">${escapeHtml(lead)}</p>
       </div>
       <div class="page-grid">
@@ -3224,6 +3245,7 @@ shareRoute.get('/', async (c) => {
         name: schema.venues.name,
         type: schema.venues.type,
         wijk: schema.venues.wijk,
+        city: schema.venues.city,
         imageUrl: schema.venues.imageUrl,
       })
       .from(schema.venues)
@@ -3255,7 +3277,7 @@ shareRoute.get('/', async (c) => {
     '@type': 'MobileApplication',
     name: 'ANDREAS',
     description:
-      'ANDREAS bundelt de meest complete agenda van Amsterdam in één app: concerten, clubavonden, exposities, theater, film en literaire events.',
+      'ANDREAS bundelt de meest complete agenda van Amsterdam in één app: concerten, clubavonden, exposities, theater, film en literaire events — en de avonden waarvoor je de stad uit gaat.',
     operatingSystem: 'iOS, Android',
     applicationCategory: 'LifestyleApplication',
     url: PUBLIC_BASE_URL,
@@ -3290,7 +3312,7 @@ shareRoute.get('/', async (c) => {
   const venuesListLd = jsonLd({
     '@context': 'https://schema.org',
     '@type': 'ItemList',
-    name: 'Venues in Amsterdam',
+    name: 'Venues in Amsterdam en daarbuiten',
     itemListElement: venues.map((v, i) => ({
       '@type': 'ListItem',
       position: i + 1,
@@ -3306,7 +3328,7 @@ shareRoute.get('/', async (c) => {
     {
       question: 'Wat is ANDREAS?',
       answer:
-        'ANDREAS is een uitgaansapp voor Amsterdam met de meest complete agenda van de stad: concerten, clubavonden, exposities, theater, film en literaire events op één plek.',
+        'ANDREAS is een uitgaansapp voor Amsterdam met de meest complete agenda van de stad: concerten, clubavonden, exposities, theater, film en literaire events op één plek. Daarnaast staan er zalen in twaalf andere steden, voor als je er een dagje uit voor over hebt.',
     },
     {
       question: 'Is ANDREAS gratis?',
@@ -3315,12 +3337,12 @@ shareRoute.get('/', async (c) => {
     },
     {
       question: 'Welke venues staan in ANDREAS?',
-      answer: `Op dit moment ${venues.length} Amsterdamse venues, waaronder Paradiso, Melkweg, OCCII, OT301, Stedelijk Museum, Rijksmuseum, FOAM, Concertgebouw, Bimhuis, EYE Filmmuseum, Carré en DeLaMar. Van clubs tot musea en van filmhuizen tot literaire podia.`,
+      answer: `Op dit moment ${venues.filter((v) => !isOutsideAmsterdam(v.city)).length} Amsterdamse venues en ${venues.filter((v) => isOutsideAmsterdam(v.city)).length} daarbuiten, waaronder Paradiso, Melkweg, OCCII, OT301, Stedelijk Museum, Rijksmuseum, FOAM, Concertgebouw, Bimhuis, EYE Filmmuseum, Carré en DeLaMar. Van clubs tot musea en van filmhuizen tot literaire podia.`,
     },
     {
       question: 'Werkt ANDREAS in andere steden?',
       answer:
-        'Op dit moment alleen in Amsterdam. ANDREAS is gemaakt voor Amsterdam en houdt zich daar voorlopig bij. Suggesties voor andere steden zijn welkom via wij@andreas.amsterdam.',
+        'Amsterdam is het hart: daar zit het grootste deel van de agenda en daar is ANDREAS voor gemaakt. Daarnaast staan er zalen in Amstelveen, Diemen, Zaandam, Haarlem, Utrecht, Rotterdam, Den Haag, Eindhoven, Tilburg, Nijmegen, Groningen en Antwerpen — voor de avonden waarvoor je de stad uit gaat. Een zaal buiten Amsterdam heeft z\'n plaatsnaam er altijd bij staan. Suggesties voor andere steden zijn welkom via wij@andreas.amsterdam.',
     },
     {
       question: AI_CONNECT_FAQ[0].question,
@@ -3377,7 +3399,7 @@ shareRoute.get('/', async (c) => {
   // cards per row krijgen zonder dat ze té hoog worden.
   const renderVenueCard = (v: typeof venues[number]) => {
     const label = venueTypeLabel(v.type as ApiVenueType);
-    const meta = [label, v.wijk]
+    const meta = [label, venuePlace(v.city, v.wijk)]
       .filter(Boolean)
       .map((s) => escapeHtml(String(s)))
       .join(' · ');
@@ -3397,7 +3419,7 @@ shareRoute.get('/', async (c) => {
   // ipv cards (anders te veel beeld). Behoud van interne link-density.
   const renderVenueRow = (v: typeof venues[number]) => {
     const label = venueTypeLabel(v.type as ApiVenueType);
-    const meta = [label, v.wijk]
+    const meta = [label, venuePlace(v.city, v.wijk)]
       .filter(Boolean)
       .map((s) => escapeHtml(String(s)))
       .join(' · ');
@@ -3418,9 +3440,9 @@ shareRoute.get('/', async (c) => {
 <html lang="nl">
 <head>
   <meta charset="utf-8" />
-  <title>ANDREAS — uitgaan in Amsterdam</title>
+  <title>ANDREAS — uitgaan in Amsterdam en daarbuiten</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="description" content="ANDREAS bundelt de meest complete agenda van Amsterdam in één app: concerten, clubavonden, exposities, theater, film en literaire events — wat er vanavond is en wat eraan komt, op één plek." />
+  <meta name="description" content="ANDREAS bundelt de meest complete agenda van Amsterdam in één app: concerten, clubavonden, exposities, theater, film en literaire events — wat er vanavond is en wat eraan komt. Plus de avonden waarvoor je de stad uit gaat." />
   <link rel="canonical" href="${PUBLIC_BASE_URL}/" />
   <link rel="icon" type="image/png" sizes="16x16" href="${PUBLIC_BASE_URL}/favicon-16.png" />
   <link rel="icon" type="image/png" sizes="32x32" href="${PUBLIC_BASE_URL}/favicon-32.png" />
@@ -3431,8 +3453,8 @@ shareRoute.get('/', async (c) => {
   <meta name="googlebot" content="index, follow, max-image-preview:large" />
   <meta name="ai-content-declaration" content="no-ai-training" />
   <meta name="impact-site-verification" value="fff70f25-b91e-4833-a018-ee1c1f216a6c" />
-  <meta property="og:title" content="ANDREAS — uitgaan in Amsterdam" />
-  <meta property="og:description" content="De meest complete agenda van Amsterdam in één app: concerten, clubs, exposities, theater, film en literatuur." />
+  <meta property="og:title" content="ANDREAS — uitgaan in Amsterdam en daarbuiten" />
+  <meta property="og:description" content="De meest complete agenda van Amsterdam in één app: concerten, clubs, exposities, theater, film en literatuur — en de avonden waarvoor je de stad uit gaat." />
   <meta property="og:url" content="${PUBLIC_BASE_URL}/" />
   <meta property="og:type" content="website" />
   <meta property="og:site_name" content="ANDREAS" />
@@ -3895,11 +3917,13 @@ shareRoute.get('/', async (c) => {
           <p class="kicker">amsterdam culture</p>
         </header>
         <h1 class="h1">Uitgaan in Amsterdam — alle events in één app</h1>
-        <p class="tagline">Heel Amsterdam, in één agenda.</p>
+        <p class="tagline">Heel Amsterdam in één agenda — en soms een dagje de stad uit.</p>
         <p class="intro">
           ANDREAS bundelt <strong>de complete uitgaansagenda van Amsterdam</strong>
           in één app: concerten, clubavonden, exposities, theater, film en
           literaire events. Wat er vanavond is, en wat eraan komt — op één plek.
+          En de avonden waarvoor je de stad uit gaat staan er ook in, met hun
+          plaatsnaam erbij.
           Sla je favoriete venues op, krijg een herinnering voor wat je niet
           wilt missen, en zie welke vrienden ook gaan.
         </p>
@@ -3969,7 +3993,7 @@ shareRoute.get('/', async (c) => {
 
     <section>
       <div class="section-head">
-        <h2>Venues in Amsterdam</h2>
+        <h2>Venues in Amsterdam en daarbuiten</h2>
         <span class="count">${venues.length} venues</span>
       </div>
       <div class="venues-grid">

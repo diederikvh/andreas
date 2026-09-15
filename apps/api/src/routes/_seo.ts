@@ -216,6 +216,76 @@ export function streetAddress(address: string): string {
 }
 
 /**
+ * Stadsnamen voor weergave. Spiegelt CITY_LABEL in de app
+ * (`lib/eventDisplay.ts`) -- dezelfde zaal moet in de app en op de site
+ * dezelfde plaatsnaam krijgen.
+ *
+ * LET OP: hier hoort een regel bij zodra er een stad bij het `city`-enum
+ * komt. Zonder regel valt hij terug op de slug met een hoofdletter, wat
+ * voor "den-haag" leesbaar genoeg is maar niet correct.
+ */
+const CITY_LABEL: Record<string, string> = {
+  amsterdam: 'Amsterdam',
+  amstelveen: 'Amstelveen',
+  diemen: 'Diemen',
+  zaandam: 'Zaandam',
+  haarlem: 'Haarlem',
+  utrecht: 'Utrecht',
+  rotterdam: 'Rotterdam',
+  'den-haag': 'Den Haag',
+  eindhoven: 'Eindhoven',
+  tilburg: 'Tilburg',
+  nijmegen: 'Nijmegen',
+  groningen: 'Groningen',
+  antwerpen: 'Antwerpen',
+};
+
+function titleCase(slug: string): string {
+  return slug
+    .split('-')
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join('-');
+}
+
+/** De stad van een zaal, leesbaar. Leeg veld betekent Amsterdam: dat is
+    de default in het schema en de overgrote meerderheid van de zalen. */
+export function cityLabel(city: string | null | undefined): string {
+  if (!city) return 'Amsterdam';
+  return CITY_LABEL[city] ?? titleCase(city);
+}
+
+/**
+ * Het land voor JSON-LD. Alles hier is Nederland op een uitzondering na,
+ * en die uitzondering stond fout: Antwerpen kreeg `addressCountry: 'NL'`
+ * mee, wat Google gebruikt om een zaal op de kaart te zetten.
+ */
+export function cityCountry(city: string | null | undefined): string {
+  return city === 'antwerpen' ? 'BE' : 'NL';
+}
+
+/** Staat deze zaal buiten Amsterdam? */
+export function isOutsideAmsterdam(city: string | null | undefined): boolean {
+  return Boolean(city) && city !== 'amsterdam';
+}
+
+/**
+ * De plaatsregel onder een zaalnaam.
+ *
+ * Binnen Amsterdam is het stadsdeel het nuttige detail -- "Noord" zegt je
+ * meer dan "Amsterdam", want dat wist je al. Buiten de stad is het
+ * omgekeerd: dan is de stad zelf het nieuws, en stadsdelen hebben we daar
+ * niet. Zo is een zaal buiten Amsterdam overal herkenbaar zonder dat er
+ * een apart label voor nodig is.
+ */
+export function venuePlace(
+  city: string | null | undefined,
+  wijk: string | null | undefined
+): string | null {
+  if (isOutsideAmsterdam(city)) return cityLabel(city);
+  return wijk ? titleCase(wijk) : null;
+}
+
+/**
  * Pak alleen de leesbare hostname uit een ticket-URL voor weergave.
  * `https://shop.paradiso.nl/event/123` → `paradiso.nl`. Bij ongeldige URL:
  * return originele string (fail-safe).
@@ -1839,7 +1909,7 @@ export function renderSiteFooter(): string {
     <footer class="site">
       <p>
         <a href="/">ANDREAS</a> · <a href="/privacy">Privacy</a> · <a href="/voorwaarden">Voorwaarden</a> · <a href="/auteursrecht">Auteursrecht</a><br/>
-        Uitgaan in Amsterdam · ${new Date().getFullYear()}
+        Uitgaan in Amsterdam, en soms een dagje de stad uit · ${new Date().getFullYear()}
       </p>
     </footer>
   `;
