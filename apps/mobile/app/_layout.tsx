@@ -135,7 +135,19 @@ function RootLayout() {
             buster: 'v2-venue-type',
             // Persist alleen succesvolle queries (geen error-states).
             dehydrateOptions: {
-              shouldDehydrateQuery: (q) => q.state.status === 'success',
+              shouldDehydrateQuery: (q) =>
+                q.state.status === 'success' &&
+                // Zoekresultaten niet. Een zoekopdracht is een vraag van
+                // nu, en een antwoord van gisteren is erger dan even een
+                // spinner: zet je een event in de admin uit, dan kwam het
+                // bij de volgende zoekopdracht alsnog van schijf terug —
+                // tot een etmaal later, want dan pas verloopt de hele
+                // opgeslagen cache. Binnen een sessie blijft het geheugen
+                // gewoon werken; alleen de kopie op schijf valt weg. Dat
+                // scheelt ook ruimte in een blob die op Android al een
+                // keer tegen de CursorWindow-grens aanliep.
+                q.queryKey[0] !== 'search' &&
+                q.queryKey[0] !== 'user-search',
             },
           }}
         >

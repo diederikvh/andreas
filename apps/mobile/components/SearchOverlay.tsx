@@ -163,7 +163,11 @@ export function SearchOverlay({
       return seenEvents;
     },
     enabled,
-    staleTime: 60_000,
+    // Nul, niet een minuut. Met een minuut deed de app binnen dat
+    // venster helemaal geen netwerkverzoek: je kreeg het oude lijstje
+    // terug zonder dat er iets werd nagevraagd. Voor een lijst die je
+    // per toetsaanslag opnieuw stelt is dat de verkeerde afweging.
+    staleTime: 0,
     // Houd het vorige resultaat zichtbaar terwijl de nieuwe query
     // fetcht — anders flitst de spinner bij elke keystroke en raak
     // je je context kwijt.

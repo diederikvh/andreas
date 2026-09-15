@@ -24,7 +24,19 @@ export const queryClient = new QueryClient({
     queries: {
       staleTime: 5 * 60_000,
       gcTime: 7 * 24 * 60 * 60_000,
-      retry: 1,
+      // Een 404 wordt bij een tweede poging ook geen 200. Stond op `1`,
+      // dus een event dat in de admin op niet-live is gezet liet z'n
+      // detailscherm eerst nog een hele extra ronde laden voordat het
+      // "bestaat niet meer" durfde te zeggen -- met een gecachete versie
+      // eronder zag je in die tijd het echte scherm. Serverfouten (5xx)
+      // en netwerkhaperingen mogen hun tweede kans houden.
+      retry: (count, err) => {
+        const status = (err as { status?: number } | null)?.status;
+        if (typeof status === 'number' && status >= 400 && status < 500) {
+          return false;
+        }
+        return count < 1;
+      },
       refetchOnWindowFocus: false,
     },
   },
