@@ -1,4 +1,4 @@
-import { and, asc, eq, sql } from 'drizzle-orm';
+import { and, asc, eq, ne, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 
 import { db, displayGenres, schema } from '../db/index.js';
@@ -21,6 +21,8 @@ import {
   renderSiteFooter,
   renderSiteScripts,
   renderThumb,
+  cityLabel,
+  venuePlace,
   venueTypeLabel,
 } from './_seo.js';
 
@@ -48,7 +50,10 @@ export const hubsRoute = new Hono();
  * Hub-configuratie
  * ============================================================ */
 
-type HubKind = 'category' | 'venueType' | 'today' | 'weekend';
+type HubKind = 'category' | 'venueType' | 'today' | 'weekend' | 'city';
+
+/** De steden uit het `city`-enum op venues. */
+type CityValue = (typeof schema.venues.city.enumValues)[number];
 
 type HubConfig = {
   slug: string;
@@ -74,6 +79,18 @@ type HubConfig = {
   venueType?: 'club' | 'museum' | 'podium' | 'film' | 'galerie';
   /** Optioneel: alleen events met deze kind. Default: alle. */
   eventKind?: 'show' | 'exhibition';
+  /**
+   * Beperk tot zalen in deze stad.
+   *
+   * De bestaande hubs staan hier allemaal op `amsterdam`, en dat is een
+   * correctie: hun titels beloofden Amsterdam terwijl de lijst inmiddels
+   * ook Tilburg en Groningen bevatte. Liever de belofte waarmaken dan de
+   * titel verwateren -- "Muziek in Amsterdam" is waar mensen op zoeken,
+   * en wat buiten de stad valt heeft nu z'n eigen hub.
+   */
+  city?: CityValue;
+  /** Alles behalve Amsterdam. Voor de dagje-weg-hub. */
+  outsideAmsterdam?: boolean;
 };
 
 const HUBS: HubConfig[] = [
@@ -88,6 +105,7 @@ const HUBS: HubConfig[] = [
       'Alle muziek-events in Amsterdam — van <strong>techno-nachten</strong> in OT301 tot <strong>klassieke concerten</strong> in het Concertgebouw, festivals in Paradiso en jazz in het Bimhuis. Iedere avond een keuze.',
     venuesHeading: 'Muziek-venues in Amsterdam',
     kind: 'category',
+    city: 'amsterdam',
     category: 'Muziek',
   },
   {
@@ -100,6 +118,7 @@ const HUBS: HubConfig[] = [
       'Alle <strong>theater-voorstellingen</strong> in Amsterdam — toneel, dans, cabaret en muziektheater op de podia van Carré, DeLaMar, ITA, Frascati, de Meervaart en alle andere zalen van de stad.',
     venuesHeading: 'Theater-podia in Amsterdam',
     kind: 'category',
+    city: 'amsterdam',
     category: 'Theater',
   },
   {
@@ -112,6 +131,7 @@ const HUBS: HubConfig[] = [
       'Alle <strong>filmvoorstellingen</strong> in Amsterdam — premières, retrospectives en arthouse in EYE, FilmHallen, Lab111, Kriterion, The Movies en andere <strong>filmhuizen en bioscopen</strong> van de stad.',
     venuesHeading: 'Filmhuizen in Amsterdam',
     kind: 'category',
+    city: 'amsterdam',
     category: 'Film',
   },
   {
@@ -124,6 +144,7 @@ const HUBS: HubConfig[] = [
       'Alle <strong>kunst-exposities</strong> en openingen in Amsterdam — van het Stedelijk, Rijksmuseum en FOAM tot W139, galeries en artist-run spaces in de hele stad.',
     venuesHeading: 'Musea & galeries in Amsterdam',
     kind: 'category',
+    city: 'amsterdam',
     category: 'Kunst',
   },
   {
@@ -136,6 +157,7 @@ const HUBS: HubConfig[] = [
       'Alle <strong>literaire events</strong> in Amsterdam — boekpresentaties, lezingen, poëzieavonden en debatten bij Spui25, Perdu, Athenaeum en de andere literaire plekken van de stad.',
     venuesHeading: 'Literaire plekken in Amsterdam',
     kind: 'category',
+    city: 'amsterdam',
     category: 'Literatuur',
   },
   // --- Venue-type ---
@@ -149,6 +171,7 @@ const HUBS: HubConfig[] = [
       'Komende <strong>clubavonden in Amsterdam</strong> — techno, house, hip-hop, disco en alles ertussen, in de clubs en kelders die de stad vannacht draaiend houden.',
     venuesHeading: 'Alle clubs in Amsterdam',
     kind: 'venueType',
+    city: 'amsterdam',
     venueType: 'club',
     eventKind: 'show',
   },
@@ -162,6 +185,7 @@ const HUBS: HubConfig[] = [
       'Lopende <strong>exposities in de Amsterdamse musea</strong> — Stedelijk, Rijksmuseum, Van Gogh, FOAM, Hermitage en alle andere grote en kleine musea die de stad rijk is.',
     venuesHeading: 'Alle musea in Amsterdam',
     kind: 'venueType',
+    city: 'amsterdam',
     venueType: 'museum',
   },
   {
@@ -174,6 +198,7 @@ const HUBS: HubConfig[] = [
       'Komende <strong>concerten en voorstellingen op de Amsterdamse podia</strong> — van Paradiso en Melkweg tot Concertgebouw, Bimhuis, Q-Factory en Sugarfactory.',
     venuesHeading: 'Alle podia in Amsterdam',
     kind: 'venueType',
+    city: 'amsterdam',
     venueType: 'podium',
     eventKind: 'show',
   },
@@ -187,6 +212,7 @@ const HUBS: HubConfig[] = [
       'Komende <strong>filmvoorstellingen in de Amsterdamse filmhuizen</strong> — de arthouse-bioscopen van de stad: EYE, FilmHallen, Lab111, Kriterion, The Movies, De Uitkijk en andere zalen.',
     venuesHeading: 'Alle filmhuizen in Amsterdam',
     kind: 'venueType',
+    city: 'amsterdam',
     venueType: 'film',
     eventKind: 'show',
   },
@@ -200,6 +226,7 @@ const HUBS: HubConfig[] = [
       'Lopende <strong>exposities in de Amsterdamse galeries</strong> — van gevestigde namen als Annet Gelink en AKINCI tot artist-run spaces en project spaces, de hele scene op één plek.',
     venuesHeading: 'Alle galeries in Amsterdam',
     kind: 'venueType',
+    city: 'amsterdam',
     venueType: 'galerie',
   },
   // --- Tijd ---
@@ -213,6 +240,7 @@ const HUBS: HubConfig[] = [
       'Alles wat <strong>vandaag in Amsterdam</strong> gebeurt — concerten, clubs, theater, film en openingen. Eén lijst van alle events die nu draaien of vannacht starten.',
     venuesHeading: 'Venues actief vandaag',
     kind: 'today',
+    city: 'amsterdam',
   },
   {
     slug: 'dit-weekend',
@@ -224,6 +252,92 @@ const HUBS: HubConfig[] = [
       'Alles wat <strong>dit weekend in Amsterdam</strong> te beleven valt — van vrijdagavond tot en met zondagnacht. Concerten, clubs, theater, film en openingen, op één plek.',
     venuesHeading: 'Venues actief dit weekend',
     kind: 'weekend',
+    city: 'amsterdam',
+  },
+  // --- Steden buiten Amsterdam ---
+  //
+  // Een eigen hub per stad met meer dan één zaal. Eerder viel dit aanbod
+  // in de Amsterdam-hubs, waar het niet thuishoorde: iemand die "muziek
+  // in Amsterdam" zoekt wil geen zaal in Groningen, en iemand die naar
+  // Groningen gaat vindt hem daar niet.
+  //
+  // Zaandam heeft ook meer dan één zaal maar staat er niet bij: drie
+  // zalen met samen veertien avonden is een dunne pagina, en daar wordt
+  // niemand blij van -- Google niet en een bezoeker niet. Zodra er
+  // programma staat hoort hij hier gewoon in de rij. Steden met één zaal
+  // (Tilburg, Nijmegen, Antwerpen, Haarlem, Eindhoven, Diemen) hebben de
+  // zaalpagina zelf, plus /de-stad-uit hieronder.
+  {
+    slug: 'utrecht',
+    title: 'Uitgaan in Utrecht',
+    pageTitle: 'Uitgaan in Utrecht — concerten en voorstellingen | ANDREAS',
+    description:
+      'Concerten, clubavonden en voorstellingen in Utrecht. Komend programma in TivoliVredenburg en EKKO, op een half uur van Amsterdam.',
+    intro:
+      'Alles wat er in <strong>Utrecht</strong> te doen is — het volle programma van <strong>TivoliVredenburg</strong> en de clubavonden van <strong>EKKO</strong>. Een half uur met de trein, dus een avond die daar staat is net zo goed een optie als een avond in de stad.',
+    venuesHeading: 'Zalen in Utrecht',
+    kind: 'city',
+    city: 'utrecht',
+  },
+  {
+    slug: 'groningen',
+    title: 'Uitgaan in Groningen',
+    pageTitle: 'Uitgaan in Groningen — concerten en theater | ANDREAS',
+    description:
+      'Concerten, theater en clubavonden in Groningen. Komend programma in De Oosterpoort, Stadsschouwburg, Vera, De Machinefabriek en meer.',
+    intro:
+      'Alles wat er in <strong>Groningen</strong> te doen is — van <strong>De Oosterpoort</strong> en de <strong>Stadsschouwburg</strong> tot de indie-avonden van <strong>Vera</strong> en het programma van De Machinefabriek. De grootste catalogus buiten Amsterdam.',
+    venuesHeading: 'Zalen in Groningen',
+    kind: 'city',
+    city: 'groningen',
+  },
+  {
+    slug: 'den-haag',
+    title: 'Uitgaan in Den Haag',
+    pageTitle: 'Uitgaan in Den Haag — concerten en voorstellingen | ANDREAS',
+    description:
+      'Concerten, dans en voorstellingen in Den Haag. Komend programma in Amare en PAARD.',
+    intro:
+      'Alles wat er in <strong>Den Haag</strong> te doen is — de zalen van <strong>Amare</strong> voor klassiek, dans en theater, en <strong>PAARD</strong> voor pop en club.',
+    venuesHeading: 'Zalen in Den Haag',
+    kind: 'city',
+    city: 'den-haag',
+  },
+  {
+    slug: 'rotterdam',
+    title: 'Uitgaan in Rotterdam',
+    pageTitle: 'Uitgaan in Rotterdam — concerten, clubs, theater | ANDREAS',
+    description:
+      'Concerten, clubavonden en voorstellingen in Rotterdam. Komend programma in BIRD, de Doelen, Ahoy, WORM en Rotown.',
+    intro:
+      'Alles wat er in <strong>Rotterdam</strong> te doen is — jazz en club in <strong>BIRD</strong>, klassiek in <strong>de Doelen</strong>, de grote namen in <strong>Ahoy</strong>, en het eigenzinnige programma van WORM en Rotown.',
+    venuesHeading: 'Zalen in Rotterdam',
+    kind: 'city',
+    city: 'rotterdam',
+  },
+  {
+    slug: 'amstelveen',
+    title: 'Uitgaan in Amstelveen',
+    pageTitle: 'Uitgaan in Amstelveen — P60 en het Bostheater | ANDREAS',
+    description:
+      'Concerten en voorstellingen in Amstelveen. Komend programma in P60 en het Amsterdamse Bostheater.',
+    intro:
+      'Wat er in <strong>Amstelveen</strong> te doen is — de pop- en clubavonden van <strong>P60</strong> en de zomervoorstellingen in het <strong>Amsterdamse Bostheater</strong>. Officieel de stad uit, in de praktijk een halte verder.',
+    venuesHeading: 'Zalen in Amstelveen',
+    kind: 'city',
+    city: 'amstelveen',
+  },
+  {
+    slug: 'de-stad-uit',
+    title: 'Een dagje de stad uit',
+    pageTitle: 'Een dagje de stad uit — uitgaan buiten Amsterdam | ANDREAS',
+    description:
+      'Alles in de agenda buiten Amsterdam: Utrecht, Groningen, Den Haag, Rotterdam, Tilburg, Nijmegen, Eindhoven, Haarlem, Antwerpen en meer.',
+    intro:
+      'Soms staat de avond die je wil niet in de stad. Dit is <strong>alles buiten Amsterdam</strong> — van een halte verder in Amstelveen, Diemen en Zaandam tot 013 in Tilburg, Doornroosje in Nijmegen, de Effenaar in Eindhoven, Patronaat in Haarlem en De Roma in Antwerpen. Bij elke avond staat waar het is.',
+    venuesHeading: 'Zalen buiten Amsterdam',
+    kind: 'city',
+    outsideAmsterdam: true,
   },
 ];
 
@@ -278,6 +392,12 @@ function buildHubConditions(hub: HubConfig) {
   if (hub.eventKind) {
     baseConditions.push(eq(schema.events.kind, hub.eventKind));
   }
+  if (hub.city) {
+    baseConditions.push(eq(schema.venues.city, hub.city));
+  }
+  if (hub.outsideAmsterdam) {
+    baseConditions.push(ne(schema.venues.city, 'amsterdam'));
+  }
 
   return baseConditions;
 }
@@ -298,6 +418,7 @@ type EventRow = {
   venueName: string;
   venueSlug: string;
   venueWijk: string | null;
+  venueCity: string | null;
   venueType:
     | 'galerie' | 'museum' | 'podium' | 'club' | 'film'
     | 'ruimte' | 'boekhandel-cafe' | null;
@@ -307,6 +428,7 @@ type VenueRow = {
   slug: string;
   name: string;
   wijk: string | null;
+  city: string | null;
   type: EventRow['venueType'];
   imageUrl: string | null;
 };
@@ -351,6 +473,34 @@ function groupEventsByType(
     'lezing',
   ];
   return order.map((k) => buckets[k]).filter((g): g is { key: string; heading: string; events: EventRow[] } => Boolean(g));
+}
+
+/**
+ * De zaalnaam op een eventrij, met plaats als die plaats nieuws is.
+ *
+ * Binnen Amsterdam blijft het "Paradiso" -- de stad erbij zetten is ruis
+ * op een site die over Amsterdam gaat. Staat de zaal erbuiten, dan is de
+ * plaats juist het eerste wat je wil weten: "013, Tilburg" scheelt je een
+ * klik om te ontdekken dat je een uur moet reizen.
+ */
+function venueWithPlace(e: EventRow, hub: HubConfig): string {
+  // Op een hub die al één stad is staat die stad in de titel, dus bij
+  // elke rij nog eens ", Utrecht" zetten is dezelfde ruis als ", Amsterdam"
+  // op /muziek. De plaats is alleen nieuws waar hij varieert -- op
+  // /de-stad-uit dus, en daar is hij ook precies wat je wil weten.
+  if (hub.city) return e.venueName;
+  const place = venuePlace(e.venueCity, null);
+  return place ? `${e.venueName}, ${place}` : e.venueName;
+}
+
+/**
+ * Het kruimelwoordje boven de H1. Stond hardcoded op Amsterdam, wat op de
+ * dagje-weg-hub precies het verkeerde woord is.
+ */
+function hubKicker(hub: HubConfig): string {
+  if (hub.outsideAmsterdam) return 'Buiten Amsterdam';
+  if (hub.city && hub.city !== 'amsterdam') return cityLabel(hub.city);
+  return 'Amsterdam';
 }
 
 function formatRowWhen(e: EventRow): string {
@@ -410,7 +560,7 @@ function renderHubPage(
           <span class="row-text">
             <span class="when">${escapeHtml(formatRowWhen(e))}</span>
             <span class="title">${escapeHtml(e.title)}</span>
-            <span class="meta">${renderEventMeta(e.venueName, e.genres)}</span>
+            <span class="meta">${renderEventMeta(venueWithPlace(e, hub), e.genres)}</span>
           </span>
         </a>
       </li>`;
@@ -421,7 +571,7 @@ function renderHubPage(
       imageUrl: e.imageUrl,
       when: formatRowWhen(e),
       title: e.title,
-      meta: renderEventMeta(e.venueName, e.genres),
+      meta: renderEventMeta(venueWithPlace(e, hub), e.genres),
     });
 
   /** Render één event-cluster: section-head + featured + (optioneel)
@@ -478,7 +628,7 @@ function renderHubPage(
 
   const renderVenueCard = (v: VenueRow) => {
     const label = venueTypeLabel(v.type);
-    const meta = [label, v.wijk]
+    const meta = [label, venuePlace(v.city, v.wijk)]
       .filter(Boolean)
       .map((s) => escapeHtml(String(s)))
       .join(' · ');
@@ -497,7 +647,7 @@ function renderHubPage(
   const venuesHtml = venues
     .map((v) => {
       const label = venueTypeLabel(v.type);
-      const meta = [label, v.wijk]
+      const meta = [label, venuePlace(v.city, v.wijk)]
         .filter(Boolean)
         .map((s) => escapeHtml(String(s)))
         .join(' · ');
@@ -634,7 +784,7 @@ function renderHubPage(
       ${escapeHtml(hub.title)}
     </nav>
     <header class="hub-hero">
-      <p class="kicker">Amsterdam</p>
+      <p class="kicker">${escapeHtml(hubKicker(hub))}</p>
       <h1>${escapeHtml(hub.title)}</h1>
       <p class="intro">${hub.intro}</p>
       <p class="count">${events.length} ${events.length === 1 ? 'event' : 'events'}</p>
@@ -704,6 +854,7 @@ for (const hub of HUBS) {
         venueName: schema.venues.name,
         venueSlug: schema.venues.slug,
         venueWijk: schema.venues.wijk,
+        venueCity: schema.venues.city,
         venueType: schema.venues.type,
         venueImageUrl: schema.venues.imageUrl,
       })
@@ -742,25 +893,34 @@ for (const hub of HUBS) {
     //     maximum crawl-paths richting elke venue-detail-pagina.
     //   • andere hubs (/muziek, /vandaag, …): venues uit de gevonden events,
     //     gededupliceerd op slug. Schaalt automatisch met het hub-filter.
+    //   • stads-hubs (/utrecht, /groningen, …): idem -- een zaal zonder
+    //     lopend programma hoort in het overzicht van z'n eigen stad.
+    //
+    // De zaal-scope volgt hetzelfde stadsfilter als de events. Zonder dat
+    // zou /clubs alle clubs van het land opsommen onder een kop die
+    // Amsterdam belooft, met een eventlijst die dat wél doet.
     let venues: VenueRow[];
-    if (hub.kind === 'venueType' && hub.venueType) {
-      const venueRows = await db
+    const venueScope = [eq(schema.venues.published, true)];
+    if (hub.venueType) venueScope.push(eq(schema.venues.type, hub.venueType));
+    if (hub.city) venueScope.push(eq(schema.venues.city, hub.city));
+    if (hub.outsideAmsterdam) {
+      venueScope.push(ne(schema.venues.city, 'amsterdam'));
+    }
+    const listAllVenues =
+      Boolean(hub.venueType) || hub.kind === 'city' || Boolean(hub.outsideAmsterdam);
+    if (listAllVenues) {
+      venues = await db
         .select({
           slug: schema.venues.slug,
           name: schema.venues.name,
           wijk: schema.venues.wijk,
+          city: schema.venues.city,
           type: schema.venues.type,
           imageUrl: schema.venues.imageUrl,
         })
         .from(schema.venues)
-        .where(
-          and(
-            eq(schema.venues.type, hub.venueType),
-            eq(schema.venues.published, true)
-          )
-        )
+        .where(and(...venueScope))
         .orderBy(asc(schema.venues.name));
-      venues = venueRows;
     } else {
       const seenVenues = new Set<string>();
       venues = rows
@@ -773,6 +933,7 @@ for (const hub of HUBS) {
           slug: r.venueSlug,
           name: r.venueName,
           wijk: r.venueWijk,
+          city: r.venueCity,
           type: r.venueType,
           imageUrl: r.venueImageUrl,
         }))

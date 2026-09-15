@@ -3973,6 +3973,12 @@ shareRoute.get('/', async (c) => {
       <a href="/musea">Musea</a>
       <a href="/galeries">Galeries</a>
       <a href="/filmhuizen">Filmhuizen</a>
+      <span class="sep">·</span>
+      <a href="/de-stad-uit">De stad uit</a>
+      <a href="/utrecht">Utrecht</a>
+      <a href="/groningen">Groningen</a>
+      <a href="/den-haag">Den Haag</a>
+      <a href="/rotterdam">Rotterdam</a>
     </nav>
 
     <section>

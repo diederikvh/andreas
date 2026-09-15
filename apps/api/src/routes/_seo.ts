@@ -1197,6 +1197,14 @@ export function renderAppBanner(deeplink: string, label: string): string {
           <a href="/musea">Musea</a>
           <a href="/galeries">Galeries</a>
           <a href="/filmhuizen">Filmhuizen</a>
+          <hr>
+          <span class="group-label">De stad uit</span>
+          <a href="/de-stad-uit">Alles buiten Amsterdam</a>
+          <a href="/utrecht">Utrecht</a>
+          <a href="/groningen">Groningen</a>
+          <a href="/den-haag">Den Haag</a>
+          <a href="/rotterdam">Rotterdam</a>
+          <a href="/amstelveen">Amstelveen</a>
         </div>
       </details>
       <details class="header-search">
