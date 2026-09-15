@@ -5539,7 +5539,9 @@ adminUi.get('/trefwoorden', async (c) => {
             <input type="text" name="note" placeholder="geen lunchconcerten" />
           </label>
         </div>
-        <button type="submit">Kijken wat dit raakt</button>
+        <button type="submit" style="width:auto;">
+          Kijken wat dit raakt
+        </button>
       </form>
 
       <h3 style="margin-top:32px;">Lijst ({terms.length})</h3>

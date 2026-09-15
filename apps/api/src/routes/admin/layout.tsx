@@ -1,6 +1,40 @@
 import type { FC, PropsWithChildren } from 'hono/jsx';
 
 /**
+ * De menu-indeling.
+ *
+ * Stond hier als tien losse `<li>`-blokken op één rij, en dat werd een
+ * stapel: elke nieuwe pagina plakte er weer een knop achteraan, allemaal
+ * even zwaar, zonder dat je kon zien wat bij wat hoort. Nu drie groepen met
+ * een streepje ertussen, en als lijst in plaats van als markup — een pagina
+ * toevoegen is één regel op de juiste plek, en die plek dwingt je een groep
+ * te kiezen.
+ *
+ * De groepen volgen de vraag die je stelt, niet hoe vaak je er bent:
+ * **aanbod** is de catalogus zoals hij nu is, **binnenkomst** is alles wat
+ * er nieuw in wil, en de rest kijkt ernaar of stuurt het naar buiten.
+ *
+ * Overzicht zit niet in de rij: dat is de merknaam links, zoals overal.
+ */
+const NAV: { key: string; href: string; label: string }[][] = [
+  [
+    { key: 'events', href: '/admin/events', label: 'Events' },
+    { key: 'venues', href: '/admin/venues', label: 'Venues' },
+    { key: 'series', href: '/admin/series', label: 'Series' },
+  ],
+  [
+    { key: 'import', href: '/admin/import', label: 'Import' },
+    { key: 'aanmeldingen', href: '/admin/aanmeldingen', label: 'Aanmeldingen' },
+    { key: 'trefwoorden', href: '/admin/trefwoorden', label: 'Trefwoorden' },
+  ],
+  [
+    { key: 'insights', href: '/admin/insights', label: 'Insights' },
+    { key: 'users', href: '/admin/users', label: 'Gebruikers' },
+    { key: 'social', href: '/admin/social', label: 'Social' },
+  ],
+];
+
+/**
  * Gedeelde HTML-shell voor alle admin-pagina's. Pico.css via CDN —
  * geen bundler, geen build-stap. Dark mode via `data-theme="dark"`
  * past bij Andreas-noir.
@@ -55,6 +89,24 @@ export const Layout: FC<PropsWithChildren<{ title: string; active?: string }>> =
           text-transform: uppercase;
           color: var(--pico-muted-color);
           margin-left: 0.5rem;
+        }
+        /* De merknaam is de weg terug naar het overzicht. Geen
+           link-blauw en geen streep eronder — het moet het logo blijven. */
+        nav .brand a {
+          color: inherit;
+          text-decoration: none;
+          border-bottom: 2px solid transparent;
+        }
+        nav .brand a:hover { opacity: 0.65; }
+        nav .brand a[aria-current] { border-bottom-color: var(--andreas-acid); }
+        /* Verticaal streepje tussen de groepen. Op een gewrapte rij (mobiel)
+           staat zo'n streep midden in het niets, dus daar valt hij weg. */
+        nav ul li.sep {
+          width: 1px;
+          align-self: stretch;
+          margin: 0.2rem 0.4rem;
+          padding: 0;
+          background: var(--pico-muted-border-color);
         }
         nav ul li a[role="button"] {
           padding: 0.4rem 0.9rem;
@@ -153,13 +205,25 @@ export const Layout: FC<PropsWithChildren<{ title: string; active?: string }>> =
             padding-right: 1rem;
             border-bottom: 1px solid var(--pico-muted-border-color);
           }
+          /* Stapelen, niet naast elkaar. Pico zet nav op flex-row met de
+             twee lijsten links en rechts; op 375px wrapt de tweede dan tot
+             een smalle kolom naast de merknaam, die daardoor halverwege de
+             knoppen komt te hangen. Dit was al de bedoeling hierboven, maar
+             zonder een richting op nav zelf gebeurde het niet. */
+          nav {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 0.4rem;
+          }
           nav ul {
             flex-wrap: wrap;
+            row-gap: 0.4rem;
             padding: 0;
             margin: 0;
           }
           nav .brand { font-size: 1.1rem; }
           nav .brand small { display: none; }
+          nav ul li.sep { display: none; }
           nav ul li a[role="button"],
           nav ul li form button {
             padding: 0.3rem 0.65rem;
@@ -207,109 +271,32 @@ export const Layout: FC<PropsWithChildren<{ title: string; active?: string }>> =
     <body>
       <nav>
         <ul>
-          <li class="brand">Andreas <small>admin</small></li>
-        </ul>
-        <ul>
-          <li>
+          <li class="brand">
             <a
               href="/admin"
-              role="button"
-              class={active === 'home' ? '' : 'outline'}
               aria-current={active === 'home' ? 'page' : undefined}
             >
-              Overzicht
+              Andreas <small>admin</small>
             </a>
           </li>
-          <li>
-            <a
-              href="/admin/events"
-              role="button"
-              class={active === 'events' ? '' : 'outline'}
-              aria-current={active === 'events' ? 'page' : undefined}
-            >
-              Events
-            </a>
-          </li>
-          <li>
-            <a
-              href="/admin/venues"
-              role="button"
-              class={active === 'venues' ? '' : 'outline'}
-              aria-current={active === 'venues' ? 'page' : undefined}
-            >
-              Venues
-            </a>
-          </li>
-          <li>
-            <a
-              href="/admin/series"
-              role="button"
-              class={active === 'series' ? '' : 'outline'}
-              aria-current={active === 'series' ? 'page' : undefined}
-            >
-              Series
-            </a>
-          </li>
-          <li>
-            <a
-              href="/admin/import"
-              role="button"
-              class={active === 'import' ? '' : 'outline'}
-              aria-current={active === 'import' ? 'page' : undefined}
-            >
-              Import
-            </a>
-          </li>
-          <li>
-            <a
-              href="/admin/aanmeldingen"
-              role="button"
-              class={active === 'aanmeldingen' ? '' : 'outline'}
-              aria-current={active === 'aanmeldingen' ? 'page' : undefined}
-            >
-              Aanmeldingen
-            </a>
-          </li>
-          <li>
-            <a
-              href="/admin/trefwoorden"
-              role="button"
-              class={active === 'trefwoorden' ? '' : 'outline'}
-              aria-current={active === 'trefwoorden' ? 'page' : undefined}
-            >
-              Trefwoorden
-            </a>
-          </li>
-          <li>
-            <a
-              href="/admin/insights"
-              role="button"
-              class={active === 'insights' ? '' : 'outline'}
-              aria-current={active === 'insights' ? 'page' : undefined}
-            >
-              Insights
-            </a>
-          </li>
-          <li>
-            <a
-              href="/admin/users"
-              role="button"
-              class={active === 'users' ? '' : 'outline'}
-              aria-current={active === 'users' ? 'page' : undefined}
-            >
-              Gebruikers
-            </a>
-          </li>
-          <li>
-            <a
-              href="/admin/social"
-              role="button"
-              class={active === 'social' ? '' : 'outline'}
-              aria-current={active === 'social' ? 'page' : undefined}
-            >
-              Social
-            </a>
-          </li>
+        </ul>
+        <ul>
+          {NAV.flatMap((group, i) => [
+            ...(i > 0 ? [<li class="sep" aria-hidden="true" />] : []),
+            ...group.map((item) => (
+              <li>
+                <a
+                  href={item.href}
+                  role="button"
+                  class={active === item.key ? '' : 'outline'}
+                  aria-current={active === item.key ? 'page' : undefined}
+                >
+                  {item.label}
+                </a>
+              </li>
+            )),
+          ])}
+          <li class="sep" aria-hidden="true" />
           <li>
             <form method="post" action="/admin/logout">
               <button type="submit" class="secondary outline">Uitloggen</button>
