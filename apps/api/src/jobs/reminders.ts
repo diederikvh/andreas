@@ -119,9 +119,19 @@ export async function sendDueReminders(
     venue_name: string;
     starts_at: Date;
     note: string | null;
+    is_going: boolean;
   }>(sql`
     SELECT r.id, r.user_id, r.kind::text AS kind, r.note,
-           e.id AS event_id, e.title, v.name AS venue_name, o.starts_at
+           e.id AS event_id, e.title, v.name AS venue_name, o.starts_at,
+           -- Een hartje is een interessesignaal, geen belofte om te gaan.
+           -- "Ik ga" is de trede erboven, en alleen daar mag de melding
+           -- ervan uitgaan dat je komt. Op dit moment hangt 35 van de 45
+           -- herinneringen aan puur een hartje, dus dat verschil is niet
+           -- theoretisch.
+           EXISTS (
+             SELECT 1 FROM attendance a
+             WHERE a.user_id = r.user_id AND a.occurrence_id = r.occurrence_id
+           ) AS is_going
     FROM reminders r
     JOIN occurrences o ON o.id = r.occurrence_id
     JOIN events e ON e.id = o.event_id
@@ -158,11 +168,16 @@ export async function sendDueReminders(
       minute: '2-digit',
     }).format(new Date(row.starts_at));
 
+    const going = row.is_going;
     const title =
       row.kind === 'dag-ervoor'
-        ? `Morgen: ${row.title}`
+        ? going
+          ? `Morgen ga je naar ${row.title}`
+          : `Morgen: ${row.title}`
         : row.kind === 'vanavond'
-          ? `Vanavond om ${time}`
+          ? going
+            ? `Vanavond om ${time}`
+            : `Vanavond om ${time} — als je wil`
           : row.note?.trim()
             ? row.note.trim()
             : row.title;
@@ -171,7 +186,9 @@ export async function sendDueReminders(
       row.kind === 'dag-ervoor'
         ? `${time} bij ${row.venue_name}.`
         : row.kind === 'vanavond'
-          ? `${row.title} — ${row.venue_name}.`
+          ? going
+            ? `${row.title} — ${row.venue_name}.`
+            : `${row.title} bij ${row.venue_name}. Je had 'm gered.`
           : `${row.title}, ${row.venue_name}.`;
 
     if (!opts.dryRun) {

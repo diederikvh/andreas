@@ -16,7 +16,6 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
-  Switch,
   Text,
   TextInput,
   View,
@@ -27,6 +26,12 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { softTap } from '@/lib/haptics';
 import { BackButton } from '@/components/BackButton';
 import { Cross } from '@/components/Cross';
+import {
+  SettingsAction,
+  SettingsChoice,
+  SettingsGroup,
+  SettingsSwitch,
+} from '@/components/SettingsList';
 import { ProfileAvatar } from '@/components/ProfileAvatar';
 import { SpinningCross } from '@/components/SpinningCross';
 import type { ApiMe } from '@/lib/api';
@@ -618,13 +623,13 @@ export default function Jij() {
         </Pressable>
         {/* Instellingen — alleen zichtbaar als de gebruiker een
             bestaand profiel bewerkt (niet tijdens onboarding-eerste-
-            keer-vullen). Marge-cancel om de ScrollView's
-            paddingHorizontal: 22 te neutraliseren zodat SectionHead's
-            eigen padding weer klopt. */}
+            keer-vullen). Marge-cancel om de paddingHorizontal van de
+            ScrollView te neutraliseren: de blokken zetten hun eigen
+            inspringing, zoals Instellingen dat doet. */}
         {isEditingExisting && me && (
           <View style={{ marginHorizontal: -22, marginTop: 24 }}>
             <AppearanceSection />
-            <NotificationsSection />
+            <NotificationsSection me={me} onUpdated={refetchMe} />
             <PrivacySection me={me} onUpdated={refetchMe} />
             <LanguageSection />
             <CreditsSection />
@@ -993,80 +998,6 @@ function ModalCloseBtn({ onPress }: { onPress?: () => void }) {
     gebruik van de TMDb API onder hun non-commercial licentie. Tekst
     + link, geen logo (TMDb staat "tekst-only" attribution toe).
     Tap → opent TMDb.org. */
-function CreditsSection() {
-  const roles = useRoles();
-  const t = useT();
-  return (
-    <>
-      <SectionHead label={t('Bronnen', 'Credits')} />
-      <View style={styles.privacyWrap}>
-        <View style={styles.privacyBlock}>
-          <Text style={[styles.privacyLabel, { color: roles.fg }]}>
-            {t('Film-data', 'Film data')}
-          </Text>
-          <Pressable
-            onPress={() => Linking.openURL('https://www.themoviedb.org')}
-            hitSlop={6}
-          >
-            <Text style={[styles.privacySub, { color: roles.fgMuted }]}>
-              {t(
-                'Posters, sfeerbeelden en trailers van ',
-                'Posters, stills and trailers powered by '
-              )}
-              <Text style={{ color: roles.accent }}>The Movie Database (TMDb)</Text>
-              {t(
-                '. Andreas wordt niet onderschreven of gecertificeerd door TMDb.',
-                '. This product uses the TMDb API but is not endorsed or certified by TMDb.'
-              )}
-            </Text>
-          </Pressable>
-        </View>
-      </View>
-    </>
-  );
-}
-
-function SectionHead({
-  label,
-  count,
-  action,
-  onAction,
-}: {
-  label: string;
-  count?: number;
-  action?: string;
-  onAction?: () => void;
-}) {
-  const roles = useRoles();
-  return (
-    <View style={styles.sectionHead}>
-      <Text style={[styles.sectionLabel, { color: roles.fg }]}>
-        {label}
-        {count !== undefined && (
-          <Text style={[styles.sectionCount, { color: roles.fgPlaceholder }]}>
-            {' · '}
-            {count}
-          </Text>
-        )}
-      </Text>
-      {action && (
-        <Pressable onPress={onAction} hitSlop={8}>
-          <Text style={[styles.sectionAction, { color: roles.accent }]}>
-            {action}
-          </Text>
-        </Pressable>
-      )}
-    </View>
-  );
-}
-
-/* ────────────────────────────────────────────────────────────────────
- * Spiegel — geaggregeerde readback van je eigen saves: top venues,
- * top genres, wijken, frequency-rhythm, monthly timeline, en
- * discovery-mix (via welk scherm vond je events). Strikt reflectie,
- * geen aanbevelingen.
- * ────────────────────────────────────────────────────────────────── */
-
 const WIJK_LABEL: Record<string, { nl: string; en: string }> = {
   centrum: { nl: 'Centrum', en: 'Centrum' },
   noord: { nl: 'Noord', en: 'Noord' },
@@ -1076,6 +1007,10 @@ const WIJK_LABEL: Record<string, { nl: string; en: string }> = {
   zuidoost: { nl: 'Zuidoost', en: 'Zuidoost' },
   'nieuw-west': { nl: 'Nieuw-West', en: 'Nieuw-West' },
 };
+
+const WEEKDAY_SHORT_NL = ['Zo', 'Ma', 'Di', 'Wo', 'Do', 'Vr', 'Za'];
+
+const WEEKDAY_SHORT_EN = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 const SOURCE_LABEL: Record<string, { nl: string; en: string }> = {
   venue: { nl: 'via venue', en: 'via venue' },
@@ -1094,8 +1029,24 @@ const SOURCE_LABEL: Record<string, { nl: string; en: string }> = {
   other: { nl: 'anders', en: 'other' },
 };
 
-const WEEKDAY_SHORT_NL = ['Zo', 'Ma', 'Di', 'Wo', 'Do', 'Vr', 'Za'];
-const WEEKDAY_SHORT_EN = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+function CreditsSection() {
+  const t = useT();
+  return (
+    <SettingsGroup
+      header={t('Bronnen', 'Credits')}
+      footer={t(
+        'Posters, stills en trailers komen van The Movie Database. Dit product gebruikt de TMDb-API maar is niet door TMDb goedgekeurd of gecertificeerd.',
+        'Posters, stills and trailers are powered by The Movie Database. This product uses the TMDb API but is not endorsed or certified by TMDb.'
+      )}
+    >
+      <SettingsAction
+        label={t('Film-data', 'Film data')}
+        value="The Movie Database"
+        onPress={() => void Linking.openURL('https://www.themoviedb.org')}
+      />
+    </SettingsGroup>
+  );
+}
 
 function buildIdentitySentence(m: Mirror, locale: 'nl' | 'en'): string | null {
   if (m.totals.saves < 3) return null;
@@ -1400,7 +1351,6 @@ function MirrorBlock({
     header-switch naar het profiel (eens-per-dag-keuze, geen vluchtige
     interactie). Puur het visuele thema: licht of donker. */
 function AppearanceSection() {
-  const roles = useRoles();
   const t = useT();
   const mode = useMode();
   const setMode = useModeStore((s) => s.setMode);
@@ -1411,28 +1361,24 @@ function AppearanceSection() {
   ];
 
   return (
-    <>
-      <SectionHead label={t('Weergave', 'Appearance')} />
-      <View style={styles.privacyWrap}>
-        <View style={styles.privacyBlock}>
-          <Text style={[styles.privacyLabel, { color: roles.fg }]}>
-            {t('Dag of nacht', 'Day or night')}
-          </Text>
-          <Text style={[styles.privacySub, { color: roles.fgMuted }]}>
-            {t(
-              'Het visuele thema van de app: nacht is donker (acid-geel), dag is licht (wit, karmijn). Puur smaak — het aanbod blijft hetzelfde.',
-              'The app’s visual theme: night is dark (acid yellow), day is light (white, crimson). Purely taste — the content stays the same.'
-            )}
-          </Text>
-          <SegmentPicker value={mode} options={options} onChange={setMode} />
-        </View>
-      </View>
-    </>
+    <SettingsGroup
+      header={t('Weergave', 'Appearance')}
+      footer={t(
+        'Nacht is donker met acid-geel, dag is licht met karmijn. Puur smaak — het aanbod blijft hetzelfde.',
+        'Night is dark with acid yellow, day is light with crimson. Purely taste — the content stays the same.'
+      )}
+    >
+      <SettingsChoice
+        label={t('Dag of nacht', 'Day or night')}
+        value={mode}
+        options={options}
+        onChange={setMode}
+      />
+    </SettingsGroup>
   );
 }
 
 function LanguageSection() {
-  const roles = useRoles();
   const t = useT();
   const preference = useLocalePreference();
   const setPreference = useLocaleStore((s) => s.setPreference);
@@ -1444,148 +1390,170 @@ function LanguageSection() {
   ];
 
   return (
-    <>
-      <SectionHead label={t('Taal', 'Language')} />
-      <View style={styles.privacyWrap}>
-        <View style={styles.privacyBlock}>
-          <Text style={[styles.privacyLabel, { color: roles.fg }]}>
-            {t('Taal van de app', 'App language')}
-          </Text>
-          <Text style={[styles.privacySub, { color: roles.fgMuted }]}>
-            {t(
-              'Automatisch volgt de taal van je toestel — Nederlands of Engels.',
-              'Automatic follows your device language — Dutch or English.'
-            )}
-          </Text>
-          <SegmentPicker
-            value={preference}
-            options={options}
-            onChange={setPreference}
-          />
-        </View>
-      </View>
-    </>
+    <SettingsGroup
+      header={t('Taal', 'Language')}
+      footer={t(
+        'Automatisch volgt de taal van je toestel.',
+        'Automatic follows your device language.'
+      )}
+    >
+      <SettingsChoice
+        label={t('Taal van de app', 'App language')}
+        value={preference}
+        options={options}
+        onChange={setPreference}
+      />
+    </SettingsGroup>
   );
 }
 
-function NotificationsSection() {
-  const roles = useRoles();
+function NotificationsSection({
+  me,
+  onUpdated,
+}: {
+  me: ApiMe | null;
+  onUpdated: () => void;
+}) {
   const t = useT();
   const [status, setStatus] = useState<
-    'granted' | 'denied' | 'undetermined' | 'loading'
-  >('loading');
+    'granted' | 'denied' | 'undetermined' | null
+  >(null);
   const [busy, setBusy] = useState(false);
 
-  // Refresh bij mount + bij elke return-naar-foreground (de gebruiker
-  // kan in iOS-Settings de toggle hebben omgezet; we willen de juiste
-  // status tonen zodra ze terug zijn).
+  // De schakelaars per soort. Eén "meldingen aan/uit" zou betekenen dat
+  // de eerste melding die je te veel vindt het einde is van álle
+  // meldingen: dan zet je 'm uit in iOS, en daar komen we nooit meer
+  // voorbij.
+  const [push, setPush] = useState({
+    dailyNew: me?.pushDailyNew ?? true,
+    dayBefore: me?.pushDayBefore ?? true,
+    tonight: me?.pushTonight ?? true,
+  });
   useEffect(() => {
-    let mounted = true;
+    if (!me) return;
+    setPush({
+      dailyNew: me.pushDailyNew,
+      dayBefore: me.pushDayBefore,
+      tonight: me.pushTonight,
+    });
+  }, [me]);
+
+  useEffect(() => {
+    let alive = true;
     const refresh = async () => {
       const { status: s } = await Notifications.getPermissionsAsync();
-      if (!mounted) return;
-      setStatus(
-        s === 'granted'
-          ? 'granted'
-          : s === 'denied'
-            ? 'denied'
-            : 'undetermined'
-      );
+      if (alive) setStatus(s as typeof status);
     };
-    refresh();
+    void refresh();
+    // Zet je het in de iOS-instellingen om, dan kom je terug in de app
+    // zonder dat hier iets is gebeurd — vandaar opnieuw kijken bij
+    // terugkeer.
     const sub = AppState.addEventListener('change', (next) => {
-      if (next === 'active') refresh();
+      if (next === 'active') void refresh();
     });
     return () => {
-      mounted = false;
+      alive = false;
       sub.remove();
     };
   }, []);
 
-  const onPress = async () => {
+  const onPermission = async () => {
     if (busy) return;
-    if (status === 'undetermined') {
-      // Eerste keer: vraag direct permissie + registreer token.
-      setBusy(true);
-      const token = await registerForPushNotificationsAsync();
-      setBusy(false);
-      const { status: s } = await Notifications.getPermissionsAsync();
-      setStatus(
-        s === 'granted'
-          ? 'granted'
-          : s === 'denied'
-            ? 'denied'
-            : 'undetermined'
-      );
-      if (!token && s !== 'granted') {
-        // Gebruiker heeft 'm net geweigerd — wijs naar Settings als
-        // ze van gedachten veranderen.
-        Linking.openSettings();
+    setBusy(true);
+    try {
+      if (status === 'denied' || status === 'granted') {
+        await Linking.openSettings();
+      } else {
+        await registerForPushNotificationsAsync();
+        const { status: s } = await Notifications.getPermissionsAsync();
+        setStatus(s as typeof status);
       }
-      return;
+    } finally {
+      setBusy(false);
     }
-    // granted of denied: alleen via OS-Settings te wijzigen.
-    Linking.openSettings();
   };
 
-  const label =
-    status === 'granted'
-      ? t('Aan', 'On')
-      : status === 'denied'
-        ? t('Uit', 'Off')
-        : status === 'undetermined'
-          ? t('Niet ingesteld', 'Not set')
-          : '…';
-  const cta =
-    status === 'granted'
-      ? t('Wijzig in instellingen', 'Change in settings')
-      : status === 'denied'
-        ? t('Open instellingen', 'Open settings')
-        : status === 'undetermined'
-          ? t('Aanzetten', 'Turn on')
-          : '…';
+  const onToggle = async (
+    key: 'dailyNew' | 'dayBefore' | 'tonight',
+    next: boolean
+  ) => {
+    const prev = push;
+    setPush({ ...push, [key]: next });
+    const field = (
+      {
+        dailyNew: 'pushDailyNew',
+        dayBefore: 'pushDayBefore',
+        tonight: 'pushTonight',
+      } as const
+    )[key];
+    try {
+      await updateMe({ [field]: next });
+      onUpdated();
+    } catch {
+      setPush(prev);
+    }
+  };
+
+  // Zonder toestemming van het toestel doet elke schakelaar hieronder
+  // niets. Dan grijs, zodat je ziet dat de knop er is en waarom hij nu
+  // niet werkt — in plaats van hem te verbergen en je te laten zoeken.
+  const off = status !== 'granted';
 
   return (
-    <>
-      <SectionHead label={t('Notificaties', 'Notifications')} />
-      <View style={styles.privacyWrap}>
-        <View style={styles.privacyRow}>
-          <View style={styles.privacyBody}>
-            <Text style={[styles.privacyLabel, { color: roles.fg }]}>
-              {t(
-                'Vriend-aanvragen, uitnodigingen en accepts',
-                'Friend requests, invites and accepts'
-              )}
-            </Text>
-            <Text style={[styles.privacySub, { color: roles.fgMuted }]}>
-              {t('Status: ', 'Status: ')}
-              <Text style={{ color: roles.accent, fontFamily: fontFamily.bold }}>
-                {label}
-              </Text>
-              {t(
-                '. Alleen pings bij persoonlijke acties — geen algoritmische pushes.',
-                '. Only pings for personal actions — no algorithmic pushes.'
-              )}
-            </Text>
-          </View>
-          <Pressable
-            onPress={onPress}
-            disabled={status === 'loading' || busy}
-            style={[
-              styles.notifBtn,
-              {
-                borderColor: roles.bgChip,
-                opacity: status === 'loading' || busy ? 0.4 : 1,
-              },
-            ]}
-          >
-            <Text style={[styles.notifBtnText, { color: roles.fgMuted }]}>
-              {cta}
-            </Text>
-          </Pressable>
-        </View>
-      </View>
-    </>
+    <SettingsGroup
+      header={t('Meldingen', 'Notifications')}
+      footer={
+        off
+          ? t(
+              'Andreas mag nog niets sturen. Zet het aan op het toestel en kies hieronder wat je wilt horen.',
+              'Andreas is not allowed to send anything yet. Turn it on at device level and pick what you want below.'
+            )
+          : t(
+              'Een herinnering die je zelf op een avond zet blijft altijd staan — die vroeg je zelf.',
+              'A reminder you set yourself on a night always stays — you asked for that one.'
+            )
+      }
+    >
+      <SettingsAction
+        label={t('Op dit toestel', 'On this device')}
+        value={
+          status === 'granted'
+            ? t('Aan', 'On')
+            : status === 'denied'
+              ? t('Uit', 'Off')
+              : t('Niet ingesteld', 'Not set')
+        }
+        action={
+          status === 'granted'
+            ? undefined
+            : status === 'denied'
+              ? t('Instellingen', 'Settings')
+              : t('Aanzetten', 'Turn on')
+        }
+        onPress={status === 'granted' ? undefined : () => void onPermission()}
+      />
+      <SettingsSwitch
+        label={t('De avond ervoor', 'The night before')}
+        sub={t('Om 18:00, voor wat je hebt gered.', 'At 18:00, for what you saved.')}
+        value={push.dayBefore}
+        disabled={off}
+        onValueChange={(v) => void onToggle('dayBefore', v)}
+      />
+      <SettingsSwitch
+        label={t('Op de dag zelf', 'On the day itself')}
+        sub={t('Drie uur van tevoren.', 'Three hours ahead.')}
+        value={push.tonight}
+        disabled={off}
+        onValueChange={(v) => void onToggle('tonight', v)}
+      />
+      <SettingsSwitch
+        label={t('Nieuw binnengekomen', 'New arrivals')}
+        sub={t('Elke ochtend om 10:00.', 'Every morning at 10:00.')}
+        value={push.dailyNew}
+        disabled={off}
+        onValueChange={(v) => void onToggle('dailyNew', v)}
+      />
+    </SettingsGroup>
   );
 }
 
@@ -1598,96 +1566,34 @@ function PrivacySection({
   me: ApiMe;
   onUpdated: () => void;
 }) {
-  const mode = useMode();
-  const roles = useRoles();
-  const isNacht = mode === 'nacht';
   const t = useT();
 
-  // Optimistische lokale state — voor snappy UI. Bij server-fout rollen
-  // we terug naar de vorige waarde.
+  // Optimistisch: de schakelaar verspringt meteen, en rolt terug als de
+  // server nee zegt. Een instelling die een halve seconde nadenkt voelt
+  // stuk, ook als hij het niet is.
   const [savesVis, setSavesVis] = useState<Visibility>(me.savesVisibility);
   const [mirrorVis, setMirrorVis] = useState<Visibility>(me.mirrorVisibility);
   const [discoverable, setDiscoverable] = useState(me.discoverable);
-  // Meldingen per soort. Eén "meldingen aan/uit" zou betekenen dat de
-  // eerste melding die je te veel vindt het einde is van álle meldingen:
-  // dan zet je 'm uit in iOS en daar komen we nooit meer voorbij.
-  const [push, setPush] = useState({
-    dailyNew: me.pushDailyNew,
-    dayBefore: me.pushDayBefore,
-    tonight: me.pushTonight,
-  });
 
   useEffect(() => {
     setSavesVis(me.savesVisibility);
     setMirrorVis(me.mirrorVisibility);
     setDiscoverable(me.discoverable);
-    setPush({
-      dailyNew: me.pushDailyNew,
-      dayBefore: me.pushDayBefore,
-      tonight: me.pushTonight,
-    });
-  }, [
-    me.savesVisibility,
-    me.mirrorVisibility,
-    me.discoverable,
-    me.pushDailyNew,
-    me.pushDayBefore,
-    me.pushTonight,
-  ]);
+  }, [me.savesVisibility, me.mirrorVisibility, me.discoverable]);
 
-  const onPushToggle = async (
-    key: 'dailyNew' | 'dayBefore' | 'tonight',
-    next: boolean
+  const apply = async <T,>(
+    next: T,
+    prev: T,
+    set: (v: T) => void,
+    patch: Parameters<typeof updateMe>[0]
   ) => {
-    const prev = push;
-    setPush({ ...push, [key]: next });
-    const field = (
-      { dailyNew: 'pushDailyNew', dayBefore: 'pushDayBefore', tonight: 'pushTonight' } as const
-    )[key];
+    if (next === prev) return;
+    set(next);
     try {
-      await updateMe({ [field]: next });
+      await updateMe(patch);
       onUpdated();
     } catch {
-      setPush(prev);
-    }
-  };
-
-  const trackOn = roles.accent;
-  const trackOff = isNacht ? '#2a2a2d' : palette.paper;
-  const thumb = isNacht ? palette.ink : palette.paper3;
-
-  const onSavesPick = async (next: Visibility) => {
-    if (next === savesVis) return;
-    const prev = savesVis;
-    setSavesVis(next);
-    try {
-      await updateMe({ savesVisibility: next });
-      onUpdated();
-    } catch {
-      setSavesVis(prev);
-    }
-  };
-
-  const onMirrorPick = async (next: Visibility) => {
-    if (next === mirrorVis) return;
-    const prev = mirrorVis;
-    setMirrorVis(next);
-    try {
-      await updateMe({ mirrorVisibility: next });
-      onUpdated();
-    } catch {
-      setMirrorVis(prev);
-    }
-  };
-
-  const onDiscoverableToggle = async (next: boolean) => {
-    const prev = discoverable;
-    setDiscoverable(next);
-    try {
-      await updateMe({ discoverable: next });
-      onUpdated();
-    } catch {
-      setDiscoverable(prev);
+      set(prev);
     }
   };
 
@@ -1696,166 +1602,39 @@ function PrivacySection({
     { value: 'friends', label: t('Vrienden', 'Friends') },
     { value: 'private', label: t('Niemand', 'Nobody') },
   ];
-  const discoverableOpts: { value: 'on' | 'off'; label: string }[] = [
-    { value: 'on', label: t('Aan', 'On') },
-    { value: 'off', label: t('Uit', 'Off') },
-  ];
 
   return (
-    <>
-      <SectionHead label={t('Privacy', 'Privacy')} />
-      <View style={styles.privacyWrap}>
-        <View style={styles.privacyBlock}>
-          <Text style={[styles.privacyLabel, { color: roles.fg }]}>
-            {t('Wie ziet mijn saves', 'Who sees my saves')}
-          </Text>
-          <Text style={[styles.privacySub, { color: roles.fgMuted }]}>
-            {t(
-              'Friend-pills op events en je planning-lijst op je profiel.',
-              'Friend-pills on events and your planning list on your profile.'
-            )}
-          </Text>
-          <SegmentPicker
-            value={savesVis}
-            options={visibilityOpts}
-            onChange={onSavesPick}
-          />
-        </View>
-
-        <View style={[styles.privacyDivider, { backgroundColor: roles.bgChip }]} />
-
-        <View style={styles.privacyBlock}>
-          <Text style={[styles.privacyLabel, { color: roles.fg }]}>
-            {t(
-              'Wie ziet mijn profielinzicht',
-              'Who sees my profile insight'
-            )}
-          </Text>
-          <Text style={[styles.privacySub, { color: roles.fgMuted }]}>
-            {t(
-              'Top venues en genres op je profiel.',
-              'Top venues and genres on your profile.'
-            )}
-          </Text>
-          <SegmentPicker
-            value={mirrorVis}
-            options={visibilityOpts}
-            onChange={onMirrorPick}
-          />
-        </View>
-
-        <View style={[styles.privacyDivider, { backgroundColor: roles.bgChip }]} />
-
-        <View style={styles.privacyBlock}>
-          <Text style={[styles.privacyLabel, { color: roles.fg }]}>
-            {t('Vindbaar via zoeken', 'Findable via search')}
-          </Text>
-          <Text style={[styles.privacySub, { color: roles.fgMuted }]}>
-            {t(
-              'Anderen kunnen jou vinden via @handle. Uit betekent dat alleen mensen die jij toevoegt vrienden met je kunnen worden.',
-              'Others can find you via @handle. Off means only people you add can become friends with you.'
-            )}
-          </Text>
-          <SegmentPicker
-            value={discoverable ? 'on' : 'off'}
-            options={discoverableOpts}
-            onChange={(v) => onDiscoverableToggle(v === 'on')}
-          />
-        </View>
-
-        <View style={[styles.privacyDivider, { backgroundColor: roles.bgChip }]} />
-
-        <View style={styles.privacyBlock}>
-          <Text style={[styles.privacyLabel, { color: roles.fg }]}>
-            {t('Meldingen', 'Notifications')}
-          </Text>
-          <Text style={[styles.privacySub, { color: roles.fgMuted }]}>
-            {t(
-              'Zet los aan of uit wat je wilt horen. Een herinnering die je zelf op een event zet blijft altijd staan — die vroeg je zelf.',
-              'Switch each of these on or off. A reminder you set yourself on an event always stays — you asked for that one.'
-            )}
-          </Text>
-          {(
-            [
-              [
-                'dayBefore',
-                t('De avond ervoor', 'The night before'),
-                t('Om 18:00, voor wat je hebt gered.', 'At 18:00, for what you saved.'),
-              ],
-              [
-                'tonight',
-                t('Op de dag zelf', 'On the day itself'),
-                t('Drie uur van tevoren.', 'Three hours ahead.'),
-              ],
-              [
-                'dailyNew',
-                t('Nieuw binnengekomen', 'New arrivals'),
-                t('Elke ochtend om 10:00.', 'Every morning at 10:00.'),
-              ],
-            ] as const
-          ).map(([key, label, sub]) => (
-            <View key={key} style={styles.pushRow}>
-              <View style={{ flex: 1, gap: 2 }}>
-                <Text style={[styles.pushLabel, { color: roles.fg }]}>
-                  {label}
-                </Text>
-                <Text style={[styles.pushSub, { color: roles.fgMuted }]}>
-                  {sub}
-                </Text>
-              </View>
-              <Switch
-                value={push[key]}
-                onValueChange={(v) => void onPushToggle(key, v)}
-                trackColor={{ true: trackOn, false: trackOff }}
-                thumbColor={thumb}
-              />
-            </View>
-          ))}
-        </View>
-      </View>
-    </>
-  );
-}
-
-function SegmentPicker<T extends string>({
-  value,
-  options,
-  onChange,
-}: {
-  value: T;
-  options: { value: T; label: string }[];
-  onChange: (next: T) => void;
-}) {
-  const roles = useRoles();
-  return (
-    <View style={[styles.visGroup, { borderColor: roles.bgChip }]}>
-      {options.map((opt, idx) => {
-        const active = opt.value === value;
-        return (
-          <Pressable
-            key={opt.value}
-            onPress={() => onChange(opt.value)}
-            style={[
-              styles.visBtn,
-              {
-                backgroundColor: active ? roles.accent : 'transparent',
-                borderLeftWidth: idx === 0 ? 0 : StyleSheet.hairlineWidth,
-                borderLeftColor: roles.bgChip,
-              },
-            ]}
-          >
-            <Text
-              style={[
-                styles.visBtnText,
-                { color: active ? roles.onAccent : roles.fg },
-              ]}
-            >
-              {opt.label}
-            </Text>
-          </Pressable>
-        );
-      })}
-    </View>
+    <SettingsGroup
+      header={t('Privacy', 'Privacy')}
+      footer={t(
+        'Favorieten zijn de vrienden die je zelf als favoriet hebt gemarkeerd. Vindbaar uit betekent dat alleen mensen die jij toevoegt vrienden met je kunnen worden.',
+        'Favourites are the friends you marked as such. Findable off means only people you add can become friends with you.'
+      )}
+    >
+      <SettingsChoice
+        label={t('Wie ziet wat je redt', 'Who sees what you save')}
+        value={savesVis}
+        options={visibilityOpts}
+        onChange={(v) =>
+          void apply(v, savesVis, setSavesVis, { savesVisibility: v })
+        }
+      />
+      <SettingsChoice
+        label={t('Wie ziet je spiegel', 'Who sees your mirror')}
+        value={mirrorVis}
+        options={visibilityOpts}
+        onChange={(v) =>
+          void apply(v, mirrorVis, setMirrorVis, { mirrorVisibility: v })
+        }
+      />
+      <SettingsSwitch
+        label={t('Vindbaar via zoeken', 'Findable via search')}
+        value={discoverable}
+        onValueChange={(v) =>
+          void apply(v, discoverable, setDiscoverable, { discoverable: v })
+        }
+      />
+    </SettingsGroup>
   );
 }
 
@@ -2139,32 +1918,6 @@ const styles = StyleSheet.create({
   },
 
   // Section header — gelijk aan rails-stijl (display, dik, 18pt).
-  sectionHead: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'baseline',
-    paddingHorizontal: 22,
-    paddingTop: 20,
-    paddingBottom: 4,
-    gap: 12,
-  },
-  sectionLabel: {
-    fontFamily: fontFamily.display,
-    fontSize: 18,
-    letterSpacing: -0.36,
-    flexShrink: 1,
-  },
-  sectionCount: {
-    fontFamily: fontFamily.mono,
-    fontSize: 10,
-    letterSpacing: 1.4,
-  },
-  sectionAction: {
-    fontFamily: fontFamily.monoMedium,
-    fontSize: 10,
-    letterSpacing: 1.2,
-    textTransform: 'uppercase',
-  },
 
   // Friend / request row
   friend: {
@@ -2487,26 +2240,6 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     gap: 8,
   },
-  visGroup: {
-    marginTop: 4,
-    flexDirection: 'row',
-    borderRadius: 999,
-    borderWidth: 1,
-    overflow: 'hidden',
-    alignSelf: 'stretch',
-  },
-  visBtn: {
-    flex: 1,
-    paddingVertical: 9,
-    paddingHorizontal: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  visBtnText: {
-    fontFamily: fontFamily.medium,
-    fontSize: 13,
-    letterSpacing: -0.1,
-  },
   privacyRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2525,14 +2258,6 @@ const styles = StyleSheet.create({
     lineHeight: 17,
     marginTop: 4,
   },
-  pushRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingTop: 14,
-  },
-  pushLabel: { fontFamily: fontFamily.bold, fontSize: 15 },
-  pushSub: { fontFamily: fontFamily.body, fontSize: 12.5 },
   privacyDivider: { height: StyleSheet.hairlineWidth },
   notifBtn: {
     height: 44,
