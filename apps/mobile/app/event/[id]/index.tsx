@@ -34,6 +34,11 @@ import Animated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { EventReminder } from '@/components/EventReminder';
+import {
+  ICON_INSET,
+  SettingsAction,
+  SettingsGroup,
+} from '@/components/SettingsList';
 import { ProfileAvatar } from '@/components/ProfileAvatar';
 import { SpinningCross } from '@/components/SpinningCross';
 import type {
@@ -929,15 +934,11 @@ function CrewAndInvite({
     invitations,
   ]);
 
-  const hasCrew = rows.length > 0;
   // Synthetische "::next"-occurrences hebben geen echte id, dus daar valt
   // niks op te markeren.
   const canMarkGoing = Boolean(
     selectedOccurrence && !selectedOccurrence.id.endsWith('::next'),
   );
-  const borderColor = isNacht ? '#232327' : palette.paper;
-  const innerBorderColor = isNacht ? '#1d1d20' : palette.paper;
-  const surface = isNacht ? '#101012' : palette.paper2;
 
   return (
     <>
@@ -947,64 +948,32 @@ function CrewAndInvite({
       <Text style={[styles.crewHeading, { color: roles.fg }]}>
         {t('Jouw plan', 'Your plan')}
       </Text>
-      <View
-        style={[
-          styles.crewInviteContainer,
-          {
-            borderColor,
-            marginTop: 6,
-          },
-        ]}
-      >
-        {canMarkGoing && (
-          <GoingRow
-            occurrenceId={selectedOccurrence!.id}
-            surface={surface}
-            innerBorderColor={innerBorderColor}
-          />
-        )}
-        {hasCrew && (
-          <View>
-            {rows.map((row, i) => (
-              <CrewRowItem
-                key={row.user.id}
-                row={row}
-                first={i === 0 && !canMarkGoing}
-                eventId={event.id}
-              />
-            ))}
-          </View>
-        )}
-        <Pressable
+      {/* Zelfde blok als het profielmenu en de instellingen: dit is óók
+          een lijstje waar je iets uit kiest. De stand staat rechts --
+          "Ja" als je gaat, het moment als er een herinnering staat --
+          zodat je in één blik ziet wat er al geregeld is. Wie er meegaan
+          staan ertussen, want dat zijn geen knoppen maar mensen. */}
+      <SettingsGroup inset={ICON_INSET} style={styles.planGroup}>
+        {canMarkGoing ? (
+          <GoingRow occurrenceId={selectedOccurrence!.id} />
+        ) : null}
+        {rows.map((row) => (
+          <CrewRowItem key={row.user.id} row={row} first eventId={event.id} />
+        ))}
+        <SettingsAction
+          icon="person-add-outline"
+          label={t('Nodig iemand uit', 'Invite someone')}
           onPress={onInvite}
-          style={[
-            styles.crewInviteCta,
-            { backgroundColor: surface },
-            (hasCrew || canMarkGoing) && {
-              borderTopColor: innerBorderColor,
-              borderTopWidth: StyleSheet.hairlineWidth,
-            },
-          ]}
-        >
-          <Ionicons name="person-add-outline" size={18} color={roles.fg} />
-          <Text style={[styles.inviteText, { color: roles.fg }]}>
-            {t('Nodig iemand uit', 'Invite someone')}
-          </Text>
-          <Text style={[styles.inviteChev, { color: roles.fgPlaceholder }]}>
-            ›
-          </Text>
-        </Pressable>
-
+        />
         {selectedOccurrence && !selectedOccurrence.id.endsWith('::next') ? (
           <EventReminder
             occurrenceId={selectedOccurrence.id}
             startsAt={selectedOccurrence.startsAt ?? null}
             endsAt={selectedOccurrence.endsAt ?? null}
-            dividerColor={innerBorderColor}
             onNeedsRoom={onNeedsRoom}
           />
         ) : null}
-      </View>
+      </SettingsGroup>
     </>
   );
 }
@@ -1019,12 +988,8 @@ function CrewAndInvite({
  */
 function GoingRow({
   occurrenceId,
-  surface,
-  innerBorderColor,
 }: {
   occurrenceId: string;
-  surface: string;
-  innerBorderColor: string;
 }) {
   const roles = useRoles();
   const t = useT();
@@ -1068,36 +1033,14 @@ function GoingRow({
   };
 
   return (
-    <Pressable
+    <SettingsAction
+      icon={isGoing ? 'checkmark-circle' : 'checkmark-circle-outline'}
+      label={isGoing ? t('Je gaat hierheen', "You're going") : t('Ik ga hierheen', "I'm going")}
+      value={isGoing ? t('Ja', 'Yes') : undefined}
       onPress={onPress}
-      style={[
-        styles.crewInviteCta,
-        {
-          backgroundColor: surface,
-          borderBottomColor: innerBorderColor,
-          borderBottomWidth: StyleSheet.hairlineWidth,
-        },
-      ]}
-    >
-      <Ionicons
-        name={isGoing ? 'checkmark-circle' : 'checkmark-circle-outline'}
-        size={20}
-        color={isGoing ? roles.accent : roles.fg}
-      />
-      <Text
-        style={[
-          styles.inviteText,
-          { color: isGoing ? roles.accent : roles.fg },
-        ]}
-      >
-        {isGoing
-          ? t('Je gaat hierheen', "You're going")
-          : t('Ik ga hierheen', "I'm going")}
-      </Text>
-    </Pressable>
+    />
   );
 }
-
 function CrewRowItem({
   row,
   first,
@@ -2311,6 +2254,7 @@ const styles = StyleSheet.create({
   // onderin met een border-top die dezelfde tone heeft als de rij-
   // separators. Bij geen crew krijgt het hele blok automatisch z'n
   // ronde hoeken aan top én bottom — invite staat dan alleen.
+  planGroup: { marginTop: 6, paddingHorizontal: 0 },
   crewInviteContainer: {
     borderRadius: 8,
     borderWidth: 1,
@@ -2326,9 +2270,10 @@ const styles = StyleSheet.create({
   crewRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    gap: 7,
+    paddingLeft: 11,
+    paddingRight: 16,
+    paddingVertical: 11,
   },
   crewAv: { width: 32, height: 32, borderRadius: 999 },
   crewAvFallback: { alignItems: 'center', justifyContent: 'center' },

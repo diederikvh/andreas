@@ -42,7 +42,6 @@ export function EventReminder({
   occurrenceId,
   startsAt,
   endsAt,
-  dividerColor,
   onNeedsRoom,
 }: {
   occurrenceId: string;
@@ -50,9 +49,6 @@ export function EventReminder({
   /** Eindtijd, als die er is. Bij een expositie die maanden loopt is de
       begintijd allang geweest en zegt die niets over wat nog kan. */
   endsAt?: string | null;
-  /** Het lijntje boven deze rij. Komt van de container, want die bepaalt
-      hoe de rijen van elkaar gescheiden zijn. */
-  dividerColor?: string;
   /**
    * Hoeveel punten dit blok omhoog moet om boven het keyboard uit te
    * komen. Het scherm eromheen scrollt, niet wij: dat is dezelfde
@@ -73,12 +69,6 @@ export function EventReminder({
   const remove = useDeleteReminder();
 
   const existing = reminders?.find((r) => r.occurrenceId === occurrenceId);
-  const divider = dividerColor
-    ? {
-        borderTopColor: dividerColor,
-        borderTopWidth: StyleSheet.hairlineWidth,
-      }
-    : null;
   const [open, setOpen] = useState(false);
   const box = useRef<View>(null);
   const { height: windowHeight } = useWindowDimensions();
@@ -154,32 +144,6 @@ export function EventReminder({
     remove.mutate(existing.id);
   };
 
-  if (existing && !open) {
-    return (
-      <View style={[styles.set, divider]}>
-        <Ionicons name="alarm" size={18} color={roles.fg} />
-        <View style={{ flex: 1, gap: 2 }}>
-          <Text style={[styles.setTitle, { color: roles.fg }]}>
-            {existing.note?.trim()
-              ? existing.note
-              : t('Je krijgt bericht', 'You will get a ping')}
-          </Text>
-          <Text style={[styles.setWhen, { color: roles.fgMuted }]}>
-            {fmt.format(new Date(existing.fireAt))}
-          </Text>
-        </View>
-        <Pressable onPress={() => setOpen(true)} hitSlop={8}>
-          <Text style={[styles.action, { color: roles.fgMuted }]}>
-            {t('Wijzig', 'Change')}
-          </Text>
-        </Pressable>
-        <Pressable onPress={onRemove} hitSlop={8}>
-          <Ionicons name="close" size={18} color={roles.fgMuted} />
-        </Pressable>
-      </View>
-    );
-  }
-
   // De kop blijft staan als het openklapt: zonder kop verdwijnt de rij
   // uit de lijst en is er niets meer om op te tikken om 'm weer dicht te
   // doen -- dan moet je "Laat maar" gebruiken, en dat leest als
@@ -190,12 +154,17 @@ export function EventReminder({
         softTap();
         setOpen((o) => !o);
       }}
-      style={[styles.row, divider]}
+      style={styles.row}
     >
-      <Ionicons name="alarm-outline" size={18} color={roles.fg} />
+      <Ionicons name="alarm-outline" size={22} color={roles.accent} />
       <Text style={[styles.rowText, { color: roles.fg }]}>
         {t('Herinner me hieraan', 'Remind me about this')}
       </Text>
+      {existing ? (
+        <Text style={[styles.value, { color: roles.fgMuted }]}>
+          {fmt.format(new Date(existing.fireAt))}
+        </Text>
+      ) : null}
       {open ? (
         <Ionicons name="chevron-up" size={16} color={roles.fgPlaceholder} />
       ) : (
@@ -298,6 +267,19 @@ export function EventReminder({
             {t('Laat maar', 'Never mind')}
           </Text>
         </Pressable>
+        {existing ? (
+          <Pressable
+            onPress={() => {
+              onRemove();
+              setOpen(false);
+            }}
+            hitSlop={8}
+          >
+            <Text style={[styles.action, { color: roles.fgMuted }]}>
+              {t('Weghalen', 'Remove')}
+            </Text>
+          </Pressable>
+        ) : null}
       </View>
       </View>
     </View>
@@ -323,6 +305,7 @@ const styles = StyleSheet.create({
     letterSpacing: -0.07,
   },
   chev: { fontFamily: fontFamily.mono, fontSize: 14 },
+  value: { fontFamily: fontFamily.body, fontSize: 14 },
   set: {
     flexDirection: 'row',
     alignItems: 'center',
