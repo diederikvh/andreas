@@ -180,26 +180,36 @@ export function EventReminder({
     );
   }
 
-  if (!open) {
-    return (
-      <Pressable
-        onPress={() => {
-          softTap();
-          setOpen(true);
-        }}
-        style={[styles.row, divider]}
-      >
-        <Ionicons name="alarm-outline" size={18} color={roles.fg} />
-        <Text style={[styles.rowText, { color: roles.fg }]}>
-          {t('Herinner me hieraan', 'Remind me about this')}
-        </Text>
+  // De kop blijft staan als het openklapt: zonder kop verdwijnt de rij
+  // uit de lijst en is er niets meer om op te tikken om 'm weer dicht te
+  // doen -- dan moet je "Laat maar" gebruiken, en dat leest als
+  // annuleren in plaats van inklappen.
+  const head = (
+    <Pressable
+      onPress={() => {
+        softTap();
+        setOpen((o) => !o);
+      }}
+      style={[styles.row, divider]}
+    >
+      <Ionicons name="alarm-outline" size={18} color={roles.fg} />
+      <Text style={[styles.rowText, { color: roles.fg }]}>
+        {t('Herinner me hieraan', 'Remind me about this')}
+      </Text>
+      {open ? (
+        <Ionicons name="chevron-up" size={16} color={roles.fgPlaceholder} />
+      ) : (
         <Text style={[styles.chev, { color: roles.fgPlaceholder }]}>›</Text>
-      </Pressable>
-    );
-  }
+      )}
+    </Pressable>
+  );
+
+  if (!open) return head;
 
   return (
-    <View ref={box} style={[styles.sheet, divider]}>
+    <View ref={box}>
+      {head}
+      <View style={styles.sheet}>
       <Text style={[styles.hint, { color: roles.fgMuted }]}>
         {t(
           'Voor de avond zelf hoef je niets te doen — dat gaat vanzelf. Dit is voor bijvoorbeeld het moment dat de kaartverkoop opengaat.',
@@ -288,6 +298,7 @@ export function EventReminder({
             {t('Laat maar', 'Never mind')}
           </Text>
         </Pressable>
+      </View>
       </View>
     </View>
   );
