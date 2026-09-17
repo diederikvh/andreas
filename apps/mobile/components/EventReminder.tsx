@@ -168,11 +168,14 @@ export function EventReminder({
           {fmt.format(new Date(existing.fireAt))}
         </Text>
       ) : null}
-      {open ? (
-        <Ionicons name="chevron-up" size={16} color={roles.fgPlaceholder} />
-      ) : (
-        <Text style={[styles.chev, { color: roles.fgPlaceholder }]}>›</Text>
-      )}
+      {/* Precies het pijltje van SettingsAction: daar is het een Ionicon
+          van 15 en hier stond een mono-teken van 14, en naast elkaar zie
+          je dat als twee verschillende maten. */}
+      <Ionicons
+        name={open ? 'chevron-up' : 'chevron-forward'}
+        size={15}
+        color={roles.fgPlaceholder}
+      />
     </Pressable>
   );
 
@@ -317,7 +320,6 @@ const styles = StyleSheet.create({
     fontSize: 14.5,
     letterSpacing: -0.07,
   },
-  chev: { fontFamily: fontFamily.mono, fontSize: 14 },
   value: { fontFamily: fontFamily.body, fontSize: 14 },
   set: {
     flexDirection: 'row',
