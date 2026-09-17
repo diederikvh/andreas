@@ -101,6 +101,47 @@ export async function ensureReminderRows(): Promise<number> {
 }
 
 /**
+ * Rijen bijzetten voor nieuwe avonden van artiesten die je volgt.
+ *
+ * Alleen occurrences die ná je volg-moment zijn toegevoegd. Wat er al
+ * stond toen je op volgen tikte zie je op z'n pagina; daar hoef je geen
+ * melding voor. Zonder die regel krijgt iedereen die iemand volgt meteen
+ * een stapel meldingen over avonden die hij net zelf heeft bekeken.
+ *
+ * En niets ouder dan zeven dagen: draait dit een week niet, dan wil je
+ * geen inhaalslag maar de draad weer oppakken.
+ */
+export async function ensureArtistRows(): Promise<number> {
+  const rows = await db.execute(sql`
+    INSERT INTO reminders (id, user_id, occurrence_id, kind, fire_at)
+    -- Eén melding per event, niet per avond. Tame Impala die drie
+    -- avonden achter elkaar in Ahoy staat is één nieuwtje; drie keer
+    -- bellen is de snelste manier om iemand z'n meldingen te laten
+    -- uitzetten. We pakken de vroegste avond; de rest staat op de
+    -- eventpagina waar de melding heen wijst.
+    SELECT DISTINCT ON (f.user_id, o.event_id)
+      gen_random_uuid()::text, f.user_id, o.id, 'artiest'::reminder_kind, NOW()
+    FROM artist_follows f
+    JOIN users u ON u.id = f.user_id AND u.push_artists
+    JOIN occurrences o ON o.created_at > f.created_at
+      AND o.created_at > NOW() - INTERVAL '7 days'
+      AND o.starts_at > NOW()
+      AND o.status <> 'cancelled'
+    JOIN events e ON e.id = o.event_id AND e.published
+    JOIN venues v ON v.id = COALESCE(o.venue_id, e.venue_id) AND v.published
+    WHERE jsonb_typeof(o.lineup) = 'array'
+      AND EXISTS (
+        SELECT 1 FROM jsonb_array_elements(o.lineup) le
+        WHERE le->>'artistId' = f.artist_id
+      )
+    ORDER BY f.user_id, o.event_id, o.starts_at
+    ON CONFLICT (user_id, occurrence_id, kind) DO NOTHING
+    RETURNING id
+  `);
+  return rows.rows?.length ?? 0;
+}
+
+/**
  * Alles versturen wat rijp is.
  *
  * De schakelaars worden hier nóg een keer gecheckt. Dat is niet dubbelop:
@@ -125,6 +166,7 @@ export async function sendDueReminders(
     starts_at: Date;
     note: string | null;
     is_going: boolean;
+    artist_name: string | null;
   }>(sql`
     SELECT r.id, r.user_id, r.kind::text AS kind, r.note,
            e.id AS event_id, e.title, v.name AS venue_name, o.starts_at,
@@ -136,7 +178,18 @@ export async function sendDueReminders(
            EXISTS (
              SELECT 1 FROM attendance a
              WHERE a.user_id = r.user_id AND a.occurrence_id = r.occurrence_id
-           ) AS is_going
+           ) AS is_going,
+           -- Bij een artiest-melding: wélke artiest het was. De eerste
+           -- die je volgt is genoeg; staan er twee in de line-up, dan is
+           -- dat een detail dat de melding niet beter maakt.
+           (
+             SELECT ar.name FROM jsonb_array_elements(o.lineup) le
+             JOIN artists ar ON ar.id = le->>'artistId'
+             JOIN artist_follows af
+               ON af.artist_id = ar.id AND af.user_id = r.user_id
+             WHERE jsonb_typeof(o.lineup) = 'array'
+             LIMIT 1
+           ) AS artist_name
     FROM reminders r
     JOIN occurrences o ON o.id = r.occurrence_id
     JOIN events e ON e.id = o.event_id
@@ -151,10 +204,11 @@ export async function sendDueReminders(
       AND e.published AND v.published
       AND (r.kind = 'zelf'
         OR (r.kind = 'dag-ervoor' AND u.push_day_before)
-        OR (r.kind = 'vanavond' AND u.push_tonight))
+        OR (r.kind = 'vanavond' AND u.push_tonight)
+        OR (r.kind = 'artiest' AND u.push_artists))
       -- De automatische gelden zolang je 'm nog hebt gered. Haal je het
       -- hartje weg, dan vertrekt er niets meer.
-      AND (r.kind = 'zelf' OR EXISTS (
+      AND (r.kind = 'zelf' OR r.kind = 'artiest' OR EXISTS (
         SELECT 1 FROM saves s
         WHERE s.user_id = r.user_id AND s.occurrence_id = r.occurrence_id
           AND u.push_for_saves
@@ -176,6 +230,34 @@ export async function sendDueReminders(
     }).format(new Date(row.starts_at));
 
     const going = row.is_going;
+    if (row.kind === 'artiest') {
+      const when = new Intl.DateTimeFormat('nl-NL', {
+        timeZone: 'Europe/Amsterdam',
+        day: 'numeric',
+        month: 'long',
+      }).format(new Date(row.starts_at));
+      const title = row.artist_name
+        ? `${row.artist_name} komt naar ${row.venue_name}`
+        : `Nieuw: ${row.title}`;
+      const body = `${when} om ${time}. Je volgt ${row.artist_name ?? 'deze artiest'}.`;
+      if (!opts.dryRun) {
+        try {
+          await sendPushToUser(row.user_id, {
+            title,
+            body,
+            data: { url: `/event/${row.event_id}` },
+          });
+        } catch (err) {
+          console.error('[reminders] versturen mislukt', row.id, err);
+          continue;
+        }
+        await db.execute(
+          sql`UPDATE reminders SET sent_at = NOW() WHERE id = ${row.id}`
+        );
+      }
+      sent.push({ id: row.id, userId: row.user_id, kind: row.kind, title });
+      continue;
+    }
     const title =
       row.kind === 'dag-ervoor'
         ? going
@@ -228,7 +310,9 @@ export async function sendDueReminders(
 export async function runReminders(
   opts: { dryRun?: boolean } = {}
 ): Promise<{ added: number; sent: ReminderSend[] }> {
-  const added = opts.dryRun ? 0 : await ensureReminderRows();
+  const added = opts.dryRun
+    ? 0
+    : (await ensureReminderRows()) + (await ensureArtistRows());
   const sent = await sendDueReminders(opts);
   return { added, sent };
 }

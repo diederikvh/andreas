@@ -17,6 +17,7 @@ import {
   getAgendaDays,
   deleteReminder,
   getArtist,
+  getArtistFollows,
   getReminders,
   getEvent,
   getEventGenres,
@@ -61,6 +62,7 @@ import {
   setVenueFollow,
   toggleDismiss,
   toggleGoing,
+  setArtistFollow,
   setReminder,
   toggleSave,
   unmuteGroup,
@@ -148,6 +150,7 @@ export const queryKeys = {
   socialFeed: () => ['social-feed'] as const,
   me: (userId: string | null) => ['me', userId] as const,
   reminders: () => ['reminders'] as const,
+  artistFollows: () => ['artist-follows'] as const,
 };
 
 // `useMe()` — gedeelde profiel-query. Sleutel matcht met wat /jij
@@ -394,6 +397,49 @@ export function useEvent(id: string) {
  * waar je vandaan komt. Een minuut oude lijst is hier goedkoper dan een
  * scherm dat liegt over wat je net hebt ingesteld.
  */
+/**
+ * De artiesten die je volgt, als set met ids.
+ *
+ * Eén query voor de hele app in plaats van per artiest: je volgt er een
+ * stuk of tien, dus de hele lijst ophalen is goedkoper dan een vraag per
+ * pagina -- en de knop weet meteen z'n stand als je een artiest opent.
+ */
+export function useArtistFollows(opts: { enabled?: boolean } = {}) {
+  return useQuery({
+    queryKey: queryKeys.artistFollows(),
+    queryFn: getArtistFollows,
+    enabled: opts.enabled ?? true,
+    staleTime: 5 * 60_000,
+  });
+}
+
+export function useToggleArtistFollow() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ artistId, following }: { artistId: string; following: boolean }) =>
+      setArtistFollow(artistId, following),
+    // Meteen omzetten: je tikt op volgen en wil dat zien, niet wachten
+    // op een netwerkantwoord dat toch bijna altijd ja zegt.
+    onMutate: async ({ artistId, following }) => {
+      await qc.cancelQueries({ queryKey: queryKeys.artistFollows() });
+      const prev = qc.getQueryData<string[]>(queryKeys.artistFollows());
+      qc.setQueryData<string[]>(queryKeys.artistFollows(), (old) => {
+        const list = old ?? [];
+        return following
+          ? [...new Set([...list, artistId])]
+          : list.filter((id) => id !== artistId);
+      });
+      return { prev };
+    },
+    onError: (_e, _v, ctx) => {
+      if (ctx?.prev) qc.setQueryData(queryKeys.artistFollows(), ctx.prev);
+    },
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: queryKeys.artistFollows() });
+    },
+  });
+}
+
 export function useReminders(opts: { enabled?: boolean } = {}) {
   return useQuery({
     queryKey: queryKeys.reminders(),

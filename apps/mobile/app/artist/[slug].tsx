@@ -31,8 +31,14 @@ import {
   monthShort,
   VENUE_TYPE_TICK,
 } from '@/lib/eventDisplay';
+import { useIsRegistered } from '@/lib/authClient';
+import { softTap } from '@/lib/haptics';
 import { useLocale, useT } from '@/lib/i18n';
-import { useArtist } from '@/lib/queries';
+import {
+  useArtist,
+  useArtistFollows,
+  useToggleArtistFollow,
+} from '@/lib/queries';
 import type { BadgeTone } from '@/lib/types';
 import { useMode, useRoles } from '@/store/mode';
 import { fontFamily, palette } from '@/theme/tokens';
@@ -132,6 +138,11 @@ export default function ArtistPage() {
                   {data.artist.description}
                 </Text>
               )}
+
+              {/* Volgen staat vóór de streaming-links: dit is wat
+                  Andreas voor je kan doen, en dat is een ander soort
+                  belofte dan "luister hier". */}
+              <ArtistFollowButton artistId={data.artist.id} />
 
               {links.length > 0 && (
                 <StreamingRail tiles={links} />
@@ -246,6 +257,83 @@ export default function ArtistPage() {
  * padding zelf op in contentContainerStyle, zodat de eerste tile netjes
  * uitlijnt met de tekst eromheen.
  */
+/**
+ * Volgen, en waarom dat iets oplevert.
+ *
+ * De knop zegt niet alleen z'n stand maar ook wat hij doet: zonder die
+ * regel is "volgen" een lege belofte, want je merkt er pas maanden later
+ * iets van als er een avond bij komt.
+ */
+function ArtistFollowButton({ artistId }: { artistId: string }) {
+  const roles = useRoles();
+  const t = useT();
+  const authed = useIsRegistered();
+  const { data: follows } = useArtistFollows({ enabled: authed });
+  const toggle = useToggleArtistFollow();
+  const following = (follows ?? []).includes(artistId);
+
+  // Zonder account is er niemand om bericht te sturen. Geen muur, wel een
+  // eerlijke knop: tikken brengt je naar je profiel.
+  if (!authed) {
+    return (
+      <Pressable
+        onPress={() => {
+          softTap();
+          router.push('/jij' as never);
+        }}
+        style={[styles.followBtn, { borderColor: roles.bgChip }]}
+      >
+        <Ionicons name="notifications-outline" size={17} color={roles.fgMuted} />
+        <Text style={[styles.followText, { color: roles.fgMuted }]}>
+          {t('Volgen kan met een account', 'Following needs an account')}
+        </Text>
+      </Pressable>
+    );
+  }
+
+  return (
+    <View style={{ gap: 6 }}>
+      <Pressable
+        onPress={() => {
+          softTap();
+          toggle.mutate({ artistId, following: !following });
+        }}
+        style={[
+          styles.followBtn,
+          following
+            ? { backgroundColor: roles.bgChip, borderColor: roles.bgChip }
+            : { backgroundColor: roles.accent, borderColor: roles.accent },
+        ]}
+      >
+        <Ionicons
+          name={following ? 'checkmark' : 'add'}
+          size={18}
+          color={following ? roles.fg : roles.onAccent}
+        />
+        <Text
+          style={[
+            styles.followText,
+            { color: following ? roles.fg : roles.onAccent },
+          ]}
+        >
+          {following ? t('Je volgt', 'Following') : t('Volgen', 'Follow')}
+        </Text>
+      </Pressable>
+      <Text style={[styles.followHint, { color: roles.fgMuted }]}>
+        {following
+          ? t(
+              'Je krijgt bericht zodra er een avond bij komt.',
+              'You will hear from us when a new night comes in.',
+            )
+          : t(
+              'Krijg bericht zodra er een avond bij komt.',
+              'Get a ping when a new night comes in.',
+            )}
+      </Text>
+    </View>
+  );
+}
+
 function StreamingRail({
   tiles,
 }: {
@@ -340,6 +428,18 @@ function FallbackButton({
 
 
 const styles = StyleSheet.create({
+  followBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    marginTop: 16,
+    paddingVertical: 13,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  followText: { fontFamily: fontFamily.bold, fontSize: 15 },
+  followHint: { fontFamily: fontFamily.body, fontSize: 12.5, lineHeight: 17 },
   root: { flex: 1 },
   dim: { fontFamily: fontFamily.mono, fontSize: 12, letterSpacing: 0.8 },
   // Intro-blok (naam + genres + description + links): paddingHorizontal

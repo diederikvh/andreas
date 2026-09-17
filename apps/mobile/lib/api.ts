@@ -966,6 +966,8 @@ export type ApiMe = {
   pushForSaves: boolean;
   /** En voor waar je "ik ga" op tikte? */
   pushForGoing: boolean;
+  /** Bericht bij een nieuwe avond van een artiest die je volgt. */
+  pushArtists: boolean;
   /** Wanneer je /new voor het laatst bekeek, serverkant. Alleen gevuld
       voor echte accounts; laat het inhaal-venster een nieuwe telefoon
       overleven. ISO-string of null. */
@@ -1103,6 +1105,7 @@ export async function updateMe(input: {
   pushTonight?: boolean;
   pushForSaves?: boolean;
   pushForGoing?: boolean;
+  pushArtists?: boolean;
 }): Promise<ApiMe> {
   const { user } = await authedRequest<{ user: ApiMe }>('/me', {
     method: 'PATCH',
@@ -1131,6 +1134,22 @@ export type ApiReminder = {
   sentAt: string | null;
   startsAt: string;
 };
+
+export async function getArtistFollows(): Promise<string[]> {
+  const { artistIds } = await authedRequest<{ artistIds: string[] }>(
+    '/artist-follows',
+  );
+  return artistIds;
+}
+
+export async function setArtistFollow(
+  artistId: string,
+  following: boolean,
+): Promise<void> {
+  await authedRequest(`/artist-follows/${encodeURIComponent(artistId)}`, {
+    method: following ? 'POST' : 'DELETE',
+  });
+}
 
 export async function getReminders(): Promise<ApiReminder[]> {
   const { reminders } = await authedRequest<{ reminders: ApiReminder[] }>(

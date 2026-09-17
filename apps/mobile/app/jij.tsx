@@ -1401,6 +1401,7 @@ function NotificationsSection({
     dailyNew: me?.pushDailyNew ?? true,
     dayBefore: me?.pushDayBefore ?? true,
     tonight: me?.pushTonight ?? true,
+    artists: me?.pushArtists ?? true,
   });
   useEffect(() => {
     if (!me) return;
@@ -1408,6 +1409,7 @@ function NotificationsSection({
       dailyNew: me.pushDailyNew,
       dayBefore: me.pushDayBefore,
       tonight: me.pushTonight,
+      artists: me.pushArtists,
     });
   }, [me]);
 
@@ -1447,7 +1449,7 @@ function NotificationsSection({
   };
 
   const onToggle = async (
-    key: 'dailyNew' | 'dayBefore' | 'tonight',
+    key: 'dailyNew' | 'dayBefore' | 'tonight' | 'artists',
     next: boolean
   ) => {
     const prev = push;
@@ -1457,6 +1459,7 @@ function NotificationsSection({
         dailyNew: 'pushDailyNew',
         dayBefore: 'pushDayBefore',
         tonight: 'pushTonight',
+        artists: 'pushArtists',
       } as const
     )[key];
     try {
@@ -1524,6 +1527,13 @@ function NotificationsSection({
         value={push.tonight}
         disabled={off}
         onValueChange={(v) => void onToggle('tonight', v)}
+      />
+      <SettingsSwitch
+        label={t('Artiesten die je volgt', 'Artists you follow')}
+        sub={t('Zodra er een avond bij komt.', 'When a new night comes in.')}
+        value={push.artists}
+        disabled={off}
+        onValueChange={(v) => void onToggle('artists', v)}
       />
       <SettingsSwitch
         label={t('Nieuw binnengekomen', 'New arrivals')}

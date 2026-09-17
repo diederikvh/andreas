@@ -247,6 +247,10 @@ export const users = pgTable(
     pushForSaves: boolean().notNull().default(true),
     /** Herinneren aan waar je "ik ga" op tikte. */
     pushForGoing: boolean().notNull().default(true),
+    /** Bericht als er een nieuwe avond bij komt van een artiest die je
+        volgt. Eigen schakelaar: dit is geen herinnering aan iets wat je
+        al koos, maar nieuws dat je zelf niet zag aankomen. */
+    pushArtists: boolean().notNull().default(true),
   },
   (t) => [
     uniqueIndex('users_phone_number_idx').on(t.phoneNumber),
@@ -1429,6 +1433,12 @@ export const reminderKind = pgEnum('reminder_kind', [
   'dag-ervoor',
   'vanavond',
   'zelf',
+  /** Nieuwe avond van een artiest die je volgt. Zit in dezelfde tabel
+      omdat het dezelfde vier gegevens zijn -- wie, wanneer, welke avond,
+      welke tekst -- en omdat de unieke sleutel op (gebruiker, avond,
+      soort) precies het dubbel-sturen voorkomt waar je hier bang voor
+      bent. `fire_at` is het moment van ontdekken: dit nieuws wacht niet. */
+  'artiest',
 ]);
 
 /**
@@ -1474,4 +1484,32 @@ export const reminders = pgTable(
     /** Waar de job op zoekt: wat is rijp en nog niet weg. */
     index('reminders_due_idx').on(t.fireAt, t.sentAt),
   ]
+);
+
+/**
+ * Artiesten die je volgt.
+ *
+ * Zelfde vorm als `venue_follows`, maar zonder blokkeer-stand: een
+ * artiest die je niet wil zien filter je niet weg, die volg je gewoon
+ * niet. Eén rij is één abonnement op nieuws.
+ *
+ * Waarvoor: zodra er een avond bij komt met deze artiest in de line-up
+ * krijg je bericht. Alleen avonden die ná je volg-moment zijn toegevoegd
+ * -- wat er al stond zie je op z'n pagina, en daar hoef je niet 's avonds
+ * voor gewekt te worden.
+ */
+export const artistFollows = pgTable(
+  'artist_follows',
+  {
+    userId: text()
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    artistId: text()
+      .notNull()
+      .references(() => artists.id, { onDelete: 'cascade' }),
+    createdAt: timestamp({ withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.artistId] })]
 );
