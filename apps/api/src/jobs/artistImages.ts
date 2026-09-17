@@ -57,9 +57,11 @@ export async function fillArtistImages(
       );
     }
     filled++;
-    // Spotify staat een flinke snelheid toe maar niet oneindig; een
-    // korte pauze houdt ons ruim onder de grens waar 429 begint.
-    await new Promise((r) => setTimeout(r, 120));
+    // Rustig aan. De app-sleutel is dezelfde die de zoek in de app
+    // gebruikt, dus een te snelle inhaalslag legt die zoek stil met een
+    // 429 -- dat is één keer gebeurd en het kost niemand iets om hier
+    // een halve seconde te wachten.
+    await new Promise((r) => setTimeout(r, 500));
   }
   return { looked, filled, missed: missed.slice(0, 10) };
 }

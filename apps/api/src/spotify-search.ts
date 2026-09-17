@@ -26,6 +26,7 @@ export type SpotifyArtist = {
 /** Token leeft een uur; we houden 'm vast tot vlak voor het einde. */
 let cached: { token: string; until: number } | null = null;
 
+
 async function token(): Promise<string | null> {
   if (cached && Date.now() < cached.until) return cached.token;
   const id = process.env.SPOTIFY_CLIENT_ID;
@@ -78,6 +79,9 @@ export async function searchSpotifyArtists(
       headers: { Authorization: `Bearer ${t}` },
       signal: AbortSignal.timeout(8000),
     });
+    // 429 is niet "niets gevonden" maar "te snel". Belangrijk om te
+    // weten: de app-sleutel wordt gedeeld met de verrijkingsklussen, dus
+    // een inhaalslag op de achtergrond kan de zoek in de app stilleggen.
     if (!r.ok) return [];
     const data = (await r.json()) as {
       artists?: {
