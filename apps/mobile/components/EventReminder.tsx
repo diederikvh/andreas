@@ -184,8 +184,8 @@ export function EventReminder({
       <View style={styles.sheet}>
       <Text style={[styles.hint, { color: roles.fgMuted }]}>
         {t(
-          'Voor de avond zelf hoef je niets te doen — dat gaat vanzelf. Dit is voor bijvoorbeeld het moment dat de kaartverkoop opengaat.',
-          'You do not need this for the night itself — that happens automatically. Use it for things like the moment tickets go on sale.'
+          'De avond zelf gaat vanzelf. Dit is voor bijvoorbeeld de kaartverkoop.',
+          'The night itself happens automatically. Use this for things like ticket sales.'
         )}
       </Text>
 
@@ -247,8 +247,8 @@ export function EventReminder({
           {inPast
             ? t('Kies een moment in de toekomst.', 'Pick a moment in the future.')
             : t(
-                'Dat is ná afloop — kies iets ervoor.',
-                'That is after it ends — pick something before it.'
+                'Dat is ná afloop. Kies iets ervoor.',
+                'That is after it ends. Pick something before it.'
               )}
         </Text>
       ) : null}
@@ -334,7 +334,16 @@ const styles = StyleSheet.create({
   setWhen: { fontFamily: fontFamily.body, fontSize: 12.5 },
   sheet: { paddingHorizontal: 16, paddingBottom: 14, gap: 12 },
   hint: { fontFamily: fontFamily.body, fontSize: 12.5, lineHeight: 18 },
-  pickers: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  // De compacte date picker van iOS tekent z'n pil met een paar punten
+  // lucht binnen z'n eigen vak. Zonder correctie begint hij dus iets
+  // rechter dan het notitieveld eronder, en juist bij twee velden onder
+  // elkaar zie je dat.
+  pickers: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginLeft: -10,
+  },
   note: {
     fontFamily: fontFamily.body,
     fontSize: 14,

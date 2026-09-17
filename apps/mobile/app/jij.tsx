@@ -1337,8 +1337,8 @@ function AppearanceSection() {
     <SettingsGroup
       header={t('Weergave', 'Appearance')}
       footer={t(
-        'Nacht is donker met acid-geel, dag is licht met karmijn. Puur smaak — het aanbod blijft hetzelfde.',
-        'Night is dark with acid yellow, day is light with crimson. Purely taste — the content stays the same.'
+        'Nacht is donker met acid-geel, dag is licht met karmijn. Puur smaak; het aanbod blijft hetzelfde.',
+        'Night is dark with acid yellow, day is light with crimson. Purely taste; the content stays the same.'
       )}
     >
       <SettingsChoice
@@ -1482,8 +1482,8 @@ function NotificationsSection({
               'Andreas is not allowed to send anything yet. Turn it on at device level and pick what you want below.'
             )
           : t(
-              'Een herinnering die je zelf op een avond zet blijft altijd staan — die vroeg je zelf.',
-              'A reminder you set yourself on a night always stays — you asked for that one.'
+              'Een herinnering die je zelf zet blijft altijd staan. Die vroeg je zelf.',
+              'A reminder you set yourself always stays. You asked for that one.'
             )
       }
     >
