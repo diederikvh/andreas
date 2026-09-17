@@ -394,6 +394,7 @@ export type ApiSearchVenue = {
 
 export type SearchResponse = {
   venues: ApiSearchVenue[];
+  artists: ApiSearchArtist[];
   events: ApiEvent[];
   eventsHasMore: boolean;
 };
@@ -1134,6 +1135,42 @@ export type ApiReminder = {
   sentAt: string | null;
   startsAt: string;
 };
+
+/** Artiest-treffer uit onze eigen catalogus. */
+export type ApiSearchArtist = {
+  id: string;
+  name: string;
+  imageUrl: string | null;
+  genres: string[];
+};
+
+/** Artiest die wij niet kennen, gevonden in de Spotify-catalogus. */
+export type ApiElsewhereArtist = {
+  name: string;
+  imageUrl: string | null;
+  genres: string[];
+  spotifyUrl: string;
+};
+
+export async function searchArtistsElsewhere(
+  q: string,
+): Promise<ApiElsewhereArtist[]> {
+  const { artists } = await authedRequest<{ artists: ApiElsewhereArtist[] }>(
+    `/search/elsewhere?q=${encodeURIComponent(q)}`,
+  );
+  return artists;
+}
+
+/** Volgen wie nog niet in onze catalogus staat; de rij wordt aangemaakt. */
+export async function followArtistByName(input: {
+  name: string;
+  spotifyUrl?: string;
+}): Promise<void> {
+  await authedRequest('/artist-follows/by-name', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
 
 export async function getArtistFollows(): Promise<string[]> {
   const { artistIds } = await authedRequest<{ artistIds: string[] }>(

@@ -9,6 +9,7 @@
  */
 
 import { Ionicons } from '@expo/vector-icons';
+import { Image } from 'expo-image';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useMemo } from 'react';
 import {
@@ -98,6 +99,19 @@ export default function ArtistPage() {
         )}
         {data && (
           <>
+            {/* Een gezicht boven de naam, net als bij een zaal of een
+                avond. De foto komt van Spotify en hoort daar te blijven
+                staan: hun voorwaarden staan niet toe dat we 'm zelf
+                hosten, dus dit is een verwijzing en geen kopie. */}
+            {data.artist.imageUrl ? (
+              <Image
+                source={{ uri: data.artist.imageUrl }}
+                style={styles.hero}
+                contentFit="cover"
+                transition={180}
+              />
+            ) : null}
+
             <View style={styles.intro}>
               <Text style={[styles.name, { color: roles.fg }]}>
                 {data.artist.name}
@@ -460,9 +474,19 @@ const styles = StyleSheet.create({
   followText: { fontFamily: fontFamily.bold, fontSize: 15 },
   followHint: { fontFamily: fontFamily.body, fontSize: 12.5, lineHeight: 17 },
   aboutRule: { height: StyleSheet.hairlineWidth, marginTop: 22 },
-  // De kop van "Komende voorstellingen" staat in een blok met 22 padding;
-  // hier zitten we al binnen die padding, dus alleen de verticale ruimte.
-  aboutHead: { marginTop: 16, marginBottom: 2 },
+  // Dezelfde verticale ruimte als sectionHead hierboven (12 boven, 6
+  // onder) plus de lucht die de kop van z'n blokken hoort te scheiden.
+  // Zat op 2 en dan plakte de kop tegen de tegels.
+  aboutHead: { marginTop: 12, marginBottom: 14 },
+  // Vierkant en volle breedte: een artiestfoto is een portret, geen
+  // panorama, en op schermbreedte leest dat als een kop in plaats van
+  // als een plaatje ergens in de pagina.
+  hero: {
+    width: '100%',
+    aspectRatio: 1,
+    marginTop: -12,
+    marginBottom: 18,
+  },
   root: { flex: 1 },
   dim: { fontFamily: fontFamily.mono, fontSize: 12, letterSpacing: 0.8 },
   // Intro-blok (naam + genres + description + links): paddingHorizontal

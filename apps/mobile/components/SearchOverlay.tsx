@@ -32,7 +32,11 @@ import Animated, {
   runOnJS,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useInfiniteQuery, keepPreviousData } from '@tanstack/react-query';
+import {
+  useInfiniteQuery,
+  useQuery,
+  keepPreviousData,
+} from '@tanstack/react-query';
 
 import MaskedView from '@react-native-masked-view/masked-view';
 import { BlurView } from 'expo-blur';
@@ -40,7 +44,21 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { EventListRow } from '@/components/EventListRow';
 import { ProfileAvatar } from '@/components/ProfileAvatar';
 import { SpinningCross } from '@/components/SpinningCross';
-import { search, type ApiSearchVenue, type ApiEvent } from '@/lib/api';
+import {
+  search,
+  searchArtistsElsewhere,
+  type ApiElsewhereArtist,
+  type ApiEvent,
+  type ApiSearchArtist,
+  type ApiSearchVenue,
+} from '@/lib/api';
+import { useIsRegistered } from '@/lib/authClient';
+import { softTap } from '@/lib/haptics';
+import {
+  useArtistFollows,
+  useFollowArtistByName,
+  useToggleArtistFollow,
+} from '@/lib/queries';
 import {
   CATEGORY_TICK,
   VENUE_TYPE_TICK,
@@ -182,16 +200,43 @@ export function SearchOverlay({
     [data]
   );
 
+  const artists: ApiSearchArtist[] = data?.pages[0]?.artists ?? [];
+
+  /**
+   * Artiesten die wij niet kennen, opgehaald bij Spotify.
+   *
+   * Alleen als onze eigen zoek niets oplevert: zoekt iemand een band die
+   * hier nooit speelde, dan is "niets gevonden" het verkeerde antwoord.
+   * "Nog niet, zal ik het laten weten?" is het goede.
+   */
+  const nothingHere =
+    enabled &&
+    !isFetching &&
+    venues.length === 0 &&
+    artists.length === 0 &&
+    events.length === 0;
+  const { data: elsewhere } = useQuery({
+    queryKey: ['search-elsewhere', debouncedQuery],
+    queryFn: () => searchArtistsElsewhere(debouncedQuery),
+    enabled: nothingHere && debouncedQuery.length >= 2,
+    staleTime: 60_000,
+  });
+
   const sections = useMemo(() => {
     if (!enabled) return [];
     const out: {
-      kind: 'venues' | 'events';
-      data: (ApiSearchVenue | ApiEvent)[];
+      kind: 'venues' | 'artists' | 'events' | 'elsewhere';
+      data: (ApiSearchVenue | ApiSearchArtist | ApiEvent | ApiElsewhereArtist)[];
     }[] = [];
+    // Artiesten boven venues: zoek je een naam, dan bedoel je meestal de
+    // band en niet de zaal waar hij toevallig speelde.
+    if (artists.length > 0) out.push({ kind: 'artists', data: artists });
     if (venues.length > 0) out.push({ kind: 'venues', data: venues });
     if (events.length > 0) out.push({ kind: 'events', data: events });
+    if ((elsewhere ?? []).length > 0)
+      out.push({ kind: 'elsewhere', data: elsewhere ?? [] });
     return out;
-  }, [enabled, venues, events]);
+  }, [enabled, venues, artists, events, elsewhere]);
 
   const handleClose = useCallback(() => {
     Keyboard.dismiss();
@@ -219,18 +264,25 @@ export function SearchOverlay({
     item,
     section,
   }: {
-    item: ApiSearchVenue | ApiEvent;
-    section: { kind: 'venues' | 'events' };
-  }) =>
-    section.kind === 'venues' ? (
-      <VenueRow venue={item as ApiSearchVenue} onPress={onResultPress} />
-    ) : (
+    item: ApiSearchVenue | ApiSearchArtist | ApiEvent | ApiElsewhereArtist;
+    section: { kind: 'venues' | 'artists' | 'events' | 'elsewhere' };
+  }) => {
+    if (section.kind === 'artists')
+      return (
+        <ArtistRow artist={item as ApiSearchArtist} onPress={onResultPress} />
+      );
+    if (section.kind === 'elsewhere')
+      return <ElsewhereRow artist={item as ApiElsewhereArtist} />;
+    if (section.kind === 'venues')
+      return <VenueRow venue={item as ApiSearchVenue} onPress={onResultPress} />;
+    return (
       <EventResultRow
         event={item as ApiEvent}
         locale={locale}
         onPress={onResultPress}
       />
     );
+  };
 
   return (
     <View style={styles.root} pointerEvents="box-none">
@@ -325,7 +377,11 @@ export function SearchOverlay({
                 >
                   {section.kind === 'venues'
                     ? t('Venues', 'Venues')
-                    : t('Events', 'Events')}
+                    : section.kind === 'artists'
+                      ? t('Artiesten', 'Artists')
+                      : section.kind === 'elsewhere'
+                        ? t('Niet in Andreas', 'Not in Andreas')
+                        : t('Events', 'Events')}
                 </Text>
               </View>
             )}
@@ -449,6 +505,128 @@ export function SearchOverlay({
 // 20 (fade-zone). Body krijgt deze padding zodat content begint onder
 // de blur-strip; gradient fade-out zorgt voor 'n soft overgang.
 const TOP_ZONE_BELOW_SAFE = 8 + 48 + 20;
+
+/**
+ * Een artiest uit onze eigen catalogus, met de volg-knop erbij.
+ *
+ * De knop zit in de rij en niet pas op de detailpagina: zoek je een band,
+ * dan is volgen meestal wat je komt doen, en een extra tik is precies wat
+ * mensen niet meer doen.
+ */
+function ArtistRow({
+  artist,
+  onPress,
+}: {
+  artist: ApiSearchArtist;
+  onPress: () => void;
+}) {
+  const roles = useRoles();
+  const t = useT();
+  const authed = useIsRegistered();
+  const { data: follows } = useArtistFollows({ enabled: authed });
+  const toggle = useToggleArtistFollow();
+  const following = (follows ?? []).includes(artist.id);
+
+  return (
+    <Pressable
+      onPress={() => {
+        onPress();
+        router.push(`/artist/${artist.id}` as never);
+      }}
+      style={styles.venueRow}
+    >
+      <ProfileAvatar avatarUrl={artist.imageUrl} name={artist.name} size={40} />
+      <View style={styles.venueText}>
+        <Text numberOfLines={1} style={[styles.venueName, { color: roles.fg }]}>
+          {artist.name}
+        </Text>
+        {artist.genres.length > 0 ? (
+          <Text
+            numberOfLines={1}
+            style={[styles.venueSub, { color: roles.fgMuted }]}
+          >
+            {artist.genres.slice(0, 2).join(' · ')}
+          </Text>
+        ) : null}
+      </View>
+      {authed ? (
+        <Pressable
+          onPress={() => {
+            softTap();
+            toggle.mutate({ artistId: artist.id, following: !following });
+          }}
+          hitSlop={8}
+          style={[
+            styles.followPill,
+            following
+              ? { backgroundColor: roles.bgChip }
+              : { backgroundColor: roles.accent },
+          ]}
+        >
+          <Text
+            style={[
+              styles.followPillText,
+              { color: following ? roles.fgMuted : roles.onAccent },
+            ]}
+          >
+            {following ? t('Gevolgd', 'Following') : t('Volg', 'Follow')}
+          </Text>
+        </Pressable>
+      ) : null}
+    </Pressable>
+  );
+}
+
+/**
+ * Een artiest die wij niet kennen.
+ *
+ * Volgen kan alsnog: we leggen de naam vast en zodra een zaal hem
+ * aankondigt hangt de line-up er vanzelf aan. Zo is "niets gevonden" geen
+ * doodlopende weg maar een abonnement op nieuws.
+ */
+function ElsewhereRow({ artist }: { artist: ApiElsewhereArtist }) {
+  const roles = useRoles();
+  const t = useT();
+  const authed = useIsRegistered();
+  const [done, setDone] = useState(false);
+  const follow = useFollowArtistByName();
+
+  return (
+    <View style={styles.venueRow}>
+      <ProfileAvatar avatarUrl={artist.imageUrl} name={artist.name} size={40} />
+      <View style={styles.venueText}>
+        <Text numberOfLines={1} style={[styles.venueName, { color: roles.fg }]}>
+          {artist.name}
+        </Text>
+        <Text
+          numberOfLines={1}
+          style={[styles.venueSub, { color: roles.fgMuted }]}
+        >
+          {done
+            ? t('We laten het weten', 'We will let you know')
+            : t('Speelt hier nu niet', 'Not playing here right now')}
+        </Text>
+      </View>
+      {authed && !done ? (
+        <Pressable
+          onPress={() => {
+            softTap();
+            follow.mutate(
+              { name: artist.name, spotifyUrl: artist.spotifyUrl },
+              { onSuccess: () => setDone(true) },
+            );
+          }}
+          hitSlop={8}
+          style={[styles.followPill, { backgroundColor: roles.accent }]}
+        >
+          <Text style={[styles.followPillText, { color: roles.onAccent }]}>
+            {t('Volg toch', 'Follow anyway')}
+          </Text>
+        </Pressable>
+      ) : null}
+    </View>
+  );
+}
 
 function VenueRow({
   venue,
@@ -636,6 +814,12 @@ const styles = StyleSheet.create({
   },
   // Venue-rij: compact (40px avatar + naam + subline) — anders dan
   // EventListRow zodat venues visueel onderscheidend zijn van events.
+  followPill: {
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 999,
+  },
+  followPillText: { fontFamily: fontFamily.bold, fontSize: 13 },
   venueRow: {
     flexDirection: 'row',
     alignItems: 'center',

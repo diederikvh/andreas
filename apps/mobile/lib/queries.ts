@@ -17,6 +17,7 @@ import {
   getAgendaDays,
   deleteReminder,
   getArtist,
+  followArtistByName,
   getArtistFollows,
   getReminders,
   getEvent,
@@ -435,6 +436,17 @@ export function useToggleArtistFollow() {
       if (ctx?.prev) qc.setQueryData(queryKeys.artistFollows(), ctx.prev);
     },
     onSettled: () => {
+      void qc.invalidateQueries({ queryKey: queryKeys.artistFollows() });
+    },
+  });
+}
+
+/** Volgen wie nog niet in onze catalogus staat. */
+export function useFollowArtistByName() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: followArtistByName,
+    onSuccess: () => {
       void qc.invalidateQueries({ queryKey: queryKeys.artistFollows() });
     },
   });
