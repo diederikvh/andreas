@@ -13,7 +13,6 @@
  */
 import { sendDailyNewPush } from './daily-new-push.js';
 import { linkSubmissionsToEvents } from './linkSubmissions.js';
-import { fillArtistImages } from './artistImages.js';
 import { runReminders } from './reminders.js';
 
 /** Lokale tijd waarop de aanwinsten-push de deur uit gaat. */
@@ -116,26 +115,6 @@ export function startScheduler(): void {
       // anders is één storing genoeg om 'm tot de volgende deploy stil te
       // leggen. De job is idempotent per dag, dus morgen weer.
       console.error('[scheduler] aanwinsten-push mislukt', err);
-    }
-
-    // Foto's bij artiesten, ná de push. Ze hingen alleen aan
-    // /admin/enrich-artists, en als die sync een keer uitvalt gebeurt er
-    // dus niets. Hier draait het hoe dan ook.
-    //
-    // Na de push en niet ervoor: dit praat met Spotify en dat kan traag
-    // zijn of afgeremd worden, en een melding hoort daar niet op te
-    // wachten. Een bescheiden portie per nacht, want de app-sleutel is
-    // gedeeld met de zoek in de app -- een te grote inhaalslag legt die
-    // stil.
-    try {
-      const images = await fillArtistImages({ limit: 200 });
-      if (images.filled > 0) {
-        console.log(
-          `[scheduler] artiestfoto's: ${images.filled} van ${images.looked}`
-        );
-      }
-    } catch (err) {
-      console.error('[scheduler] artiestfoto\'s mislukt', err);
     }
   };
 

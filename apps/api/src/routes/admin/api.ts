@@ -1214,11 +1214,16 @@ adminApi.post('/enrich-artists', async (c) => {
     // een id waar een foto aan hangt. Apart draaien zou betekenen dat een
     // nieuwe artiest een dag lang zonder gezicht in de zoek staat.
     //
+    // Dit endpoint draait elke nacht om 02:00 via .github/workflows/
+    // scrape-stager.yml, dus hier inhaken is genoeg -- een tweede plek in
+    // de planner zou Spotify twee keer per nacht aanspreken, en die
+    // app-sleutel is gedeeld met de zoek in de app.
+    //
     // Mislukt dit, dan is de verrijking zelf nog steeds geslaagd: een
     // ontbrekende foto mag geen rode melding opleveren.
     let images = { looked: 0, filled: 0, missed: [] as string[] };
     try {
-      images = await fillArtistImages({ limit: 300 });
+      images = await fillArtistImages({ limit: 200 });
     } catch (e) {
       console.error('[enrich-artists] foto\'s ophalen mislukt', e);
     }
