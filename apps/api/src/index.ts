@@ -25,6 +25,7 @@ import { shareInvitesRoute } from './routes/share-invites.js';
 import { pushRoute } from './routes/push.js';
 import { startScheduler } from './jobs/scheduler.js';
 import { goingRoute } from './routes/going.js';
+import { remindersRoute } from './routes/reminders.js';
 import { savesRoute } from './routes/saves.js';
 import { submissionsRoute } from './routes/submissions.js';
 import { seoFeedsRoute } from './routes/seo-feeds.js';
@@ -199,6 +200,9 @@ app.patch('/me', async (c) => {
     savesVisibility?: 'favorites' | 'friends' | 'private';
     mirrorVisibility?: 'favorites' | 'friends' | 'private';
     discoverable?: boolean;
+    pushDailyNew?: boolean;
+    pushDayBefore?: boolean;
+    pushTonight?: boolean;
   };
 
   // Bouw alleen de update-set op met velden die meekwamen — zo kan
@@ -228,6 +232,14 @@ app.patch('/me', async (c) => {
       );
     }
     updates.handle = handle;
+  }
+
+  // Meldingsvoorkeuren. Losse velden en geen object, zodat een scherm dat
+  // één schakelaar omzet niet de andere twee hoeft mee te sturen -- en dus
+  // ook niet per ongeluk kan overschrijven wat op een ander toestel net is
+  // veranderd.
+  for (const key of ['pushDailyNew', 'pushDayBefore', 'pushTonight'] as const) {
+    if (body[key] !== undefined) updates[key] = Boolean(body[key]);
   }
 
   const VISIBILITIES = ['favorites', 'friends', 'private'] as const;
@@ -381,6 +393,7 @@ app.route('/zoek', zoekRoute);
 app.route('/mcp', mcpRoute);
 app.route('/series', seriesRoute);
 app.route('/saves', savesRoute);
+app.route('/reminders', remindersRoute);
 app.route('/going', goingRoute);
 app.route('/submissions', submissionsRoute);
 app.route('/mirror', mirrorRoute);

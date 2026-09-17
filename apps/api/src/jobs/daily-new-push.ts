@@ -160,6 +160,9 @@ async function runNewPush(opts: {
     JOIN events e ON e.id = o.event_id AND e.published
     JOIN venues v ON v.id = COALESCE(o.venue_id, e.venue_id) AND v.published
     WHERE TRUE
+      -- Respecteer de schakelaar op het profiel. Zonder dit zou "zet de
+      -- aanwinsten uit" alleen betekenen dat de knop verspringt.
+      AND u.push_daily_new
       ${gates}
       ${selection}
       AND COALESCE(

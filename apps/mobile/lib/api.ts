@@ -953,6 +953,15 @@ export type ApiMe = {
   /** Toegang tot de conversationele zoek ("Andreas-gids"). Opt-in per
       gebruiker via admin; bepaalt of de "Vraag de gids"-banner verschijnt. */
   guideEnabled: boolean;
+  /* ── Wat Andreas mag sturen. Per soort, niet één knop: de eerste
+        melding die je te veel vindt zou anders het einde zijn van álle
+        meldingen, want dan gaat de systeemschakelaar om. */
+  /** De dagelijkse aanwinsten om 10:00. */
+  pushDailyNew: boolean;
+  /** "Morgen ga je naar ...", de avond ervoor om 18:00. */
+  pushDayBefore: boolean;
+  /** "Vanavond om 20:30", drie uur van tevoren. */
+  pushTonight: boolean;
   /** Wanneer je /new voor het laatst bekeek, serverkant. Alleen gevuld
       voor echte accounts; laat het inhaal-venster een nieuwe telefoon
       overleven. ISO-string of null. */
@@ -1085,12 +1094,62 @@ export async function updateMe(input: {
   savesVisibility?: Visibility;
   mirrorVisibility?: Visibility;
   discoverable?: boolean;
+  pushDailyNew?: boolean;
+  pushDayBefore?: boolean;
+  pushTonight?: boolean;
 }): Promise<ApiMe> {
   const { user } = await authedRequest<{ user: ApiMe }>('/me', {
     method: 'PATCH',
     body: JSON.stringify(input),
   });
   return user;
+}
+
+/**
+ * Een herinnering die jij zelf zette.
+ *
+ * De automatische (dag ervoor, vanavond) staan hier niet in: die zijn
+ * geen ding dat je beheert maar een gevolg van je hartje, en ze gaan uit
+ * met de schakelaar op je profiel.
+ */
+export type ApiReminder = {
+  id: string;
+  occurrenceId: string;
+  eventId: string;
+  title: string;
+  venueName: string;
+  /** Wanneer de melding vertrekt. ISO. */
+  fireAt: string;
+  /** Jouw eigen tekst, of null. */
+  note: string | null;
+  sentAt: string | null;
+  startsAt: string;
+};
+
+export async function getReminders(): Promise<ApiReminder[]> {
+  const { reminders } = await authedRequest<{ reminders: ApiReminder[] }>(
+    '/reminders',
+  );
+  return reminders;
+}
+
+export async function setReminder(input: {
+  occurrenceId: string;
+  fireAt: Date;
+  note?: string;
+}): Promise<void> {
+  await authedRequest('/reminders', {
+    method: 'POST',
+    body: JSON.stringify({
+      occurrenceId: input.occurrenceId,
+      fireAt: input.fireAt.toISOString(),
+      note: input.note,
+    }),
+  });
+}
+
+export async function deleteReminder(id: string): Promise<void> {
+  await authedRequest(`/reminders/${id}`, { method: 'DELETE' });
 }
 
 /**

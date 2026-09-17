@@ -15,7 +15,9 @@ import {
   declineFriendRequest,
   getAgendaDay,
   getAgendaDays,
+  deleteReminder,
   getArtist,
+  getReminders,
   getEvent,
   getEventGenres,
   getEvents,
@@ -59,6 +61,7 @@ import {
   setVenueFollow,
   toggleDismiss,
   toggleGoing,
+  setReminder,
   toggleSave,
   unmuteGroup,
   getMirrorByHandle,
@@ -144,6 +147,7 @@ export const queryKeys = {
   group: (id: string) => ['group', id] as const,
   socialFeed: () => ['social-feed'] as const,
   me: (userId: string | null) => ['me', userId] as const,
+  reminders: () => ['reminders'] as const,
 };
 
 // `useMe()` — gedeelde profiel-query. Sleutel matcht met wat /jij
@@ -380,6 +384,42 @@ export function useEvent(id: string) {
     enabled: Boolean(id),
     staleTime: 10 * 60_000,
     refetchOnWindowFocus: true,
+  });
+}
+
+/**
+ * Jouw zelfgezette herinneringen.
+ *
+ * Kort houdbaar: je zet er een en wil 'm meteen terugzien op het event
+ * waar je vandaan komt. Een minuut oude lijst is hier goedkoper dan een
+ * scherm dat liegt over wat je net hebt ingesteld.
+ */
+export function useReminders(opts: { enabled?: boolean } = {}) {
+  return useQuery({
+    queryKey: queryKeys.reminders(),
+    queryFn: getReminders,
+    enabled: opts.enabled ?? true,
+    staleTime: 60_000,
+  });
+}
+
+export function useSetReminder() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: setReminder,
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: queryKeys.reminders() });
+    },
+  });
+}
+
+export function useDeleteReminder() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: deleteReminder,
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: queryKeys.reminders() });
+    },
   });
 }
 

@@ -33,6 +33,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { EventReminder } from '@/components/EventReminder';
 import { ProfileAvatar } from '@/components/ProfileAvatar';
 import { SpinningCross } from '@/components/SpinningCross';
 import type {
@@ -474,6 +475,18 @@ export default function EventDetail() {
               router.push(path as never);
             }}
           />
+
+          {/* Onder de kaartjes, want dit gaat over de kaartjes: het
+              moment dat de verkoop opengaat is wat Andreas niet kan
+              weten. Alleen bij een echte voorstelling -- een
+              samengestelde "eerstvolgende" heeft geen id om aan te
+              hangen. */}
+          {selectedOccurrence && !selectedOccurrence.id.endsWith('::next') && (
+            <EventReminder
+              occurrenceId={selectedOccurrence.id}
+              startsAt={selectedOccurrence.startsAt ?? null}
+            />
+          )}
 
           {selectedOccurrence && (
             <TicketsBlock

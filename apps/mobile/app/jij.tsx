@@ -1608,12 +1608,49 @@ function PrivacySection({
   const [savesVis, setSavesVis] = useState<Visibility>(me.savesVisibility);
   const [mirrorVis, setMirrorVis] = useState<Visibility>(me.mirrorVisibility);
   const [discoverable, setDiscoverable] = useState(me.discoverable);
+  // Meldingen per soort. Eén "meldingen aan/uit" zou betekenen dat de
+  // eerste melding die je te veel vindt het einde is van álle meldingen:
+  // dan zet je 'm uit in iOS en daar komen we nooit meer voorbij.
+  const [push, setPush] = useState({
+    dailyNew: me.pushDailyNew,
+    dayBefore: me.pushDayBefore,
+    tonight: me.pushTonight,
+  });
 
   useEffect(() => {
     setSavesVis(me.savesVisibility);
     setMirrorVis(me.mirrorVisibility);
     setDiscoverable(me.discoverable);
-  }, [me.savesVisibility, me.mirrorVisibility, me.discoverable]);
+    setPush({
+      dailyNew: me.pushDailyNew,
+      dayBefore: me.pushDayBefore,
+      tonight: me.pushTonight,
+    });
+  }, [
+    me.savesVisibility,
+    me.mirrorVisibility,
+    me.discoverable,
+    me.pushDailyNew,
+    me.pushDayBefore,
+    me.pushTonight,
+  ]);
+
+  const onPushToggle = async (
+    key: 'dailyNew' | 'dayBefore' | 'tonight',
+    next: boolean
+  ) => {
+    const prev = push;
+    setPush({ ...push, [key]: next });
+    const field = (
+      { dailyNew: 'pushDailyNew', dayBefore: 'pushDayBefore', tonight: 'pushTonight' } as const
+    )[key];
+    try {
+      await updateMe({ [field]: next });
+      onUpdated();
+    } catch {
+      setPush(prev);
+    }
+  };
 
   const trackOn = roles.accent;
   const trackOff = isNacht ? '#2a2a2d' : palette.paper;
@@ -1724,6 +1761,56 @@ function PrivacySection({
             options={discoverableOpts}
             onChange={(v) => onDiscoverableToggle(v === 'on')}
           />
+        </View>
+
+        <View style={[styles.privacyDivider, { backgroundColor: roles.bgChip }]} />
+
+        <View style={styles.privacyBlock}>
+          <Text style={[styles.privacyLabel, { color: roles.fg }]}>
+            {t('Meldingen', 'Notifications')}
+          </Text>
+          <Text style={[styles.privacySub, { color: roles.fgMuted }]}>
+            {t(
+              'Zet los aan of uit wat je wilt horen. Een herinnering die je zelf op een event zet blijft altijd staan — die vroeg je zelf.',
+              'Switch each of these on or off. A reminder you set yourself on an event always stays — you asked for that one.'
+            )}
+          </Text>
+          {(
+            [
+              [
+                'dayBefore',
+                t('De avond ervoor', 'The night before'),
+                t('Om 18:00, voor wat je hebt gered.', 'At 18:00, for what you saved.'),
+              ],
+              [
+                'tonight',
+                t('Op de dag zelf', 'On the day itself'),
+                t('Drie uur van tevoren.', 'Three hours ahead.'),
+              ],
+              [
+                'dailyNew',
+                t('Nieuw binnengekomen', 'New arrivals'),
+                t('Elke ochtend om 10:00.', 'Every morning at 10:00.'),
+              ],
+            ] as const
+          ).map(([key, label, sub]) => (
+            <View key={key} style={styles.pushRow}>
+              <View style={{ flex: 1, gap: 2 }}>
+                <Text style={[styles.pushLabel, { color: roles.fg }]}>
+                  {label}
+                </Text>
+                <Text style={[styles.pushSub, { color: roles.fgMuted }]}>
+                  {sub}
+                </Text>
+              </View>
+              <Switch
+                value={push[key]}
+                onValueChange={(v) => void onPushToggle(key, v)}
+                trackColor={{ true: trackOn, false: trackOff }}
+                thumbColor={thumb}
+              />
+            </View>
+          ))}
         </View>
       </View>
     </>
@@ -2438,6 +2525,14 @@ const styles = StyleSheet.create({
     lineHeight: 17,
     marginTop: 4,
   },
+  pushRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingTop: 14,
+  },
+  pushLabel: { fontFamily: fontFamily.bold, fontSize: 15 },
+  pushSub: { fontFamily: fontFamily.body, fontSize: 12.5 },
   privacyDivider: { height: StyleSheet.hairlineWidth },
   notifBtn: {
     height: 44,

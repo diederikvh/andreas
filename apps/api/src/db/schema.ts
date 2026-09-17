@@ -227,6 +227,18 @@ export const users = pgTable(
         keren draaien (retry, handmatige trigger) en mag dan niet nóg
         een keer pushen. */
     lastDailyPushAt: timestamp({ withTimezone: true }),
+    /* ── Wat mag je pushen ──────────────────────────────────────────
+       Per soort een schakelaar, en niet één "meldingen aan/uit".
+       Zonder dit is de eerste melding die iemand te veel vindt het
+       einde van álle meldingen: die zet de schakelaar in iOS om en
+       daar komen we nooit meer voorbij. Alles staat standaard aan --
+       je hebt al ja gezegd toen je het token gaf. */
+    /** De dagelijkse aanwinsten om 10:00. */
+    pushDailyNew: boolean().notNull().default(true),
+    /** "Morgen ga je naar ...", de avond ervoor. */
+    pushDayBefore: boolean().notNull().default(true),
+    /** "Vanavond om 20:30", een paar uur van tevoren. */
+    pushTonight: boolean().notNull().default(true),
   },
   (t) => [
     uniqueIndex('users_phone_number_idx').on(t.phoneNumber),
@@ -1394,3 +1406,64 @@ export const blockedTerms = pgTable('blocked_terms', {
     .notNull()
     .default(sql`now()`),
 });
+
+/**
+ * Waarvoor een herinnering is. Drie soorten, één tabel.
+ *
+ * `dag-ervoor` en `vanavond` zet Andreas zelf klaar zodra jij een avond
+ * hebt gered of op "ik ga" hebt getikt. `zelf` zet jij, met je eigen
+ * moment en je eigen tekst — want wanneer de kaartverkoop opengaat weten
+ * wij niet. Dat staat nergens in wat we scrapen: van de toekomstige
+ * voorstellingen hebben er 11.514 een ticketlink en 22 niet, dus de link
+ * verschijnt tegelijk met het event en is geen signaal.
+ */
+export const reminderKind = pgEnum('reminder_kind', [
+  'dag-ervoor',
+  'vanavond',
+  'zelf',
+]);
+
+/**
+ * Eén rij is één melding die nog moet vertrekken.
+ *
+ * Bewust één tabel voor automatisch en zelfgezet: het zijn dezelfde vier
+ * gegevens (wie, wanneer, welke avond, welke tekst) en twee systemen
+ * zouden na een half jaar uit elkaar zijn gegroeid. De job kijkt alleen
+ * naar `fire_at <= now()` en `sent_at is null`; waar de rij vandaan komt
+ * maakt hem niet uit.
+ */
+export const reminders = pgTable(
+  'reminders',
+  {
+    id: text().primaryKey(),
+    userId: text()
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    occurrenceId: text()
+      .notNull()
+      .references(() => occurrences.id, { onDelete: 'cascade' }),
+    kind: reminderKind().notNull(),
+    fireAt: timestamp({ withTimezone: true }).notNull(),
+    /** Eigen tekst bij een zelfgezette herinnering. Leeg bij de
+        automatische: die schrijven zichzelf uit de event-gegevens. */
+    note: text(),
+    /** Gezet zodra hij de deur uit is. Dit is ook het dubbel-verzend-slot:
+        de job mag vaker draaien dan er meldingen zijn. */
+    sentAt: timestamp({ withTimezone: true }),
+    createdAt: timestamp({ withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+  },
+  (t) => [
+    /** Eén per soort per avond. Hier hangt het automatisch bijzetten aan:
+        de job kan blind inserten met ON CONFLICT DO NOTHING en hoeft niet
+        te weten wat hij gisteren al deed. */
+    uniqueIndex('reminders_user_occ_kind_idx').on(
+      t.userId,
+      t.occurrenceId,
+      t.kind
+    ),
+    /** Waar de job op zoekt: wat is rijp en nog niet weg. */
+    index('reminders_due_idx').on(t.fireAt, t.sentAt),
+  ]
+);

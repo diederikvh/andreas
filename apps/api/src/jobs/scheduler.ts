@@ -13,6 +13,7 @@
  */
 import { sendDailyNewPush } from './daily-new-push.js';
 import { linkSubmissionsToEvents } from './linkSubmissions.js';
+import { runReminders } from './reminders.js';
 
 /** Lokale tijd waarop de aanwinsten-push de deur uit gaat. */
 const PUSH_HOUR = 10;
@@ -49,7 +50,36 @@ function msUntilNextRun(from: Date): number {
   return 24 * 60 * step;
 }
 
+/**
+ * Hoe vaak we naar rijpe herinneringen kijken.
+ *
+ * De aanwinsten-push is één keer per dag op een vast uur; herinneringen
+ * vertrekken op willekeurige momenten, dus die hebben hun eigen tik. Vijf
+ * minuten is fijn genoeg: "vanavond om 20:30" komt drie uur van tevoren,
+ * en of dat nou 17:30 of 17:34 is merkt niemand. Elke minuut kijken zou
+ * de database twaalf keer zo vaak voor niets aanspreken.
+ */
+const REMINDER_TICK_MS = 5 * 60_000;
+
 export function startScheduler(): void {
+  // Eigen lus, los van de dagelijkse push: die twee mogen elkaar niet
+  // ophouden. Een trage aanwinsten-push zou anders de herinneringen van
+  // dat uur meeslepen.
+  const tickReminders = async () => {
+    try {
+      const { added, sent } = await runReminders();
+      if (added > 0 || sent.length > 0) {
+        console.log(
+          `[reminders] ${added} klaargezet, ${sent.length} verstuurd`
+        );
+      }
+    } catch (err) {
+      console.error('[reminders] tik mislukt', err);
+    }
+  };
+  setInterval(() => void tickReminders(), REMINDER_TICK_MS).unref?.();
+  void tickReminders();
+
   const schedule = () => {
     const delay = msUntilNextRun(new Date());
     setTimeout(() => {
