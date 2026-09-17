@@ -11,6 +11,11 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
+import Animated, {
+  useAnimatedRef,
+  useAnimatedStyle,
+  useScrollViewOffset,
+} from 'react-native-reanimated';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useMemo } from 'react';
 import {
@@ -45,6 +50,10 @@ import type { BadgeTone } from '@/lib/types';
 import { useMode, useRoles } from '@/store/mode';
 import { fontFamily, palette } from '@/theme/tokens';
 
+/** Zelfde hoogte als op een event-pagina, zodat de twee schermen even
+    zwaar beginnen. */
+const HERO_HEIGHT = 420;
+
 export default function ArtistPage() {
   const insets = useSafeAreaInsets();
   const roles = useRoles();
@@ -53,6 +62,8 @@ export default function ArtistPage() {
   const t = useT();
   const locale = useLocale();
   const { slug } = useLocalSearchParams<{ slug: string }>();
+  const scrollRef = useAnimatedRef<Animated.ScrollView>();
+  const scrollY = useScrollViewOffset(scrollRef);
   const { data, isLoading, error } = useArtist(slug ?? '');
 
   const links = useMemo(() => {
@@ -78,13 +89,60 @@ export default function ArtistPage() {
     ];
   }, [data, links.length, t]);
 
+  const heroUrl = data?.artist.imageUrl ?? null;
+
+  // Scroll je omhoog (negatieve offset), dan rekt de foto mee in plaats
+  // van een witte rand te laten zien. Naar beneden gebeurt er niets: dan
+  // schuift de inhoud er gewoon overheen. Zelfde rekenregel als op de
+  // event-pagina.
+  const heroStyle = useAnimatedStyle(() => {
+    const offset = Math.min(0, scrollY.value);
+    const scale = 1 - offset / HERO_HEIGHT;
+    return {
+      transform: [{ translateY: ((scale - 1) * HERO_HEIGHT) / 2 }, { scale }],
+    };
+  });
+
   return (
     <View style={[styles.root, { backgroundColor: roles.bg }]}>
-      <ScrollView
+      {/* Vastgepind áchter de scroll, niet erin: scroll je omhoog dan
+          rekt hij mee, scroll je naar beneden dan schuift de inhoud er
+          overheen. Precies de constructie van de event-pagina -- zelfde
+          hoogte, zelfde schaalregel. */}
+      {heroUrl ? (
+        <Animated.View style={[styles.heroPinned, heroStyle]}>
+          <Image
+            source={{ uri: heroUrl }}
+            style={StyleSheet.absoluteFill}
+            contentFit="cover"
+            transition={180}
+          />
+          <LinearGradient
+            colors={
+              isNacht
+                ? [
+                    'rgba(10,10,11,0.35)',
+                    'rgba(10,10,11,0.15)',
+                    'rgba(10,10,11,0.95)',
+                  ]
+                : [
+                    'rgba(45,74,62,0.35)',
+                    'rgba(45,74,62,0.25)',
+                    'rgba(45,74,62,0.9)',
+                  ]
+            }
+            locations={[0, 0.4, 1]}
+            style={StyleSheet.absoluteFill}
+          />
+        </Animated.View>
+      ) : null}
+
+      <Animated.ScrollView
+        ref={scrollRef}
         contentContainerStyle={{
-          // Geen AppHeader meer (was te zwaar voor deze pagina). Wel
-          // safe-area + ruimte voor de floating back-button.
-          paddingTop: insets.top + 56,
+          // Met foto duwt de spacer de inhoud weg; zonder foto is er
+          // alleen de safe-area en ruimte voor de terugknop.
+          paddingTop: heroUrl ? 0 : insets.top + 56,
           paddingBottom: insets.bottom + 24,
         }}
       >
@@ -100,43 +158,22 @@ export default function ArtistPage() {
         )}
         {data && (
           <>
-            {/* Zelfde kop als bij een avond: de naam ín de foto, met een
-                verloop eronder zodat hij leesbaar blijft op elk beeld. De
-                foto komt van Spotify en blijft daar staan -- hun
-                voorwaarden staan niet toe dat we 'm zelf hosten, dus dit
-                is een verwijzing en geen kopie. */}
-            {data.artist.imageUrl ? (
-              <View style={styles.hero}>
-                <Image
-                  source={{ uri: data.artist.imageUrl }}
-                  style={StyleSheet.absoluteFill}
-                  contentFit="cover"
-                  transition={180}
-                />
-                <LinearGradient
-                  colors={
-                    isNacht
-                      ? [
-                          'rgba(10,10,11,0.35)',
-                          'rgba(10,10,11,0.15)',
-                          'rgba(10,10,11,0.95)',
-                        ]
-                      : [
-                          'rgba(45,74,62,0.35)',
-                          'rgba(45,74,62,0.25)',
-                          'rgba(45,74,62,0.9)',
-                        ]
-                  }
-                  locations={[0, 0.4, 1]}
-                  style={StyleSheet.absoluteFill}
-                />
-                <View style={styles.heroBottom}>
-                  <Text style={styles.heroTitle}>{data.artist.name}</Text>
-                </View>
+            {/* De naam staat in de ruimte die de vastgepinde foto
+                vrijhoudt, dus hij ligt eroverheen zonder mee te schalen.
+                De foto komt van Spotify en blijft daar staan -- hun
+                voorwaarden staan niet toe dat we 'm zelf hosten. */}
+            {heroUrl ? (
+              <View style={styles.heroSpacer}>
+                <Text style={styles.heroTitle}>{data.artist.name}</Text>
               </View>
             ) : null}
 
-            <View style={styles.intro}>
+            <View
+              style={[
+                styles.intro,
+                heroUrl ? { backgroundColor: roles.bg } : null,
+              ]}
+            >
               {/* Zonder foto staat de naam gewoon hier; met foto staat hij
                   er al in en zou dit een herhaling zijn. */}
               {data.artist.imageUrl ? null : (
@@ -286,7 +323,7 @@ export default function ArtistPage() {
             )}
           </>
         )}
-      </ScrollView>
+      </Animated.ScrollView>
 
       {/* Floating back-button linksboven — geen header-strook ervoor.
           De artist-naam fungeert zelf als titel onder in de body. */}
@@ -511,17 +548,20 @@ const styles = StyleSheet.create({
   // onder) plus de lucht die de kop van z'n blokken hoort te scheiden.
   // Zat op 2 en dan plakte de kop tegen de tegels.
   aboutHead: { marginTop: 12, marginBottom: 14 },
-  // Vierkant en volle breedte: een artiestfoto is een portret, geen
-  // panorama, en op schermbreedte leest dat als een kop.
-  hero: {
-    width: '100%',
-    aspectRatio: 1,
-    marginTop: -12,
-    marginBottom: 14,
-    justifyContent: 'flex-end',
+  heroPinned: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: HERO_HEIGHT,
     overflow: 'hidden',
   },
-  heroBottom: { paddingHorizontal: 22, paddingBottom: 20 },
+  heroSpacer: {
+    height: HERO_HEIGHT,
+    paddingHorizontal: 22,
+    paddingBottom: 20,
+    justifyContent: 'flex-end',
+  },
   heroTitle: {
     fontFamily: fontFamily.display,
     fontSize: 38,
