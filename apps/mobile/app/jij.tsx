@@ -27,6 +27,7 @@ import { softTap } from '@/lib/haptics';
 import { BackButton } from '@/components/BackButton';
 import { Cross } from '@/components/Cross';
 import {
+  ICON_INSET,
   SettingsAction,
   SettingsChoice,
   SettingsGroup,
@@ -815,28 +816,32 @@ export default function Jij() {
             De statistieken stonden hier uitgeklapt; dat is lezen, geen
             doen, en het duwde alles naar beneden. */}
         {me ? (
-          <View style={styles.profileMenu}>
-            <ProfileRow
+          /* Eén blok in plaats van vier losse kaartjes, met de lijntjes
+             vanaf de tekst. Vier zwevende kaartjes lezen als vier
+             losstaande dingen; dit leest als één lijstje waar je iets uit
+             kiest -- en dat is wat het is. */
+          <SettingsGroup inset={ICON_INSET} style={styles.profileMenu}>
+            <SettingsAction
               icon="pencil"
               label={t('Bewerk profiel', 'Edit profile')}
               onPress={onEditProfile}
             />
-            <ProfileRow
+            <SettingsAction
               icon="qr-code-outline"
               label={t('Scan QR-code', 'Scan QR code')}
               onPress={() => router.push('/add-friend?scan=1' as never)}
             />
-            <ProfileRow
+            <SettingsAction
               icon="person-add-outline"
               label={t('Verbind met vrienden', 'Connect with friends')}
               onPress={() => router.push('/add-friend' as never)}
             />
-            <ProfileRow
+            <SettingsAction
               icon="stats-chart-outline"
               label={t('Mijn statistieken', 'My statistics')}
               onPress={() => router.push('/statistieken' as never)}
             />
-          </View>
+          </SettingsGroup>
         ) : null}
 
         {/* Logout zit visueel onder een divider om 'm écht van de
@@ -921,31 +926,6 @@ export default function Jij() {
  */
 /** Eén regel in het profielmenu. Zelfde vorm als de rijen in Meer: dit
     zijn ingangen, geen instellingen. */
-function ProfileRow({
-  icon,
-  label,
-  onPress,
-}: {
-  icon: keyof typeof Ionicons.glyphMap;
-  label: string;
-  onPress: () => void;
-}) {
-  const roles = useRoles();
-  return (
-    <Pressable
-      onPress={() => {
-        softTap();
-        onPress();
-      }}
-      style={[styles.profileRow, { backgroundColor: roles.bgChip }]}
-    >
-      <Ionicons name={icon} size={22} color={roles.accent} />
-      <Text style={[styles.profileRowLabel, { color: roles.fg }]}>{label}</Text>
-      <Ionicons name="chevron-forward" size={16} color={roles.fgPlaceholder} />
-    </Pressable>
-  );
-}
-
 function normalizePhone(input: string): string | null {
   const trimmed = input.replace(/[\s\-()]/g, '');
   if (trimmed.length === 0) return null;
@@ -1737,24 +1717,7 @@ const styles = StyleSheet.create({
   // Losse kaartjes met ruimte ertussen, net als je bewaarde kaartjes:
   // het zijn allemaal dingen die je kan doen, dus ze mogen er ook zo
   // uitzien. Eén blok met streepjes leest als een instellingenlijst.
-  profileMenu: { marginHorizontal: 22, gap: 12, marginTop: 8 },
-  // Ruim: een rij is 60 hoog met 18 lucht boven en onder. Apple houdt
-  // 44 aan als ondergrens voor iets aantikbaars, en dit is geen lijst om
-  // te lezen maar om te raken.
-  profileRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 14,
-    paddingHorizontal: 18,
-    paddingVertical: 18,
-    borderRadius: 16,
-  },
-  profileRowLabel: {
-    flex: 1,
-    fontFamily: fontFamily.bold,
-    fontSize: 16,
-    letterSpacing: -0.24,
-  },
+  profileMenu: { marginTop: 8 },
   // Zelfde sluit-knop als op /films, /clubs, /theater en /going: 36×36
   // cirkel met een Ionicons-kruis. De kleinere ModalCloseBtn met het
   // brand-kruis is voor sheets; dit is een vol scherm en hoort bij die

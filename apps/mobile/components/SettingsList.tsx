@@ -34,11 +34,18 @@ export function SettingsGroup({
   footer,
   children,
   style,
+  inset = 16,
 }: {
   header?: string;
   footer?: string;
   children: React.ReactNode;
   style?: ViewStyle;
+  /**
+   * Waar het scheidingslijntje begint. In Instellingen loopt dat niet
+   * tot de rand maar tot waar de tékst begint — bij rijen met een icoon
+   * dus voorbij dat icoon. Gebruik `ICON_INSET` voor zo'n groep.
+   */
+  inset?: number;
 }) {
   const roles = useRoles();
   const rows = Array.isArray(children) ? children.filter(Boolean) : [children];
@@ -58,7 +65,10 @@ export function SettingsGroup({
                 ingesprongen vanaf links, zoals in Instellingen. */}
             {i > 0 ? (
               <View
-                style={[styles.divider, { backgroundColor: roles.bg }]}
+                style={[
+                  styles.divider,
+                  { backgroundColor: roles.bg, marginLeft: inset },
+                ]}
               />
             ) : null}
             {row}
@@ -184,17 +194,23 @@ export function SettingsChoice<T extends string>({
 
 /** Rij die ergens heen gaat of iets doet. Waarde rechts, optioneel een
     knoptekst in accentkleur. */
+/** Padding + icoon + tussenruimte: waar de tekst begint in een groep met
+    iconen, en dus waar het lijntje moet beginnen. */
+export const ICON_INSET = 16 + 22 + 12;
+
 export function SettingsAction({
   label,
   sub,
   value,
   action,
+  icon,
   onPress,
 }: {
   label: string;
   sub?: string;
   value?: string;
   action?: string;
+  icon?: keyof typeof Ionicons.glyphMap;
   onPress?: () => void;
 }) {
   const roles = useRoles();
@@ -208,6 +224,7 @@ export function SettingsAction({
       disabled={!onPress}
       style={styles.row}
     >
+      {icon ? <Ionicons name={icon} size={22} color={roles.accent} /> : null}
       <View style={styles.rowText}>
         <Text style={[styles.label, { color: roles.fg }]}>{label}</Text>
         {sub ? (
@@ -245,7 +262,7 @@ const styles = StyleSheet.create({
     marginLeft: 4,
   },
   group: { borderRadius: 12, overflow: 'hidden' },
-  divider: { height: StyleSheet.hairlineWidth, marginLeft: 14 },
+  divider: { height: StyleSheet.hairlineWidth },
   row: {
     minHeight: 54,
     flexDirection: 'row',
