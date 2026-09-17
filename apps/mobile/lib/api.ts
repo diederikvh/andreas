@@ -962,6 +962,10 @@ export type ApiMe = {
   pushDayBefore: boolean;
   /** "Vanavond om 20:30", drie uur van tevoren. */
   pushTonight: boolean;
+  /** Gelden die twee voor wat je hebt gered (het hartje)? */
+  pushForSaves: boolean;
+  /** En voor waar je "ik ga" op tikte? */
+  pushForGoing: boolean;
   /** Wanneer je /new voor het laatst bekeek, serverkant. Alleen gevuld
       voor echte accounts; laat het inhaal-venster een nieuwe telefoon
       overleven. ISO-string of null. */
@@ -1097,6 +1101,8 @@ export async function updateMe(input: {
   pushDailyNew?: boolean;
   pushDayBefore?: boolean;
   pushTonight?: boolean;
+  pushForSaves?: boolean;
+  pushForGoing?: boolean;
 }): Promise<ApiMe> {
   const { user } = await authedRequest<{ user: ApiMe }>('/me', {
     method: 'PATCH',

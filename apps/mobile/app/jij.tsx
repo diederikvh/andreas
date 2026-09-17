@@ -630,6 +630,7 @@ export default function Jij() {
           <View style={{ marginHorizontal: -22, marginTop: 24 }}>
             <AppearanceSection />
             <NotificationsSection me={me} onUpdated={refetchMe} />
+            <ReminderScopeSection me={me} onUpdated={refetchMe} />
             <PrivacySection me={me} onUpdated={refetchMe} />
             <LanguageSection />
             <CreditsSection />
@@ -1552,6 +1553,74 @@ function NotificationsSection({
         value={push.dailyNew}
         disabled={off}
         onValueChange={(v) => void onToggle('dailyNew', v)}
+      />
+    </SettingsGroup>
+  );
+}
+
+/**
+ * Waarvóór die herinneringen gelden.
+ *
+ * Een eigen blok, want het is een andere vraag dan hierboven: daar kies
+ * je hoe vaak, hier waarover. Een hartje is een interessesignaal, "ik ga"
+ * is een belofte -- en wie alleen voor dat tweede gebeld wil worden zet
+ * het eerste uit.
+ */
+function ReminderScopeSection({
+  me,
+  onUpdated,
+}: {
+  me: ApiMe;
+  onUpdated: () => void;
+}) {
+  const t = useT();
+  const [scope, setScope] = useState({
+    saves: me.pushForSaves,
+    going: me.pushForGoing,
+  });
+  useEffect(() => {
+    setScope({ saves: me.pushForSaves, going: me.pushForGoing });
+  }, [me.pushForSaves, me.pushForGoing]);
+
+  const onToggle = async (key: 'saves' | 'going', next: boolean) => {
+    const prev = scope;
+    setScope({ ...scope, [key]: next });
+    try {
+      await updateMe(
+        key === 'saves' ? { pushForSaves: next } : { pushForGoing: next }
+      );
+      onUpdated();
+    } catch {
+      setScope(prev);
+    }
+  };
+
+  return (
+    <SettingsGroup
+      header={t('Herinner me aan', 'Remind me about')}
+      footer={
+        !scope.saves && !scope.going
+          ? t(
+              'Met allebei uit krijg je alleen nog herinneringen die je zelf op een avond zet.',
+              'With both off you only get reminders you set yourself on a night.'
+            )
+          : t(
+              'Een hartje is interesse, "ik ga" is een afspraak. Je kunt voor allebei gebeld worden, of maar voor één.',
+              'A heart is interest, "I am going" is a commitment. You can be pinged for both, or just one.'
+            )
+      }
+    >
+      <SettingsSwitch
+        label={t('Wat ik heb gered', 'What I saved')}
+        sub={t('Het hartje.', 'The heart.')}
+        value={scope.saves}
+        onValueChange={(v) => void onToggle('saves', v)}
+      />
+      <SettingsSwitch
+        label={t('Waar ik heen ga', 'Where I am going')}
+        sub={t('Waar je "ik ga" op tikte.', 'What you tapped "going" on.')}
+        value={scope.going}
+        onValueChange={(v) => void onToggle('going', v)}
       />
     </SettingsGroup>
   );

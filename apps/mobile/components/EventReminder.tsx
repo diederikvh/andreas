@@ -1,14 +1,16 @@
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Ionicons } from '@expo/vector-icons';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
+  Keyboard,
   Platform,
   Pressable,
   StyleSheet,
   Text,
   TextInput,
   View,
+  useWindowDimensions,
 } from 'react-native';
 
 import { softTap } from '@/lib/haptics';
@@ -39,9 +41,28 @@ import { fontFamily } from '@/theme/tokens';
 export function EventReminder({
   occurrenceId,
   startsAt,
+  endsAt,
+  dividerColor,
+  onNeedsRoom,
 }: {
   occurrenceId: string;
   startsAt: string | null;
+  /** Eindtijd, als die er is. Bij een expositie die maanden loopt is de
+      begintijd allang geweest en zegt die niets over wat nog kan. */
+  endsAt?: string | null;
+  /** Het lijntje boven deze rij. Komt van de container, want die bepaalt
+      hoe de rijen van elkaar gescheiden zijn. */
+  dividerColor?: string;
+  /**
+   * Hoeveel punten dit blok omhoog moet om boven het keyboard uit te
+   * komen. Het scherm eromheen scrollt, niet wij: dat is dezelfde
+   * afspraak als bij de uitnodigingsbanner hierboven in het scherm.
+   *
+   * Niet `automaticallyAdjustKeyboardInsets`: die scrollt precies genoeg
+   * voor het invoerveld en niets voor de knoppen eronder, en juist die
+   * knoppen heb je nodig om te versturen.
+   */
+  onNeedsRoom?: (overflow: number) => void;
 }) {
   const roles = useRoles();
   const mode = useMode();
@@ -52,7 +73,30 @@ export function EventReminder({
   const remove = useDeleteReminder();
 
   const existing = reminders?.find((r) => r.occurrenceId === occurrenceId);
+  const divider = dividerColor
+    ? {
+        borderTopColor: dividerColor,
+        borderTopWidth: StyleSheet.hairlineWidth,
+      }
+    : null;
   const [open, setOpen] = useState(false);
+  const box = useRef<View>(null);
+  const { height: windowHeight } = useWindowDimensions();
+
+  useEffect(() => {
+    if (!open || !onNeedsRoom) return;
+    const sub = Keyboard.addListener('keyboardDidShow', (e) => {
+      const kb = e.endCoordinates?.height ?? 0;
+      if (kb <= 0) return;
+      box.current?.measureInWindow((_x, y, _w, height) => {
+        // 20 punten lucht onder de knoppen, zodat ze niet tegen het
+        // keyboard aan plakken.
+        const overflow = y + height - (windowHeight - kb - 20);
+        if (overflow > 0) onNeedsRoom(overflow);
+      });
+    });
+    return () => sub.remove();
+  }, [open, onNeedsRoom, windowHeight]);
   const [note, setNote] = useState('');
   // Standaard morgenochtend om 10:00. Een verkoop start zelden vannacht,
   // en een voorstel dat al bijna verlopen is nodigt niet uit.
@@ -75,10 +119,13 @@ export function EventReminder({
     [locale]
   );
 
-  // De avond zelf ligt al vast via je hartje; een herinnering ná afloop
-  // is geen herinnering. Dus dit kan alleen vooruit, en niet verder dan
-  // het event zelf.
-  const eventTime = startsAt ? new Date(startsAt).getTime() : null;
+  // Een herinnering ná afloop is geen herinnering. De grens is het
+  // *einde*, niet het begin: een expositie die tot november loopt is op
+  // 3 juli begonnen, en daar in september aan herinnerd worden kan
+  // prima. Keek dit naar startsAt, dan stond de knop bij elke lopende
+  // expositie dood.
+  const last = endsAt ?? startsAt;
+  const eventTime = last ? new Date(last).getTime() : null;
   const tooLate = eventTime !== null && when.getTime() > eventTime;
   const inPast = when.getTime() <= Date.now();
 
@@ -109,8 +156,8 @@ export function EventReminder({
 
   if (existing && !open) {
     return (
-      <View style={[styles.set, { backgroundColor: roles.bgChip }]}>
-        <Ionicons name="alarm" size={18} color={roles.accent} />
+      <View style={[styles.set, divider]}>
+        <Ionicons name="alarm" size={18} color={roles.fg} />
         <View style={{ flex: 1, gap: 2 }}>
           <Text style={[styles.setTitle, { color: roles.fg }]}>
             {existing.note?.trim()
@@ -140,19 +187,19 @@ export function EventReminder({
           softTap();
           setOpen(true);
         }}
-        style={[styles.row, { borderColor: roles.bgChip }]}
+        style={[styles.row, divider]}
       >
-        <Ionicons name="alarm-outline" size={18} color={roles.fgMuted} />
+        <Ionicons name="alarm-outline" size={18} color={roles.fg} />
         <Text style={[styles.rowText, { color: roles.fg }]}>
           {t('Herinner me hieraan', 'Remind me about this')}
         </Text>
-        <Ionicons name="chevron-forward" size={16} color={roles.fgPlaceholder} />
+        <Text style={[styles.chev, { color: roles.fgPlaceholder }]}>›</Text>
       </Pressable>
     );
   }
 
   return (
-    <View style={[styles.sheet, { backgroundColor: roles.bgChip }]}>
+    <View ref={box} style={[styles.sheet, divider]}>
       <Text style={[styles.hint, { color: roles.fgMuted }]}>
         {t(
           'Voor de avond zelf hoef je niets te doen — dat gaat vanzelf. Dit is voor bijvoorbeeld het moment dat de kaartverkoop opengaat.',
@@ -209,18 +256,13 @@ export function EventReminder({
           {inPast
             ? t('Kies een moment in de toekomst.', 'Pick a moment in the future.')
             : t(
-                'Dat is ná de voorstelling — kies iets ervoor.',
-                'That is after the show — pick something before it.'
+                'Dat is ná afloop — kies iets ervoor.',
+                'That is after it ends — pick something before it.'
               )}
         </Text>
       ) : null}
 
       <View style={styles.actions}>
-        <Pressable onPress={() => setOpen(false)} hitSlop={8}>
-          <Text style={[styles.action, { color: roles.fgMuted }]}>
-            {t('Laat maar', 'Never mind')}
-          </Text>
-        </Pressable>
         <Pressable
           onPress={onSave}
           disabled={inPast || tooLate || save.isPending}
@@ -241,43 +283,49 @@ export function EventReminder({
             {existing ? t('Verzetten', 'Move it') : t('Zet hem', 'Set it')}
           </Text>
         </Pressable>
+        <Pressable onPress={() => setOpen(false)} hitSlop={8}>
+          <Text style={[styles.action, { color: roles.fgMuted }]}>
+            {t('Laat maar', 'Never mind')}
+          </Text>
+        </Pressable>
       </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  // Eén op één de maten van de "Nodig iemand uit"-rij hierboven in het
+  // scherm: zelfde gap, zelfde padding, zelfde letterdikte en hetzelfde
+  // mono-chevron. Stond eerder op eigen maten en dan zie je meteen dat
+  // het twee verschillende dingen zijn, terwijl het dezelfde soort rij is.
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-    marginHorizontal: 22,
-    marginTop: 12,
+    gap: 12,
     paddingHorizontal: 14,
-    paddingVertical: 14,
-    borderRadius: 14,
-    borderWidth: 1,
+    paddingVertical: 13,
   },
-  rowText: { flex: 1, fontFamily: fontFamily.bold, fontSize: 15 },
+  rowText: {
+    flex: 1,
+    fontFamily: fontFamily.medium,
+    fontSize: 14.5,
+    letterSpacing: -0.07,
+  },
+  chev: { fontFamily: fontFamily.mono, fontSize: 14 },
   set: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-    marginHorizontal: 22,
-    marginTop: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    borderRadius: 14,
-  },
-  setTitle: { fontFamily: fontFamily.bold, fontSize: 14.5 },
-  setWhen: { fontFamily: fontFamily.body, fontSize: 12.5 },
-  sheet: {
-    marginHorizontal: 22,
-    marginTop: 12,
-    padding: 14,
-    borderRadius: 14,
     gap: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 13,
   },
+  setTitle: {
+    fontFamily: fontFamily.medium,
+    fontSize: 14.5,
+    letterSpacing: -0.07,
+  },
+  setWhen: { fontFamily: fontFamily.body, fontSize: 12.5 },
+  sheet: { padding: 14, gap: 12 },
   hint: { fontFamily: fontFamily.body, fontSize: 12.5, lineHeight: 18 },
   pickers: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   note: {
@@ -289,13 +337,14 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   warn: { fontFamily: fontFamily.body, fontSize: 12.5 },
+  // Links uitlijnen met de rest van het blok, en bevestigen vóór afzien:
+  // de knop die je bijna altijd wil staat waar je duim al is.
   actions: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'flex-end',
-    gap: 16,
+    gap: 18,
   },
   action: { fontFamily: fontFamily.bold, fontSize: 14 },
-  saveBtn: { paddingHorizontal: 18, paddingVertical: 10, borderRadius: 999 },
+  saveBtn: { paddingHorizontal: 18, paddingVertical: 11, borderRadius: 8 },
   saveText: { fontFamily: fontFamily.bold, fontSize: 14 },
 });

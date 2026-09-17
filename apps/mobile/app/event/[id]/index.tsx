@@ -467,6 +467,12 @@ export default function EventDetail() {
           <CrewAndInvite
             event={event}
             selectedOccurrence={selectedOccurrence}
+            onNeedsRoom={(overflow) =>
+              scrollRef.current?.scrollTo({
+                y: scrollY.value + overflow,
+                animated: true,
+              })
+            }
             onInvite={() => {
               const path =
                 selectedOccurrence && !selectedOccurrence.id.endsWith('::next')
@@ -475,18 +481,6 @@ export default function EventDetail() {
               router.push(path as never);
             }}
           />
-
-          {/* Onder de kaartjes, want dit gaat over de kaartjes: het
-              moment dat de verkoop opengaat is wat Andreas niet kan
-              weten. Alleen bij een echte voorstelling -- een
-              samengestelde "eerstvolgende" heeft geen id om aan te
-              hangen. */}
-          {selectedOccurrence && !selectedOccurrence.id.endsWith('::next') && (
-            <EventReminder
-              occurrenceId={selectedOccurrence.id}
-              startsAt={selectedOccurrence.startsAt ?? null}
-            />
-          )}
 
           {selectedOccurrence && (
             <TicketsBlock
@@ -791,10 +785,12 @@ function CrewAndInvite({
   event,
   selectedOccurrence,
   onInvite,
+  onNeedsRoom,
 }: {
   event: ApiEvent;
   selectedOccurrence: ApiOccurrence | null;
   onInvite: () => void;
+  onNeedsRoom?: (overflow: number) => void;
 }) {
   const mode = useMode();
   const roles = useRoles();
@@ -998,6 +994,16 @@ function CrewAndInvite({
             ›
           </Text>
         </Pressable>
+
+        {selectedOccurrence && !selectedOccurrence.id.endsWith('::next') ? (
+          <EventReminder
+            occurrenceId={selectedOccurrence.id}
+            startsAt={selectedOccurrence.startsAt ?? null}
+            endsAt={selectedOccurrence.endsAt ?? null}
+            dividerColor={innerBorderColor}
+            onNeedsRoom={onNeedsRoom}
+          />
+        ) : null}
       </View>
     </>
   );

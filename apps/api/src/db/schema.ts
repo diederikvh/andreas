@@ -239,6 +239,14 @@ export const users = pgTable(
     pushDayBefore: boolean().notNull().default(true),
     /** "Vanavond om 20:30", een paar uur van tevoren. */
     pushTonight: boolean().notNull().default(true),
+    /* Waarvóór die twee gelden. Een hartje is een interessesignaal en
+       "ik ga" een belofte -- wie alleen voor dat tweede bericht wil, zet
+       het eerste uit. Los van de wanneer-schakelaars hierboven, want dit
+       is een andere vraag: niet hoe vaak, maar waarover. */
+    /** Herinneren aan wat je hebt gered (het hartje). */
+    pushForSaves: boolean().notNull().default(true),
+    /** Herinneren aan waar je "ik ga" op tikte. */
+    pushForGoing: boolean().notNull().default(true),
   },
   (t) => [
     uniqueIndex('users_phone_number_idx').on(t.phoneNumber),

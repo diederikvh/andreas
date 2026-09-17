@@ -73,10 +73,15 @@ export async function ensureReminderRows(): Promise<number> {
             AT TIME ZONE 'Europe/Amsterdam'
           )
         END AS fire_at
+      -- Alleen de bronnen die aanstaan. Staat een avond in allebei, dan
+      -- is één aanstaande bron genoeg en houdt de UNION er één rij van
+      -- over.
       FROM (
-        SELECT user_id, occurrence_id FROM saves
+        SELECT s.user_id, s.occurrence_id FROM saves s
+        JOIN users su ON su.id = s.user_id AND su.push_for_saves
         UNION
-        SELECT user_id, occurrence_id FROM attendance
+        SELECT a.user_id, a.occurrence_id FROM attendance a
+        JOIN users au ON au.id = a.user_id AND au.push_for_going
       ) i
       JOIN occurrences o ON o.id = i.occurrence_id
       JOIN events e ON e.id = o.event_id
@@ -152,9 +157,11 @@ export async function sendDueReminders(
       AND (r.kind = 'zelf' OR EXISTS (
         SELECT 1 FROM saves s
         WHERE s.user_id = r.user_id AND s.occurrence_id = r.occurrence_id
+          AND u.push_for_saves
         UNION ALL
         SELECT 1 FROM attendance a
         WHERE a.user_id = r.user_id AND a.occurrence_id = r.occurrence_id
+          AND u.push_for_going
       ))
     ORDER BY r.fire_at
     LIMIT 200

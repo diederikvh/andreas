@@ -240,17 +240,17 @@ const styles = StyleSheet.create({
   group: { borderRadius: 12, overflow: 'hidden' },
   divider: { height: StyleSheet.hairlineWidth, marginLeft: 14 },
   row: {
-    minHeight: 44,
+    minHeight: 54,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 9,
+    paddingHorizontal: 16,
+    paddingVertical: 13,
   },
   // Een uitgeklapte optie springt in, zodat je ziet dat hij bij de rij
   // erboven hoort en niet zelf een instelling is.
-  optionRow: { paddingLeft: 28, minHeight: 40 },
+  optionRow: { paddingLeft: 32, minHeight: 48 },
   rowOff: { opacity: 0.45 },
   rowText: { flex: 1, gap: 2 },
   label: { fontFamily: fontFamily.medium, fontSize: 15.5, letterSpacing: -0.2 },

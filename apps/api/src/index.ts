@@ -203,6 +203,8 @@ app.patch('/me', async (c) => {
     pushDailyNew?: boolean;
     pushDayBefore?: boolean;
     pushTonight?: boolean;
+    pushForSaves?: boolean;
+    pushForGoing?: boolean;
   };
 
   // Bouw alleen de update-set op met velden die meekwamen — zo kan
@@ -238,7 +240,13 @@ app.patch('/me', async (c) => {
   // één schakelaar omzet niet de andere twee hoeft mee te sturen -- en dus
   // ook niet per ongeluk kan overschrijven wat op een ander toestel net is
   // veranderd.
-  for (const key of ['pushDailyNew', 'pushDayBefore', 'pushTonight'] as const) {
+  for (const key of [
+    'pushDailyNew',
+    'pushDayBefore',
+    'pushTonight',
+    'pushForSaves',
+    'pushForGoing',
+  ] as const) {
     if (body[key] !== undefined) updates[key] = Boolean(body[key]);
   }
 
