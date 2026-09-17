@@ -215,9 +215,12 @@ export default function ArtiestenScreen() {
                     softTap();
                     toggle.mutate({ artistId: artist.id, following: false });
                   }}
-                  hitSlop={10}
+                  hitSlop={8}
+                  style={[styles.unfollow, { backgroundColor: roles.bgChip }]}
                 >
-                  <Text style={[styles.unfollow, { color: roles.fgMuted }]}>
+                  <Text
+                    style={[styles.unfollowText, { color: roles.fgMuted }]}
+                  >
                     {t('Ontvolgen', 'Unfollow')}
                   </Text>
                 </Pressable>
@@ -302,7 +305,14 @@ const styles = StyleSheet.create({
   },
   artistName: { fontFamily: fontFamily.bold, fontSize: 15.5, letterSpacing: -0.2 },
   artistSub: { fontFamily: fontFamily.body, fontSize: 12.5 },
-  unfollow: { fontFamily: fontFamily.bold, fontSize: 14 },
+  // Zelfde pil als "Gevolgd" in de zoekresultaten, zodat dezelfde stand
+  // er overal hetzelfde uitziet.
+  unfollow: {
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 999,
+  },
+  unfollowText: { fontFamily: fontFamily.bold, fontSize: 13 },
   note: {
     fontFamily: fontFamily.body,
     fontSize: 13,
