@@ -17,6 +17,7 @@ import { extractFromUrl } from '../../scrapers/extract-from-url.js';
 import { eventFromUrl, venueFromUrl } from '../../scrapers/extract-fields.js';
 import { scrapers, type ScraperName } from '../../scrapers/index.js';
 import { applyBlockedTerms } from '../../jobs/blockedTerms.js';
+import { fillArtistImages } from '../../jobs/artistImages.js';
 import { uploadToBunny } from '../../storage/bunny.js';
 import { requireAdminAny } from './auth.js';
 import { adminSocial } from './social.js';
@@ -1208,9 +1209,23 @@ adminApi.post('/enrich-artists', async (c) => {
     const result = await enrichLineupArtists(
       limit && Number.isFinite(limit) ? limit : undefined
     );
+    // Foto's in dezelfde beurt. De verrijking zet net de Spotify-links,
+    // dus dit is precies het moment waarop er nieuwe artiesten zijn met
+    // een id waar een foto aan hangt. Apart draaien zou betekenen dat een
+    // nieuwe artiest een dag lang zonder gezicht in de zoek staat.
+    //
+    // Mislukt dit, dan is de verrijking zelf nog steeds geslaagd: een
+    // ontbrekende foto mag geen rode melding opleveren.
+    let images = { looked: 0, filled: 0, missed: [] as string[] };
+    try {
+      images = await fillArtistImages({ limit: 300 });
+    } catch (e) {
+      console.error('[enrich-artists] foto\'s ophalen mislukt', e);
+    }
     return c.json({
       durationMs: Date.now() - startedAt,
       ...result,
+      images,
     });
   } catch (e) {
     return c.json(

@@ -10,6 +10,7 @@
 
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
+import { LinearGradient } from 'expo-linear-gradient';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useMemo } from 'react';
 import {
@@ -99,23 +100,50 @@ export default function ArtistPage() {
         )}
         {data && (
           <>
-            {/* Een gezicht boven de naam, net als bij een zaal of een
-                avond. De foto komt van Spotify en hoort daar te blijven
-                staan: hun voorwaarden staan niet toe dat we 'm zelf
-                hosten, dus dit is een verwijzing en geen kopie. */}
+            {/* Zelfde kop als bij een avond: de naam ín de foto, met een
+                verloop eronder zodat hij leesbaar blijft op elk beeld. De
+                foto komt van Spotify en blijft daar staan -- hun
+                voorwaarden staan niet toe dat we 'm zelf hosten, dus dit
+                is een verwijzing en geen kopie. */}
             {data.artist.imageUrl ? (
-              <Image
-                source={{ uri: data.artist.imageUrl }}
-                style={styles.hero}
-                contentFit="cover"
-                transition={180}
-              />
+              <View style={styles.hero}>
+                <Image
+                  source={{ uri: data.artist.imageUrl }}
+                  style={StyleSheet.absoluteFill}
+                  contentFit="cover"
+                  transition={180}
+                />
+                <LinearGradient
+                  colors={
+                    isNacht
+                      ? [
+                          'rgba(10,10,11,0.35)',
+                          'rgba(10,10,11,0.15)',
+                          'rgba(10,10,11,0.95)',
+                        ]
+                      : [
+                          'rgba(45,74,62,0.35)',
+                          'rgba(45,74,62,0.25)',
+                          'rgba(45,74,62,0.9)',
+                        ]
+                  }
+                  locations={[0, 0.4, 1]}
+                  style={StyleSheet.absoluteFill}
+                />
+                <View style={styles.heroBottom}>
+                  <Text style={styles.heroTitle}>{data.artist.name}</Text>
+                </View>
+              </View>
             ) : null}
 
             <View style={styles.intro}>
-              <Text style={[styles.name, { color: roles.fg }]}>
-                {data.artist.name}
-              </Text>
+              {/* Zonder foto staat de naam gewoon hier; met foto staat hij
+                  er al in en zou dit een herhaling zijn. */}
+              {data.artist.imageUrl ? null : (
+                <Text style={[styles.name, { color: roles.fg }]}>
+                  {data.artist.name}
+                </Text>
+              )}
 
               {/* Description (MB "disambiguation"-veld zoals "soprano",
                   "Dutch DJ") + genres samen in één chip-row. De
@@ -472,20 +500,34 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   followText: { fontFamily: fontFamily.bold, fontSize: 15 },
-  followHint: { fontFamily: fontFamily.body, fontSize: 12.5, lineHeight: 17 },
+  followHint: {
+    fontFamily: fontFamily.body,
+    fontSize: 12.5,
+    lineHeight: 17,
+    textAlign: 'center',
+  },
   aboutRule: { height: StyleSheet.hairlineWidth, marginTop: 22 },
   // Dezelfde verticale ruimte als sectionHead hierboven (12 boven, 6
   // onder) plus de lucht die de kop van z'n blokken hoort te scheiden.
   // Zat op 2 en dan plakte de kop tegen de tegels.
   aboutHead: { marginTop: 12, marginBottom: 14 },
   // Vierkant en volle breedte: een artiestfoto is een portret, geen
-  // panorama, en op schermbreedte leest dat als een kop in plaats van
-  // als een plaatje ergens in de pagina.
+  // panorama, en op schermbreedte leest dat als een kop.
   hero: {
     width: '100%',
     aspectRatio: 1,
     marginTop: -12,
-    marginBottom: 18,
+    marginBottom: 14,
+    justifyContent: 'flex-end',
+    overflow: 'hidden',
+  },
+  heroBottom: { paddingHorizontal: 22, paddingBottom: 20 },
+  heroTitle: {
+    fontFamily: fontFamily.display,
+    fontSize: 38,
+    lineHeight: 38 * 0.92,
+    letterSpacing: -1.5,
+    color: palette.ink,
   },
   root: { flex: 1 },
   dim: { fontFamily: fontFamily.mono, fontSize: 12, letterSpacing: 0.8 },
