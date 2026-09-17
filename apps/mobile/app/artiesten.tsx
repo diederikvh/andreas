@@ -7,6 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AccountWall } from '@/components/AccountWall';
 import { AppHeader, HEADER_HEIGHT } from '@/components/AppHeader';
 import { EventListRow } from '@/components/EventListRow';
+import { FILTER_ROW_HEIGHT, FilterChip } from '@/components/FilterChip';
 import { ProfileAvatar } from '@/components/ProfileAvatar';
 import { SearchOverlay } from '@/components/SearchOverlay';
 import { SpinningCross } from '@/components/SpinningCross';
@@ -60,6 +61,13 @@ export default function ArtiestenScreen() {
   // opdracht zonder knop -- "zoek een artiest" en dan nergens heen.
   const [searchOpen, setSearchOpen] = useState(false);
 
+  // Twee tabbladen in plaats van twee secties onder elkaar. Bij veel
+  // gevolgde artiesten wordt "Je volgt" anders weggedrukt door de
+  // avonden erboven, en juist daar zit de knop om iemand te ontvolgen.
+  // Null betekent "nog niet gekozen": dan opent het scherm op de
+  // avonden, of op de namen als er niks aangekondigd is.
+  const [picked, setPicked] = useState<'shows' | 'artists' | null>(null);
+
   const headerButtons = (
     <View style={styles.headerRow}>
       <Pressable
@@ -78,12 +86,44 @@ export default function ArtiestenScreen() {
       </Pressable>
     </View>
   );
+  const nShows = (shows ?? []).length;
+  const nArtists = (artists ?? []).length;
+  const tab = picked ?? (nShows > 0 ? 'shows' : 'artists');
+
+  // Geen tabs als je nog niemand volgt: dan is er niets om tussen te
+  // wisselen en staat er alleen de lege staat.
+  const chips =
+    nArtists > 0 ? (
+      <View style={styles.chipRow}>
+        <FilterChip
+          label={t('Komt eraan', 'Coming up')}
+          count={nShows}
+          active={tab === 'shows'}
+          onPress={() => {
+            softTap();
+            setPicked('shows');
+          }}
+        />
+        <FilterChip
+          label={t('Je volgt', 'You follow')}
+          count={nArtists}
+          active={tab === 'artists'}
+          onPress={() => {
+            softTap();
+            setPicked('artists');
+          }}
+        />
+      </View>
+    ) : null;
+
   const header = (
     <AppHeader
       title={t('Artiesten', 'Artists')}
       hideAvatar
       rightSlot={headerButtons}
-    />
+    >
+      {chips}
+    </AppHeader>
   );
 
   if (!authed) {
@@ -111,7 +151,14 @@ export default function ArtiestenScreen() {
     <View style={[styles.root, { backgroundColor: roles.bg }]}>
       <ScrollView
         contentContainerStyle={{
-          paddingTop: insets.top + HEADER_HEIGHT + 8,
+          // Zelfde rekensom als op de agenda: de chip-rij zit vast in
+          // de header, dus de content begint eronder. Daar staat alleen
+          // nog een dag-kop tussen die de lucht geeft; die hebben wij
+          // niet meer sinds de koppen chips werden, dus tellen we z'n
+          // bovenmarge er hier bij op.
+          paddingTop: chips
+            ? insets.top + HEADER_HEIGHT + FILTER_ROW_HEIGHT + 10
+            : insets.top + HEADER_HEIGHT + 8,
           paddingBottom: insets.bottom + 96,
         }}
       >
@@ -144,37 +191,25 @@ export default function ArtiestenScreen() {
           </View>
         ) : null}
 
-        {(shows ?? []).length > 0 ? (
-          <>
-            <Text style={[styles.sectionTitle, { color: roles.accent }]}>
-              {t('Komt eraan', 'Coming up')}
-            </Text>
-            {(shows ?? []).map((show) => (
+        {/* De chips in de header dragen nu de koppen, dus hier geen
+            tweede titel meer. */}
+        {tab === 'shows' && nArtists > 0 ? (
+          nShows > 0 ? (
+            (shows ?? []).map((show) => (
               <FollowedShowRow key={show.id} show={show} />
-            ))}
-          </>
+            ))
+          ) : (
+            <Text style={[styles.note, { color: roles.fgMuted }]}>
+              {t(
+                'Nog niets aangekondigd. Zodra dat verandert hoor je het.',
+                'Nothing announced yet. You will hear from us when that changes.',
+              )}
+            </Text>
+          )
         ) : null}
 
-        {(artists ?? []).length > 0 ? (
+        {tab === 'artists' ? (
           <>
-            <Text
-              style={[
-                styles.sectionTitle,
-                { color: roles.accent, marginTop: 26 },
-              ]}
-            >
-              {t('Je volgt', 'You follow')}
-            </Text>
-            {/* Geen komende avonden? Dan zegt dit lijstje dat we wél op de
-                uitkijk staan -- dat is precies waarvoor je ze volgde. */}
-            {(shows ?? []).length === 0 ? (
-              <Text style={[styles.note, { color: roles.fgMuted }]}>
-                {t(
-                  'Nog niets aangekondigd. Zodra dat verandert hoor je het.',
-                  'Nothing announced yet. You will hear from us when that changes.',
-                )}
-              </Text>
-            ) : null}
             {(artists ?? []).map((artist) => (
               <Pressable
                 key={artist.id}
@@ -287,6 +322,16 @@ function FollowedShowRow({ show }: { show: ApiFollowedShow }) {
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
+  // Vult de vaste rijhoogte in de header, net als op /nieuw -- zo staan
+  // de chips verticaal gecentreerd zonder losse paddings.
+  chipRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 22,
+    paddingVertical: 6,
+    height: FILTER_ROW_HEIGHT,
+  },
   center: { paddingTop: 60, alignItems: 'center' },
   sectionTitle: {
     fontFamily: fontFamily.display,
