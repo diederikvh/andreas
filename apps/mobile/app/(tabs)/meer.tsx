@@ -117,6 +117,16 @@ export default function MeerScreen() {
       label: t('Je kaartjes', 'Your tickets'),
       onPress: go('/tickets'),
     },
+    {
+      // Volgen is een abonnement op nieuws, dus het hoort bij je eigen
+      // spullen en niet bij je vrienden.
+      key: 'artiesten',
+      icon: (
+        <Ionicons name="musical-notes-outline" size={22} color={roles.accent} />
+      ),
+      label: t('Artiesten die je volgt', 'Artists you follow'),
+      onPress: go('/artiesten'),
+    },
   ];
 
   // Volgorde: eerst de mensen, dan wat ze je vragen, dan wat jullie leuk

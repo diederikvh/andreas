@@ -104,7 +104,15 @@ artistFollowsRoute.get('/upcoming', async (c) => {
       imageUrl: r.image_url,
       category: r.category,
       artistName: r.artist_name,
-      occurrence: { id: r.occ_id, startsAt: r.starts_at, endsAt: r.ends_at },
+      // Met een rauwe query levert de driver "2026-09-25 21:00:00+00" op,
+      // en dát parseert JavaScriptCore op iOS niet -- je krijgt een
+      // Invalid Date en de rij klapt om bij het formatteren. Node is
+      // ruimer, dus hier omzetten naar ISO en niet op de client.
+      occurrence: {
+        id: r.occ_id,
+        startsAt: new Date(r.starts_at).toISOString(),
+        endsAt: r.ends_at ? new Date(r.ends_at).toISOString() : null,
+      },
       venue: { slug: r.venue_slug, name: r.venue_name, type: r.venue_type },
     }))
     // DISTINCT ON dwingt een sortering op e.id af, dus de chronologie

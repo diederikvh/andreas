@@ -1172,11 +1172,46 @@ export async function followArtistByName(input: {
   });
 }
 
+/** Een artiest die je volgt. */
+export type ApiFollowedArtist = {
+  id: string;
+  name: string;
+  imageUrl: string | null;
+  genres: string[];
+  followedAt: string;
+};
+
+/** Een komende avond van een artiest die je volgt. */
+export type ApiFollowedShow = {
+  id: string;
+  title: string;
+  imageUrl: string | null;
+  category: ApiEvent['category'];
+  /** Om wie je het te danken hebt dat deze avond hier staat. */
+  artistName: string;
+  occurrence: { id: string; startsAt: string; endsAt: string | null };
+  venue: { slug: string; name: string; type: string | null };
+};
+
 export async function getArtistFollows(): Promise<string[]> {
   const { artistIds } = await authedRequest<{ artistIds: string[] }>(
     '/artist-follows',
   );
   return artistIds;
+}
+
+export async function getFollowedArtists(): Promise<ApiFollowedArtist[]> {
+  const { artists } = await authedRequest<{ artists: ApiFollowedArtist[] }>(
+    '/artist-follows',
+  );
+  return artists;
+}
+
+export async function getFollowedShows(): Promise<ApiFollowedShow[]> {
+  const { events } = await authedRequest<{ events: ApiFollowedShow[] }>(
+    '/artist-follows/upcoming',
+  );
+  return events;
 }
 
 export async function setArtistFollow(

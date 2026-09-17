@@ -19,6 +19,8 @@ import {
   getArtist,
   followArtistByName,
   getArtistFollows,
+  getFollowedArtists,
+  getFollowedShows,
   getReminders,
   getEvent,
   getEventGenres,
@@ -152,6 +154,8 @@ export const queryKeys = {
   me: (userId: string | null) => ['me', userId] as const,
   reminders: () => ['reminders'] as const,
   artistFollows: () => ['artist-follows'] as const,
+  followedArtists: () => ['followed-artists'] as const,
+  followedShows: () => ['followed-shows'] as const,
 };
 
 // `useMe()` — gedeelde profiel-query. Sleutel matcht met wat /jij
@@ -437,7 +441,29 @@ export function useToggleArtistFollow() {
     },
     onSettled: () => {
       void qc.invalidateQueries({ queryKey: queryKeys.artistFollows() });
+      void qc.invalidateQueries({ queryKey: queryKeys.followedArtists() });
+      void qc.invalidateQueries({ queryKey: queryKeys.followedShows() });
     },
+  });
+}
+
+/** De artiesten die je volgt, met naam en foto. */
+export function useFollowedArtists(opts: { enabled?: boolean } = {}) {
+  return useQuery({
+    queryKey: queryKeys.followedArtists(),
+    queryFn: getFollowedArtists,
+    enabled: opts.enabled ?? true,
+    staleTime: 60_000,
+  });
+}
+
+/** Wat eraan komt van wie je volgt. */
+export function useFollowedShows(opts: { enabled?: boolean } = {}) {
+  return useQuery({
+    queryKey: queryKeys.followedShows(),
+    queryFn: getFollowedShows,
+    enabled: opts.enabled ?? true,
+    staleTime: 60_000,
   });
 }
 

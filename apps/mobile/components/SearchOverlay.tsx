@@ -328,8 +328,8 @@ export function SearchOverlay({
             />
             <Text style={[styles.hint, { color: roles.fgMuted }]}>
               {t(
-                'Begin te typen om venues en events te zoeken.',
-                'Start typing to search venues and events.'
+                'Begin te typen om artiesten, venues en events te zoeken.',
+                'Start typing to search artists, venues and events.'
               )}
             </Text>
           </View>
