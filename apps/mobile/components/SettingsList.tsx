@@ -296,7 +296,7 @@ const styles = StyleSheet.create({
   // erboven hoort en niet zelf een instelling is.
   optionRow: { paddingLeft: 32, minHeight: 48 },
   rowOff: { opacity: 0.45 },
-  lead: { width: LEAD, alignItems: 'center' },
+  lead: { width: LEAD, alignItems: 'flex-start' },
   rowText: { flex: 1, gap: 2 },
   label: { fontFamily: fontFamily.medium, fontSize: 15.5, letterSpacing: -0.2 },
   sub: { fontFamily: fontFamily.body, fontSize: 12.5, lineHeight: 16.5 },

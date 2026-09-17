@@ -20,6 +20,7 @@ import {
   useReminders,
   useSetReminder,
 } from '@/lib/queries';
+import { LEAD } from '@/components/SettingsList';
 import { useMode, useRoles } from '@/store/mode';
 import { fontFamily } from '@/theme/tokens';
 
@@ -156,7 +157,9 @@ export function EventReminder({
       }}
       style={styles.row}
     >
-      <Ionicons name="alarm-outline" size={22} color={roles.accent} />
+      <View style={styles.lead}>
+        <Ionicons name="alarm-outline" size={22} color={roles.accent} />
+      </View>
       <Text style={[styles.rowText, { color: roles.fg }]}>
         {t('Herinner me hieraan', 'Remind me about this')}
       </Text>
@@ -295,9 +298,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    paddingHorizontal: 14,
+    paddingHorizontal: 16,
     paddingVertical: 13,
   },
+  lead: { width: LEAD, alignItems: 'flex-start' },
   rowText: {
     flex: 1,
     fontFamily: fontFamily.medium,
@@ -319,7 +323,7 @@ const styles = StyleSheet.create({
     letterSpacing: -0.07,
   },
   setWhen: { fontFamily: fontFamily.body, fontSize: 12.5 },
-  sheet: { padding: 14, gap: 12 },
+  sheet: { paddingHorizontal: 16, paddingBottom: 14, gap: 12 },
   hint: { fontFamily: fontFamily.body, fontSize: 12.5, lineHeight: 18 },
   pickers: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   note: {

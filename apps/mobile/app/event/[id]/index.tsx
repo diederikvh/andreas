@@ -1124,10 +1124,12 @@ function CrewStatusBadge({ row }: { row: CrewRow; eventId: string }) {
   // Wie alleen een hartje gaf kreeg eerder niets. Dat viel niet op toen
   // dit een eigen blok was, maar in een lijst waar elke rij z'n stand
   // rechts toont is een lege plek een vraag: gaat die persoon nou wel of
-  // niet? Een hartje is geen belofte, dus het woord verschilt.
+  // niet? Een hartje is geen belofte, dus het woord verschilt -- en het
+  // is "leuk" en niet "gered": het hartje zegt dat iemand het leuk vindt,
+  // niet dat hij het ergens heeft weggelegd.
   const label = !row.inviteStatus
     ? row.saved
-      ? t('Gered', 'Saved')
+      ? t('Leuk', 'Liked')
       : null
     : row.inviteStatus === 'going'
       ? t('Gaat', 'Going')
