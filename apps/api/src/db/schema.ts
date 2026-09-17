@@ -607,6 +607,10 @@ export const artists = pgTable(
       .notNull()
       .default(sql`ARRAY[]::text[]`),
     enrichedAt: timestamp({ withTimezone: true }),
+    /** Zelfde idee als `enrichedAt`, maar voor de foto: gezet bij elke
+        poging, ook als Spotify niets teruggaf. Anders blijft zo'n
+        artiest voor altijd vooraan in de wachtrij staan. */
+    imageTriedAt: timestamp({ withTimezone: true }),
     createdAt: timestamp({ withTimezone: true })
       .notNull()
       .default(sql`now()`),

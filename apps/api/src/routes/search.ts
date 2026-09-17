@@ -294,7 +294,7 @@ searchRoute.get('/elsewhere', async (c) => {
   const q = (c.req.query('q') ?? '').trim();
   if (q.length < 2) return c.json({ artists: [] });
 
-  const found = await searchSpotifyArtists(q, 5);
+  const found = (await searchSpotifyArtists(q, 5)) ?? [];
   if (found.length === 0) return c.json({ artists: [] });
 
   // Wie we zelf al hebben, hoort hier niet nog een keer te staan.

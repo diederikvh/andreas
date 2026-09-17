@@ -68,11 +68,11 @@ async function token(): Promise<string | null> {
 export async function searchSpotifyArtists(
   q: string,
   limit = 5
-): Promise<SpotifyArtist[]> {
+): Promise<SpotifyArtist[] | null> {
   const term = q.trim();
   if (term.length < 2) return [];
   const t = await token();
-  if (!t) return [];
+  if (!t) return null;
   try {
     const url = `${SEARCH_URL}?q=${encodeURIComponent(term)}&type=artist&limit=${limit}`;
     const r = await fetch(url, {
@@ -82,7 +82,9 @@ export async function searchSpotifyArtists(
     // 429 is niet "niets gevonden" maar "te snel". Belangrijk om te
     // weten: de app-sleutel wordt gedeeld met de verrijkingsklussen, dus
     // een inhaalslag op de achtergrond kan de zoek in de app stilleggen.
-    if (!r.ok) return [];
+    // Vandaar null bij een mislukte oproep en [] bij een lege uitslag:
+    // de fotoklus mag een 429 niet aanzien voor "deze bestaat niet".
+    if (!r.ok) return null;
     const data = (await r.json()) as {
       artists?: {
         items?: {
@@ -102,7 +104,7 @@ export async function searchSpotifyArtists(
       popularity: a.popularity ?? 0,
     }));
   } catch {
-    return [];
+    return null;
   }
 }
 

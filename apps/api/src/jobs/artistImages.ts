@@ -31,7 +31,7 @@ export async function fillArtistImages(
   const rows = await db.execute<{ id: string; name: string; spotify_url: string }>(sql`
     SELECT id, name, spotify_url FROM artists
     WHERE image_url IS NULL AND spotify_url IS NOT NULL
-    ORDER BY id
+    ORDER BY image_tried_at NULLS FIRST, id
     LIMIT ${limit}
   `);
 
@@ -43,25 +43,33 @@ export async function fillArtistImages(
     if (!want) continue;
     looked++;
     const hits = await searchSpotifyArtists(row.name, 5);
-    // Alleen het resultaat met hetzelfde id. Een naamgenoot bovenaan is
-    // precies wat we niet willen, en dat gebeurt vaker dan je denkt bij
-    // klassieke musici en dj-aliassen.
-    const hit = hits.find((h) => h.spotifyId === want);
-    if (!hit?.imageUrl) {
-      missed.push(row.name);
-      continue;
-    }
-    if (!opts.dryRun) {
-      await db.execute(
-        sql`UPDATE artists SET image_url = ${hit.imageUrl} WHERE id = ${row.id}`
-      );
-    }
-    filled++;
+    // null = de oproep zelf mislukte (meestal een 429). Doorgaan heeft
+    // dan geen zin en de rest als "geprobeerd" wegzetten is onjuist.
+    if (hits === null) break;
     // Rustig aan. De app-sleutel is dezelfde die de zoek in de app
     // gebruikt, dus een te snelle inhaalslag legt die zoek stil met een
     // 429 -- dat is één keer gebeurd en het kost niemand iets om hier
     // een halve seconde te wachten.
     await new Promise((r) => setTimeout(r, 500));
+    // Alleen het resultaat met hetzelfde id. Een naamgenoot bovenaan is
+    // precies wat we niet willen, en dat gebeurt vaker dan je denkt bij
+    // klassieke musici en dj-aliassen.
+    const hit = hits.find((h) => h.spotifyId === want);
+    if (!opts.dryRun) {
+      // De poging altijd vastleggen. Een lege image_url zou de app als
+      // kapotte afbeelding tonen, dus de misser blijft NULL -- alleen
+      // de datum schuift 'm achteraan in de rij.
+      await db.execute(sql`
+        UPDATE artists
+        SET image_tried_at = now()${hit?.imageUrl ? sql`, image_url = ${hit.imageUrl}` : sql``}
+        WHERE id = ${row.id}
+      `);
+    }
+    if (!hit?.imageUrl) {
+      missed.push(row.name);
+      continue;
+    }
+    filled++;
   }
   return { looked, filled, missed: missed.slice(0, 10) };
 }
