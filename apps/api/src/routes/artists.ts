@@ -11,8 +11,42 @@ import { Hono } from 'hono';
 import { and, eq, gte, sql } from 'drizzle-orm';
 
 import { db, schema } from '../db/index.js';
+import { fetchArtistImage } from '../jobs/artistImages.js';
 
 export const artistsRoute = new Hono();
+
+/**
+ * Foto ophalen op het moment dat iemand de pagina opent.
+ *
+ * De nachtelijke klus loopt de hele lijst af, maar die doet er dagen
+ * over en juist de artiest die nu bekeken wordt is de artiest die het
+ * hardst een foto nodig heeft. Dus: één poging, hier, en het resultaat
+ * gaat de database in zodat het bij het volgende bezoek gewoon klaar
+ * staat.
+ *
+ * Twee voorwaarden. We wachten er hooguit 2,5 seconde op -- loopt het
+ * langer, dan laadt de pagina zonder foto en schrijft de poging zichzelf
+ * alsnog weg voor de volgende keer. En een artiest die we al eens
+ * tevergeefs hebben opgezocht slaan we een week over, anders staat er
+ * bij elk paginabezoek weer een mislukte zoekopdracht.
+ */
+const RETRY_NA = 7 * 24 * 60 * 60 * 1000;
+
+async function imageOnDemand(artist: {
+  id: string;
+  name: string;
+  spotifyUrl: string | null;
+  imageTriedAt: Date | null;
+}): Promise<string | null> {
+  if (artist.imageTriedAt && Date.now() - artist.imageTriedAt.getTime() < RETRY_NA) {
+    return null;
+  }
+  const row = { id: artist.id, name: artist.name, spotify_url: artist.spotifyUrl };
+  return Promise.race([
+    fetchArtistImage(row).catch(() => null),
+    new Promise<null>((r) => setTimeout(() => r(null), 2500)),
+  ]);
+}
 
 artistsRoute.get('/:slug', async (c) => {
   const slug = c.req.param('slug');
@@ -97,7 +131,7 @@ artistsRoute.get('/:slug', async (c) => {
       id: artist.id,
       name: artist.name,
       description: artist.description,
-      imageUrl: artist.imageUrl,
+      imageUrl: artist.imageUrl ?? (await imageOnDemand(artist)),
       spotifyUrl: artist.spotifyUrl,
       appleMusicUrl: artist.appleMusicUrl,
       bandcampUrl: artist.bandcampUrl,
