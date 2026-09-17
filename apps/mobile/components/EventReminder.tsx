@@ -161,10 +161,10 @@ export function EventReminder({
         <Ionicons name="alarm-outline" size={22} color={roles.accent} />
       </View>
       <Text style={[styles.rowText, { color: roles.fg }]}>
-        {t('Herinner me hieraan', 'Remind me about this')}
+        {t('Herinner me', 'Remind me')}
       </Text>
       {existing ? (
-        <Text style={[styles.value, { color: roles.fgMuted }]}>
+        <Text style={[styles.value, { color: roles.accent }]}>
           {fmt.format(new Date(existing.fireAt))}
         </Text>
       ) : null}
@@ -227,9 +227,18 @@ export function EventReminder({
         placeholder={t('Waarvoor? (optioneel)', 'What for? (optional)')}
         placeholderTextColor={roles.fgPlaceholder}
         maxLength={80}
+        multiline
+        numberOfLines={2}
+        textAlignVertical="top"
         style={[
           styles.note,
-          { color: roles.fg, borderColor: roles.fgPlaceholder },
+          {
+            color: roles.fg,
+            backgroundColor:
+              mode === 'nacht'
+                ? 'rgba(118,118,128,0.24)'
+                : 'rgba(118,118,128,0.12)',
+          },
         ]}
       />
 
@@ -329,10 +338,11 @@ const styles = StyleSheet.create({
   note: {
     fontFamily: fontFamily.body,
     fontSize: 14,
-    borderWidth: 1,
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    lineHeight: 19,
+    borderRadius: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    minHeight: 62,
   },
   warn: { fontFamily: fontFamily.body, fontSize: 12.5 },
   // Links uitlijnen met de rest van het blok, en bevestigen vóór afzien:
