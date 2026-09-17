@@ -205,15 +205,21 @@ export default function ArtiestenScreen() {
                     </Text>
                   ) : null}
                 </View>
+                {/* Een woord in plaats van een kruisje. Een kruisje kan
+                    net zo goed "verberg deze rij" betekenen, en bij iets
+                    dat je zelf hebt aangezet wil je zeker weten wat je
+                    uitzet. Zacht van kleur, want het is niet waar je
+                    voor kwam. */}
                 <Pressable
                   onPress={() => {
                     softTap();
                     toggle.mutate({ artistId: artist.id, following: false });
                   }}
                   hitSlop={10}
-                  accessibilityLabel={t('Niet meer volgen', 'Unfollow')}
                 >
-                  <Ionicons name="close" size={18} color={roles.fgMuted} />
+                  <Text style={[styles.unfollow, { color: roles.fgMuted }]}>
+                    {t('Ontvolgen', 'Unfollow')}
+                  </Text>
                 </Pressable>
               </Pressable>
             ))}
@@ -296,6 +302,7 @@ const styles = StyleSheet.create({
   },
   artistName: { fontFamily: fontFamily.bold, fontSize: 15.5, letterSpacing: -0.2 },
   artistSub: { fontFamily: fontFamily.body, fontSize: 12.5 },
+  unfollow: { fontFamily: fontFamily.bold, fontSize: 14 },
   note: {
     fontFamily: fontFamily.body,
     fontSize: 13,
