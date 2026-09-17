@@ -223,6 +223,13 @@ export function SettingsAction({
         {action ? (
           <Text style={[styles.action, { color: roles.accent }]}>{action}</Text>
         ) : null}
+        {onPress && !action ? (
+          <Ionicons
+            name="chevron-forward"
+            size={15}
+            color={roles.fgPlaceholder}
+          />
+        ) : null}
       </View>
     </Pressable>
   );

@@ -530,11 +530,25 @@ export default function Jij() {
           paddingHorizontal: 22,
         }}
       >
-        <Text style={[styles.title, { color: roles.fg }]}>
-          {isEditingExisting
-            ? t('Profiel', 'Profile')
-            : t('Hoe heet je\neigenlijk?', 'What’s your\nname?')}
-        </Text>
+        <View style={styles.titleRow}>
+          <Text style={[styles.title, { color: roles.fg, flex: 1 }]}>
+            {isEditingExisting
+              ? t('Profiel', 'Profile')
+              : t('Hoe heet je\neigenlijk?', 'What’s your\nname?')}
+          </Text>
+          {isEditingExisting ? (
+            <Pressable onPress={saveProfile} disabled={busy} hitSlop={10}>
+              <Text
+                style={[
+                  styles.titleSave,
+                  { color: busy ? roles.fgPlaceholder : roles.accent },
+                ]}
+              >
+                {busy ? t('Bezig…', 'Saving…') : t('Bewaar', 'Save')}
+              </Text>
+            </Pressable>
+          ) : null}
+        </View>
 
         <View style={styles.fieldGroup}>
           <Text style={[styles.label, { color: roles.fgMuted }]}>
@@ -596,6 +610,7 @@ export default function Jij() {
 
         {error && <Text style={styles.error}>{error}</Text>}
 
+        {isEditingExisting ? null : (
         <Pressable
           onPress={saveProfile}
           disabled={busy}
@@ -621,6 +636,7 @@ export default function Jij() {
                 : t('Doorgaan', 'Continue')}
           </Text>
         </Pressable>
+        )}
         {/* Instellingen — alleen zichtbaar als de gebruiker een
             bestaand profiel bewerkt (niet tijdens onboarding-eerste-
             keer-vullen). Marge-cancel om de paddingHorizontal van de
@@ -1515,8 +1531,18 @@ function NotificationsSection({
             )
       }
     >
+      {/* Geen schakelaar, met opzet. iOS laat één keer vragen; daarna kan
+          een app de toestemming niet meer zetten of intrekken -- alleen
+          de gebruiker kan dat, in Instellingen. Een schakelaar die niet
+          schakelt is een leugen, dus dit is een rij die je erheen
+          brengt. Aantikbaar in álle toestanden: staat 'ie aan, dan wil
+          je 'm daar juist uit kunnen zetten. */}
       <SettingsAction
         label={t('Op dit toestel', 'On this device')}
+        sub={t(
+          'Staat bij de iOS-instellingen van Andreas.',
+          'Lives in the iOS settings for Andreas.'
+        )}
         value={
           status === 'granted'
             ? t('Aan', 'On')
@@ -1525,13 +1551,9 @@ function NotificationsSection({
               : t('Niet ingesteld', 'Not set')
         }
         action={
-          status === 'granted'
-            ? undefined
-            : status === 'denied'
-              ? t('Instellingen', 'Settings')
-              : t('Aanzetten', 'Turn on')
+          status === 'undetermined' ? t('Aanzetten', 'Turn on') : undefined
         }
-        onPress={status === 'granted' ? undefined : () => void onPermission()}
+        onPress={() => void onPermission()}
       />
       <SettingsSwitch
         label={t('De avond ervoor', 'The night before')}
@@ -1799,6 +1821,8 @@ const styles = StyleSheet.create({
     letterSpacing: 1.4,
     textTransform: 'uppercase',
   },
+  titleRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  titleSave: { fontFamily: fontFamily.bold, fontSize: 16.5 },
   title: {
     fontFamily: fontFamily.display,
     fontSize: 30,
