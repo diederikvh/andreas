@@ -1513,3 +1513,23 @@ export const artistFollows = pgTable(
   },
   (t) => [primaryKey({ columns: [t.userId, t.artistId] })]
 );
+
+
+/**
+ * Zoekopdrachten die niets opleverden.
+ *
+ * Het eerlijkste signaal dat we hebben over wat er mist: iemand typt een
+ * naam in en krijgt een leeg scherm. Eén rij per term (kleine letters),
+ * met een teller -- zo zie je in de admin waar de vraag zit zonder dat we
+ * per zoekopdracht een regel wegschrijven.
+ *
+ * Bewust zonder gebruiker erbij: dit gaat over wat er mist in de
+ * catalogus, niet over wie wat zocht.
+ */
+export const searchMisses = pgTable('search_misses', {
+  q: text().primaryKey(),
+  hits: integer().notNull().default(1),
+  lastAt: timestamp({ withTimezone: true })
+    .notNull()
+    .default(sql`now()`),
+});

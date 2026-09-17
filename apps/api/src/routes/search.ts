@@ -21,6 +21,7 @@ import type { PgColumn } from 'drizzle-orm/pg-core';
 import { Hono } from 'hono';
 
 import { db, displayGenres, schema } from '../db/index.js';
+import { searchSpotifyArtists } from '../spotify-search.js';
 
 export const searchRoute = new Hono();
 
@@ -157,15 +158,49 @@ searchRoute.get('/', async (c) => {
     .limit(EVENTS_LIMIT + 1)
     .offset(eventsOffset);
 
+  /**
+   * Artiesten. Alleen op de eerste pagina, net als venues.
+   *
+   * Hier komt de volg-knop aan te hangen: zoek je een band, dan is dat
+   * meestal geen zoekopdracht naar een avond maar naar die band. Ook
+   * artiesten zónder komende avonden komen mee -- juist die wil je
+   * kunnen volgen, want daar heb je nog niets van gezien.
+   */
+  const findArtists = (fuzzy: boolean) =>
+    eventsOffset === 0
+      ? db
+          .select({
+            id: schema.artists.id,
+            name: schema.artists.name,
+            imageUrl: schema.artists.imageUrl,
+            genres: schema.artists.genres,
+          })
+          .from(schema.artists)
+          .where(or(...alike(schema.artists.name, fuzzy)))
+          .orderBy(asc(schema.artists.name))
+          .limit(8)
+      : Promise.resolve([]);
+
   const asked = c.req.query('fuzzy') === '1';
-  let [venues, eventRows] = await Promise.all([
+  let [venues, eventRows, artists] = await Promise.all([
     findVenues(asked),
     findEvents(asked),
+    findArtists(asked),
   ]);
   // Niets gevonden? Dan lag het misschien aan de spelling. Eén woord van
   // twee letters fuzzy zoeken levert alleen ruis op, vandaar de ondergrens.
-  if (!asked && venues.length === 0 && eventRows.length === 0 && rawQ.length >= 3) {
-    [venues, eventRows] = await Promise.all([findVenues(true), findEvents(true)]);
+  if (
+    !asked &&
+    venues.length === 0 &&
+    eventRows.length === 0 &&
+    artists.length === 0 &&
+    rawQ.length >= 3
+  ) {
+    [venues, eventRows, artists] = await Promise.all([
+      findVenues(true),
+      findEvents(true),
+      findArtists(true),
+    ]);
   }
 
   const eventsHasMore = eventRows.length > EVENTS_LIMIT;
@@ -219,5 +254,64 @@ searchRoute.get('/', async (c) => {
     };
   });
 
-  return c.json({ venues, events, eventsHasMore });
+  // Wat mensen tevergeefs zoeken is het eerlijkste signaal dat we hebben
+  // over wat er mist. Alleen echt lege uitkomsten, alleen op de eerste
+  // pagina, en de term genormaliseerd zodat "Big Thief" en "big thief"
+  // dezelfde regel worden.
+  if (
+    eventsOffset === 0 &&
+    venues.length === 0 &&
+    artists.length === 0 &&
+    events.length === 0 &&
+    rawQ.length >= 2
+  ) {
+    try {
+      await db.execute(sql`
+        INSERT INTO search_misses (q, hits)
+        VALUES (lower(${rawQ}), 1)
+        ON CONFLICT (q) DO UPDATE
+          SET hits = search_misses.hits + 1, last_at = NOW()
+      `);
+    } catch {
+      /* een niet-geschreven telling mag de zoek niet stukmaken */
+    }
+  }
+
+  return c.json({ venues, artists, events, eventsHasMore });
+});
+
+/**
+ * Artiesten die wij niet kennen, opgezocht in de Spotify-catalogus.
+ *
+ * Apart endpoint en niet in `/search`: de app roept dit alleen aan als de
+ * eigen zoek niets opleverde. Zo kost het geen extra netwerkgang bij elke
+ * toetsaanslag, en blijft de zoek werken als Spotify hapert.
+ *
+ * Dit vraagt géén inloggen: het zijn app-credentials, dus er is geen
+ * gebruikers-OAuth en geen limiet van 25 mensen.
+ */
+searchRoute.get('/elsewhere', async (c) => {
+  const q = (c.req.query('q') ?? '').trim();
+  if (q.length < 2) return c.json({ artists: [] });
+
+  const found = await searchSpotifyArtists(q, 5);
+  if (found.length === 0) return c.json({ artists: [] });
+
+  // Wie we zelf al hebben, hoort hier niet nog een keer te staan.
+  const names = found.map((a) => a.name.toLowerCase());
+  const mine = await db.execute<{ lower: string }>(sql`
+    SELECT lower(name) AS lower FROM artists WHERE lower(name) = ANY(${names})
+  `);
+  const known = new Set((mine.rows ?? []).map((r) => r.lower));
+
+  return c.json({
+    artists: found
+      .filter((a) => !known.has(a.name.toLowerCase()))
+      .map((a) => ({
+        name: a.name,
+        imageUrl: a.imageUrl,
+        genres: a.genres.slice(0, 3),
+        spotifyUrl: `https://open.spotify.com/artist/${a.spotifyId}`,
+      })),
+  });
 });

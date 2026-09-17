@@ -5478,6 +5478,14 @@ adminUi.post('/social/:id/regenerate', async (c) => {
  */
 adminUi.get('/trefwoorden', async (c) => {
   const terms = await listBlockedTerms();
+  // Wat mensen zochten en niet vonden. Dezelfde pagina, want het is
+  // dezelfde vraag van twee kanten: wat hoort er niet in de catalogus, en
+  // wat mist er juist in.
+  const misses = await db
+    .select()
+    .from(schema.searchMisses)
+    .orderBy(desc(schema.searchMisses.hits))
+    .limit(25);
   const off = Number(c.req.query('off') ?? 0);
   const added = c.req.query('added');
   const removed = c.req.query('removed');
@@ -5579,6 +5587,41 @@ adminUi.get('/trefwoorden', async (c) => {
                     </button>
                   </form>
                 </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+
+      <h3 style="margin-top:36px;">Gezocht, niets gevonden</h3>
+      <p style="opacity:0.7;font-size:14px;margin-top:-8px;">
+        Wat mensen intypten waar geen enkel event, zaal of artiest bij
+        hoorde. Het eerlijkste signaal dat er is over wat er mist: iemand
+        nam de moeite te zoeken en kreeg een leeg scherm. Staat er een
+        artiest bij die vaak terugkomt, dan weet je welke zaal je moet
+        bellen.
+      </p>
+      {misses.length === 0 ? (
+        <p style="opacity:0.7;font-size:14px;">
+          Nog niets — of iedereen vindt wat hij zoekt.
+        </p>
+      ) : (
+        <table>
+          <thead>
+            <tr>
+              <th>Gezocht op</th>
+              <th>Keer</th>
+              <th>Laatst</th>
+            </tr>
+          </thead>
+          <tbody>
+            {misses.map((m) => (
+              <tr>
+                <td>
+                  <strong>{m.q}</strong>
+                </td>
+                <td>{m.hits}</td>
+                <td style="opacity:0.6;font-size:13px;">{fmtDate(m.lastAt)}</td>
               </tr>
             ))}
           </tbody>
