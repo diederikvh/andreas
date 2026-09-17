@@ -5,12 +5,13 @@
  * in de line-up binnenkomt. Alleen avonden die ná je volg-moment zijn
  * toegevoegd -- wat er al stond zie je op z'n pagina.
  *
- *   GET    /artist-follows          — de ids die ik volg
+ *   GET    /artist-follows          — wie ik volg (ids + namen)
+ *   GET    /artist-follows/upcoming — komende avonden van wie ik volg
  *   POST   /artist-follows/:id      — volgen
  *   DELETE /artist-follows/:id      — niet meer volgen
  *   POST   /artist-follows/by-name  — volgen wie we nog niet kennen
  */
-import { and, eq, sql } from 'drizzle-orm';
+import { and, asc, eq, sql } from 'drizzle-orm';
 import { Hono, type Context } from 'hono';
 
 import { auth } from '../auth.js';
@@ -29,11 +30,92 @@ artistFollowsRoute.get('/', async (c) => {
   if (typeof userId !== 'string') return userId;
 
   const rows = await db
-    .select({ artistId: schema.artistFollows.artistId })
+    .select({
+      id: schema.artists.id,
+      name: schema.artists.name,
+      imageUrl: schema.artists.imageUrl,
+      genres: schema.artists.genres,
+      followedAt: schema.artistFollows.createdAt,
+    })
     .from(schema.artistFollows)
-    .where(eq(schema.artistFollows.userId, userId));
+    .innerJoin(
+      schema.artists,
+      eq(schema.artists.id, schema.artistFollows.artistId)
+    )
+    .where(eq(schema.artistFollows.userId, userId))
+    .orderBy(asc(schema.artists.name));
 
-  return c.json({ artistIds: rows.map((r) => r.artistId) });
+  // `artistIds` blijft erin: de volg-knoppen in de zoek en op de
+  // artiest-pagina kijken daarnaar, en dat is goedkoper dan per knop de
+  // hele lijst doorzoeken.
+  return c.json({ artistIds: rows.map((r) => r.id), artists: rows });
+});
+
+/**
+ * Komende avonden van artiesten die je volgt.
+ *
+ * Dezelfde vraag als die de melding stelt, maar dan als lijst: wat komt
+ * eraan van wie ik volg. Eén rij per event -- staat een artiest drie
+ * avonden achter elkaar, dan is dat één regel met de eerste datum, net
+ * als bij de melding.
+ */
+artistFollowsRoute.get('/upcoming', async (c) => {
+  const userId = await requireUserId(c);
+  if (typeof userId !== 'string') return userId;
+
+  const rows = await db.execute<{
+    event_id: string;
+    title: string;
+    image_url: string | null;
+    category: string;
+    occ_id: string;
+    starts_at: Date;
+    ends_at: Date | null;
+    venue_slug: string;
+    venue_name: string;
+    venue_type: string | null;
+    artist_name: string;
+  }>(sql`
+    SELECT DISTINCT ON (e.id)
+      e.id AS event_id, e.title, e.image_url, e.category::text AS category,
+      o.id AS occ_id, o.starts_at, o.ends_at,
+      v.slug AS venue_slug, v.name AS venue_name, v.type::text AS venue_type,
+      ar.name AS artist_name
+    FROM artist_follows f
+    JOIN artists ar ON ar.id = f.artist_id
+    JOIN occurrences o
+      ON jsonb_typeof(o.lineup) = 'array'
+     AND EXISTS (
+       SELECT 1 FROM jsonb_array_elements(o.lineup) le
+       WHERE le->>'artistId' = f.artist_id
+     )
+    JOIN events e ON e.id = o.event_id AND e.published
+    JOIN venues v ON v.id = COALESCE(o.venue_id, e.venue_id) AND v.published
+    WHERE f.user_id = ${userId}
+      AND o.starts_at > NOW()
+      AND o.status <> 'cancelled'
+    ORDER BY e.id, o.starts_at
+  `);
+
+  const events = (rows.rows ?? [])
+    .map((r) => ({
+      id: r.event_id,
+      title: r.title,
+      imageUrl: r.image_url,
+      category: r.category,
+      artistName: r.artist_name,
+      occurrence: { id: r.occ_id, startsAt: r.starts_at, endsAt: r.ends_at },
+      venue: { slug: r.venue_slug, name: r.venue_name, type: r.venue_type },
+    }))
+    // DISTINCT ON dwingt een sortering op e.id af, dus de chronologie
+    // moet er hier weer overheen.
+    .sort(
+      (a, b) =>
+        new Date(a.occurrence.startsAt).getTime() -
+        new Date(b.occurrence.startsAt).getTime()
+    );
+
+  return c.json({ events });
 });
 
 artistFollowsRoute.post('/:artistId', async (c) => {
