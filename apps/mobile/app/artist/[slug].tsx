@@ -144,6 +144,25 @@ export default function ArtistPage() {
                   belofte dan "luister hier". */}
               <ArtistFollowButton artistId={data.artist.id} />
 
+              {/* Alles hieronder gaat over de artiest zelf, niet over
+                  wat Andreas voor je doet. Een streep en een kop zetten
+                  die twee uit elkaar; zonder dat lees je de zoekknoppen
+                  als onderdeel van het volgen. */}
+              {(links.length > 0 || fallback.length > 0) && (
+                <>
+                  <View
+                    style={[styles.aboutRule, { backgroundColor: roles.bgChip }]}
+                  />
+                  <View style={styles.aboutHead}>
+                    <Text
+                      style={[styles.sectionLabel, { color: roles.accent }]}
+                    >
+                      {t('Over deze artiest', 'About this artist')}
+                    </Text>
+                  </View>
+                </>
+              )}
+
               {links.length > 0 && (
                 <StreamingRail tiles={links} />
               )}
@@ -440,6 +459,10 @@ const styles = StyleSheet.create({
   },
   followText: { fontFamily: fontFamily.bold, fontSize: 15 },
   followHint: { fontFamily: fontFamily.body, fontSize: 12.5, lineHeight: 17 },
+  aboutRule: { height: StyleSheet.hairlineWidth, marginTop: 22 },
+  // De kop van "Komende voorstellingen" staat in een blok met 22 padding;
+  // hier zitten we al binnen die padding, dus alleen de verticale ruimte.
+  aboutHead: { marginTop: 16, marginBottom: 2 },
   root: { flex: 1 },
   dim: { fontFamily: fontFamily.mono, fontSize: 12, letterSpacing: 0.8 },
   // Intro-blok (naam + genres + description + links): paddingHorizontal

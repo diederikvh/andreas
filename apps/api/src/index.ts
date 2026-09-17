@@ -25,6 +25,7 @@ import { shareInvitesRoute } from './routes/share-invites.js';
 import { pushRoute } from './routes/push.js';
 import { startScheduler } from './jobs/scheduler.js';
 import { goingRoute } from './routes/going.js';
+import { artistFollowsRoute } from './routes/artist-follows.js';
 import { remindersRoute } from './routes/reminders.js';
 import { savesRoute } from './routes/saves.js';
 import { submissionsRoute } from './routes/submissions.js';
@@ -205,6 +206,7 @@ app.patch('/me', async (c) => {
     pushTonight?: boolean;
     pushForSaves?: boolean;
     pushForGoing?: boolean;
+    pushArtists?: boolean;
   };
 
   // Bouw alleen de update-set op met velden die meekwamen — zo kan
@@ -246,6 +248,7 @@ app.patch('/me', async (c) => {
     'pushTonight',
     'pushForSaves',
     'pushForGoing',
+    'pushArtists',
   ] as const) {
     if (body[key] !== undefined) updates[key] = Boolean(body[key]);
   }
@@ -402,6 +405,7 @@ app.route('/mcp', mcpRoute);
 app.route('/series', seriesRoute);
 app.route('/saves', savesRoute);
 app.route('/reminders', remindersRoute);
+app.route('/artist-follows', artistFollowsRoute);
 app.route('/going', goingRoute);
 app.route('/submissions', submissionsRoute);
 app.route('/mirror', mirrorRoute);
