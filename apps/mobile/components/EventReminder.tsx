@@ -301,7 +301,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 13,
   },
-  lead: { width: LEAD, alignItems: 'flex-start' },
+  lead: { width: LEAD, alignItems: 'center' },
   rowText: {
     flex: 1,
     fontFamily: fontFamily.medium,

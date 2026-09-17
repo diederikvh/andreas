@@ -104,17 +104,24 @@ export function SettingsSwitch({
   value,
   onValueChange,
   disabled,
+  icon,
 }: {
   label: string;
   sub?: string;
   value: boolean;
   onValueChange: (next: boolean) => void;
   disabled?: boolean;
+  icon?: keyof typeof Ionicons.glyphMap;
 }) {
   const roles = useRoles();
   const isNacht = useMode() === 'nacht';
   return (
     <View style={[styles.row, disabled ? styles.rowOff : null]}>
+      {icon ? (
+        <View style={styles.lead}>
+          <Ionicons name={icon} size={22} color={roles.accent} />
+        </View>
+      ) : null}
       <View style={styles.rowText}>
         <Text style={[styles.label, { color: roles.fg }]}>{label}</Text>
         {sub ? (
@@ -221,6 +228,7 @@ export function SettingsAction({
   action,
   icon,
   onPress,
+  chevron = true,
 }: {
   label: string;
   sub?: string;
@@ -228,6 +236,10 @@ export function SettingsAction({
   action?: string;
   icon?: keyof typeof Ionicons.glyphMap;
   onPress?: () => void;
+  /** Het pijltje rechts. Alleen voor rijen die je ergens heen brengen --
+      een rij die ter plekke iets omzet hoort er geen te hebben, want je
+      gaat nergens naartoe. */
+  chevron?: boolean;
 }) {
   const roles = useRoles();
   return (
@@ -260,7 +272,7 @@ export function SettingsAction({
         {action ? (
           <Text style={[styles.action, { color: roles.accent }]}>{action}</Text>
         ) : null}
-        {onPress && !action ? (
+        {onPress && !action && chevron ? (
           <Ionicons
             name="chevron-forward"
             size={15}
@@ -296,7 +308,7 @@ const styles = StyleSheet.create({
   // erboven hoort en niet zelf een instelling is.
   optionRow: { paddingLeft: 32, minHeight: 48 },
   rowOff: { opacity: 0.45 },
-  lead: { width: LEAD, alignItems: 'flex-start' },
+  lead: { width: LEAD, alignItems: 'center' },
   rowText: { flex: 1, gap: 2 },
   label: { fontFamily: fontFamily.medium, fontSize: 15.5, letterSpacing: -0.2 },
   sub: { fontFamily: fontFamily.body, fontSize: 12.5, lineHeight: 16.5 },

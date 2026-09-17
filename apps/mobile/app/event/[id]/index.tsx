@@ -38,6 +38,7 @@ import {
   ICON_INSET,
   SettingsAction,
   SettingsGroup,
+  SettingsSwitch,
 } from '@/components/SettingsList';
 import { ProfileAvatar } from '@/components/ProfileAvatar';
 import { SpinningCross } from '@/components/SpinningCross';
@@ -1033,11 +1034,11 @@ function GoingRow({
   };
 
   return (
-    <SettingsAction
-      icon={isGoing ? 'checkmark-circle' : 'checkmark-circle-outline'}
-      label={isGoing ? t('Je gaat hierheen', "You're going") : t('Ik ga hierheen', "I'm going")}
-      value={isGoing ? t('Ja', 'Yes') : undefined}
-      onPress={onPress}
+    <SettingsSwitch
+      icon="checkmark-circle-outline"
+      label={t('Ik ga hierheen', "I'm going")}
+      value={isGoing}
+      onValueChange={onPress}
     />
   );
 }
@@ -1149,7 +1150,20 @@ function CrewStatusBadge({ row }: { row: CrewRow; eventId: string }) {
       : row.inviteStatus === 'not_going'
         ? roles.fgPlaceholder
         : roles.fgMuted;
-  return <Text style={[styles.crewStatus, { color: tone }]}>{label}</Text>;
+  // "Gaat" krijgt dezelfde nadruk als "Ja" op je eigen rij: dat is de
+  // stand waar het op deze pagina om draait. De rest blijft rustig.
+  const going = row.inviteStatus === 'going';
+  return (
+    <Text
+      style={[
+        styles.crewStatus,
+        { color: tone },
+        going ? { fontFamily: fontFamily.bold } : null,
+      ]}
+    >
+      {label}
+    </Text>
+  );
 }
 function formatLineupKicker(startsAt: string, locale: Locale): string {
   const d = new Date(startsAt);
