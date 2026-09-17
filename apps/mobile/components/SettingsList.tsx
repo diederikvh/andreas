@@ -48,6 +48,7 @@ export function SettingsGroup({
   inset?: number;
 }) {
   const roles = useRoles();
+  const isNacht = useMode() === 'nacht';
   const rows = Array.isArray(children) ? children.filter(Boolean) : [children];
 
   return (
@@ -57,7 +58,16 @@ export function SettingsGroup({
           {header.toUpperCase()}
         </Text>
       ) : null}
-      <View style={[styles.group, { backgroundColor: roles.bgChip }]}>
+      <View
+        style={[
+          styles.group,
+          {
+            backgroundColor: isNacht
+              ? 'rgba(255,255,255,0.045)'
+              : 'rgba(0,0,0,0.035)',
+          },
+        ]}
+      >
         {rows.map((row, i) => (
           <View key={i}>
             {/* Lijntje tússen rijen, niet eronder: een streep onder de
@@ -67,7 +77,12 @@ export function SettingsGroup({
               <View
                 style={[
                   styles.divider,
-                  { backgroundColor: roles.bg, marginLeft: inset },
+                  {
+                    backgroundColor: isNacht
+                      ? 'rgba(255,255,255,0.07)'
+                      : 'rgba(0,0,0,0.07)',
+                    marginLeft: inset,
+                  },
                 ]}
               />
             ) : null}
@@ -196,7 +211,8 @@ export function SettingsChoice<T extends string>({
     knoptekst in accentkleur. */
 /** Padding + icoon + tussenruimte: waar de tekst begint in een groep met
     iconen, en dus waar het lijntje moet beginnen. */
-export const ICON_INSET = 16 + 22 + 12;
+export const LEAD = 32;
+export const ICON_INSET = 16 + LEAD + 12;
 
 export function SettingsAction({
   label,
@@ -224,7 +240,11 @@ export function SettingsAction({
       disabled={!onPress}
       style={styles.row}
     >
-      {icon ? <Ionicons name={icon} size={22} color={roles.accent} /> : null}
+      {icon ? (
+        <View style={styles.lead}>
+          <Ionicons name={icon} size={22} color={roles.accent} />
+        </View>
+      ) : null}
       <View style={styles.rowText}>
         <Text style={[styles.label, { color: roles.fg }]}>{label}</Text>
         {sub ? (
@@ -276,6 +296,7 @@ const styles = StyleSheet.create({
   // erboven hoort en niet zelf een instelling is.
   optionRow: { paddingLeft: 32, minHeight: 48 },
   rowOff: { opacity: 0.45 },
+  lead: { width: LEAD, alignItems: 'center' },
   rowText: { flex: 1, gap: 2 },
   label: { fontFamily: fontFamily.medium, fontSize: 15.5, letterSpacing: -0.2 },
   sub: { fontFamily: fontFamily.body, fontSize: 12.5, lineHeight: 16.5 },

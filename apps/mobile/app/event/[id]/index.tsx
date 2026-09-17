@@ -1117,32 +1117,38 @@ function CrewRowItem({
 function CrewStatusBadge({ row }: { row: CrewRow; eventId: string }) {
   const roles = useRoles();
   const t = useT();
-  // Status-only pil. De Herinner-actie zit op /invitation/[id] — daar
-  // heb je per-recipient context én één-shot reminderSentAt-state.
-  // Op event-detail tonen we alleen wat iemands status is, geen actie.
-  if (row.saved && !row.inviteStatus) return null;
-  if (!row.inviteStatus) return null;
-  const label =
-    row.inviteStatus === 'going'
+  // Status-only. De Herinner-actie zit op /invitation/[id] — daar heb je
+  // per-recipient context én één-shot reminderSentAt-state. Hier tonen we
+  // alleen wat iemands stand is, geen actie.
+  //
+  // Wie alleen een hartje gaf kreeg eerder niets. Dat viel niet op toen
+  // dit een eigen blok was, maar in een lijst waar elke rij z'n stand
+  // rechts toont is een lege plek een vraag: gaat die persoon nou wel of
+  // niet? Een hartje is geen belofte, dus het woord verschilt.
+  const label = !row.inviteStatus
+    ? row.saved
+      ? t('Gered', 'Saved')
+      : null
+    : row.inviteStatus === 'going'
       ? t('Gaat', 'Going')
       : row.inviteStatus === 'maybe'
         ? t('Misschien', 'Maybe')
         : row.inviteStatus === 'not_going'
           ? t('Afgezegd', 'Not coming')
           : t('Wacht op antwoord', 'Awaiting reply');
-  const textTone =
+  if (!label) return null;
+
+  // Platte tekst rechts in plaats van een pil met rand: dat is dezelfde
+  // plek en dezelfde vorm als "Ja" bij je eigen rij erboven. Accent
+  // alleen voor wie echt gaat.
+  const tone =
     row.inviteStatus === 'going'
       ? roles.accent
       : row.inviteStatus === 'not_going'
         ? roles.fgPlaceholder
         : roles.fgMuted;
-  return (
-    <View style={[styles.crewPill, { borderColor: `${textTone}80` }]}>
-      <Text style={[styles.crewPillText, { color: textTone }]}>{label}</Text>
-    </View>
-  );
+  return <Text style={[styles.crewStatus, { color: tone }]}>{label}</Text>;
 }
-
 function formatLineupKicker(startsAt: string, locale: Locale): string {
   const d = new Date(startsAt);
   return `${dowMixed(d.getDay(), locale)} ${d.getDate()} ${monthShort(d.getMonth(), locale).toLowerCase()}`;
@@ -2270,9 +2276,8 @@ const styles = StyleSheet.create({
   crewRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 7,
-    paddingLeft: 11,
-    paddingRight: 16,
+    gap: 12,
+    paddingHorizontal: 16,
     paddingVertical: 11,
   },
   crewAv: { width: 32, height: 32, borderRadius: 999 },
@@ -2283,8 +2288,8 @@ const styles = StyleSheet.create({
   },
   crewName: {
     fontFamily: fontFamily.medium,
-    fontSize: 14,
-    letterSpacing: -0.14,
+    fontSize: 15.5,
+    letterSpacing: -0.2,
   },
   crewVia: {
     fontFamily: fontFamily.mono,
@@ -2293,18 +2298,7 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     marginTop: 2,
   },
-  crewPill: {
-    paddingHorizontal: 9,
-    paddingVertical: 4,
-    borderRadius: 999,
-    borderWidth: 1,
-  },
-  crewPillText: {
-    fontFamily: fontFamily.monoMedium,
-    fontSize: 9,
-    letterSpacing: 1.1,
-    textTransform: 'uppercase',
-  },
+  crewStatus: { fontFamily: fontFamily.body, fontSize: 14 },
 
   // Loading / error fallback
   fallbackBody: {
