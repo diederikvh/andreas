@@ -298,11 +298,15 @@ searchRoute.get('/elsewhere', async (c) => {
   if (found.length === 0) return c.json({ artists: [] });
 
   // Wie we zelf al hebben, hoort hier niet nog een keer te staan.
+  //
+  // Via `inArray` en niet via `= ANY(...)` met een losse array: die laatste
+  // komt als JS-array de parameterlaag in en daar loopt hij op stuk.
   const names = found.map((a) => a.name.toLowerCase());
-  const mine = await db.execute<{ lower: string }>(sql`
-    SELECT lower(name) AS lower FROM artists WHERE lower(name) = ANY(${names})
-  `);
-  const known = new Set((mine.rows ?? []).map((r) => r.lower));
+  const mine = await db
+    .select({ lower: sql<string>`lower(${schema.artists.name})` })
+    .from(schema.artists)
+    .where(inArray(sql`lower(${schema.artists.name})`, names));
+  const known = new Set(mine.map((r) => r.lower));
 
   return c.json({
     artists: found
