@@ -844,32 +844,21 @@ export default function Jij() {
           </SettingsGroup>
         ) : null}
 
-        {/* Logout zit visueel onder een divider om 'm écht van de
-            rest van de instellingen te scheiden — laatste actie op de
-            pagina, hier wil je niet per ongeluk op tikken. Stijl
-            matched de andere solid-bg buttons. */}
+        {/* Uitloggen blijft onder een scheiding staan — laatste actie op
+            de pagina, hier wil je niet per ongeluk op tikken. Maar het is
+            wel dezelfde soort rij als hierboven, dus ook hetzelfde blok:
+            de knop had z'n eigen grijs (noir2/paper2) en een kleiner
+            icoon, en dat zag je meteen naast het menu. */}
         <View
           style={[styles.logoutDivider, { backgroundColor: roles.bgChip }]}
         />
-        <View style={styles.logoutWrap}>
-          <Pressable
+        <SettingsGroup inset={ICON_INSET}>
+          <SettingsAction
+            icon="log-out-outline"
+            label={t('Uitloggen', 'Log out')}
             onPress={onLogout}
-            style={[
-              styles.actionBtn,
-              { backgroundColor: isNacht ? palette.noir2 : palette.paper2 },
-            ]}
-          >
-            <Ionicons
-              name="log-out-outline"
-              size={16}
-              color={roles.fg}
-              style={{ marginRight: 6 }}
-            />
-            <Text style={[styles.actionBtnText, { color: roles.fg }]}>
-              {t('Uitloggen', 'Log out')}
-            </Text>
-          </Pressable>
-        </View>
+          />
+        </SettingsGroup>
 
         {__DEV__ && (
           <View style={styles.logoutWrap}>
