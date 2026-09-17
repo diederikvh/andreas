@@ -20,7 +20,6 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import QRCode from 'react-native-qrcode-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { softTap } from '@/lib/haptics';
@@ -730,28 +729,11 @@ export default function Jij() {
           paddingBottom: insets.bottom + 96,
         }}
       >
-        {/* Je eigen QR: hiermee voegt iemand je toe zonder te typen.
-            Alleen als je een handle hebt — zonder handle wijst hij
-            nergens heen. */}
-        {me?.handle ? (
-          <View style={styles.qrBlock}>
-            <View
-              style={[
-                styles.qrTile,
-                { backgroundColor: isNacht ? palette.ink : palette.paper3 },
-              ]}
-            >
-              <QRCode
-                value={`https://andreas.amsterdam/u/${me.handle}`}
-                size={132}
-                color={palette.noir}
-                backgroundColor={isNacht ? palette.ink : palette.paper3}
-                ecl="H"
-              />
-            </View>
-          </View>
-        ) : null}
-
+        {/* De QR stond hier bovenaan, boven je foto. Twee vierkanten
+            boven elkaar, en een code die je maar een paar keer per jaar
+            laat zien kreeg meer ruimte dan je gezicht. Hij staat al op
+            /add-friend achter "Mijn QR-code" — daar kom je nu met één tik
+            vanuit het menu hieronder. */}
         <View style={styles.head}>
           <Pressable
             onPress={onPickAvatar}
@@ -828,7 +810,12 @@ export default function Jij() {
             />
             <SettingsAction
               icon="qr-code-outline"
-              label={t('Scan QR-code', 'Scan QR code')}
+              label={t('Mijn QR-code', 'My QR code')}
+              onPress={() => router.push('/add-friend?qr=1' as never)}
+            />
+            <SettingsAction
+              icon="scan-outline"
+              label={t('Scan een QR-code', 'Scan a QR code')}
               onPress={() => router.push('/add-friend?scan=1' as never)}
             />
             <SettingsAction
@@ -1701,8 +1688,6 @@ function PrivacySection({
 const styles = StyleSheet.create({
   // De QR eerst: dat is wat je iemand vóórhoudt. De foto eronder zegt
   // wie je bent, en dat weet je zelf al.
-  qrBlock: { alignItems: 'center', marginBottom: 4 },
-  qrTile: { padding: 14, borderRadius: 18 },
   // Losse kaartjes met ruimte ertussen, net als je bewaarde kaartjes:
   // het zijn allemaal dingen die je kan doen, dus ze mogen er ook zo
   // uitzien. Eén blok met streepjes leest als een instellingenlijst.

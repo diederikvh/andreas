@@ -22,7 +22,14 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import * as Brightness from 'expo-brightness';
 import QRCode from 'react-native-qrcode-svg';
+
+import {
+  ICON_INSET,
+  SettingsAction,
+  SettingsGroup,
+} from '@/components/SettingsList';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import type { ApiSearchUser } from '@/lib/api';
@@ -47,7 +54,11 @@ export default function AddFriend() {
 
   // ?handle= komt binnen via universal-link of vanuit de QR-scanner.
   // Vul het zoekveld voor zodat de juiste user direct verschijnt.
-  const params = useLocalSearchParams<{ handle?: string; scan?: string }>();
+  const params = useLocalSearchParams<{
+    handle?: string;
+    scan?: string;
+    qr?: string;
+  }>();
   const initialHandle = (params.handle ?? '')
     .toLowerCase()
     .replace(/[^a-z0-9_]/g, '');
@@ -71,6 +82,9 @@ export default function AddFriend() {
   }, [initialHandle]);
 
   const [scannerOpen, setScannerOpen] = useState(params.scan === '1');
+  // `?qr=1` komt vanaf je profiel: daar staat "Mijn QR-code" als rij, en
+  // die hoort meteen de code te tonen in plaats van je hier te laten
+  // zoeken naar de knop.
 
   // Search-input wil normaal direct focus pakken (handle-search). Maar
   // als we via ?scan=1 of via de QR-knop binnenkomen openen we eerst
@@ -91,7 +105,33 @@ export default function AddFriend() {
   const sendRequest = useSendFriendRequest();
   const acceptRequest = useAcceptFriendRequest();
   const { data: me } = useMe();
-  const [showQr, setShowQr] = useState(false);
+  const [showQr, setShowQr] = useState(params.qr === '1');
+
+  // Vol licht zolang je code op het scherm staat, net als bij een
+  // kaartje: wat een camera moet lezen heeft contrast nodig, en op een
+  // gedimd scherm in een druk café lukt dat niet. Bij het sluiten zetten
+  // we de oude waarde terug -- op iOS is dit systeembreed.
+  useEffect(() => {
+    if (!showQr) return;
+    let previous: number | null = null;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const current = await Brightness.getBrightnessAsync();
+        if (cancelled) return;
+        previous = current;
+        await Brightness.setBrightnessAsync(1);
+      } catch {
+        /* geen helderheid is geen reden om je code niet te tonen */
+      }
+    })();
+    return () => {
+      cancelled = true;
+      if (previous !== null) {
+        Brightness.setBrightnessAsync(previous).catch(() => {});
+      }
+    };
+  }, [showQr]);
 
   // Vraagt server om een share-invite token en opent native share-sheet.
   // Ontvanger downloadt app + log in → friendship-claim hook regelt de rest.
@@ -203,81 +243,29 @@ export default function AddFriend() {
           {/* Action-buttons scrollen mee zodat ze bij veel zoek-
               resultaten plaats maken voor de lijst. Alleen het zoekveld
               blijft sticky bovenaan. */}
-          <View style={styles.actionsRow}>
-            <Pressable
-              onPress={onInviteFriend}
-              style={[
-                styles.actionPill2,
-                { backgroundColor: isNacht ? palette.noir2 : palette.paper2 },
-              ]}
-            >
-              <Ionicons
-                name="share-outline"
-                size={16}
-                color={roles.fg}
-                style={{ marginRight: 6 }}
-              />
-              <Text style={[styles.actionPill2Text, { color: roles.fg }]}>
-                {tx('Nodig vriend uit', 'Invite a friend')}
-              </Text>
-            </Pressable>
-            <Pressable
-              onPress={() =>
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                router.push('/group/new' as any)
-              }
-              style={[
-                styles.actionPill2,
-                { backgroundColor: isNacht ? palette.noir2 : palette.paper2 },
-              ]}
-            >
-              <Ionicons
-                name="people-outline"
-                size={16}
-                color={roles.fg}
-                style={{ marginRight: 6 }}
-              />
-              <Text style={[styles.actionPill2Text, { color: roles.fg }]}>
-                {tx('Groep aanmaken', 'Create group')}
-              </Text>
-            </Pressable>
-            <Pressable
+          <SettingsGroup inset={ICON_INSET} style={styles.actionsGroup}>
+            <SettingsAction
+              icon="qr-code-outline"
+              label={tx('Mijn QR-code', 'My QR code')}
+              onPress={() => setShowQr(true)}
+            />
+            <SettingsAction
+              icon="scan-outline"
+              label={tx('Scan een QR-code', 'Scan a QR code')}
               onPress={() => setScannerOpen(true)}
-              style={[
-                styles.actionPill2,
-                { backgroundColor: isNacht ? palette.noir2 : palette.paper2 },
-              ]}
-            >
-              <Ionicons
-                name="scan-outline"
-                size={16}
-                color={roles.fg}
-                style={{ marginRight: 6 }}
-              />
-              <Text style={[styles.actionPill2Text, { color: roles.fg }]}>
-                {tx('Scan QR', 'Scan QR')}
-              </Text>
-            </Pressable>
-            {me?.handle && (
-              <Pressable
-                onPress={() => setShowQr(true)}
-                style={[
-                  styles.actionPill2,
-                  { backgroundColor: isNacht ? palette.noir2 : palette.paper2 },
-                ]}
-              >
-                <Ionicons
-                  name="qr-code-outline"
-                  size={14}
-                  color={roles.fg}
-                  style={{ marginRight: 6 }}
-                />
-                <Text style={[styles.actionPill2Text, { color: roles.fg }]}>
-                  {tx('Mijn QR', 'My QR')}
-                </Text>
-              </Pressable>
-            )}
-          </View>
+            />
+            <SettingsAction
+              icon="share-outline"
+              label={tx('Nodig een vriend uit', 'Invite a friend')}
+              onPress={onInviteFriend}
+            />
+            <SettingsAction
+              icon="people-outline"
+              label={tx('Groep aanmaken', 'Create group')}
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              onPress={() => router.push('/group/new' as any)}
+            />
+          </SettingsGroup>
           {debouncedQ.length < 2 ? (
             <EmptyHint
               icon="people-outline"
@@ -687,6 +675,7 @@ const styles = StyleSheet.create({
 
   // Action-buttons gestapeld, elk full-width — duidelijke CTA's
   // i.p.v. inline pills. Gap zodat ze ademen.
+  actionsGroup: { marginTop: 4, marginBottom: 4 },
   actionsRow: {
     flexDirection: 'column',
     gap: 10,
