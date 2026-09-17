@@ -675,7 +675,10 @@ const styles = StyleSheet.create({
 
   // Action-buttons gestapeld, elk full-width — duidelijke CTA's
   // i.p.v. inline pills. Gap zodat ze ademen.
-  actionsGroup: { marginTop: 4, marginBottom: 4 },
+  // `body` zet hier al 22 opzij; SettingsGroup doet er standaard 18
+  // bovenop en dan staat dit blok 40 van de rand terwijl het zoekveld
+  // erboven op 22 zit. Hier dus geen eigen inspringing.
+  actionsGroup: { marginTop: 4, marginBottom: 4, paddingHorizontal: 0 },
   actionsRow: {
     flexDirection: 'column',
     gap: 10,
