@@ -1671,8 +1671,8 @@ function PrivacySection({
     <SettingsGroup
       header={t('Privacy', 'Privacy')}
       footer={t(
-        'Favorieten zijn de vrienden die je zelf als favoriet hebt gemarkeerd. Vindbaar uit betekent dat alleen mensen die jij toevoegt vrienden met je kunnen worden.',
-        'Favourites are the friends you marked as such. Findable off means only people you add can become friends with you.'
+        'Alle drie gelden alleen voor vrienden. Zet je er een op Niemand, dan valt dat blok van je profiel af en blijft de rest gewoon staan. Favorieten zijn de vrienden die je zelf als favoriet hebt gemarkeerd. Vindbaar uit betekent dat alleen mensen die jij toevoegt vrienden met je kunnen worden.',
+        'All three apply to friends only. Set one to Nobody and that block drops off your profile while the rest stays. Favourites are the friends you marked as such. Findable off means only people you add can become friends with you.'
       )}
     >
       <SettingsChoice
@@ -1696,7 +1696,7 @@ function PrivacySection({
         }
       />
       <SettingsChoice
-        label={t('Wie ziet je profiel', 'Who sees your profile')}
+        label={t('Wie ziet je statistieken', 'Who sees your statistics')}
         value={mirrorVis}
         options={visibilityOpts}
         onChange={(v) =>
