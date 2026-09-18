@@ -473,12 +473,6 @@ export default function EventDetail() {
           <CrewAndInvite
             event={event}
             selectedOccurrence={selectedOccurrence}
-            onNeedsRoom={(overflow) =>
-              scrollRef.current?.scrollTo({
-                y: scrollY.value + overflow,
-                animated: true,
-              })
-            }
             onInvite={() => {
               const path =
                 selectedOccurrence && !selectedOccurrence.id.endsWith('::next')
@@ -791,12 +785,10 @@ function CrewAndInvite({
   event,
   selectedOccurrence,
   onInvite,
-  onNeedsRoom,
 }: {
   event: ApiEvent;
   selectedOccurrence: ApiOccurrence | null;
   onInvite: () => void;
-  onNeedsRoom?: (overflow: number) => void;
 }) {
   const mode = useMode();
   const roles = useRoles();
@@ -970,8 +962,6 @@ function CrewAndInvite({
           <EventReminder
             occurrenceId={selectedOccurrence.id}
             startsAt={selectedOccurrence.startsAt ?? null}
-            endsAt={selectedOccurrence.endsAt ?? null}
-            onNeedsRoom={onNeedsRoom}
           />
         ) : null}
       </SettingsGroup>

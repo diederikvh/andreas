@@ -1,16 +1,6 @@
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { useEffect, useMemo, useRef, useState } from 'react';
-import {
-  Alert,
-  Keyboard,
-  Platform,
-  Pressable,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-  useWindowDimensions,
-} from 'react-native';
+import { useMemo, useState } from 'react';
+import { Alert, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { softTap } from '@/lib/haptics';
 import { useLocale, useT } from '@/lib/i18n';
@@ -41,24 +31,9 @@ import { fontFamily } from '@/theme/tokens';
 export function EventReminder({
   occurrenceId,
   startsAt,
-  endsAt,
-  onNeedsRoom,
 }: {
   occurrenceId: string;
   startsAt: string | null;
-  /** Eindtijd, als die er is. Bij een expositie die maanden loopt is de
-      begintijd allang geweest en zegt die niets over wat nog kan. */
-  endsAt?: string | null;
-  /**
-   * Hoeveel punten dit blok omhoog moet om boven het keyboard uit te
-   * komen. Het scherm eromheen scrollt, niet wij: dat is dezelfde
-   * afspraak als bij de uitnodigingsbanner hierboven in het scherm.
-   *
-   * Niet `automaticallyAdjustKeyboardInsets`: die scrollt precies genoeg
-   * voor het invoerveld en niets voor de knoppen eronder, en juist die
-   * knoppen heb je nodig om te versturen.
-   */
-  onNeedsRoom?: (overflow: number) => void;
 }) {
   const roles = useRoles();
   const mode = useMode();
@@ -70,24 +45,6 @@ export function EventReminder({
 
   const existing = reminders?.find((r) => r.occurrenceId === occurrenceId);
   const [open, setOpen] = useState(false);
-  const box = useRef<View>(null);
-  const { height: windowHeight } = useWindowDimensions();
-
-  useEffect(() => {
-    if (!open || !onNeedsRoom) return;
-    const sub = Keyboard.addListener('keyboardDidShow', (e) => {
-      const kb = e.endCoordinates?.height ?? 0;
-      if (kb <= 0) return;
-      box.current?.measureInWindow((_x, y, _w, height) => {
-        // 20 punten lucht onder de knoppen, zodat ze niet tegen het
-        // keyboard aan plakken.
-        const overflow = y + height - (windowHeight - kb - 20);
-        if (overflow > 0) onNeedsRoom(overflow);
-      });
-    });
-    return () => sub.remove();
-  }, [open, onNeedsRoom, windowHeight]);
-  const [note, setNote] = useState('');
 
   /**
    * Standaard drie dagen voor de avond, om 10:00.
@@ -132,12 +89,9 @@ export function EventReminder({
     if (inPast) return;
     softTap();
     save.mutate(
-      { occurrenceId, fireAt: when, note: note.trim() || undefined },
+      { occurrenceId, fireAt: when },
       {
-        onSuccess: () => {
-          setOpen(false);
-          setNote('');
-        },
+        onSuccess: () => setOpen(false),
         onError: (e) =>
           Alert.alert(
             t('Niet gelukt', 'Did not work'),
@@ -177,7 +131,7 @@ export function EventReminder({
   if (!open) return head;
 
   return (
-    <View ref={box}>
+    <View>
       {head}
       <View style={styles.sheet}>
       <View style={styles.pickers}>
@@ -210,38 +164,15 @@ export function EventReminder({
             setWhen(next);
           }}
         />
-      </View>
-
-      <TextInput
-        value={note}
-        onChangeText={setNote}
-        placeholder={t('Waarvoor? (optioneel)', 'What for? (optional)')}
-        placeholderTextColor={roles.fgPlaceholder}
-        maxLength={80}
-        multiline
-        numberOfLines={2}
-        textAlignVertical="top"
-        style={[
-          styles.note,
-          {
-            color: roles.fg,
-            backgroundColor:
-              mode === 'nacht'
-                ? 'rgba(118,118,128,0.24)'
-                : 'rgba(118,118,128,0.12)',
-          },
-        ]}
-      />
-
-      <View style={styles.actions}>
+        {/* Achter de tijd, want daar eindigt je blik: datum, tijd,
+            klaar. Geen afzien-knop ernaast -- de kop erboven klapt 'm
+            net zo goed weer dicht, en die zit er toch al. */}
         <Pressable
           onPress={onSave}
           disabled={inPast || save.isPending}
           style={[
             styles.saveBtn,
-            {
-              backgroundColor: inPast ? roles.bgChip : roles.accent,
-            },
+            { backgroundColor: inPast ? roles.bgChip : roles.accent },
           ]}
         >
           <Text
@@ -250,12 +181,7 @@ export function EventReminder({
               { color: inPast ? roles.fgMuted : '#0a0a0b' },
             ]}
           >
-            {existing ? t('Verzetten', 'Move it') : t('Zet hem', 'Set it')}
-          </Text>
-        </Pressable>
-        <Pressable onPress={() => setOpen(false)} hitSlop={8}>
-          <Text style={[styles.action, { color: roles.fgMuted }]}>
-            {t('Laat maar', 'Never mind')}
+            {t('Zet', 'Set')}
           </Text>
         </Pressable>
         {existing ? (
@@ -279,31 +205,15 @@ export function EventReminder({
 
 const styles = StyleSheet.create({
   sheet: { paddingHorizontal: 16, paddingBottom: 14, gap: 12 },
-  // De compacte date picker van iOS tekent z'n pil met een paar punten
-  // lucht binnen z'n eigen vak. Zonder correctie begint hij dus iets
-  // rechter dan het notitieveld eronder, en juist bij twee velden onder
-  // elkaar zie je dat.
+  // Datum, tijd en de knop op één regel. De compacte date picker van
+  // iOS tekent z'n pil met een paar punten lucht binnen z'n eigen vak,
+  // dus zonder deze correctie begint hij rechter dan de tekst van de
+  // rij erboven.
   pickers: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
     marginLeft: -10,
-  },
-  note: {
-    fontFamily: fontFamily.body,
-    fontSize: 14,
-    lineHeight: 19,
-    borderRadius: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    minHeight: 62,
-  },
-  // Links uitlijnen met de rest van het blok, en bevestigen vóór afzien:
-  // de knop die je bijna altijd wil staat waar je duim al is.
-  actions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 18,
   },
   action: { fontFamily: fontFamily.bold, fontSize: 14 },
   saveBtn: { paddingHorizontal: 18, paddingVertical: 11, borderRadius: 8 },

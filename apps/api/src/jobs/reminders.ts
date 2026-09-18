@@ -229,13 +229,14 @@ export async function sendDueReminders(
       minute: '2-digit',
     }).format(new Date(row.starts_at));
 
+    const when = new Intl.DateTimeFormat('nl-NL', {
+      timeZone: 'Europe/Amsterdam',
+      day: 'numeric',
+      month: 'long',
+    }).format(new Date(row.starts_at));
+
     const going = row.is_going;
     if (row.kind === 'artiest') {
-      const when = new Intl.DateTimeFormat('nl-NL', {
-        timeZone: 'Europe/Amsterdam',
-        day: 'numeric',
-        month: 'long',
-      }).format(new Date(row.starts_at));
       const title = row.artist_name
         ? `${row.artist_name} komt naar ${row.venue_name}`
         : `Nieuw: ${row.title}`;
@@ -267,9 +268,7 @@ export async function sendDueReminders(
           ? going
             ? `Vanavond om ${time}`
             : `Vanavond om ${time} — als je wil`
-          : row.note?.trim()
-            ? row.note.trim()
-            : row.title;
+          : row.note?.trim() || row.title;
 
     const body =
       row.kind === 'dag-ervoor'
@@ -277,8 +276,14 @@ export async function sendDueReminders(
         : row.kind === 'vanavond'
           ? going
             ? `${row.title} — ${row.venue_name}.`
-            : `${row.title} bij ${row.venue_name}. Je had 'm gered.`
-          : `${row.title}, ${row.venue_name}.`;
+            : `${row.title} bij ${row.venue_name}. Je had 'm geliked.`
+          : // Een herinnering die jij zelf zet heeft geen notitie meer
+            // (dat veld is uit de app), dus draagt de tekst het antwoord
+            // op "wanneer was het eigenlijk". Mét notitie is die de kop
+            // en vertelt de tekst waar het over ging.
+            row.note?.trim()
+            ? `${row.title} — ${when} om ${time}.`
+            : `${when} om ${time} bij ${row.venue_name}.`;
 
     if (!opts.dryRun) {
       try {
