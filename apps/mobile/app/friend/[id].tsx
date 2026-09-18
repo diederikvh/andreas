@@ -39,7 +39,6 @@ import { useLocale, useT } from '@/lib/i18n';
 import {
   useFriend,
   useInvitations,
-  useMirrorByHandle,
   useRemoveFriend,
   useSetFriendFavorite,
 } from '@/lib/queries';
@@ -86,9 +85,6 @@ export default function FriendDetail() {
   })();
   const [menuOpen, setMenuOpen] = useState(false);
   const [avatarOpen, setAvatarOpen] = useState(false);
-
-  const handle = data?.user.handle ?? null;
-  const mirror = useMirrorByHandle(handle, { enabled: tab === 'profiel' });
 
   const confirmUnfollow = () => {
     if (!data) return;
@@ -164,13 +160,11 @@ export default function FriendDetail() {
   );
   const upcomingDays: EventGroup[] = groupEventsByDay(upcoming);
 
-  // Welke tabs zijn relevant? Alleen tabs tonen als zowel saves als
-  // spiegel iets te bieden hebben. Anders skippen we de pill-switch
-  // en tonen we direct de enige beschikbare pane (of een lege state
-  // als niemand iets deelt).
+  // Welke tabs zijn relevant? Anders skippen we de pill-switch en
+  // tonen we direct de enige beschikbare pane (of een lege state als
+  // er niets gedeeld wordt).
   const savesShared = !savesPrivate;
-  const mirrorShared = Boolean(data.mirrorShared);
-  const profielHasContent = mirrorShared || savesShared;
+  const profielHasContent = savesShared;
   const samenHasContent = samenInvites.length > 0;
   // Tabs alleen tonen wanneer er minstens twee panes content hebben.
   // Als enkel Profiel of enkel Samen iets bevat, renderen we die pane
@@ -240,26 +234,6 @@ export default function FriendDetail() {
 
         {effectiveTab === 'profiel' && (
           <>
-            {mirrorShared && (
-              <MirrorPane
-                name={user.name}
-                data={mirror.data ?? null}
-                loading={mirror.isLoading}
-                errored={Boolean(mirror.error)}
-              />
-            )}
-
-            {/* Divider alleen wanneer beide blokken iets renderen — anders
-                hangt-ie los boven of onder een lege ruimte. */}
-            {mirrorShared && savesShared && (
-              <View
-                style={[
-                  styles.sectionDivider,
-                  { borderTopColor: roles.bgChip },
-                ]}
-              />
-            )}
-
             {savesShared && (
               <>
                 {upcomingDays.length === 0 && (
@@ -646,96 +620,6 @@ function SwitchBtn({
   );
 }
 
-function MirrorPane({
-  name,
-  data,
-  loading,
-  errored,
-}: {
-  name: string;
-  data: { topVenues: { id: string; slug: string; name: string }[]; topGenres: { genre: string }[] } | null;
-  loading: boolean;
-  errored: boolean;
-}) {
-  const roles = useRoles();
-  const t = useT();
-  const firstName = name.split(' ')[0];
-
-  if (loading) {
-    return (
-      <View style={[styles.center, { paddingVertical: 32 }]}>
-        <ActivityIndicator color={roles.fgMuted} />
-      </View>
-    );
-  }
-  if (errored || !data) {
-    return (
-      <Text style={[styles.empty, { color: roles.fgMuted }]}>
-        {t(
-          `${firstName} deelt z'n profielinzicht niet.`,
-          `${firstName} doesn’t share their profile insight.`
-        )}
-      </Text>
-    );
-  }
-  if (data.topVenues.length === 0 && data.topGenres.length === 0) {
-    return (
-      <Text style={[styles.empty, { color: roles.fgMuted }]}>
-        {t('Nog niks om te tonen.', 'Nothing to show yet.')}
-      </Text>
-    );
-  }
-  return (
-    <View style={styles.mirrorWrap}>
-      {data.topVenues.length > 0 && (
-        <View style={styles.mirrorBlock}>
-          <Text style={[styles.mirrorBlockTitle, { color: roles.fg }]}>
-            {t('Top venues', 'Top venues')}
-          </Text>
-          <View style={styles.mirrorChipsRow}>
-            {data.topVenues.map((v) => (
-              <Pressable
-                key={v.id}
-                onPress={() => router.push(`/venue/${v.slug}` as never)}
-                style={[styles.mirrorChip, { backgroundColor: roles.bgTag }]}
-              >
-                <Text style={[styles.mirrorChipLabel, { color: roles.fg }]}>
-                  {v.name}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
-        </View>
-      )}
-      {data.topGenres.length > 0 && (
-        <View style={styles.mirrorBlock}>
-          <Text style={[styles.mirrorBlockTitle, { color: roles.fg }]}>
-            {t('Genres', 'Genres')}
-          </Text>
-          <View style={styles.mirrorChipsRow}>
-            {data.topGenres.map((g) => (
-              <Pressable
-                key={g.genre}
-                onPress={() =>
-                  router.push({
-                    pathname: '/(tabs)/agenda',
-                    params: { q: g.genre },
-                  })
-                }
-                style={[styles.mirrorChip, { backgroundColor: roles.bgTag }]}
-              >
-                <Text style={[styles.mirrorChipLabel, { color: roles.fg }]}>
-                  {g.genre}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
-        </View>
-      )}
-    </View>
-  );
-}
-
 function DateAnchor({ group }: { group: EventGroup }) {
   const roles = useRoles();
   return (
@@ -1057,42 +941,4 @@ const styles = StyleSheet.create({
   },
 
   // Spiegel-pane
-  mirrorWrap: {
-    paddingHorizontal: 22,
-    paddingTop: 4,
-    gap: 14,
-  },
-  mirrorBlock: { gap: 6, paddingTop: 8 },
-  mirrorBlockTitle: {
-    fontFamily: fontFamily.display,
-    fontSize: 18,
-    letterSpacing: -0.36,
-    paddingBottom: 2,
-  },
-  mirrorRow: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    paddingVertical: 2,
-  },
-  mirrorRowLabel: {
-    flex: 1,
-    fontFamily: fontFamily.medium,
-    fontSize: 14.5,
-    letterSpacing: -0.14,
-  },
-  mirrorChipsRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-  },
-  mirrorChip: {
-    paddingHorizontal: 14,
-    paddingVertical: 9,
-    borderRadius: 999,
-  },
-  mirrorChipLabel: {
-    fontFamily: fontFamily.medium,
-    fontSize: 13,
-    letterSpacing: -0.1,
-  },
 });

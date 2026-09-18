@@ -69,14 +69,12 @@ import {
   setReminder,
   toggleSave,
   unmuteGroup,
-  getMirrorByHandle,
   getMyDismisses,
   getMyMirror,
   type AgendaFilters,
   type ApiMe,
   type EventsFilter,
   type Mirror,
-  type PublicMirror,
   type SaveSource,
   type SavedApiEvent,
   type VenueCategory,
@@ -871,25 +869,7 @@ export function useMyMirror(opts: { enabled?: boolean } = {}) {
   });
 }
 
-export function useMirrorByHandle(
-  handle: string | null | undefined,
-  opts: { enabled?: boolean } = {},
-) {
-  return useQuery({
-    queryKey: ['mirror', 'u', handle ?? ''] as const,
-    queryFn: () => getMirrorByHandle(handle as string),
-    enabled: Boolean(handle) && (opts.enabled ?? true),
-    staleTime: 60_000,
-    retry: (count, err) => {
-      // 403/404 zijn permanent — niet retryen, gewoon empty tonen.
-      const msg = (err as Error).message ?? '';
-      if (/40[34]/.test(msg)) return false;
-      return count < 2;
-    },
-  });
-}
-
-export type { Mirror, PublicMirror };
+export type { Mirror };
 
 export function useFriends(opts: { enabled?: boolean } = {}) {
   return useQuery({

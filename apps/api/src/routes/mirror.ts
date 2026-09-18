@@ -10,7 +10,6 @@
  *
  * Endpoints:
  *   GET  /mirror/me           — volledige spiegel voor ingelogde user
- *   GET  /mirror/u/:handle    — beperkte spiegel voor vriend-zichtbaar profiel
  *   POST /dismisses           — toggle een dismiss (left-swipe op /op-gevoel)
  */
 
@@ -218,78 +217,6 @@ mirrorRoute.get('/me', async (c) => {
   const followedVenueIds = new Set(follows.map((f) => f.venueId));
 
   return c.json(buildFullMirror(rows, followedVenueIds));
-});
-
-mirrorRoute.get('/u/:handle', async (c) => {
-  const me = await maybeUserId(c);
-  if (!me) return c.json({ error: 'unauthorized' }, 401);
-
-  const rawHandle = c.req.param('handle');
-  const handle = rawHandle.toLowerCase().replace(/[^a-z0-9_]/g, '');
-  if (!handle) return c.json({ error: 'handle ongeldig' }, 400);
-
-  const [target] = await db
-    .select({
-      id: schema.users.id,
-      mirrorVisibility: schema.users.mirrorVisibility,
-    })
-    .from(schema.users)
-    .where(eq(schema.users.handle, handle))
-    .limit(1);
-  if (!target) return c.json({ error: 'gebruiker niet gevonden' }, 404);
-
-  // Eigen profiel altijd zichtbaar. Anders gate op visibility-keuze.
-  if (target.id !== me) {
-    if (target.mirrorVisibility === 'private') {
-      return c.json({ error: 'profielinzicht niet gedeeld' }, 403);
-    }
-    const [friendship] = await db
-      .select({ status: schema.friendships.status })
-      .from(schema.friendships)
-      .where(
-        and(
-          eq(schema.friendships.status, 'accepted'),
-          or(
-            and(
-              eq(schema.friendships.fromUserId, me),
-              eq(schema.friendships.toUserId, target.id)
-            ),
-            and(
-              eq(schema.friendships.fromUserId, target.id),
-              eq(schema.friendships.toUserId, me)
-            )
-          )
-        )
-      )
-      .limit(1);
-    if (!friendship) return c.json({ error: 'geen vriend' }, 403);
-
-    // 'favorites' vereist dat de target mij in friend_favorites heeft.
-    if (target.mirrorVisibility === 'favorites') {
-      const [fav] = await db
-        .select({ userId: schema.friendFavorites.userId })
-        .from(schema.friendFavorites)
-        .where(
-          and(
-            eq(schema.friendFavorites.userId, target.id),
-            eq(schema.friendFavorites.friendId, me)
-          )
-        )
-        .limit(1);
-      if (!fav) return c.json({ error: 'profielinzicht niet gedeeld' }, 403);
-    }
-  }
-
-  const rows = await loadSaveRows(target.id);
-  // Publieke subset: namen-only, geen counts, geen timeline.
-  return c.json({
-    topVenues: aggregateTopVenues(rows, 3).map((v) => ({
-      id: v.id,
-      slug: v.slug,
-      name: v.name,
-    })),
-    topGenres: aggregateTopGenres(rows, 3).map((g) => ({ genre: g.genre })),
-  });
 });
 
 export const dismissesRoute = new Hono();

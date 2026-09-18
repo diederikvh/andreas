@@ -950,7 +950,10 @@ export type ApiMe = {
   /** Wie ziet waar ik heen ga. Los van savesVisibility: een like is een
       voornemen, "ik ga" is een afspraak. */
   goingVisibility: 'favorites' | 'friends' | 'private';
-  /** Apart van savesVisibility — controleert of de smaak-spiegel (top
+  /** ONGEBRUIKT sinds het statistiekenblok van andermans profiel af is.
+      De kolom blijft staan zodat oude clients niets kapot zien; nieuwe
+      clients sturen 'm niet meer. Apart van savesVisibility — regelde
+      of de smaak-spiegel (top
       venues/genres/wijken) zichtbaar is voor vrienden op u/[handle]. */
   mirrorVisibility: 'favorites' | 'friends' | 'private';
   discoverable: boolean;
@@ -1532,20 +1535,6 @@ export async function getMyMirror(): Promise<Mirror> {
   return await authedRequest<Mirror>('/mirror/me');
 }
 
-/** Beperkte vriend-zichtbare spiegel-subset op u/[handle]. Geen counts,
-    geen timeline — alleen top 3 venues + top 3 genres als visitekaartje.
-    403 als de vriend `mirrorVisibility='private'` heeft of niet bevriend. */
-export type PublicMirror = {
-  topVenues: { id: string; slug: string; name: string }[];
-  topGenres: { genre: string }[];
-};
-
-export async function getMirrorByHandle(handle: string): Promise<PublicMirror> {
-  return await authedRequest<PublicMirror>(
-    `/mirror/u/${encodeURIComponent(handle)}`,
-  );
-}
-
 // ─── Friends ──────────────────────────────────────────────────────────
 
 export type ApiPublicUser = {
@@ -1628,10 +1617,6 @@ export type ApiFriendDetail = {
   user: ApiPublicUser;
   events: ApiEvent[];
   savesPrivate?: boolean;
-  /** True als deze vriend z'n spiegel deelt met vrienden
-      (`mirrorVisibility='friends'`). Voorkomt onnodige fetch + lege
-      Spiegel-tab UI. */
-  mirrorShared?: boolean;
   /** Heeft de huidige user deze vriend als favoriet gemarkeerd? */
   favorite?: boolean;
 };

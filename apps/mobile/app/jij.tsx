@@ -1089,17 +1089,23 @@ export function MirrorSection({ authed }: { authed: boolean }) {
 
   return (
     <View style={styles.mirrorWrap}>
-        {identity && (
-          <Text style={[styles.mirrorIdentity, { color: roles.fg }]}>
-            {identity}
-          </Text>
-        )}
-        <Text style={[styles.mirrorMeta, { color: roles.fgMuted }]}>
-          {t(
-            `${total} ${total === 1 ? 'save' : 'saves'} · ${followedCount} ${followedCount === 1 ? 'venue gevolgd' : 'venues gevolgd'}`,
-            `${total} ${total === 1 ? 'save' : 'saves'} · following ${followedCount} ${followedCount === 1 ? 'venue' : 'venues'}`
+        {/* De zin bovenaan is de kop van dit scherm, geen eerste regel
+            van een lijst. Gecentreerd en met lucht eromheen leest hij
+            als een titel; links uitgelijnd tegen de blokken eronder zag
+            hij eruit als nog een alinea. */}
+        <View style={styles.mirrorHead}>
+          {identity && (
+            <Text style={[styles.mirrorIdentity, { color: roles.fg }]}>
+              {identity}
+            </Text>
           )}
-        </Text>
+          <Text style={[styles.mirrorMeta, { color: roles.fgMuted }]}>
+            {t(
+              `${total} ${total === 1 ? 'save' : 'saves'} · ${followedCount} ${followedCount === 1 ? 'venue gevolgd' : 'venues gevolgd'}`,
+              `${total} ${total === 1 ? 'save' : 'saves'} · following ${followedCount} ${followedCount === 1 ? 'venue' : 'venues'}`
+            )}
+          </Text>
+        </View>
 
         {data.topVenues.length > 0 && (
           <MirrorBlock title={t('Top venues', 'Top venues')}>
@@ -1630,20 +1636,13 @@ function PrivacySection({
   // stuk, ook als hij het niet is.
   const [savesVis, setSavesVis] = useState<Visibility>(me.savesVisibility);
   const [goingVis, setGoingVis] = useState<Visibility>(me.goingVisibility);
-  const [mirrorVis, setMirrorVis] = useState<Visibility>(me.mirrorVisibility);
   const [discoverable, setDiscoverable] = useState(me.discoverable);
 
   useEffect(() => {
     setSavesVis(me.savesVisibility);
     setGoingVis(me.goingVisibility);
-    setMirrorVis(me.mirrorVisibility);
     setDiscoverable(me.discoverable);
-  }, [
-    me.savesVisibility,
-    me.goingVisibility,
-    me.mirrorVisibility,
-    me.discoverable,
-  ]);
+  }, [me.savesVisibility, me.goingVisibility, me.discoverable]);
 
   const apply = async <T,>(
     next: T,
@@ -1671,8 +1670,8 @@ function PrivacySection({
     <SettingsGroup
       header={t('Privacy', 'Privacy')}
       footer={t(
-        'Alle drie gelden alleen voor vrienden. Zet je er een op Niemand, dan valt dat blok van je profiel af en blijft de rest gewoon staan. Favorieten zijn de vrienden die je zelf als favoriet hebt gemarkeerd. Vindbaar uit betekent dat alleen mensen die jij toevoegt vrienden met je kunnen worden.',
-        'All three apply to friends only. Set one to Nobody and that block drops off your profile while the rest stays. Favourites are the friends you marked as such. Findable off means only people you add can become friends with you.'
+        'Beide gelden alleen voor vrienden. Favorieten zijn de vrienden die je zelf als favoriet hebt gemarkeerd. Vindbaar uit betekent dat alleen mensen die jij toevoegt vrienden met je kunnen worden.',
+        'Both apply to friends only. Favourites are the friends you marked as such. Findable off means only people you add can become friends with you.'
       )}
     >
       <SettingsChoice
@@ -1693,14 +1692,6 @@ function PrivacySection({
         options={visibilityOpts}
         onChange={(v) =>
           void apply(v, goingVis, setGoingVis, { goingVisibility: v })
-        }
-      />
-      <SettingsChoice
-        label={t('Wie ziet je statistieken', 'Who sees your statistics')}
-        value={mirrorVis}
-        options={visibilityOpts}
-        onChange={(v) =>
-          void apply(v, mirrorVis, setMirrorVis, { mirrorVisibility: v })
         }
       />
       <SettingsSwitch
@@ -2156,18 +2147,26 @@ const styles = StyleSheet.create({
 
   // Spiegel
   mirrorWrap: { paddingHorizontal: 22, paddingTop: 4, gap: 14 },
+  mirrorHead: {
+    alignItems: 'center',
+    gap: 10,
+    paddingTop: 16,
+    paddingBottom: 10,
+    paddingHorizontal: 4,
+  },
   mirrorIdentity: {
     fontFamily: fontFamily.display,
-    fontSize: 21,
-    lineHeight: 26,
+    fontSize: 24,
+    lineHeight: 30,
     letterSpacing: -0.4,
+    textAlign: 'center',
   },
   mirrorMeta: {
     fontFamily: fontFamily.mono,
     fontSize: 10,
     letterSpacing: 1.2,
     textTransform: 'uppercase',
-    marginTop: -8,
+    textAlign: 'center',
   },
   mirrorBlock: { gap: 6, paddingTop: 8 },
   mirrorBlockTitle: {

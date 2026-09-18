@@ -328,7 +328,6 @@ friendsRoute.get('/:id', async (c) => {
     .select({
       ...publicUserCols,
       savesVisibility: schema.users.savesVisibility,
-      mirrorVisibility: schema.users.mirrorVisibility,
     })
     .from(schema.users)
     .where(eq(schema.users.id, friendId))
@@ -356,10 +355,6 @@ friendsRoute.get('/:id', async (c) => {
   const isPrivate =
     user.savesVisibility === 'private' ||
     (user.savesVisibility === 'favorites' && !friendHasMeAsFav);
-  // mirrorShared = ik mag de spiegel-subset zien.
-  const mirrorShared =
-    user.mirrorVisibility === 'friends' ||
-    (user.mirrorVisibility === 'favorites' && friendHasMeAsFav);
 
   // Heb ik deze vriend als favoriet gemarkeerd? (Voor de UI-button.)
   const [fav] = await db
@@ -437,18 +432,13 @@ friendsRoute.get('/:id', async (c) => {
     });
   }
 
-  // savesVisibility en mirrorVisibility hoeven niet naar de client; we
-  // exposeren alleen de afgeleide booleans `savesPrivate` + `mirrorShared`.
-  const {
-    savesVisibility: _omitSaves,
-    mirrorVisibility: _omitMirror,
-    ...publicUser
-  } = user;
+  // savesVisibility hoeft niet naar de client; we exposeren alleen de
+  // afgeleide boolean `savesPrivate`.
+  const { savesVisibility: _omitSaves, ...publicUser } = user;
   return c.json({
     user: publicUser,
     events,
     savesPrivate: isPrivate,
-    mirrorShared,
     favorite,
   });
 });
