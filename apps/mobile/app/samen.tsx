@@ -1,11 +1,13 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppHeader, HEADER_HEIGHT } from '@/components/AppHeader';
 import { EventListRow } from '@/components/EventListRow';
+import { FILTER_ROW_HEIGHT, FilterChip } from '@/components/FilterChip';
+import { ProfileAvatar } from '@/components/ProfileAvatar';
 import { SpinningCross } from '@/components/SpinningCross';
 import { useIsRegistered } from '@/lib/authClient';
 import { softTap } from '@/lib/haptics';
@@ -20,7 +22,7 @@ import {
   translateCategory,
 } from '@/lib/eventDisplay';
 import { useLocale, useT } from '@/lib/i18n';
-import { useMySaves, useSocialFeed } from '@/lib/queries';
+import { useMyGoing, useMySaves, useSocialFeed } from '@/lib/queries';
 import { useRoles } from '@/store/mode';
 import type { BadgeToneKey } from '@/theme/tones';
 import { fontFamily } from '@/theme/tokens';
@@ -49,7 +51,12 @@ type Row = {
   venue: { name: string; type?: string | null; imageUrl?: string | null };
   startsAt: string;
   endsAt: string | null;
-  mine: boolean;
+  /** Door mij geliked (het hartje). */
+  liked: boolean;
+  /** Door mij op "ik ga" gezet. Los van geliked: dat zijn twee knoppen
+      en twee tabellen, en je kunt heel goed ergens heen gaan zonder het
+      hartje te hebben aangetikt. */
+  going: boolean;
   friends: ApiFriendBadge[];
 };
 
@@ -68,7 +75,8 @@ function fromSave(e: SavedApiEvent): Row {
     },
     startsAt: e.startsAt,
     endsAt: e.endsAt ?? null,
-    mine: true,
+    liked: true,
+    going: false,
     friends: e.friendsSaved ?? [],
   };
 }
@@ -88,7 +96,8 @@ function fromFeed(e: ApiFeedEvent): Row {
     },
     startsAt: e.occurrence.startsAt,
     endsAt: e.occurrence.endsAt,
-    mine: false,
+    liked: false,
+    going: false,
     friends: e.friendsSaved ?? [],
   };
 }
@@ -104,16 +113,24 @@ export default function SamenScreen() {
   // zegt de banner hierboven — in plaats van een muur voor een lijst die
   // je wél mag zien.
   const { data: saves, isLoading: loadingSaves } = useMySaves();
+  const { data: going, isLoading: loadingGoing } = useMyGoing({ enabled: authed });
   const { data: feed, isLoading: loadingFeed } = useSocialFeed({ enabled: authed });
 
   const rows = useMemo<Row[]>(() => {
     const now = Date.now();
     const byOccurrence = new Map<string, Row>();
-    // Mijn eigen saves eerst: die bepalen `mine`. Een avond die een
-    // vriend óók reed, vult z'n vrienden erbij in plaats van een tweede
-    // rij te maken.
+    // Mijn eigen likes eerst: die bepalen `liked`. Een avond die een
+    // vriend óók likete, vult z'n vrienden erbij in plaats van een
+    // tweede rij te maken.
     for (const e of saves ?? []) {
       byOccurrence.set(e.occurrenceId, fromSave(e));
+    }
+    // Waar ik heen ga staat in een eigen tabel en hoeft niet geliked te
+    // zijn, dus dit zet ook rijen bij die er anders niet waren.
+    for (const e of going ?? []) {
+      const existing = byOccurrence.get(e.occurrenceId);
+      if (existing) existing.going = true;
+      else byOccurrence.set(e.occurrenceId, { ...fromSave(e), liked: false, going: true });
     }
     for (const e of feed ?? []) {
       const existing = byOccurrence.get(e.occurrence.id);
@@ -133,7 +150,50 @@ export default function SamenScreen() {
         (a, b) =>
           new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime(),
       );
-  }, [saves, feed]);
+  }, [saves, going, feed]);
+
+  /**
+   * Eén filter tegelijk. Twee tegelijk zou moeten uitleggen of het "en"
+   * of "of" is, en dat is precies de vraag die een filterrij niet hoort
+   * op te roepen.
+   *
+   * "Van mij" is breder dan de twee erna: geliked óf ik ga. Die twee
+   * staan er los bij omdat het verschil uitmaakt -- het hartje is een
+   * voornemen, "ik ga" is een afspraak.
+   */
+  const [pick, setPick] = useState('all');
+
+  // Alleen vrienden die hier daadwerkelijk in staan. Een chip voor
+  // iemand die niets in deze lijst heeft is een chip die altijd niets
+  // oplevert.
+  const friends = useMemo(() => {
+    const byId = new Map<string, ApiFriendBadge & { n: number }>();
+    for (const r of rows) {
+      for (const f of r.friends) {
+        const seen = byId.get(f.id);
+        if (seen) seen.n += 1;
+        else byId.set(f.id, { ...f, n: 1 });
+      }
+    }
+    return [...byId.values()].sort((a, b) => b.n - a.n);
+  }, [rows]);
+
+  const matches = (r: Row, key: string) =>
+    key === 'all'
+      ? true
+      : key === 'me'
+        ? r.liked || r.going
+        : key === 'liked'
+          ? r.liked
+          : key === 'going'
+            ? r.going
+            : r.friends.some((f) => `friend:${f.id}` === key);
+
+  const shown = useMemo(
+    () => rows.filter((r) => matches(r, pick)),
+    [rows, pick],
+  );
+  const count = (key: string) => rows.filter((r) => matches(r, key)).length;
 
   const closeBtn = (
     <Pressable onPress={() => router.back()} hitSlop={8} style={styles.closeBtn}>
@@ -141,13 +201,80 @@ export default function SamenScreen() {
     </Pressable>
   );
 
-  const loading = loadingSaves || (authed && loadingFeed);
+  const loading = loadingSaves || (authed && (loadingFeed || loadingGoing));
+
+  // Geen filterrij bij een lege lijst: dan is er niets om uit te
+  // filteren en staat er alleen een rij chips boven een uitleg.
+  const chips =
+    rows.length > 0 ? (
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.chipRow}
+      >
+        <FilterChip
+          label={t('Alles', 'All')}
+          count={rows.length}
+          active={pick === 'all'}
+          onPress={() => {
+            softTap();
+            setPick('all');
+          }}
+        />
+        <FilterChip
+          label={t('Ik ga', 'Going')}
+          count={count('going')}
+          active={pick === 'going'}
+          onPress={() => {
+            softTap();
+            setPick('going');
+          }}
+        />
+        <FilterChip
+          label={t('Geliked', 'Liked')}
+          count={count('liked')}
+          active={pick === 'liked'}
+          onPress={() => {
+            softTap();
+            setPick('liked');
+          }}
+        />
+        <FilterChip
+          label={t('Van mij', 'You')}
+          count={count('me')}
+          active={pick === 'me'}
+          onPress={() => {
+            softTap();
+            setPick('me');
+          }}
+        />
+        {friends.map((f) => (
+          <FilterChip
+            key={f.id}
+            label={f.name.split(' ')[0]}
+            count={f.n}
+            icon={
+              <ProfileAvatar avatarUrl={f.avatarUrl} name={f.name} size={20} />
+            }
+            active={pick === `friend:${f.id}`}
+            onPress={() => {
+              softTap();
+              setPick(`friend:${f.id}`);
+            }}
+          />
+        ))}
+      </ScrollView>
+    ) : null;
 
   return (
     <View style={[styles.root, { backgroundColor: roles.bg }]}>
       <ScrollView
         contentContainerStyle={{
-          paddingTop: insets.top + HEADER_HEIGHT + 8,
+          // Zelfde rekensom als op de agenda: de chip-rij zit vast in de
+          // header, dus de content begint eronder.
+          paddingTop: chips
+            ? insets.top + HEADER_HEIGHT + FILTER_ROW_HEIGHT + 10
+            : insets.top + HEADER_HEIGHT + 8,
           paddingBottom: insets.bottom + 96,
         }}
       >
@@ -209,7 +336,13 @@ export default function SamenScreen() {
           </Text>
         ) : null}
 
-        {rows.map((row) => (
+        {rows.length > 0 && shown.length === 0 ? (
+          <Text style={[styles.empty, { color: roles.fgMuted }]}>
+            {t('Niets in deze selectie.', 'Nothing in this selection.')}
+          </Text>
+        ) : null}
+
+        {shown.map((row) => (
           <SamenRow key={row.occurrenceId} row={row} />
         ))}
       </ScrollView>
@@ -218,7 +351,9 @@ export default function SamenScreen() {
         title={t('Favorieten', 'Favourites')}
         hideAvatar
         rightSlot={closeBtn}
-      />
+      >
+        {chips}
+      </AppHeader>
     </View>
   );
 }
@@ -269,6 +404,14 @@ function SamenRow({ row }: { row: Row }) {
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
+  chipRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 22,
+    paddingVertical: 6,
+    height: FILTER_ROW_HEIGHT,
+  },
   center: { paddingTop: 60, alignItems: 'center' },
   banner: {
     flexDirection: 'row',
