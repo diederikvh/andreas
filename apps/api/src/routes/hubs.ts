@@ -813,7 +813,7 @@ function renderHubPage(
           // theoretisch beter zijn maar vereist een handler in de mobile app.
           deeplink: 'andreas://',
           title: `${hub.title} in de ANDREAS-app`,
-          body: 'Sla op wat je interesseert, krijg herinneringen bij events die starten, en zie wat vrienden hebben gered.',
+          body: 'Sla op wat je interesseert, krijg herinneringen bij events die starten, en zie wat vrienden hebben geliked.',
           qrUrl: `${PUBLIC_BASE_URL}/${hub.slug}`,
         })}
       </aside>

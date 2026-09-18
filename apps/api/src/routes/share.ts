@@ -1420,7 +1420,7 @@ function renderVenueSeoPage(opts: {
           ${renderCtaCard({
             deeplink: appLink,
             title: `Volg ${venue.name} in ANDREAS`,
-            body: 'Krijg een melding bij nieuwe events en zie wat je vrienden hebben gered.',
+            body: 'Krijg een melding bij nieuwe events en zie wat je vrienden hebben geliked.',
             qrUrl: `${PUBLIC_BASE_URL}/v/${venue.slug}`,
           })}
         </aside>

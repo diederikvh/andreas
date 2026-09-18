@@ -199,11 +199,11 @@ export default function SamenScreen() {
           <Text style={[styles.empty, { color: roles.fgMuted }]}>
             {authed
               ? t(
-                  'Nog niets gered — door jou niet en door je vrienden niet. Tik op het hartje bij een avond en hij staat hier.',
+                  'Nog niets geliked — door jou niet en door je vrienden niet. Tik op het hartje bij een avond en hij staat hier.',
                   'Nothing saved yet — not by you and not by your friends. Tap the heart on a night and it will be here.',
                 )
               : t(
-                  'Nog niets gered. Tik op het hartje bij een avond en hij staat hier.',
+                  'Nog niets geliked. Tik op het hartje bij een avond en hij staat hier.',
                   'Nothing saved yet. Tap the heart on a night and it will be here.',
                 )}
           </Text>

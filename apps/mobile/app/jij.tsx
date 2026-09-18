@@ -994,7 +994,7 @@ const SOURCE_LABEL: Record<string, { nl: string; en: string }> = {
   agenda: { nl: 'agenda', en: 'agenda' },
   kaart: { nl: 'kaart', en: 'map' },
   series: { nl: 'serie', en: 'series' },
-  gered: { nl: 'gered', en: 'saved' },
+  gered: { nl: 'geliked', en: 'saved' },
   new: { nl: 'net binnen', en: 'just in' },
   share: { nl: 'gedeeld', en: 'shared' },
   scan: { nl: 'gescand', en: 'scanned' },
@@ -1516,7 +1516,7 @@ function NotificationsSection({
       />
       <SettingsSwitch
         label={t('De avond ervoor', 'The night before')}
-        sub={t('Om 18:00, voor wat je hebt gered.', 'At 18:00, for what you saved.')}
+        sub={t('Om 18:00, voor wat je hebt geliked.', 'At 18:00, for what you saved.')}
         value={push.dayBefore}
         disabled={off}
         onValueChange={(v) => void onToggle('dayBefore', v)}
@@ -1599,7 +1599,7 @@ function ReminderScopeSection({
       }
     >
       <SettingsSwitch
-        label={t('Wat ik heb gered', 'What I saved')}
+        label={t('Wat ik heb geliked', 'What I saved')}
         sub={t('Het hartje.', 'The heart.')}
         value={scope.saves}
         onValueChange={(v) => void onToggle('saves', v)}
