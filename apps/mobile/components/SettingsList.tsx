@@ -229,6 +229,8 @@ export function SettingsAction({
   icon,
   onPress,
   chevron = true,
+  expanded,
+  valueAccent = false,
 }: {
   label: string;
   sub?: string;
@@ -240,6 +242,12 @@ export function SettingsAction({
       een rij die ter plekke iets omzet hoort er geen te hebben, want je
       gaat nergens naartoe. */
   chevron?: boolean;
+  /** Voor een rij die ter plekke openklapt: het pijltje wijst dan omhoog
+      zodat je ziet dat nog een tik 'm weer dichtdoet. */
+  expanded?: boolean;
+  /** Waarde in de accentkleur in plaats van gedempt, voor een stand die
+      je wil zien staan -- een ingestelde herinnering bijvoorbeeld. */
+  valueAccent?: boolean;
 }) {
   const roles = useRoles();
   return (
@@ -265,7 +273,12 @@ export function SettingsAction({
       </View>
       <View style={styles.value}>
         {value ? (
-          <Text style={[styles.valueText, { color: roles.fgMuted }]}>
+          <Text
+            style={[
+              styles.valueText,
+              { color: valueAccent ? roles.accent : roles.fgMuted },
+            ]}
+          >
             {value}
           </Text>
         ) : null}
@@ -274,7 +287,7 @@ export function SettingsAction({
         ) : null}
         {onPress && !action && chevron ? (
           <Ionicons
-            name="chevron-forward"
+            name={expanded ? 'chevron-up' : 'chevron-forward'}
             size={15}
             color={roles.fgPlaceholder}
           />

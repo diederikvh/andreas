@@ -1,5 +1,4 @@
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
@@ -20,7 +19,7 @@ import {
   useReminders,
   useSetReminder,
 } from '@/lib/queries';
-import { LEAD } from '@/components/SettingsList';
+import { SettingsAction } from '@/components/SettingsList';
 import { useMode, useRoles } from '@/store/mode';
 import { fontFamily } from '@/theme/tokens';
 
@@ -89,14 +88,26 @@ export function EventReminder({
     return () => sub.remove();
   }, [open, onNeedsRoom, windowHeight]);
   const [note, setNote] = useState('');
-  // Standaard morgenochtend om 10:00. Een verkoop start zelden vannacht,
-  // en een voorstel dat al bijna verlopen is nodigt niet uit.
-  const [when, setWhen] = useState(() => {
-    const d = new Date();
-    d.setDate(d.getDate() + 1);
+
+  /**
+   * Standaard drie dagen voor de avond, om 10:00.
+   *
+   * Dat is een moment waar je iets mee kunt: nog tijd om kaarten te
+   * regelen of iemand mee te vragen, en dicht genoeg op de datum om het
+   * niet te vergeten. Van daaruit schuif je zelf naar voren of naar
+   * achteren. Staat de avond binnen drie dagen, dan is dat moment al
+   * geweest en pakken we een uur vanaf nu -- die datum kan altijd.
+   */
+  const defaultWhen = () => {
+    const soon = new Date(Date.now() + 60 * 60 * 1000);
+    if (!startsAt) return soon;
+    const d = new Date(startsAt);
+    if (Number.isNaN(d.getTime())) return soon;
+    d.setDate(d.getDate() - 3);
     d.setHours(10, 0, 0, 0);
-    return d;
-  });
+    return d.getTime() > Date.now() ? d : soon;
+  };
+  const [when, setWhen] = useState(defaultWhen);
 
   const fmt = useMemo(
     () =>
@@ -110,18 +121,15 @@ export function EventReminder({
     [locale]
   );
 
-  // Een herinnering ná afloop is geen herinnering. De grens is het
-  // *einde*, niet het begin: een expositie die tot november loopt is op
-  // 3 juli begonnen, en daar in september aan herinnerd worden kan
-  // prima. Keek dit naar startsAt, dan stond de knop bij elke lopende
-  // expositie dood.
-  const last = endsAt ?? startsAt;
-  const eventTime = last ? new Date(last).getTime() : null;
-  const tooLate = eventTime !== null && when.getTime() > eventTime;
+  // Alleen het onmogelijke houden we tegen: een moment in het verleden
+  // kan niet meer afgaan, en dat weigert de server ook. Wanneer je
+  // eraan herinnerd wil worden is verder aan jou -- ook als dat na
+  // afloop is. Daar stond eerder een waarschuwing bij en die vertelde
+  // je iets wat je zelf al bedoeld had.
   const inPast = when.getTime() <= Date.now();
 
   const onSave = () => {
-    if (inPast || tooLate) return;
+    if (inPast) return;
     softTap();
     save.mutate(
       { occurrenceId, fireAt: when, note: note.trim() || undefined },
@@ -150,33 +158,20 @@ export function EventReminder({
   // doen -- dan moet je "Laat maar" gebruiken, en dat leest als
   // annuleren in plaats van inklappen.
   const head = (
-    <Pressable
+    <SettingsAction
+      icon="alarm-outline"
+      label={t('Herinner me', 'Remind me')}
+      value={existing ? fmt.format(new Date(existing.fireAt)) : undefined}
+      valueAccent
+      expanded={open}
       onPress={() => {
-        softTap();
+        // Openklappen begint bij wat er staat, niet bij het voorstel:
+        // "Verzetten" met een ander moment in de pickers dan je zelf
+        // hebt gezet leest als een tweede herinnering.
+        if (!open) setWhen(existing ? new Date(existing.fireAt) : defaultWhen());
         setOpen((o) => !o);
       }}
-      style={styles.row}
-    >
-      <View style={styles.lead}>
-        <Ionicons name="alarm-outline" size={22} color={roles.accent} />
-      </View>
-      <Text style={[styles.rowText, { color: roles.fg }]}>
-        {t('Herinner me', 'Remind me')}
-      </Text>
-      {existing ? (
-        <Text style={[styles.value, { color: roles.accent }]}>
-          {fmt.format(new Date(existing.fireAt))}
-        </Text>
-      ) : null}
-      {/* Precies het pijltje van SettingsAction: daar is het een Ionicon
-          van 15 en hier stond een mono-teken van 14, en naast elkaar zie
-          je dat als twee verschillende maten. */}
-      <Ionicons
-        name={open ? 'chevron-up' : 'chevron-forward'}
-        size={15}
-        color={roles.fgPlaceholder}
-      />
-    </Pressable>
+    />
   );
 
   if (!open) return head;
@@ -185,13 +180,6 @@ export function EventReminder({
     <View ref={box}>
       {head}
       <View style={styles.sheet}>
-      <Text style={[styles.hint, { color: roles.fgMuted }]}>
-        {t(
-          'De avond zelf gaat vanzelf. Dit is voor bijvoorbeeld de kaartverkoop.',
-          'The night itself happens automatically. Use this for things like ticket sales.'
-        )}
-      </Text>
-
       <View style={styles.pickers}>
         <DateTimePicker
           value={when}
@@ -245,33 +233,21 @@ export function EventReminder({
         ]}
       />
 
-      {inPast || tooLate ? (
-        <Text style={[styles.warn, { color: roles.fgMuted }]}>
-          {inPast
-            ? t('Kies een moment in de toekomst.', 'Pick a moment in the future.')
-            : t(
-                'Dat is ná afloop. Kies iets ervoor.',
-                'That is after it ends. Pick something before it.'
-              )}
-        </Text>
-      ) : null}
-
       <View style={styles.actions}>
         <Pressable
           onPress={onSave}
-          disabled={inPast || tooLate || save.isPending}
+          disabled={inPast || save.isPending}
           style={[
             styles.saveBtn,
             {
-              backgroundColor:
-                inPast || tooLate ? roles.bgChip : roles.accent,
+              backgroundColor: inPast ? roles.bgChip : roles.accent,
             },
           ]}
         >
           <Text
             style={[
               styles.saveText,
-              { color: inPast || tooLate ? roles.fgMuted : '#0a0a0b' },
+              { color: inPast ? roles.fgMuted : '#0a0a0b' },
             ]}
           >
             {existing ? t('Verzetten', 'Move it') : t('Zet hem', 'Set it')}
@@ -302,40 +278,7 @@ export function EventReminder({
 }
 
 const styles = StyleSheet.create({
-  // Eén op één de maten van de "Nodig iemand uit"-rij hierboven in het
-  // scherm: zelfde gap, zelfde padding, zelfde letterdikte en hetzelfde
-  // mono-chevron. Stond eerder op eigen maten en dan zie je meteen dat
-  // het twee verschillende dingen zijn, terwijl het dezelfde soort rij is.
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 13,
-  },
-  lead: { width: LEAD, alignItems: 'center' },
-  rowText: {
-    flex: 1,
-    fontFamily: fontFamily.medium,
-    fontSize: 14.5,
-    letterSpacing: -0.07,
-  },
-  value: { fontFamily: fontFamily.body, fontSize: 14 },
-  set: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 13,
-  },
-  setTitle: {
-    fontFamily: fontFamily.medium,
-    fontSize: 14.5,
-    letterSpacing: -0.07,
-  },
-  setWhen: { fontFamily: fontFamily.body, fontSize: 12.5 },
   sheet: { paddingHorizontal: 16, paddingBottom: 14, gap: 12 },
-  hint: { fontFamily: fontFamily.body, fontSize: 12.5, lineHeight: 18 },
   // De compacte date picker van iOS tekent z'n pil met een paar punten
   // lucht binnen z'n eigen vak. Zonder correctie begint hij dus iets
   // rechter dan het notitieveld eronder, en juist bij twee velden onder
@@ -355,7 +298,6 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     minHeight: 62,
   },
-  warn: { fontFamily: fontFamily.body, fontSize: 12.5 },
   // Links uitlijnen met de rest van het blok, en bevestigen vóór afzien:
   // de knop die je bijna altijd wil staat waar je duim al is.
   actions: {
