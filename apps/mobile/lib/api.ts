@@ -947,6 +947,9 @@ export type ApiMe = {
   avatarUrl: string | null;
   modePreference: 'nacht' | 'dag';
   savesVisibility: 'favorites' | 'friends' | 'private';
+  /** Wie ziet waar ik heen ga. Los van savesVisibility: een like is een
+      voornemen, "ik ga" is een afspraak. */
+  goingVisibility: 'favorites' | 'friends' | 'private';
   /** Apart van savesVisibility — controleert of de smaak-spiegel (top
       venues/genres/wijken) zichtbaar is voor vrienden op u/[handle]. */
   mirrorVisibility: 'favorites' | 'friends' | 'private';
@@ -1099,6 +1102,7 @@ export async function updateMe(input: {
   name?: string;
   handle?: string;
   savesVisibility?: Visibility;
+  goingVisibility?: Visibility;
   mirrorVisibility?: Visibility;
   discoverable?: boolean;
   pushDailyNew?: boolean;
@@ -1966,7 +1970,12 @@ export type ApiFeedEvent = {
   };
   friendsSaved: ApiFriendBadge[];
   friendsSavedCount: number;
-  /** ISO-string — wanneer de meest-recente vriend dit event reed.
+  /** Vrienden die hier heen gaan. Apart van friendsSaved: dat is "lijkt
+      me leuk" en dit is "ik ben er". Een vriend staat in hoogstens één
+      van de twee -- gaan wint. */
+  friendsGoing: ApiFriendBadge[];
+  friendsGoingCount: number;
+  /** ISO-string — wanneer het meest recente vriendensignaal binnenkwam.
       Drijft de "X dagen geleden"-label op de feed-rij aan. */
   lastSavedAt: string;
 };

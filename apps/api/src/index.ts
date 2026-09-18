@@ -199,6 +199,7 @@ app.patch('/me', async (c) => {
     name?: string;
     handle?: string;
     savesVisibility?: 'favorites' | 'friends' | 'private';
+    goingVisibility?: 'favorites' | 'friends' | 'private';
     mirrorVisibility?: 'favorites' | 'friends' | 'private';
     discoverable?: boolean;
     pushDailyNew?: boolean;
@@ -264,6 +265,15 @@ app.patch('/me', async (c) => {
     updates.savesVisibility = body.savesVisibility;
   }
 
+  if (body.goingVisibility !== undefined) {
+    if (!(VISIBILITIES as readonly string[]).includes(body.goingVisibility)) {
+      return c.json(
+        { error: 'goingVisibility moet "favorites", "friends" of "private" zijn.' },
+        400
+      );
+    }
+    updates.goingVisibility = body.goingVisibility;
+  }
   if (body.mirrorVisibility !== undefined) {
     if (!(VISIBILITIES as readonly string[]).includes(body.mirrorVisibility)) {
       return c.json(

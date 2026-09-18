@@ -184,6 +184,13 @@ export const users = pgTable(
     /** Mogen vrienden zien welke events ik heb opgeslagen (friend-pills,
         events-lijst op friend-detail)? Default `friends` (open). */
     savesVisibility: savesVisibility().notNull().default('friends'),
+    /** Wie ziet waar ik heen ga. Los van `savesVisibility`: een like is
+        een voornemen en "ik ga" is een afspraak, en dat laatste wil je
+        misschien met minder mensen delen. Zelfde enum-type, eigen
+        kolom. */
+    goingVisibility: savesVisibility('going_visibility')
+      .notNull()
+      .default('friends'),
     /** Mogen vrienden mijn smaak-spiegel zien op `u/[handle]` (top venues,
         top genres, activity-timeline)? Apart van `savesVisibility` zodat
         beide flags onafhankelijk te kiezen zijn. Default `private` — opt-

@@ -16,8 +16,9 @@ const FEED_FRIENDS_PILL_LIMIT = 3;
 const FEED_LIMIT = 50;
 
 /**
- * Sociale activity-feed: events die ≥1 vriend(in) heeft gered, gesorteerd
- * op meest-recente save-tijd per event (gededupeerd). Eén rij per event,
+ * Sociale activity-feed: events die ≥1 vriend(in) heeft geliked of waar
+ * hij heen gaat, gesorteerd op het meest recente signaal per event
+ * (gededupeerd). Eén rij per event,
  * met de vrienden-pill die naar de lijst van saved-friends wijst en de
  * `lastSavedAt` als relatieve "X dagen geleden"-label.
  *
@@ -26,8 +27,10 @@ const FEED_LIMIT = 50;
  * idee waarmee Andreas is opgezet: zien wat vrienden(-van-vrienden) doen,
  * niet zien wat een algoritme denkt dat je leuk vindt.
  *
- * Privacy: vrienden met `savesVisibility='private'` worden uitgesloten,
- * zelfde gate als de friend-pills elders in de app.
+ * Privacy: twee gates, want het zijn twee signalen. `savesVisibility`
+ * bepaalt of je iemands likes ziet, `goingVisibility` of je ziet waar
+ * hij heen gaat. Op 'private' valt die helft weg; op 'favorites' alleen
+ * voor wie mij als favoriet heeft.
  *
  * Foto-posts (later) komen als tweede content-type in dezelfde feed,
  * gesorteerd op `postedAt` in dezelfde stream — vandaar dat we nu al
@@ -73,45 +76,58 @@ socialRoute.get('/feed', async (c) => {
     );
   const favoritedMe = new Set(favoritedByRows.map((r) => r.ownerId));
 
-  // Stap 2 — alle saves van vrienden, met privacy-gate. Joint events
-  // + venues + occurrences mee zodat we in één query alles hebben dat
-  // de mobile-feed-rij toont.
-  const rows = await db
-    .select({
-      // event
-      eventId: schema.events.id,
-      title: schema.events.title,
-      description: schema.events.description,
-      kind: schema.events.kind,
-      imageUrl: schema.events.imageUrl,
-      category: schema.events.category,
-      featured: schema.events.featured,
-      genres: schema.events.genres,
-      // occurrence (gedenormaliseerd: het moment dat de vriend gered heeft)
-      occurrenceId: schema.occurrences.id,
-      startsAt: schema.occurrences.startsAt,
-      endsAt: schema.occurrences.endsAt,
-      priceCents: schema.occurrences.priceCents,
-      priceNote: schema.occurrences.priceNote,
-      ticketUrl: schema.occurrences.ticketUrl,
-      // venue
-      venueId: schema.venues.id,
-      venueSlug: schema.venues.slug,
-      venueName: schema.venues.name,
-      venueAddress: schema.venues.address,
-      venueLat: schema.venues.lat,
-      venueLng: schema.venues.lng,
-      venueType: schema.venues.type,
-      venueImageUrl: schema.venues.imageUrl,
-      venuePriceNote: schema.venues.priceNote,
-      // de vriend die saved
-      friendId: schema.users.id,
-      friendName: schema.users.name,
-      friendHandle: schema.users.handle,
-      friendAvatar: schema.users.avatarUrl,
-      savesVisibility: schema.users.savesVisibility,
-      savedAt: schema.saves.createdAt,
-    })
+  // Stap 2 — alles wat vrienden hebben geliked én waar ze heen gaan,
+  // elk met hun eigen privacy-gate. Twee tabellen, dezelfde velden:
+  // vandaar dit ene select-object en twee queries eromheen. Joint events
+  // + venues + occurrences mee zodat we in één keer alles hebben dat de
+  // mobile-feed-rij toont.
+  const FIELDS = {
+    // event
+    eventId: schema.events.id,
+    title: schema.events.title,
+    description: schema.events.description,
+    kind: schema.events.kind,
+    imageUrl: schema.events.imageUrl,
+    category: schema.events.category,
+    featured: schema.events.featured,
+    genres: schema.events.genres,
+    // occurrence (gedenormaliseerd: het moment dat de vriend gered heeft)
+    occurrenceId: schema.occurrences.id,
+    startsAt: schema.occurrences.startsAt,
+    endsAt: schema.occurrences.endsAt,
+    priceCents: schema.occurrences.priceCents,
+    priceNote: schema.occurrences.priceNote,
+    ticketUrl: schema.occurrences.ticketUrl,
+    // venue
+    venueId: schema.venues.id,
+    venueSlug: schema.venues.slug,
+    venueName: schema.venues.name,
+    venueAddress: schema.venues.address,
+    venueLat: schema.venues.lat,
+    venueLng: schema.venues.lng,
+    venueType: schema.venues.type,
+    venueImageUrl: schema.venues.imageUrl,
+    venuePriceNote: schema.venues.priceNote,
+    // de vriend van wie dit signaal komt
+    friendId: schema.users.id,
+    friendName: schema.users.name,
+    friendHandle: schema.users.handle,
+    friendAvatar: schema.users.avatarUrl,
+  } as const;
+
+  // Alleen momenten die nog in de toekomst vallen — geen "Roos vond 3
+  // maanden geleden iets leuk dat allang voorbij is". Default duur 4u
+  // (zelfde heuristiek als findEventsWithOccurrencesInRange) zodat
+  // events zonder endsAt netjes wegvallen kort na de starttijd.
+  const stillRelevant = [
+    eq(schema.events.published, true),
+    eq(schema.venues.published, true),
+    sql`COALESCE(${schema.occurrences.endsAt}, ${schema.occurrences.startsAt} + INTERVAL '4 hours') >= NOW()`,
+    sql`${schema.occurrences.status} <> 'cancelled'`,
+  ];
+
+  const likedRows = await db
+    .select({ ...FIELDS, vis: schema.users.savesVisibility, at: schema.saves.createdAt })
     .from(schema.saves)
     .innerJoin(schema.users, eq(schema.users.id, schema.saves.userId))
     .innerJoin(
@@ -124,18 +140,40 @@ socialRoute.get('/feed', async (c) => {
       and(
         inArray(schema.saves.userId, friendIds),
         inArray(schema.users.savesVisibility, ['friends', 'favorites']),
-        eq(schema.events.published, true),
-        eq(schema.venues.published, true),
-        // Alleen saves waarvan het moment (occurrence) nog in de
-        // toekomst valt — geen "Roos heeft 3 maanden geleden iets
-        // gered dat allang voorbij is". Default duur 4u (zelfde
-        // heuristiek als findEventsWithOccurrencesInRange) zodat
-        // events zonder endsAt netjes wegvallen kort na de starttijd.
-        sql`COALESCE(${schema.occurrences.endsAt}, ${schema.occurrences.startsAt} + INTERVAL '4 hours') >= NOW()`,
-        sql`${schema.occurrences.status} <> 'cancelled'`
+        ...stillRelevant
       )
     )
     .orderBy(desc(schema.saves.createdAt));
+
+  const goingRows = await db
+    .select({
+      ...FIELDS,
+      vis: schema.users.goingVisibility,
+      at: schema.attendance.createdAt,
+    })
+    .from(schema.attendance)
+    .innerJoin(schema.users, eq(schema.users.id, schema.attendance.userId))
+    .innerJoin(
+      schema.occurrences,
+      eq(schema.attendance.occurrenceId, schema.occurrences.id)
+    )
+    .innerJoin(schema.events, eq(schema.occurrences.eventId, schema.events.id))
+    .innerJoin(schema.venues, eq(schema.events.venueId, schema.venues.id))
+    .where(
+      and(
+        inArray(schema.attendance.userId, friendIds),
+        inArray(schema.users.goingVisibility, ['friends', 'favorites']),
+        ...stillRelevant
+      )
+    )
+    .orderBy(desc(schema.attendance.createdAt));
+
+  // "Ik ga" eerst: staat een vriend bij hetzelfde event in beide
+  // lijsten, dan is dat het sterkere signaal en hoort hij in die pill.
+  const rows = [
+    ...goingRows.map((r) => ({ ...r, via: 'going' as const })),
+    ...likedRows.map((r) => ({ ...r, via: 'liked' as const })),
+  ];
 
   if (rows.length === 0) return c.json({ events: [] });
 
@@ -180,14 +218,21 @@ socialRoute.get('/feed', async (c) => {
     };
     friendsSaved: FriendBadge[];
     friendsSavedCount: number;
+    /** Vrienden die hier heen gaan. Apart van `friendsSaved`: dat is
+        "lijkt me leuk" en dit is "ik ben er". */
+    friendsGoing: FriendBadge[];
+    friendsGoingCount: number;
     lastSavedAt: Date;
   };
   const byEvent = new Map<string, FeedEntry>();
+  // Per event per vriend één plek: staat iemand al in de gaan-pill, dan
+  // hoort hij niet ook nog in de leuk-pill. Vandaar dat `rows` met de
+  // gaan-rijen begint.
   const friendIdsSeenPerEvent = new Map<string, Set<string>>();
   for (const r of rows) {
     // 'favorites'-visibility: alleen tonen als de friend mij als favoriet
     // heeft gemarkeerd. Voor 'friends' geen check nodig.
-    if (r.savesVisibility === 'favorites' && !favoritedMe.has(r.friendId)) {
+    if (r.vis === 'favorites' && !favoritedMe.has(r.friendId)) {
       continue;
     }
     let entry = byEvent.get(r.eventId);
@@ -224,22 +269,34 @@ socialRoute.get('/feed', async (c) => {
         },
         friendsSaved: [],
         friendsSavedCount: 0,
-        lastSavedAt: r.savedAt,
+        friendsGoing: [],
+        friendsGoingCount: 0,
+        lastSavedAt: r.at,
       };
       byEvent.set(r.eventId, entry);
       friendIdsSeenPerEvent.set(r.eventId, seen);
     }
     if (seen.has(r.friendId)) continue;
     seen.add(r.friendId);
-    entry.friendsSavedCount += 1;
-    if (entry.friendsSaved.length < FEED_FRIENDS_PILL_LIMIT) {
-      entry.friendsSaved.push({
-        id: r.friendId,
-        name: r.friendName,
-        handle: r.friendHandle,
-        avatarUrl: r.friendAvatar,
-      });
+    const badge = {
+      id: r.friendId,
+      name: r.friendName,
+      handle: r.friendHandle,
+      avatarUrl: r.friendAvatar,
+    };
+    if (r.via === 'going') {
+      entry.friendsGoingCount += 1;
+      if (entry.friendsGoing.length < FEED_FRIENDS_PILL_LIMIT) {
+        entry.friendsGoing.push(badge);
+      }
+    } else {
+      entry.friendsSavedCount += 1;
+      if (entry.friendsSaved.length < FEED_FRIENDS_PILL_LIMIT) {
+        entry.friendsSaved.push(badge);
+      }
     }
+    // De sorteersleutel is het laatste signaal, van welke soort dan ook.
+    if (r.at.getTime() > entry.lastSavedAt.getTime()) entry.lastSavedAt = r.at;
   }
 
   // Stap 4 — sorteer events op meest-recente save-tijd, cap op FEED_LIMIT.

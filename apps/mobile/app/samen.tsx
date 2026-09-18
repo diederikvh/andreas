@@ -7,7 +7,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppHeader, HEADER_HEIGHT } from '@/components/AppHeader';
 import { EventListRow } from '@/components/EventListRow';
 import { FILTER_ROW_HEIGHT, FilterChip } from '@/components/FilterChip';
-import { ProfileAvatar } from '@/components/ProfileAvatar';
 import { SpinningCross } from '@/components/SpinningCross';
 import { useIsRegistered } from '@/lib/authClient';
 import { softTap } from '@/lib/haptics';
@@ -57,7 +56,10 @@ type Row = {
       en twee tabellen, en je kunt heel goed ergens heen gaan zonder het
       hartje te hebben aangetikt. */
   going: boolean;
+  /** Vrienden die het leuk vinden. */
   friends: ApiFriendBadge[];
+  /** Vrienden die er heen gaan. */
+  friendsGoing: ApiFriendBadge[];
 };
 
 function fromSave(e: SavedApiEvent): Row {
@@ -78,6 +80,7 @@ function fromSave(e: SavedApiEvent): Row {
     liked: true,
     going: false,
     friends: e.friendsSaved ?? [],
+    friendsGoing: [],
   };
 }
 
@@ -99,6 +102,7 @@ function fromFeed(e: ApiFeedEvent): Row {
     liked: false,
     going: false,
     friends: e.friendsSaved ?? [],
+    friendsGoing: e.friendsGoing ?? [],
   };
 }
 
@@ -135,10 +139,16 @@ export default function SamenScreen() {
     for (const e of feed ?? []) {
       const existing = byOccurrence.get(e.occurrence.id);
       if (existing) {
-        const known = new Set(existing.friends.map((f) => f.id));
+        const known = new Set(
+          [...existing.friends, ...existing.friendsGoing].map((f) => f.id),
+        );
         existing.friends = [
           ...existing.friends,
           ...(e.friendsSaved ?? []).filter((f) => !known.has(f.id)),
+        ];
+        existing.friendsGoing = [
+          ...existing.friendsGoing,
+          ...(e.friendsGoing ?? []).filter((f) => !known.has(f.id)),
         ];
       } else {
         byOccurrence.set(e.occurrence.id, fromFeed(e));
@@ -153,47 +163,52 @@ export default function SamenScreen() {
   }, [saves, going, feed]);
 
   /**
-   * Eén filter tegelijk. Twee tegelijk zou moeten uitleggen of het "en"
-   * of "of" is, en dat is precies de vraag die een filterrij niet hoort
-   * op te roepen.
+   * Vier filters die je kunt combineren, geen tabs.
    *
-   * "Van mij" is breder dan de twee erna: geliked óf ik ga. Die twee
-   * staan er los bij omdat het verschil uitmaakt -- het hartje is een
-   * voornemen, "ik ga" is een afspraak.
+   * Twee vragen door elkaar: *wie* (ik, vrienden) en *wat* (gaat er
+   * heen, vindt het leuk). Niets aangetikt in een dimensie betekent
+   * "maakt niet uit", dus "Ik ga" alleen toont alles waar iemand heen
+   * gaat, en "Ik ga" plus "Vrienden" toont waar je vrienden heen gaan.
+   * Dat is de vraag die je stelt als je je ergens bij wil aansluiten.
+   *
+   * Geen chip per vriend: bij dertig vrienden is dat dertig chips en
+   * scroll je door een rij die geen antwoord geeft. Eén knop vrienden
+   * zegt hetzelfde, en wie het precies zijn staat in de rij zelf.
    */
-  const [pick, setPick] = useState('all');
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const toggle = (key: string) => {
+    softTap();
+    setPicked((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
 
-  // Alleen vrienden die hier daadwerkelijk in staan. Een chip voor
-  // iemand die niets in deze lijst heeft is een chip die altijd niets
-  // oplevert.
-  const friends = useMemo(() => {
-    const byId = new Map<string, ApiFriendBadge & { n: number }>();
-    for (const r of rows) {
-      for (const f of r.friends) {
-        const seen = byId.get(f.id);
-        if (seen) seen.n += 1;
-        else byId.set(f.id, { ...f, n: 1 });
-      }
-    }
-    return [...byId.values()].sort((a, b) => b.n - a.n);
-  }, [rows]);
-
-  const matches = (r: Row, key: string) =>
-    key === 'all'
-      ? true
-      : key === 'me'
-        ? r.liked || r.going
-        : key === 'liked'
-          ? r.liked
-          : key === 'going'
-            ? r.going
-            : r.friends.some((f) => `friend:${f.id}` === key);
+  const matches = (r: Row, keys: Set<string>) => {
+    const anyWho = !keys.has('me') && !keys.has('friends');
+    const anyWhat = !keys.has('going') && !keys.has('liked');
+    const me = anyWho || keys.has('me');
+    const friends = anyWho || keys.has('friends');
+    const going = anyWhat || keys.has('going');
+    const liked = anyWhat || keys.has('liked');
+    return (
+      (me && going && r.going) ||
+      (me && liked && r.liked) ||
+      (friends && going && r.friendsGoing.length > 0) ||
+      (friends && liked && r.friends.length > 0)
+    );
+  };
 
   const shown = useMemo(
-    () => rows.filter((r) => matches(r, pick)),
-    [rows, pick],
+    () => rows.filter((r) => matches(r, picked)),
+    [rows, picked],
   );
-  const count = (key: string) => rows.filter((r) => matches(r, key)).length;
+  // Wat deze chip op zichzelf zou opleveren. Voorspelbaarder dan een
+  // getal dat meebeweegt met wat er verder aanstaat.
+  const count = (key: string) =>
+    rows.filter((r) => matches(r, new Set([key]))).length;
 
   const closeBtn = (
     <Pressable onPress={() => router.back()} hitSlop={8} style={styles.closeBtn}>
@@ -212,57 +227,42 @@ export default function SamenScreen() {
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.chipRow}
       >
+        {/* "Alles" wist de selectie in plaats van een eigen stand te
+            zijn: met niets aangetikt zie je toch al alles, dus hij doet
+            niets nieuws -- hij maakt alleen de uitweg zichtbaar. */}
         <FilterChip
           label={t('Alles', 'All')}
           count={rows.length}
-          active={pick === 'all'}
+          active={picked.size === 0}
           onPress={() => {
             softTap();
-            setPick('all');
+            setPicked(new Set());
           }}
         />
         <FilterChip
           label={t('Ik ga', 'Going')}
           count={count('going')}
-          active={pick === 'going'}
-          onPress={() => {
-            softTap();
-            setPick('going');
-          }}
+          active={picked.has('going')}
+          onPress={() => toggle('going')}
         />
         <FilterChip
           label={t('Geliked', 'Liked')}
           count={count('liked')}
-          active={pick === 'liked'}
-          onPress={() => {
-            softTap();
-            setPick('liked');
-          }}
+          active={picked.has('liked')}
+          onPress={() => toggle('liked')}
         />
         <FilterChip
           label={t('Van mij', 'You')}
           count={count('me')}
-          active={pick === 'me'}
-          onPress={() => {
-            softTap();
-            setPick('me');
-          }}
+          active={picked.has('me')}
+          onPress={() => toggle('me')}
         />
-        {friends.map((f) => (
-          <FilterChip
-            key={f.id}
-            label={f.name.split(' ')[0]}
-            count={f.n}
-            icon={
-              <ProfileAvatar avatarUrl={f.avatarUrl} name={f.name} size={20} />
-            }
-            active={pick === `friend:${f.id}`}
-            onPress={() => {
-              softTap();
-              setPick(`friend:${f.id}`);
-            }}
-          />
-        ))}
+        <FilterChip
+          label={t('Vrienden', 'Friends')}
+          count={count('friends')}
+          active={picked.has('friends')}
+          onPress={() => toggle('friends')}
+        />
       </ScrollView>
     ) : null;
 
@@ -372,6 +372,9 @@ function SamenRow({ row }: { row: Row }) {
     locale,
   ).toLowerCase()}`;
 
+  // Gaan eerst in de pill, dan wie het leuk vindt. De pill zegt nog niet
+  // welke van de twee iemand is -- dat vraagt een tweede pill-vorm en
+  // dat is een eigen ontwerp.
   return (
     <EventListRow
       thumb={
@@ -390,8 +393,11 @@ function SamenRow({ row }: { row: Row }) {
       tags={[{ label: translateCategory(row.category, locale), tone }]}
       genreLabel={(row.genres ?? [])[0]}
       friends={
-        row.friends.length > 0
-          ? row.friends.map((f) => ({ name: f.name, avatar: f.avatarUrl }))
+        [...row.friendsGoing, ...row.friends].length > 0
+          ? [...row.friendsGoing, ...row.friends].map((f) => ({
+              name: f.name,
+              avatar: f.avatarUrl,
+            }))
           : undefined
       }
       tick={tone}

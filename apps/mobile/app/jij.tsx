@@ -1629,14 +1629,21 @@ function PrivacySection({
   // server nee zegt. Een instelling die een halve seconde nadenkt voelt
   // stuk, ook als hij het niet is.
   const [savesVis, setSavesVis] = useState<Visibility>(me.savesVisibility);
+  const [goingVis, setGoingVis] = useState<Visibility>(me.goingVisibility);
   const [mirrorVis, setMirrorVis] = useState<Visibility>(me.mirrorVisibility);
   const [discoverable, setDiscoverable] = useState(me.discoverable);
 
   useEffect(() => {
     setSavesVis(me.savesVisibility);
+    setGoingVis(me.goingVisibility);
     setMirrorVis(me.mirrorVisibility);
     setDiscoverable(me.discoverable);
-  }, [me.savesVisibility, me.mirrorVisibility, me.discoverable]);
+  }, [
+    me.savesVisibility,
+    me.goingVisibility,
+    me.mirrorVisibility,
+    me.discoverable,
+  ]);
 
   const apply = async <T,>(
     next: T,
@@ -1669,15 +1676,27 @@ function PrivacySection({
       )}
     >
       <SettingsChoice
-        label={t('Wie ziet wat je redt', 'Who sees what you save')}
+        label={t('Wie ziet je likes', 'Who sees what you save')}
         value={savesVis}
         options={visibilityOpts}
         onChange={(v) =>
           void apply(v, savesVis, setSavesVis, { savesVisibility: v })
         }
       />
+      {/* Los van je likes, want het is iets anders: een like is een
+          voornemen en "ik ga" is een afspraak. Dat laatste wil je
+          misschien met minder mensen delen -- of juist met meer, want
+          het is ook een uitnodiging om mee te gaan. */}
       <SettingsChoice
-        label={t('Wie ziet je spiegel', 'Who sees your mirror')}
+        label={t('Wie ziet waar je heen gaat', "Who sees where you're going")}
+        value={goingVis}
+        options={visibilityOpts}
+        onChange={(v) =>
+          void apply(v, goingVis, setGoingVis, { goingVisibility: v })
+        }
+      />
+      <SettingsChoice
+        label={t('Wie ziet je profiel', 'Who sees your profile')}
         value={mirrorVis}
         options={visibilityOpts}
         onChange={(v) =>
