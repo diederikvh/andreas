@@ -1,4 +1,5 @@
 import DateTimePicker from '@react-native-community/datetimepicker';
+import { Ionicons } from '@expo/vector-icons';
 import { useMemo, useState } from 'react';
 import { Alert, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 
@@ -184,17 +185,19 @@ export function EventReminder({
             {t('Zet', 'Set')}
           </Text>
         </Pressable>
+        {/* Een kruis in plaats van "Weghalen": op deze regel staan al
+            twee pickers en een knop, en daar past geen woord meer bij. */}
         {existing ? (
           <Pressable
             onPress={() => {
               onRemove();
               setOpen(false);
             }}
-            hitSlop={8}
+            hitSlop={10}
+            accessibilityLabel={t('Herinnering weghalen', 'Remove reminder')}
+            style={styles.remove}
           >
-            <Text style={[styles.action, { color: roles.fgMuted }]}>
-              {t('Weghalen', 'Remove')}
-            </Text>
+            <Ionicons name="close" size={21} color={roles.fgMuted} />
           </Pressable>
         ) : null}
       </View>
@@ -215,7 +218,18 @@ const styles = StyleSheet.create({
     gap: 6,
     marginLeft: -10,
   },
-  action: { fontFamily: fontFamily.bold, fontSize: 14 },
-  saveBtn: { paddingHorizontal: 18, paddingVertical: 11, borderRadius: 8 },
+  // Iets meer lucht tussen de tijd en de knop dan tussen de twee
+  // pickers: die twee horen bij elkaar, de knop is de volgende stap.
+  saveBtn: {
+    paddingHorizontal: 18,
+    paddingVertical: 11,
+    borderRadius: 8,
+    marginLeft: 8,
+  },
+  // Rechts tegen de rand, waar het pijltje van de rij erboven ook staat:
+  // die rij en dit blok hebben allebei 16 padding, dus ze liggen op één
+  // lijn. Zo staat het kruis ook ver genoeg van de knop af om er niet
+  // bij te horen.
+  remove: { marginLeft: 'auto' },
   saveText: { fontFamily: fontFamily.bold, fontSize: 14 },
 });
