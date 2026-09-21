@@ -629,7 +629,7 @@ async function sendPushFromMe(
       await sendPushToUser(toUserId, {
         title: 'Nieuwe vriend-aanvraag',
         body: `${display} wil je toevoegen`,
-        data: { url: '/(tabs)/social' },
+        data: { url: '/social' },
       });
     } else {
       await sendPushToUser(toUserId, {

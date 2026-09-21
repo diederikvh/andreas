@@ -6,9 +6,29 @@ import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 import { ModePick } from '@/components/start/ModePick';
 import { Splash } from '@/components/start/Splash';
 import { ensureAnonymousSession, useSession } from '@/lib/authClient';
+import { markBootDone, takePendingDeepLink } from '@/lib/pendingDeepLink';
 import { useModeStore, useRoles } from '@/store/mode';
 
 const SPLASH_HOLD_MS = 1600;
+
+/**
+ * Naar de homepage, en als een melding je ergens anders heen wilde
+ * brengen dan daar bovenop.
+ *
+ * De homepage blijft dus onder de bestemming liggen: terugswipen brengt
+ * je waar je anders ook geweest zou zijn, niet terug naar deze splash.
+ */
+function goHome(): void {
+  router.replace('/avond');
+  const target = takePendingDeepLink();
+  markBootDone();
+  if (!target) return;
+  try {
+    router.push(target as any);
+  } catch (err) {
+    console.warn('[push] navigate failed', target, err);
+  }
+}
 
 type Stage = 'splash' | 'mode';
 
@@ -43,7 +63,7 @@ export default function StartScreen() {
     if (sessionPending) return;
     const t = setTimeout(() => {
       const { hasOnboarded } = useModeStore.getState();
-      if (hasOnboarded) router.replace('/avond');
+      if (hasOnboarded) goHome();
       else setStage('mode');
     }, SPLASH_HOLD_MS);
     return () => clearTimeout(t);
@@ -53,7 +73,7 @@ export default function StartScreen() {
     // Mode gekozen = onboarding klaar. Er komt geen inlogstap meer
     // achteraan, dus dit is het moment om 't af te vinken.
     useModeStore.getState().completeOnboarding();
-    router.replace('/avond');
+    goHome();
   };
 
   return (

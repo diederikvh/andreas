@@ -273,7 +273,7 @@ groupsRoute.delete('/:id', async (c) => {
       await sendPushToUsers(otherIds, {
         title: group.name,
         body: `${display} heeft de groep opgeheven`,
-        data: { url: '/(tabs)/social' },
+        data: { url: '/social' },
       });
     } catch (err) {
       console.error('[groups] delete push failed', err);
