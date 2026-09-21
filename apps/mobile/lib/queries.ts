@@ -84,6 +84,7 @@ import {
   setPendingGoing,
 } from '@/lib/api';
 import { useSession } from '@/lib/authClient';
+import { useNewFilters } from '@/store/newFilters';
 import { useNewWindowStart } from '@/store/sessionTimestamps';
 
 export const queryKeys = {
@@ -715,6 +716,12 @@ export function useToggleSave() {
     },
     onError: (_err, _input, ctx) => {
       if (ctx?.prev) qc.setQueryData(queryKeys.saves(), ctx.prev);
+    },
+    onSuccess: (res) => {
+      // Hoeveel smaak je op deze telefoon hebt achtergelaten. Voedt het
+      // duwtje op /new dat zegt dat dat profiel alleen hier staat.
+      // Stond eerder op de veeg in die lijst, en die is er niet meer.
+      if (res?.saved) useNewFilters.getState().bumpRated();
     },
     onSettled: () => {
       qc.invalidateQueries({ queryKey: queryKeys.saves() });

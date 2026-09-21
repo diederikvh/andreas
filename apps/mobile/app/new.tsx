@@ -23,7 +23,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQueryClient } from '@tanstack/react-query';
 
 import { AppHeader, HEADER_HEIGHT } from '@/components/AppHeader';
-import { SwipeableRow } from '@/components/SwipeableRow';
 import { FILTER_ROW_HEIGHT, FilterChip } from '@/components/FilterChip';
 import { EventListRow } from '@/components/EventListRow';
 import { RefreshBanner } from '@/components/RefreshBanner';
@@ -48,8 +47,6 @@ import { softTap } from '@/lib/haptics';
 import { useLocale, useT } from '@/lib/i18n';
 import {
   useNewArrivals,
-  useToggleDismiss,
-  useToggleSave,
 } from '@/lib/queries';
 import type { BadgeTone } from '@/lib/types';
 import {
@@ -165,76 +162,9 @@ export default function NewScreen() {
     limit: Math.min(pages * PAGE, SERVER_MAX),
   });
   const rawEvents = active?.events;
-  // Wat je deze sessie al beoordeeld hebt. De server haalt beoordeelde
-  // events er ook uit, maar pas bij de volgende fetch — deze set laat de
-  // rij meteen verdwijnen zodat de lijst onder je handen leegloopt.
-  // Dát is de beloning: je kunt 'm áf krijgen.
-  const [rated, setRated] = useState<Set<string>>(new Set());
-  const markRated = useCallback((eventId: string) => {
-    setRated((prev) => new Set(prev).add(eventId));
-  }, []);
-
-  // Laatste oordeel, voor ongedaan maken. Vegen mist vaker dan tikken —
-  // je haalt 'm net te ver door terwijl je wilde scrollen — en een nee
-  // haalt het event permanent uit de lijst. Zonder uitweg is dat te
-  // definitief voor een gebaar dat je per ongeluk maakt.
-  const [lastRated, setLastRated] = useState<{
-    eventId: string;
-    occurrenceId: string;
-    kind: 'ja' | 'nee';
-    title: string;
-  } | null>(null);
-  const undoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const rememberForUndo = useCallback(
-    (entry: NonNullable<typeof lastRated>) => {
-      setLastRated(entry);
-      if (undoTimer.current) clearTimeout(undoTimer.current);
-      undoTimer.current = setTimeout(() => setLastRated(null), 6000);
-    },
-    []
-  );
-  useEffect(
-    () => () => {
-      if (undoTimer.current) clearTimeout(undoTimer.current);
-    },
-    []
-  );
-
-  const toggleSaveMut = useToggleSave();
-  const toggleDismissMut = useToggleDismiss();
-  const undoLast = useCallback(() => {
-    if (!lastRated) return;
-    softTap();
-    // Beide mutaties zijn togglers, dus nog een keer aanroepen draait 'm
-    // terug. De rij komt vanzelf weer boven water zodra 'ie uit `rated`
-    // is en de volgende fetch 'm niet meer wegfiltert.
-    if (lastRated.kind === 'ja')
-      toggleSaveMut.mutate({ occurrenceId: lastRated.occurrenceId, source: 'new' });
-    else
-      toggleDismissMut.mutate({
-        occurrenceId: lastRated.occurrenceId,
-        source: 'new',
-      });
-    setRated((prev) => {
-      const next = new Set(prev);
-      next.delete(lastRated.eventId);
-      return next;
-    });
-    setLastRated(null);
-  }, [lastRated, toggleSaveMut, toggleDismissMut]);
-
-  // Welke rij de veeg-hint krijgt. Eén keer vastgezet op de eerste rij
-  // die we te zien krijgen, en daarna niet meer verschoven — anders
-  // begint de volgende rij te wiebelen zodra je de eerste wegveegt.
-  const [hintId, setHintId] = useState<string | null>(null);
-  const hintDone = useRef(false);
-
-  // `total` telt vóór de cap: 15 in beeld, 47 achter de meer-knop. Min
-  // wat je deze sessie al hebt weggetikt — de server weet daar pas van
-  // bij de volgende fetch, en tot die tijd zou de teller stil blijven
-  // staan terwijl de lijst onder je handen korter wordt.
-  const total = Math.max(0, (active?.total ?? 0) - rated.size);
-  const shown = (active?.events.length ?? 0) - rated.size;
+  // `total` telt vóór de cap: 15 in beeld, 47 achter de meer-knop.
+  const total = active?.total ?? 0;
+  const shown = active?.events.length ?? 0;
   const laneCounts = active?.laneCounts;
   // Server geeft de lijst in createdAt-desc volgorde (meest recent
   // gescraped eerst). Visueel is dat verwarrend: gebruiker ziet de
@@ -274,14 +204,11 @@ export default function NewScreen() {
     };
     const out: { batch: number; events: ApiEvent[] }[] = [];
     for (let i = 0; i < rawEvents.length; i += PAGE) {
-      const chunk = rawEvents
-        .slice(i, i + PAGE)
-        .filter((e) => !rated.has(e.id))
-        .sort(byStart);
+      const chunk = rawEvents.slice(i, i + PAGE).sort(byStart);
       if (chunk.length > 0) out.push({ batch: i / PAGE, events: chunk });
     }
     return out;
-  }, [rawEvents, rated]);
+  }, [rawEvents]);
 
   const events = useMemo(
     () => (batched ? batched.flatMap((b) => b.events) : undefined),
@@ -293,14 +220,6 @@ export default function NewScreen() {
   // Binnen een baan komen gevolgde venues bovenaan — dat signaal was
   // eerder een eigen sectie, maar de baan-indeling is de belangrijkere
   // scheiding en twee kapstokken door elkaar leest niet.
-  useEffect(() => {
-    if (hintDone.current) return;
-    const first = events?.[0];
-    if (!first) return;
-    hintDone.current = true;
-    setHintId(first.id);
-  }, [events]);
-
   const sections = useMemo(() => {
     if (!batched) return [];
     const out: LaneSection[] = [];
@@ -483,12 +402,7 @@ export default function NewScreen() {
           sections={sections}
           keyExtractor={(e) => e.id}
           renderItem={({ item }) => (
-            <NewArrivalRow
-              event={item}
-              onRated={markRated}
-              onRemember={rememberForUndo}
-              hint={item.id === hintId}
-            />
+            <NewArrivalRow event={item} />
           )}
           renderSectionHeader={({ section }) => {
             const lane =
@@ -572,8 +486,8 @@ export default function NewScreen() {
                   <View style={styles.nudgeBody}>
                     <Text style={[styles.nudgeText, { color: roles.fg }]}>
                       {t(
-                        `Je hebt ${ratedCount} dingen beoordeeld. Dat profiel staat alleen op deze telefoon.`,
-                        `You’ve rated ${ratedCount} things. That profile lives only on this phone.`
+                        `Je hebt ${ratedCount} dingen geliked. Dat profiel staat alleen op deze telefoon.`,
+                        `You’ve liked ${ratedCount} things. That profile lives only on this phone.`
                       )}
                     </Text>
                     <Pressable
@@ -673,32 +587,6 @@ export default function NewScreen() {
         {chips}
       </AppHeader>
 
-      {lastRated && (
-        <View
-          style={[
-            styles.undoBar,
-            {
-              bottom: insets.bottom + 24,
-              backgroundColor: isNacht ? palette.noir2 : palette.paper2,
-              borderColor: roles.bgChip,
-            },
-          ]}
-        >
-          <Text
-            numberOfLines={1}
-            style={[styles.undoText, { color: roles.fgMuted }]}
-          >
-            {lastRated.kind === 'ja'
-              ? t(`Bewaard: ${lastRated.title}`, `Saved: ${lastRated.title}`)
-              : t(`Weg: ${lastRated.title}`, `Dismissed: ${lastRated.title}`)}
-          </Text>
-          <Pressable onPress={undoLast} hitSlop={8}>
-            <Text style={[styles.undoAction, { color: roles.accent }]}>
-              {t('Ongedaan', 'Undo')}
-            </Text>
-          </Pressable>
-        </View>
-      )}
     </View>
   );
 }
@@ -728,27 +616,9 @@ function formatSinceLabel(date: Date, locale: ReturnType<typeof useLocale>): str
   return year === nowYear ? `${day} ${month}` : `${day} ${month} ${year}`;
 }
 
-function NewArrivalRow({
-  event,
-  onRated,
-  onRemember,
-  hint,
-}: {
-  event: ApiEvent;
-  onRated: (eventId: string) => void;
-  hint: boolean;
-  onRemember: (entry: {
-    eventId: string;
-    occurrenceId: string;
-    kind: 'ja' | 'nee';
-    title: string;
-  }) => void;
-}) {
+function NewArrivalRow({ event }: { event: ApiEvent }) {
   const locale = useLocale();
   const t = useT();
-  const roles = useRoles();
-  const toggleSave = useToggleSave();
-  const toggleDismiss = useToggleDismiss();
   const venueTone =
     event.venue.type &&
     (VENUE_TYPE_TICK as Record<string, BadgeTone>)[event.venue.type]
@@ -778,33 +648,7 @@ function NewArrivalRow({
           },
         ]
       : [{ label: translateCategory(event.category, locale), tone }];
-  // Ja/nee landt op één occurrence, maar geldt voor het hele event: de
-  // server haalt daarna álle voorstellingen van dit event uit /new.
-  // Anders dismis je een film met 19 screenings negentien keer.
-  const rateId = event.rateOccurrenceId;
-  const rate = (kind: 'ja' | 'nee') => {
-    if (!rateId) return;
-    softTap();
-    if (kind === 'ja') toggleSave.mutate({ occurrenceId: rateId, source: 'new' });
-    else toggleDismiss.mutate({ occurrenceId: rateId, source: 'new' });
-    onRated(event.id);
-    onRemember({
-      eventId: event.id,
-      occurrenceId: rateId,
-      kind,
-      title: event.title,
-    });
-    useNewFilters.getState().bumpRated();
-  };
-
   return (
-    <SwipeableRow
-      hint={hint}
-      enabled={Boolean(rateId)}
-      onSwipeRight={() => rate('ja')}
-      onSwipeLeft={() => rate('nee')}
-      onPress={() => router.push(`/event/${event.id}?source=new` as never)}
-    >
     <EventListRow
       thumb={eventImageUrl(event) ?? ''}
       thumbSize={96}
@@ -817,11 +661,8 @@ function NewArrivalRow({
       tags={tags}
       genreLabel={(event.genres ?? [])[0]}
       tick={tone}
-      // Geen onPress hier: die zit op SwipeableRow, zodat 'ie kan
-      // verliezen van de veeg. De Pressable van EventListRow blijft
-      // wel z'n indruk-feedback geven.
+      onPress={() => router.push(`/event/${event.id}?source=new` as never)}
     />
-    </SwipeableRow>
   );
 }
 
@@ -885,20 +726,6 @@ const styles = StyleSheet.create({
   // Zweeft boven de lijst, net boven de home-indicator. Zes seconden
   // zichtbaar — lang genoeg om 'm te zien na een misveeg, kort genoeg
   // dat 'ie niet in de weg blijft hangen.
-  undoBar: {
-    position: 'absolute',
-    left: 22,
-    right: 22,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 14,
-    height: 48,
-    paddingHorizontal: 18,
-    borderRadius: 999,
-    borderWidth: StyleSheet.hairlineWidth,
-  },
-  undoText: { flex: 1, fontFamily: fontFamily.body, fontSize: 13 },
-  undoAction: { fontFamily: fontFamily.displayBold, fontSize: 14 },
   nudge: {
     flexDirection: 'row',
     alignItems: 'center',
