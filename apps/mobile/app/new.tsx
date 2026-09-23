@@ -487,7 +487,9 @@ export default function NewScreen() {
             // "vanaf hier nieuw" en dat is precies omgekeerd -- hieronder
             // begint juist het oudere deel, en verder scrollend ga je de
             // geschiedenis in. Een datum zegt waar je bent.
-            if (!section.dayStart || section.day === 0) return lane;
+            // Ook boven de eerste dag: sinds de zin bovenaan eruit is, is
+            // dit het enige dat zegt wat je hier ziet.
+            if (!section.dayStart) return lane;
             return (
               <View>
                 <View style={styles.batchBreak}>
@@ -501,8 +503,8 @@ export default function NewScreen() {
                     style={[styles.batchText, { color: roles.fgPlaceholder }]}
                   >
                     {section.addedAt
-                      ? formatSinceLabel(new Date(section.addedAt), locale)
-                      : t('eerder', 'earlier')}
+                      ? formatAddedLabel(new Date(section.addedAt), locale, t)
+                      : t('eerder toegevoegd', 'added earlier')}
                   </Text>
                   <View
                     style={[
@@ -661,6 +663,31 @@ function formatSinceLabel(date: Date, locale: ReturnType<typeof useLocale>): str
   const year = date.getFullYear();
   const nowYear = new Date().getFullYear();
   return year === nowYear ? `${day} ${month}` : `${day} ${month} ${year}`;
+}
+
+/**
+ * Het label in de streep tussen twee dagen.
+ *
+ * Een kale datum zegt niet wát er die dag gebeurde -- en de datum naast
+ * elke kaart is de datum van het event zelf, dus die twee gaan door
+ * elkaar lopen. Vandaar het werkwoord erbij: dit is wanneer het bij ons
+ * binnenkwam. "Vandaag" en "gisteren" voor de bovenste twee, want die
+ * hoef je niet om te rekenen.
+ */
+function formatAddedLabel(
+  date: Date,
+  locale: ReturnType<typeof useLocale>,
+  t: ReturnType<typeof useT>
+): string {
+  const midnight = (d: Date) =>
+    new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  const days = Math.round(
+    (midnight(new Date()) - midnight(date)) / 86_400_000
+  );
+  if (days <= 0) return t('Toegevoegd vandaag', 'Added today');
+  if (days === 1) return t('Toegevoegd gisteren', 'Added yesterday');
+  const when = formatSinceLabel(date, locale);
+  return t(`Toegevoegd ${when}`, `Added ${when}`);
 }
 
 function NewArrivalRow({ event }: { event: ApiEvent }) {
