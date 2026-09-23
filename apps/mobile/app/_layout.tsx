@@ -198,8 +198,9 @@ export default Sentry.wrap(RootLayout);
  * over te nemen zie je alsnog alles sinds je laatste bezoek — ook als
  * dat op je vorige toestel was.
  *
- * Alleen naar achteren schuiven, en op `previous` in plaats van op
- * `lastSeenNewAt`, zodat de lijst binnen één sessie stabiel blijft.
+ * Alleen op een toestel dat zelf nog niks weet. Deed dit ook op een
+ * toestel mét historie, dan trok de achterlopende serverwaarde het
+ * venster telkens terug naar dagen geleden -- zie `adoptServerSeen`.
  */
 function SeenWindowSync() {
   const registered = useIsRegistered();

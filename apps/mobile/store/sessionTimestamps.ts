@@ -90,7 +90,12 @@ export const useSessionTimestamps = create<State>()(
         if (Number.isNaN(ts)) return;
         const { previous, lastSeenNewAt } = get();
         const next: Partial<State> = {};
-        if (previous === 0 || ts < previous) next.previous = ts;
+        // Alleen op een toestel dat zelf nog niks weet. Eerder trok dit
+        // `previous` ook terug zodra de server een ouder moment kende, en
+        // dat gebeurt continu: de serverwaarde loopt achter op wat je
+        // net op dit toestel deed. Het venster sprong daardoor telkens
+        // terug naar dagen geleden, ook al had je de lijst net gezien.
+        if (previous === 0) next.previous = ts;
         if (lastSeenNewAt === 0 || ts > lastSeenNewAt) next.lastSeenNewAt = ts;
         if (Object.keys(next).length > 0) set(next);
       },

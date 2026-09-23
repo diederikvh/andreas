@@ -23,6 +23,11 @@ type Props = {
       tag-row (in venue-type tone). The venue is then dropped from the
       mono-uppercase subline so it doesn't appear twice. */
   venueTone?: BadgeTone;
+  /** Vlaggetje vóór de venue-naam: jij volgt deze zaal. Zat eerder in
+      de sortering (gevolgde venues bovenaan) en dat verdween met de
+      chronologische volgorde op /nieuw -- dit zegt hetzelfde zonder de
+      lijst te herschikken. */
+  venueFollowed?: boolean;
   /** Optional — when set, the venue pill becomes tappable. Used by
       Vandaag/Agenda om de venue-type filter te toggelen vanuit de rij
       zelf (zonder eerst de filter-sheet te openen). */
@@ -85,6 +90,7 @@ export function EventListRow({
   title,
   venue,
   venueTone,
+  venueFollowed = false,
   onVenuePress,
   tags,
   status,
@@ -193,6 +199,13 @@ export function EventListRow({
                     { backgroundColor: `${venuePillColor}26` },
                   ]}
                 >
+                  {venueFollowed && (
+                    <Ionicons
+                      name="bookmark"
+                      size={10}
+                      color={toneForLabelText(venuePillColor, mode)}
+                    />
+                  )}
                   <Text
                     style={[
                       styles.tagText,
@@ -482,6 +495,8 @@ const styles = StyleSheet.create({
   },
   tag: {
     height: 24,
+    flexDirection: 'row',
+    gap: 4,
     paddingHorizontal: 10,
     borderRadius: 999,
     alignItems: 'center',

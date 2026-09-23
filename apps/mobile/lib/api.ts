@@ -188,6 +188,10 @@ export type ApiEvent = {
       Alleen meegestuurd door endpoints die op nieuws-volgorde tonen
       (bv. `/events/new`). Voor reguliere list-endpoints null. */
   createdAt?: string;
+  /** ISO van toen de nieuwste vóórstelling van dit event binnenkwam.
+      Dát is waar `/events/new` op filtert en sorteert -- `createdAt`
+      hierboven is het event zelf en kan maanden ouder zijn. */
+  addedAt?: string;
   /** Uitlegbare aanbevelings-reden ("Omdat je vaker techno redt"). Alleen
       gevuld door `/events/for-you`. */
   reason?: string | null;

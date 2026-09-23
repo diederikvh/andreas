@@ -47,6 +47,7 @@ import { softTap } from '@/lib/haptics';
 import { useLocale, useT } from '@/lib/i18n';
 import {
   useNewArrivals,
+  useNewArrivalsSince,
 } from '@/lib/queries';
 import type { BadgeTone } from '@/lib/types';
 import {
@@ -66,6 +67,9 @@ type LaneSection = {
   batch: number;
   /** Eerste sectie van een nieuwe lading: die krijgt een scheiding. */
   batchStart: boolean;
+  /** Wanneer de rijen in deze lading binnenkwamen. Staat in de streep
+      erboven, zodat je bij het doorscrollen ziet hoe ver terug je zit. */
+  addedAt?: string;
 };
 
 /**
@@ -169,20 +173,58 @@ export default function NewScreen() {
     lanes: activeLanes,
     limit: Math.min(pages * PAGE, SERVER_MAX),
   });
-  const rawEvents = active?.events;
-  // `total` telt vóór de cap: 15 in beeld, 47 achter de meer-knop.
-  const total = active?.total ?? 0;
-  const shown = active?.events.length ?? 0;
+  /**
+   * Verder terug dan je venster.
+   *
+   * Onderaan houdt de lijst niet meer op: wie doorscrollt gaat de
+   * geschiedenis in, op volgorde van binnenkomst. Dat is dezelfde query
+   * met een eerdere grens; de server gaat maximaal dertig dagen terug.
+   * We knippen er alles af wat al in het venster zat, zodat er niets
+   * dubbel staat, en plakken de rest er achteraan. Alles daaronder --
+   * het indelen in ladingen, de streep met de datum -- werkt dan vanzelf
+   * door.
+   */
+  const [historyPages, setHistoryPages] = useState(0);
+  const historySince = useMemo(() => {
+    if (!since) return null;
+    const d = new Date(since);
+    d.setDate(d.getDate() - 30);
+    return d;
+  }, [since]);
+  const { data: history } = useNewArrivalsSince(historySince, {
+    enabled: authed && historyPages > 0,
+    lanes: activeLanes,
+    limit: Math.min((pages + historyPages) * PAGE, SERVER_MAX),
+  });
+  const rawEvents = useMemo(() => {
+    const head = active?.events;
+    if (!head) return undefined;
+    if (!history) return head;
+    // Knippen op id, niet op een datum. De geschiedenis-query is een
+    // superset van het venster, en de server filtert op het moment dat
+    // een vóórstelling binnenkwam -- niet op de datum die per event
+    // meekomt. Op id vergelijken is exact, wat de server ook hanteert.
+    const seen = new Set(head.map((e) => e.id));
+    const tail = history.events.filter((e: ApiEvent) => !seen.has(e.id));
+    return tail.length > 0 ? [...head, ...tail] : head;
+  }, [active?.events, history]);
   const laneCounts = active?.laneCounts;
+  // `total` telt vóór de cap: 15 in beeld, 47 achter de meer-knop. Over
+  // álle banen, ook als je er een hebt aangeklikt -- dit is hetzelfde
+  // getal dat op het app-icoon staat, en die twee mogen niet uit elkaar
+  // lopen. Wat één baan oplevert staat al op de chip zelf.
+  const total = laneCounts
+    ? LANES.reduce((n, l) => n + (laneCounts[l] ?? 0), 0)
+    : 0;
+  const shown = active?.events.length ?? 0;
+  /** Zitten we voorbij het venster, in de geschiedenis? */
+  const inHistory = historyPages > 0;
   // Server geeft de lijst in createdAt-desc volgorde (meest recent
   // gescraped eerst). Visueel is dat verwarrend: gebruiker ziet de
   // event-datum naast elke kaart en die springt dan random rond. Hier
   // hersorteer we op event-startsAt zodat de tijdvolgorde leesbaar
   // is: morgen → volgende week → over een jaar.
   //
-  // Daarnaast splitsen we op `venueFollowed`: items van venues die
-  // jij volgt komen bovenaan onder hun eigen kop, daarna de rest.
-  // Mooie persoonlijke filter zonder dat je écht items mist.
   /**
    * De lijst, in ladingen van PAGE.
    *
@@ -210,10 +252,15 @@ export default function NewScreen() {
       const bT = b.startsAt ? new Date(b.startsAt).getTime() : Infinity;
       return aT - bT;
     };
-    const out: { batch: number; events: ApiEvent[] }[] = [];
+    const out: { batch: number; addedAt?: string; events: ApiEvent[] }[] = [];
     for (let i = 0; i < rawEvents.length; i += PAGE) {
-      const chunk = rawEvents.slice(i, i + PAGE).sort(byStart);
-      if (chunk.length > 0) out.push({ batch: i / PAGE, events: chunk });
+      const slice = rawEvents.slice(i, i + PAGE);
+      if (slice.length === 0) continue;
+      out.push({
+        batch: i / PAGE,
+        addedAt: slice[0].addedAt ?? slice[0].createdAt,
+        events: [...slice].sort(byStart),
+      });
     }
     return out;
   }, [rawEvents]);
@@ -225,9 +272,6 @@ export default function NewScreen() {
 
   // Eén sectie per baan, in vaste volgorde zodat de lijst er elke dag
   // hetzelfde uitziet ongeacht welke scraper toevallig als laatste liep.
-  // Binnen een baan komen gevolgde venues bovenaan — dat signaal was
-  // eerder een eigen sectie, maar de baan-indeling is de belangrijkere
-  // scheiding en twee kapstokken door elkaar leest niet.
   const sections = useMemo(() => {
     if (!batched) return [];
     const out: LaneSection[] = [];
@@ -236,7 +280,7 @@ export default function NewScreen() {
     // begint de volgende stapel" in plaats van je terug te sturen naar
     // boven. De scheiding boven de eerste sectie van een lading maakt dat
     // expliciet.
-    for (const { batch, events: chunk } of batched) {
+    for (const { batch, addedAt, events: chunk } of batched) {
       let first = true;
       for (const lane of LANES) {
         const data = chunk.filter((e) => e.lane === lane);
@@ -244,11 +288,12 @@ export default function NewScreen() {
         out.push({
           lane,
           batch,
+          addedAt,
           batchStart: first,
-          data: [
-            ...data.filter((e) => e.venueFollowed),
-            ...data.filter((e) => !e.venueFollowed),
-          ],
+          // Geen voorrang meer voor gevolgde venues: de volgorde is puur
+          // die van binnenkomst. Dat je een venue volgt zie je aan het
+          // vlaggetje in de rij zelf.
+          data,
         });
         first = false;
       }
@@ -256,7 +301,13 @@ export default function NewScreen() {
       // die rijen vallen hier in één naamloze sectie.
       const rest = chunk.filter((e) => !e.lane);
       if (rest.length > 0) {
-        out.push({ lane: 'onbekend', batch, batchStart: first, data: rest });
+        out.push({
+          lane: 'onbekend',
+          batch,
+          addedAt,
+          batchStart: first,
+          data: rest,
+        });
       }
     }
     return out;
@@ -272,14 +323,24 @@ export default function NewScreen() {
   // Nog een lading. `loadingMore` is puur voor de voetregel: de query
   // houdt met keepPreviousData de vorige lijst staan, dus `isLoading` slaat
   // hier niet aan en zonder eigen vlag gebeurt er zichtbaar niets.
-  const hasMore =
+  const windowHasMore =
     shown < total && (rawEvents?.length ?? 0) < SERVER_MAX;
+  // Is het venster op, dan gaat dezelfde knop de geschiedenis in. Stopt
+  // pas als de server niets ouders meer heeft, of bij z'n plafond.
+  const historyExhausted =
+    inHistory &&
+    history !== undefined &&
+    history.events.length < (pages + historyPages) * PAGE;
+  const hasMore =
+    (windowHasMore || !historyExhausted) &&
+    (rawEvents?.length ?? 0) < SERVER_MAX;
   const [loadingMore, setLoadingMore] = useState(false);
   const loadMore = useCallback(() => {
     if (!hasMore || loadingMore) return;
     setLoadingMore(true);
-    setPages((p) => p + 1);
-  }, [hasMore, loadingMore]);
+    if (windowHasMore) setPages((p) => p + 1);
+    else setHistoryPages((h) => h + 1);
+  }, [hasMore, loadingMore, windowHasMore]);
   // De nieuwe lading is binnen zodra er meer rijen staan dan we vroegen.
   useEffect(() => {
     setLoadingMore(false);
@@ -422,9 +483,10 @@ export default function NewScreen() {
                 </View>
               ) : null;
             // Boven de eerste sectie van een volgende lading: een streep
-            // met het nummer erin. Zonder dat lijkt een tweede "Muziek"
-            // een fout, en juist hier moet je zien dat alles hieronder
-            // nieuw voor je is.
+            // met de datum waarop die rijen binnenkwamen. Er stond
+            // "vanaf hier nieuw" en dat is precies omgekeerd -- hieronder
+            // begint juist het oudere deel, en verder scrollend ga je de
+            // geschiedenis in. Een datum zegt waar je bent.
             if (!section.batchStart || section.batch === 0) return lane;
             return (
               <View>
@@ -438,7 +500,9 @@ export default function NewScreen() {
                   <Text
                     style={[styles.batchText, { color: roles.fgPlaceholder }]}
                   >
-                    {t('vanaf hier nieuw', 'new from here')}
+                    {section.addedAt
+                      ? formatSinceLabel(new Date(section.addedAt), locale)
+                      : t('eerder', 'earlier')}
                   </Text>
                   <View
                     style={[
@@ -554,10 +618,15 @@ export default function NewScreen() {
                   <SpinningCross size={18} color={roles.fgMuted} />
                 ) : (
                   <Text style={[styles.moreBtnText, { color: roles.fg }]}>
-                    {t(
-                      `Nog ${total - shown} — tik of scroll verder`,
-                      `${total - shown} more — tap or keep scrolling`
-                    )}
+                    {windowHasMore
+                      ? t(
+                          `Nog ${total - shown} — tik of scroll verder`,
+                          `${total - shown} more — tap or keep scrolling`
+                        )
+                      : t(
+                          'Verder terug in de tijd',
+                          'Further back in time'
+                        )}
                   </Text>
                 )}
               </Pressable>
@@ -663,6 +732,7 @@ function NewArrivalRow({ event }: { event: ApiEvent }) {
       title={event.title}
       venue={event.venue.name}
       venueTone={venueTone}
+      venueFollowed={event.venueFollowed}
       time={time}
       dateLabel={dateLabel}
       dateAbove

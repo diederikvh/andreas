@@ -1523,6 +1523,8 @@ eventsRoute.get('/new', async (c) => {
     lane: Lane;
     laneStartsAt: number;
     newOccurrenceIds: string[];
+    /** Moment waarop de nieuwste voorstelling van dit event binnenkwam. */
+    addedAt: Date;
     venueId: string;
     scene: string | null;
     wijk: string | null;
@@ -1541,6 +1543,14 @@ eventsRoute.get('/new', async (c) => {
         lane: row.lane,
         laneStartsAt: startMs,
         newOccurrenceIds: [row.occurrenceId],
+        /** Wanneer dit event in deze lijst belandde: de nieuwste
+            voorstelling die eraan is toegevoegd. Dat is waar `since`
+            en de sortering op draaien, en dus het enige moment dat
+            "hier begint een oudere lading" eerlijk kan labelen. De
+            `createdAt` hieronder is die van het event zelf en kan
+            maanden ouder zijn. Rijen komen aflopend binnen, dus de
+            eerste die we zien is meteen de nieuwste. */
+        addedAt: row.createdAt,
         venueId: row.venueId,
         scene: row.scene,
         wijk: row.wijk,
@@ -1734,6 +1744,7 @@ eventsRoute.get('/new', async (c) => {
         lane: agg.lane,
         newOccurrenceCount: agg.newOccurrenceIds.length,
         newOccurrenceIds: agg.newOccurrenceIds,
+        addedAt: agg.addedAt,
         /** Waar een ja/nee op landt. De rij toont `occ.next` (de
             eerstvolgende voorstelling), dus daar hoort een save ook op
             te landen — niet op de toevallig laatst-gescrapete. Valt
