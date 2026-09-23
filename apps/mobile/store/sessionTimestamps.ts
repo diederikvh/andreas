@@ -8,7 +8,8 @@
  *    sessie (anders zou een korte background-fade direct het venster
  *    resetten).
  *  - `lastSeenNewAt`: timestamp waarop je /new het laatst hebt
- *    bekeken. Wordt geset door `markNewSeen()` (via useFocusEffect op
+ *    bekeken. Voedt de badge én, bij de volgende sessie, de start van
+ *    het nieuwe venster. Wordt geset door `markNewSeen()` (via useFocusEffect op
  *    de /new-route).
  *
  * Twee afnemers, twee verschillende grenzen — bewust ontkoppeld:
@@ -61,7 +62,7 @@ export const useSessionTimestamps = create<State>()(
       lastSeenNewAt: 0,
       hydrated: false,
       markLaunch: () => {
-        const { current } = get();
+        const { current, lastSeenNewAt } = get();
         const now = Date.now();
         if (current === 0) {
           // Eerste keer ooit — beide op now zodat we niet meteen weken
@@ -70,7 +71,14 @@ export const useSessionTimestamps = create<State>()(
           return;
         }
         if (now - current > SESSION_BOUNDARY_MS) {
-          set({ previous: current, current: now });
+          // Het nieuwe venster begint bij het laatste moment dat je de
+          // lijst echt hebt gezien, of bij de vorige sessiestart als dat
+          // later was. Met alleen `current` bleef de grens hangen op een
+          // sessie van dagen geleden: je kon de lijst tien keer bekijken
+          // en "nieuw sinds 18 sep" bleef staan, want kijken telde niet
+          // mee. Binnen een sessie verschuift er nog steeds niets -- de
+          // lijst onder je handen blijft dus stabiel.
+          set({ previous: Math.max(current, lastSeenNewAt), current: now });
         }
       },
       markNewSeen: () => {

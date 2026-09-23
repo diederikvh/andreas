@@ -53,6 +53,7 @@ import {
   TASTE_NUDGE_THRESHOLD,
   useNewFilters,
 } from '@/store/newFilters';
+import { Notifications } from '@/lib/push';
 import { useSessionTimestamps } from '@/store/sessionTimestamps';
 import { useMode, useRoles } from '@/store/mode';
 import { fontFamily, palette } from '@/theme/tokens';
@@ -103,6 +104,13 @@ export default function NewScreen() {
   useFocusEffect(
     useCallback(() => {
       useSessionTimestamps.getState().markNewSeen();
+      // Meteen op nul, niet via de omweg. De teller op het icoon hing
+      // aan een query die eerst aan de server moet vragen hoeveel er
+      // nieuw is sinds dit bezoek; ben je weg voor dat antwoord terug
+      // is, dan bleef het getal staan. Je bent hier, dus het is nul.
+      void Notifications.setBadgeCountAsync(0).catch(() => {
+        // Niet elke launcher kent een badge. Geen ramp, geen log.
+      });
       if (registered) void markNewSeenOnServer();
       return () => {
         useSessionTimestamps.getState().markNewSeen();
