@@ -63,12 +63,12 @@ import { fontFamily, palette } from '@/theme/tokens';
 type LaneSection = {
   lane: Lane | 'onbekend';
   data: ApiEvent[];
-  /** In welke lading deze sectie zit. 0 is wat je bij het openen zag. */
-  batch: number;
-  /** Eerste sectie van een nieuwe lading: die krijgt een scheiding. */
-  batchStart: boolean;
-  /** Wanneer de rijen in deze lading binnenkwamen. Staat in de streep
-      erboven, zodat je bij het doorscrollen ziet hoe ver terug je zit. */
+  /** De hoeveelste dag-groep dit is. 0 is de nieuwste. */
+  day: number;
+  /** Eerste sectie van een nieuwe dag: die krijgt de datumstreep. */
+  dayStart: boolean;
+  /** Wanneer deze rijen binnenkwamen. Staat in de streep erboven, zodat
+      je bij het doorscrollen ziet hoe ver terug je zit. */
   addedAt?: string;
 };
 
@@ -164,7 +164,6 @@ export default function NewScreen() {
   // lopen: als de strook iets belooft moet deze pagina 't ook tonen.
   const {
     data: active,
-    showingFallback,
     since,
     isLoading,
     error,
@@ -209,13 +208,6 @@ export default function NewScreen() {
     return tail.length > 0 ? [...head, ...tail] : head;
   }, [active?.events, history]);
   const laneCounts = active?.laneCounts;
-  // `total` telt vóór de cap: 15 in beeld, 47 achter de meer-knop. Over
-  // álle banen, ook als je er een hebt aangeklikt -- dit is hetzelfde
-  // getal dat op het app-icoon staat, en die twee mogen niet uit elkaar
-  // lopen. Wat één baan oplevert staat al op de chip zelf.
-  const total = laneCounts
-    ? LANES.reduce((n, l) => n + (laneCounts[l] ?? 0), 0)
-    : 0;
   const shown = active?.events.length ?? 0;
   /**
    * Hetzelfde venster, maar dan wél met je baan-keuze erin. `total`
@@ -227,77 +219,77 @@ export default function NewScreen() {
   const windowTotal = active?.total ?? 0;
   /** Zitten we voorbij het venster, in de geschiedenis? */
   const inHistory = historyPages > 0;
-  // Server geeft de lijst in createdAt-desc volgorde (meest recent
-  // gescraped eerst). Visueel is dat verwarrend: gebruiker ziet de
-  // event-datum naast elke kaart en die springt dan random rond. Hier
-  // hersorteer we op event-startsAt zodat de tijdvolgorde leesbaar
-  // is: morgen → volgende week → over een jaar.
-  //
   /**
-   * De lijst, in ladingen van PAGE.
+   * De lijst, gegroepeerd op de dag dat de rijen binnenkwamen.
    *
-   * Hier zat het probleem. De server geeft op nieuwheid (createdAt
-   * aflopend), maar naast elke kaart staat de *event*-datum, en die
-   * sprong dan willekeurig rond -- dus hersorteerden we de hele lijst op
-   * startsAt. Zolang je één lading had was dat prima. Vroeg je de rest
-   * op, dan werden die 185 nieuwe items door de 15 die je al had
-   * beoordeeld heen gesorteerd, en moest je opnieuw zoeken waar je was.
+   * De server geeft ze aflopend op dat moment, dus de dagen rollen er
+   * vanzelf in de goede volgorde uit. Elke wissel krijgt een streep met
+   * de datum erin: scroll je door, dan zie je waar "nieuw voor jou"
+   * ophoudt en waar je in je eigen geschiedenis komt.
    *
-   * De oplossing is niet minder sorteren maar kleiner sorteren: we
-   * knippen op de serverordening in ladingen en sorteren *binnen* een
-   * lading. Zo blijft de datum leesbaar per blok, en komt een volgende
-   * lading er altijd onder -- nooit tussen wat je al gezien hebt.
-   *
-   * Het knippen gebeurt vóór het wegfilteren van wat je net beoordeelde.
-   * Andersom zou elke veeg de blokgrenzen opschuiven en dus rijen tussen
-   * blokken laten verspringen: precies hetzelfde probleem, maar dan per
-   * veeg in plaats van per knop.
+   * Binnen een dag sorteren we alsnog op de *event*-datum. Anders staat
+   * naast elke kaart een datum die willekeurig rondspringt, en dat was
+   * precies de klacht waar dit sorteren ooit voor is gebouwd. Per dag
+   * sorteren houdt dat leesbaar zonder dat een volgende lading tussen
+   * rijen komt die je al gezien had -- die hoort bij een eerdere dag en
+   * komt er dus altijd onder.
    */
-  const batched = useMemo(() => {
+  const grouped = useMemo(() => {
     if (!rawEvents) return undefined;
     const byStart = (a: ApiEvent, b: ApiEvent) => {
       const aT = a.startsAt ? new Date(a.startsAt).getTime() : Infinity;
       const bT = b.startsAt ? new Date(b.startsAt).getTime() : Infinity;
       return aT - bT;
     };
-    const out: { batch: number; addedAt?: string; events: ApiEvent[] }[] = [];
-    for (let i = 0; i < rawEvents.length; i += PAGE) {
-      const slice = rawEvents.slice(i, i + PAGE);
-      if (slice.length === 0) continue;
-      out.push({
-        batch: i / PAGE,
-        addedAt: slice[0].addedAt ?? slice[0].createdAt,
-        events: [...slice].sort(byStart),
-      });
+    // Eerst op binnenkomst zetten. De server sorteert binnen een baan op
+    // een smaakscore -- een gevolgde venue telt daar vijf punten -- en
+    // dan lopen de dagen door elkaar: "16 sep" kwam boven "19 sep" te
+    // staan. Die voorrang wilden we hier toch al niet.
+    const ordered = [...rawEvents].sort((a, b) => {
+      const at = a.addedAt ?? a.createdAt ?? '';
+      const bt = b.addedAt ?? b.createdAt ?? '';
+      return bt.localeCompare(at);
+    });
+    const out: { key: string; addedAt?: string; events: ApiEvent[] }[] = [];
+    const seen = new Map<string, number>();
+    for (const e of ordered) {
+      const iso = e.addedAt ?? e.createdAt;
+      const key = iso ? iso.slice(0, 10) : 'onbekend';
+      let at = seen.get(key);
+      if (at === undefined) {
+        at = out.length;
+        seen.set(key, at);
+        out.push({ key, addedAt: iso, events: [] });
+      }
+      out[at].events.push(e);
     }
+    for (const g of out) g.events.sort(byStart);
     return out;
   }, [rawEvents]);
 
   const events = useMemo(
-    () => (batched ? batched.flatMap((b) => b.events) : undefined),
-    [batched]
+    () => (grouped ? grouped.flatMap((g) => g.events) : undefined),
+    [grouped]
   );
 
-  // Eén sectie per baan, in vaste volgorde zodat de lijst er elke dag
-  // hetzelfde uitziet ongeacht welke scraper toevallig als laatste liep.
+  // Binnen een dag één sectie per baan, in vaste volgorde zodat de lijst
+  // er elke dag hetzelfde uitziet ongeacht welke scraper toevallig als
+  // laatste liep. De baan-kopjes komen bij elke dag opnieuw voorbij, en
+  // dat is precies goed: het zegt "hier begint een andere dag" in plaats
+  // van je terug te sturen naar boven.
   const sections = useMemo(() => {
-    if (!batched) return [];
+    if (!grouped) return [];
     const out: LaneSection[] = [];
-    // Per lading z'n eigen baan-indeling. De kopjes komen daardoor bij
-    // lading twee opnieuw voorbij, en dat is precies goed: het zegt "hier
-    // begint de volgende stapel" in plaats van je terug te sturen naar
-    // boven. De scheiding boven de eerste sectie van een lading maakt dat
-    // expliciet.
-    for (const { batch, addedAt, events: chunk } of batched) {
+    grouped.forEach(({ addedAt, events: chunk }, day) => {
       let first = true;
       for (const lane of LANES) {
         const data = chunk.filter((e) => e.lane === lane);
         if (data.length === 0) continue;
         out.push({
           lane,
-          batch,
+          day,
           addedAt,
-          batchStart: first,
+          dayStart: first,
           // Geen voorrang meer voor gevolgde venues: de volgorde is puur
           // die van binnenkomst. Dat je een venue volgt zie je aan het
           // vlaggetje in de rij zelf.
@@ -311,22 +303,22 @@ export default function NewScreen() {
       if (rest.length > 0) {
         out.push({
           lane: 'onbekend',
-          batch,
+          day,
           addedAt,
-          batchStart: first,
+          dayStart: first,
           data: rest,
         });
       }
-    }
+    });
     return out;
-  }, [batched]);
+  }, [grouped]);
   const showSectionHeaders = sections.some((s) => s.lane !== 'onbekend');
 
-  // "24 mei" / "May 24" (+ jaartal bij andere jaren). Concrete datum in
-  // de intro maakt expliciet vanaf wanneer we 'nieuw' definiëren — bv.
-  // wanneer er 0 items zijn helpt het te zien dat de teller wel klopt.
+  // "24 mei" / "May 24" (+ jaartal bij andere jaren). Gebruikt in de
+  // streep bij elke datumwissel: dát is nu de plek waar staat vanaf
+  // wanneer iets nieuw voor je is. De zin bovenaan die dat ook zei is
+  // eruit -- twee keer hetzelfde vertellen.
   const locale = useLocale();
-  const sinceLabel = since ? formatSinceLabel(since, locale) : null;
 
   // Nog een lading. `loadingMore` is puur voor de voetregel: de query
   // houdt met keepPreviousData de vorige lijst staan, dus `isLoading` slaat
@@ -495,7 +487,7 @@ export default function NewScreen() {
             // "vanaf hier nieuw" en dat is precies omgekeerd -- hieronder
             // begint juist het oudere deel, en verder scrollend ga je de
             // geschiedenis in. Een datum zegt waar je bent.
-            if (!section.batchStart || section.batch === 0) return lane;
+            if (!section.dayStart || section.day === 0) return lane;
             return (
               <View>
                 <View style={styles.batchBreak}>
@@ -526,36 +518,6 @@ export default function NewScreen() {
           stickySectionHeadersEnabled={false}
           ListHeaderComponent={
             <View>
-              <View
-                style={[
-                  styles.fallbackHint,
-                  { borderColor: roles.bgChip },
-                ]}
-              >
-                <Text style={[styles.fallbackText, { color: roles.fg }]}>
-                  {/* Alleen het totaal. Eerder stond hier "15 van 30",
-                      maar dat cijfer zegt niks dat je niet al ziet: wat
-                      er nog achter de cap zit staat als knop onderaan de
-                      lijst. */}
-                  {showingFallback
-                    ? // Geen sessiegrens, of je bent bij. Dan is "vandaag"
-                      // het venster — geen datum uit het verleden noemen
-                      // die niks meer betekent.
-                      total === 0
-                      ? t(
-                          'Je bent bij. Vandaag is er nog niks bijgekomen.',
-                          'You’re up to date. Nothing added today yet.'
-                        )
-                      : t(
-                          `${total} vandaag toegevoegd.`,
-                          `${total} added today.`
-                        )
-                    : t(
-                        `${total} ${total === 1 ? 'aanwinst' : 'aanwinsten'} sinds je vorige bezoek (${sinceLabel}).`,
-                        `${total} ${total === 1 ? 'new addition' : 'new additions'} since your last visit (${sinceLabel}).`
-                      )}
-                </Text>
-              </View>
               {showNudge && (
                 <View
                   style={[
@@ -794,21 +756,6 @@ const styles = StyleSheet.create({
   // een losse regel die tussen de chips en de eerste sectiekop hangt.
   // Randen tot de schermrand (geen inset) zodat 'ie leest als een
   // scheiding en niet als een omlijnd blok.
-  fallbackHint: {
-    paddingHorizontal: 22,
-    paddingVertical: 12,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-  },
-  fallbackText: {
-    fontFamily: fontFamily.body,
-    fontSize: 15,
-    lineHeight: 21,
-    letterSpacing: -0.1,
-    // Gecentreerd: dit is een onderschrift over de lijst, geen rij ín de
-    // lijst. Links uitlijnen zou 'm laten meedoen met de sectiekoppen.
-    textAlign: 'center',
-  },
   // Zweeft boven de lijst, net boven de home-indicator. Zes seconden
   // zichtbaar — lang genoeg om 'm te zien na een misveeg, kort genoeg
   // dat 'ie niet in de weg blijft hangen.
