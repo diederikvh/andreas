@@ -217,6 +217,14 @@ export default function NewScreen() {
     ? LANES.reduce((n, l) => n + (laneCounts[l] ?? 0), 0)
     : 0;
   const shown = active?.events.length ?? 0;
+  /**
+   * Hetzelfde venster, maar dan wél met je baan-keuze erin. `total`
+   * hierboven telt alle banen omdat de kop en de badge hetzelfde getal
+   * moeten noemen; de meer-knop moet juist tegen de rijen rekenen die je
+   * echt krijgt. Die twee door elkaar halen laat de knop staan met een
+   * verschil dat nooit dichtloopt -- en dan lijkt-ie stuk.
+   */
+  const windowTotal = active?.total ?? 0;
   /** Zitten we voorbij het venster, in de geschiedenis? */
   const inHistory = historyPages > 0;
   // Server geeft de lijst in createdAt-desc volgorde (meest recent
@@ -324,7 +332,7 @@ export default function NewScreen() {
   // houdt met keepPreviousData de vorige lijst staan, dus `isLoading` slaat
   // hier niet aan en zonder eigen vlag gebeurt er zichtbaar niets.
   const windowHasMore =
-    shown < total && (rawEvents?.length ?? 0) < SERVER_MAX;
+    shown < windowTotal && (rawEvents?.length ?? 0) < SERVER_MAX;
   // Is het venster op, dan gaat dezelfde knop de geschiedenis in. Stopt
   // pas als de server niets ouders meer heeft, of bij z'n plafond.
   const historyExhausted =
@@ -620,8 +628,8 @@ export default function NewScreen() {
                   <Text style={[styles.moreBtnText, { color: roles.fg }]}>
                     {windowHasMore
                       ? t(
-                          `Nog ${total - shown} — tik of scroll verder`,
-                          `${total - shown} more — tap or keep scrolling`
+                          `Nog ${windowTotal - shown} — tik of scroll verder`,
+                          `${windowTotal - shown} more — tap or keep scrolling`
                         )
                       : t(
                           'Verder terug in de tijd',
