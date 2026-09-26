@@ -26,6 +26,9 @@ Artiesten
 - "Wie volg ik, en waar spelen ze?"
 - "Stel artiesten voor die lijken op wie ik volg."
 
+Aanbevelingen
+- "Wat zou ik nog meer leuk vinden?" / "Tips voor oktober in Utrecht." Met een reden per tip, op basis van wat je al doet.
+
 Je agenda en je vrienden
 - "Wat doe ik deze week?" / "Botst er iets in november?"
 - "Wie gaat er naar Paradiso deze maand?" / "Wat heeft Midas gered?"

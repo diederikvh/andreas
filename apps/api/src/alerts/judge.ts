@@ -122,6 +122,7 @@ const SYSTEM = [
   '',
   'Zeg ja als iemand met deze smaak dit event waarschijnlijk wil weten. Zeg nee als je twijfelt en je kennis van de artiest die twijfel niet wegneemt.',
   'Verzin niets. Ken je de artiest niet en zeggen beschrijving en line-up niets over de muziek, dan weet je het niet: zet `onderbouwd` op false en zeg nee. Een titel en een los label zijn geen onderbouwing.',
+  'Beweer ook niets over de persoon wat er niet staat: noem een artiest alleen "die je volgt" als die letterlijk in de smaak bij "Volgt:" staat, en verwijs alleen naar keuzes uit de voorbeelden.',
   'Tribute- en coverbands, feesten met hits uit een decennium en kinderprogramma zijn nee, tenzij de smaak daar expliciet om vraagt.',
   '',
   'De reden leest de persoon in een pushbericht: kort (hooguit 15 woorden), Nederlands, concreet over de muziek of de artiest.',
