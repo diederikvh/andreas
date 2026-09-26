@@ -186,7 +186,7 @@ Doel (Diederik, 26 sep 2026): precies weten wat er in de stad gebeurt dat hij re
 **Al gedaan (26 sep):** meldingsregels (`create_alert`/`list_alerts`/`delete_alert`, vaste genrelijst in `apps/api/src/alerts/genres.ts`), smaakregels met een Haiku-keurder (`alerts/judge.ts`, oordelen in `alert_verdicts`), artiesten volgen via de MCP (`mcp/artists.ts`), gevolgde artiesten ook herkend aan hun naam in de titel. Nieuws vertrekt om 10:00, gebundeld per persoon (`jobs/reminders.ts`).
 
 **Open, in deze volgorde:**
-1. **Agenda lezen** ⬜ — MCP-tool `my_plans`: waar ga ik heen (`attendance` + `invitation_responses` going + `submission_going`, zie `routes/going.ts`), wat heb ik gered (`saves`), welke vrienden gaan ook. Claude kan daarmee ook "wat staat er dit weekend / botst er iets" beantwoorden.
+1. **Agenda lezen** ✅ (26 sep, `mcp/me.ts`) — MCP-tool `my_plans`: waar ga ik heen (`attendance` + `invitation_responses` going + `submission_going`, zie `routes/going.ts`), wat heb ik gered (`saves`), welke vrienden gaan ook. Claude kan daarmee ook "wat staat er dit weekend / botst er iets" beantwoorden.
 2. **Tickets-vlag** ⬜ — *beslissing nodig.* De server weet niet waar je kaartjes voor hebt: tickets verlaten het toestel nooit (harde regel, zie `docs/share-naar-andreas.md`). Optie: alleen een boolean "heeft ticket" per occurrence mee naar de server, nooit bestand of barcode.
 3. **Vrienden lezen** ⬜ — "wat hebben mijn vrienden gered / wie gaat naar X". Respecteer `savesVisibility` en de bestaande privacy-gates (`buildFriendsByEvent`).
 4. **Acties vanuit Claude** ⬜ — hartje, "ik ga", "niet interessant" (`dismisses`). Met bevestigingsstap waar het anderen raakt.

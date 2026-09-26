@@ -13,6 +13,7 @@ import { z } from 'zod';
 
 import { registerAlertTools } from './alerts.js';
 import { registerArtistTools } from './artists.js';
+import { registerMeTools } from './me.js';
 import { buildEventsUiResource } from './card.js';
 import {
   CATEGORY_VALUES,
@@ -49,7 +50,8 @@ const INSTRUCTIONS =
   'Wil de gebruiker een seintje als er iets bijkomt ("laat me weten als…"), ' +
   'gebruik dan `create_alert` en volg de bevestigingsstap in die tool. ' +
   'Artiesten volgen, ontvolgen en voorstellen gaat met `list_followed_artists`, ' +
-  '`follow_artists`, `unfollow_artists` en `artists_playing`.';
+  '`follow_artists`, `unfollow_artists` en `artists_playing`. ' +
+  'De eigen agenda (waar ga ik heen, wat heb ik gered, wie gaat er mee) staat in `my_plans`.';
 
 const TOOL_DESCRIPTION =
   'Zoek concrete events in Amsterdam voor een gegeven periode. Geef `category` ' +
@@ -127,6 +129,7 @@ export function buildMcpServer(userId: string | null = null): McpServer {
   if (userId) {
     registerAlertTools(server, userId);
     registerArtistTools(server, userId);
+    registerMeTools(server, userId);
   }
 
   return server;
