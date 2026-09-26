@@ -46,10 +46,10 @@ export const AI_CONNECT_FAQ: Array<{
 }> = [
   {
     question: 'Werkt ANDREAS in ChatGPT en Claude?',
-    answer: `Ja. ANDREAS biedt een Model Context Protocol (MCP)-connector aan op ${MCP_PUBLIC_URL}. Voeg die toe in ChatGPT, Claude of je eigen AI-assistent, log in met je telefoonnummer, en doorzoek het Amsterdamse uitgaansaanbod rechtstreeks vanuit je AI.`,
+    answer: `Ja. ANDREAS biedt een Model Context Protocol (MCP)-connector aan op ${MCP_PUBLIC_URL}. Voeg die toe in ChatGPT, Claude of je eigen AI-assistent, log in met je telefoonnummer, en zoek, volg en plan het uitgaansaanbod in Amsterdam en andere steden rechtstreeks vanuit je AI.`,
     answerHtml: `Ja. ANDREAS biedt een Model Context Protocol (MCP)-connector aan. Voeg <code>${escapeHtml(
       MCP_PUBLIC_URL
-    )}</code> toe in ChatGPT, Claude of je eigen AI-assistent, log in met je telefoonnummer en zoek het Amsterdamse aanbod rechtstreeks vanuit je AI. <a href="/ai">Zo werkt het →</a>`,
+    )}</code> toe in ChatGPT, Claude of je eigen AI-assistent, log in met je telefoonnummer en zoek, volg en plan het uitgaansaanbod rechtstreeks vanuit je AI. <a href="/ai">Zo werkt het →</a>`,
   },
   {
     question: 'Wat kost het om ANDREAS in mijn AI te gebruiken?',
@@ -61,20 +61,60 @@ export const AI_CONNECT_FAQ: Array<{
   {
     question: 'Welke gegevens krijgt mijn AI van ANDREAS?',
     answer:
-      'Alleen het publieke event-aanbod: titel, venue, datum, prijs en een link naar de ANDREAS-pagina. Je AI verzint niets — alle events komen rechtstreeks en actueel uit ANDREAS.',
+      'Zonder login alleen het publieke aanbod: titel, zaal, datum, prijs, beschrijving, line-up en een link naar de ANDREAS-pagina. ' +
+      'Log je in, dan ook wat je zelf in ANDREAS doet: je hartjes, waar je heen gaat, wie je volgt en je meldingen, en van vrienden alleen wat zij delen. ' +
+      'Kaartjes blijven op je telefoon. Je AI verzint niets: alle events komen rechtstreeks en actueel uit ANDREAS.',
     answerHtml:
-      'Alleen het publieke event-aanbod: titel, venue, datum, prijs en een link naar de ANDREAS-pagina. Je AI verzint niets — alle events komen rechtstreeks en actueel uit ANDREAS.',
+      'Zonder login alleen het publieke aanbod: titel, zaal, datum, prijs, beschrijving, line-up en een link naar de ANDREAS-pagina. ' +
+      'Log je in, dan ook wat je zelf in ANDREAS doet: je hartjes, waar je heen gaat, wie je volgt en je meldingen, en van vrienden alleen wat zij delen. ' +
+      'Kaartjes blijven op je telefoon. Je AI verzint niets: alle events komen rechtstreeks en actueel uit ANDREAS.',
   },
 ];
 
-/** Voorbeeldvragen die de connector goed aankan. */
-const EXAMPLE_PROMPTS = [
-  'Techno dit weekend',
-  'Gratis exposities deze maand',
-  'Comedy vanavond',
-  'Wat speelt er in Paradiso?',
-  'Singer-songwriter deze week',
-  'Films in EYE volgende week',
+/** Wat de connector kan, met voorbeeldzinnen. Zelfde indeling als de
+    `andreas_help`-tool (mcp/help.ts): hou die twee in sync. */
+const CAPABILITIES: Array<{ title: string; body: string; prompts: string[]; account?: boolean }> = [
+  {
+    title: 'Zoeken',
+    body: 'Concerten, clubs, film, theater, expo’s en lezingen in Amsterdam, Utrecht, Rotterdam, Den Haag, Haarlem, Eindhoven, Tilburg, Nijmegen, Groningen en Antwerpen. Met beschrijving en line-up, zodat je AI zelf kan inschatten wat bij je past.',
+    prompts: ['Techno dit weekend in Amsterdam', 'Films in Eye volgende week', 'Speelt Fontaines D.C. ergens?'],
+  },
+  {
+    title: 'Seintjes bij nieuw aanbod',
+    body: 'Eén gebundelde push om 10:00, alleen als er echt iets nieuws bij is. Ook op smaak in je eigen woorden: elk nieuw event wordt gekeurd en de reden staat in de push. Klopt een seintje niet, zeg het, en hij leert ervan.',
+    prompts: ['Laat me weten als er hiphop in Paradiso bijkomt', 'Seintje bij gitaarbands met een jaren-90-randje, zoals The Afghan Whigs'],
+    account: true,
+  },
+  {
+    title: 'Artiesten volgen',
+    body: 'Volg artiesten, ook als ze hier nog nooit speelden. Zodra ze in de agenda staan, hoor je het.',
+    prompts: ['Volg The Afghan Whigs', 'Wie volg ik, en waar spelen ze?', 'Stel artiesten voor die lijken op wie ik volg'],
+    account: true,
+  },
+  {
+    title: 'Tips op maat',
+    body: 'Je AI krijgt je smaak mee (waar je heen gaat, wat je gered hebt, wie je volgt) plus een voorselectie, en kiest er de beste uit, met een reden per tip.',
+    prompts: ['Wat zou ik nog meer leuk vinden?', 'Tips voor oktober in Utrecht'],
+    account: true,
+  },
+  {
+    title: 'Je agenda en je vrienden',
+    body: 'Waar je heen gaat, wat je gered hebt en welke vrienden er ook gaan, binnen de privacy-instellingen van die vrienden.',
+    prompts: ['Wat doe ik deze week?', 'Botst er iets in november?', 'Wie gaat er naar Paradiso deze maand?'],
+    account: true,
+  },
+  {
+    title: 'Rond je avond',
+    body: 'Een film of expo ervoor, een club of concert erna, op loopafstand van waar je toch al heen gaat.',
+    prompts: ['Wat kan ik doen voor of na The Afghan Whigs?'],
+    account: true,
+  },
+  {
+    title: 'Doen, zoals in de app',
+    body: 'Hartjes, “ik ga”, zalen volgen of blokkeren, genres leuk of niet leuk. Wat je in je AI doet, staat meteen in de app.',
+    prompts: ['Zet een hartje op Band of Horses', 'Blokkeer Johan Cruijff ArenA', 'Geen tributebands meer'],
+    account: true,
+  },
 ];
 
 /**
@@ -140,6 +180,22 @@ export const AI_CONNECT_STYLES = `
     color: var(--fg); background: var(--bg-chip);
     padding: 1px 5px; border-radius: 4px;
   }
+
+  /* Wat je kunt vragen */
+  .ai-caps { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin: 0 0 32px; }
+  @media (max-width: 640px) { .ai-caps { grid-template-columns: 1fr; } }
+  .ai-cap { background: var(--bg-lift); border-radius: 14px; padding: 20px 22px; }
+  .ai-cap h3 {
+    font-family: 'Archivo', sans-serif; font-weight: 800; font-size: 17px;
+    margin: 0 0 8px; color: var(--fg); letter-spacing: -0.2px;
+  }
+  .ai-cap .tag {
+    font-family: 'JetBrains Mono', monospace; font-size: 10px; font-weight: 400;
+    letter-spacing: 1px; text-transform: uppercase; color: var(--fg-muted);
+    margin-left: 8px; vertical-align: 2px;
+  }
+  .ai-cap p { font-size: 14px; line-height: 1.5; color: var(--fg-read); margin: 0 0 14px; }
+  .ai-cap .prompts { margin: 0; }
 
   /* Voorbeeldvragen */
   .prompts { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 32px; }
@@ -215,7 +271,7 @@ export function renderAiPromo(): string {
     <div class="ai-promo">
       <p class="ai-promo-kicker">nieuw</p>
       <h2>ANDREAS in jouw AI</h2>
-      <p>Koppel het Amsterdamse aanbod aan ChatGPT of Claude en vraag in gewone taal wat er speelt — echte, actuele events, met een link naar de pagina.</p>
+      <p>Koppel ANDREAS aan ChatGPT of Claude: zoek wat er speelt, krijg een seintje bij nieuw aanbod, volg artiesten en vraag tips op maat. Echte, actuele events, met een link naar de pagina.</p>
       <div class="endpoint">
         <code>${escapeHtml(MCP_PUBLIC_URL)}</code>
         <button class="copy-btn" type="button" data-copy="${escapeHtml(MCP_PUBLIC_URL)}" aria-label="Kopieer de connector-URL"><span data-copy-label>Kopieer</span></button>
@@ -250,17 +306,23 @@ function renderAiConnectPage(): string {
   });
 
   const head = renderHead({
-    title: 'ANDREAS in jouw AI — koppel Amsterdam aan ChatGPT & Claude | ANDREAS',
+    title: 'ANDREAS in jouw AI — zoeken, seintjes en tips in ChatGPT & Claude | ANDREAS',
     description:
-      'Koppel ANDREAS aan ChatGPT, Claude of je eigen AI-assistent. Vraag in gewone taal wat er speelt in Amsterdam en krijg echte, actuele events terug — gratis, inloggen met je telefoon.',
+      'Koppel ANDREAS aan ChatGPT, Claude of je eigen AI-assistent: zoek wat er speelt in Amsterdam, Utrecht, Rotterdam en verder, krijg seintjes bij nieuw aanbod, volg artiesten en vraag tips op maat. Gratis, inloggen met je telefoon.',
     canonicalPath: '/ai',
     ogType: 'website',
     jsonLdBlocks: [appLd, breadcrumb, faqLd],
     extraStyles: AI_CONNECT_STYLES,
   });
 
-  const promptsHtml = EXAMPLE_PROMPTS.map(
-    (p) => `<span class="prompt-chip">${escapeHtml(p)}</span>`
+  const capsHtml = CAPABILITIES.map(
+    (cap) => `<div class="ai-cap">
+          <h3>${escapeHtml(cap.title)}${cap.account ? '<span class="tag">met account</span>' : ''}</h3>
+          <p>${escapeHtml(cap.body)}</p>
+          <div class="prompts">${cap.prompts
+            .map((p) => `<span class="prompt-chip">${escapeHtml(p)}</span>`)
+            .join('')}</div>
+        </div>`
   ).join('\n        ');
 
   const faqHtml = AI_CONNECT_FAQ.map(
@@ -293,10 +355,11 @@ function renderAiConnectPage(): string {
         <p class="kicker">model context protocol</p>
         <h1>ANDREAS in jouw AI</h1>
         <p class="lead">
-          Koppel het <strong>Amsterdamse uitgaansaanbod</strong> aan ChatGPT, Claude
-          of je eigen AI-assistent. Vraag in gewone taal wat er speelt — je krijgt
-          echte, actuele events uit ANDREAS terug, met een link naar de pagina.
-          Jouw AI doet het gesprek; wij leveren de verse data.
+          Koppel ANDREAS aan ChatGPT, Claude of je eigen AI-assistent. Zoek in
+          <strong>Amsterdam, Utrecht, Rotterdam en verder</strong>, krijg een seintje als er
+          iets nieuws bijkomt, volg artiesten, vraag tips op maat en zie waar je
+          vrienden heen gaan. Echte, actuele events met een link naar de pagina.
+          Jouw AI denkt mee; wij leveren de verse data.
         </p>
       </div>
 
@@ -331,17 +394,21 @@ function renderAiConnectPage(): string {
         </div>
       </div>
 
-      <h2>Vraag bijvoorbeeld</h2>
-      <div class="prompts">
-        ${promptsHtml}
+      <h2>Wat je kunt vragen</h2>
+      <p>Je praat gewoon; je AI kiest zelf wat het moet doen. Zoeken kan zonder account. Log je in, dan werkt alles wat je in de app kunt ook vanuit je AI.</p>
+      <div class="ai-caps">
+        ${capsHtml}
       </div>
 
       <h2>Voor bouwers</h2>
       <p>
         Bouw je iets met ANDREAS? De connector is een standaard
         <strong>Model Context Protocol</strong>-endpoint met OAuth — bruikbaar in
-        elke MCP-client of je eigen agent. Eén tool, <code>search_events</code>,
-        levert gestructureerde event-data met deeplinks terug. Zakelijk gebruik of
+        elke MCP-client of je eigen agent. Zonder login is er <code>search_events</code>:
+        zoeken op vaste velden (periode, stad, soort, genre, zaal, artiest), met
+        beschrijving, line-up en deeplinks. Met login komen er zo'n twintig tools bij
+        voor meldingen, artiesten, agenda, vrienden en smaak. Er draait geen model aan
+        onze kant: jouw AI redeneert, wij leveren de data. Zakelijk gebruik of
         vragen? Mail <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a>.
       </p>
       <p>
