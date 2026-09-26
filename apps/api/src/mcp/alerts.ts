@@ -20,8 +20,8 @@ import { and, desc, eq, sql } from 'drizzle-orm';
 import { z } from 'zod';
 
 import { GENRES, GENRE_KEYS, type GenreKey } from '../alerts/genres.js';
-import { judgeMany, loadEventInfo } from '../alerts/judge.js';
-import { previewAlert, recentCandidates, type AlertFilters } from '../alerts/match.js';
+import { previewAlert, type AlertFilters } from '../alerts/match.js';
+import { describeAlert as describe, previewTaste } from '../alerts/service.js';
 import { db, schema } from '../db/index.js';
 import { parseAmsterdamLocal } from '../scrapers/_amsterdam-tz.js';
 import { CATEGORY_VALUES, PUBLIC_BASE_URL } from './events.js';
@@ -88,34 +88,6 @@ async function resolveArtists(names: string[]): Promise<{ names: string[]; unkno
 }
 
 const dayFmt = new Intl.DateTimeFormat('nl-NL', { timeZone: 'Europe/Amsterdam', day: 'numeric', month: 'long' });
-const dateLabel = (d: string) => dayFmt.format(new Date(`${d}T12:00:00Z`));
-const cityLabel = (c: string) => c.split('-').map((p) => p[0].toUpperCase() + p.slice(1)).join(' ');
-
-function describe(p: {
-  taste?: string;
-  genres?: GenreKey[];
-  artists?: string[];
-  venues?: string[];
-  cities?: string[];
-  categories?: string[];
-  from?: string;
-  to?: string;
-  priceMaxEuro?: number;
-}): string {
-  const parts: string[] = [];
-  if (p.taste) parts.push(`smaak: "${p.taste}"`);
-  if (p.genres?.length) parts.push(p.genres.map((g) => GENRES[g].label).join(' of '));
-  if (p.categories?.length) parts.push(p.categories.map((c) => c.toLowerCase()).join(' of '));
-  if (p.artists?.length) parts.push(p.artists.join(' of '));
-  if (p.venues?.length) parts.push(`bij ${p.venues.join(' of ')}`);
-  if (p.cities?.length) parts.push(`in ${p.cities.map(cityLabel).join(' of ')}`);
-  if (p.from && p.to) parts.push(`${dateLabel(p.from)} t/m ${dateLabel(p.to)}`);
-  else if (p.from) parts.push(`vanaf ${dateLabel(p.from)}`);
-  else if (p.to) parts.push(`t/m ${dateLabel(p.to)}`);
-  if (p.priceMaxEuro != null) parts.push(`tot €${p.priceMaxEuro}`);
-  return parts.join(' · ');
-}
-
 /** Een dag loopt van 06:00 tot 06:00: de clubnacht van 31 oktober die om
     01:00 begint hoort nog bij oktober, net als overal in de app. */
 function dayStart(d: string): Date {
@@ -128,8 +100,6 @@ function dayAfter(d: string): string {
 /** Breder dan dit in de komende maanden is eerder een feed dan een melding. */
 const BROAD_RULE = 60;
 
-/** Hoeveel recente kandidaten de preview van een smaakregel laat keuren. */
-const TASTE_SAMPLE = 25;
 
 const eventLink = (id: string, title: string) =>
   `[${title.replace(/[[\]]/g, '')}](${PUBLIC_BASE_URL}/e/${id})`;
@@ -245,21 +215,13 @@ export function registerAlertTools(server: McpServer, userId: string): void {
       if (taste) {
         // Voorproeven op wat er het laatst binnenkwam: zo ziet de gebruiker
         // hoe de keurder de smaak opvat, met de redenen erbij.
-        const ids = await recentCandidates(filters, TASTE_SAMPLE);
-        const info = await loadEventInfo(ids);
-        const verdicts = await judgeMany(taste, [...info.values()]);
-        const yes = ids.filter((id) => verdicts.get(id)?.match);
-        const no = ids.filter((id) => verdicts.get(id) && !verdicts.get(id)!.match);
+        const { sampled, yes, no } = await previewTaste(filters, taste);
         lines.push(
-          `Proef op de ${ids.length} laatst toegevoegde events binnen de grenzen: ${yes.length} zou ik melden. ` +
+          `Proef op de ${sampled} laatst toegevoegde events binnen de grenzen: ${yes.length} zou ik melden. ` +
             'Over wat er al staat komt géén melding; dit laat zien hoe ik de smaak opvat.'
         );
-        for (const id of yes) {
-          lines.push(`- JA ${eventLink(id, info.get(id)!.title)} — ${info.get(id)!.venue}: ${verdicts.get(id)!.reason}`);
-        }
-        for (const id of no.slice(0, 4)) {
-          lines.push(`- nee ${eventLink(id, info.get(id)!.title)}: ${verdicts.get(id)!.reason}`);
-        }
+        for (const e of yes) lines.push(`- JA ${eventLink(e.id, e.title)} — ${e.venue}: ${e.reason}`);
+        for (const e of no.slice(0, 4)) lines.push(`- nee ${eventLink(e.id, e.title)}: ${e.reason}`);
         lines.push('Vraag de gebruiker of dit klopt, of de smaak scherper moet. Zo ja: roep create_alert opnieuw aan met dezelfde velden en confirm: true.');
         return text(lines.join('\n'));
       }
