@@ -81,7 +81,7 @@ import {
   useVenues,
   useForYouEvents,
   useMusea,
-  useNewArrivals,
+  useNewArrivalsSince,
   useSeriesList,
 } from '@/lib/queries';
 import { useSession } from '@/lib/authClient';
@@ -1096,7 +1096,7 @@ function ListState({
 }
 
 /**
- * Wat er sinds je vorige bezoek is bijgekomen, als strook onder de
+ * Wat er de afgelopen 24 uur is bijgekomen, als strook onder de
  * feature-card.
  *
  * Verving het bolletje op de Meer-tab. Een getal op een menu-icoon zegt
@@ -1104,11 +1104,10 @@ function ListState({
  * niet twee tikken diep achter een menu. Drie posters doen het werk dat
  * "9+" niet kan.
  *
- * Verbergt zichzelf bij nul: geen "er is niks nieuws"-strook. Stilte bij
- * nul is het uitgangspunt van deze hele lus.
- *
- * Deelt de query met de TabBar (zelfde `since` + banen), dus dit kost
- * geen extra request — de cache is al warm tegen de tijd dat dit rendert.
+ * Staat er altijd, ook bij nul. Hij verdween eerst als er sinds je vorige
+ * bezoek niets bij was, en een ingang die soms weg is zoek je niet meer.
+ * Het getal is een vast venster (24 uur) in plaats van "sinds je vorige
+ * bezoek": dat zakte naar nul zodra je gekeken had.
  */
 function NewArrivalsAlert() {
   const roles = useRoles();
@@ -1116,11 +1115,11 @@ function NewArrivalsAlert() {
   const { data: session } = useSession();
   const authed = Boolean(session?.user?.id);
   const activeLanes = useNewFilters((s) => s.activeLanes);
-  // Zelfde venster als de pagina zelf, inclusief de "vandaag"-terugval.
-  // Hing eerder aan `useNewBadgeSince()`, maar dat is een ongelezen-
-  // teller: die zakt naar nul zodra je /new hebt geopend, en dan
-  // verdween deze strook terwijl er nog van alles op de pagina stond.
-  const { data } = useNewArrivals({ enabled: authed, lanes: activeLanes });
+  // Afgerond op het kwartier, zodat de query-key niet elke render
+  // verandert en er hooguit elk kwartier een nieuwe vraag uitgaat.
+  const QUARTER = 15 * 60_000;
+  const since = new Date(Math.floor((Date.now() - 24 * 3600_000) / QUARTER) * QUARTER);
+  const { data } = useNewArrivalsSince(since, { enabled: authed, lanes: activeLanes, limit: 3 });
 
   const total = data?.total ?? 0;
   const thumbs = (data?.events ?? [])
@@ -1128,7 +1127,9 @@ function NewArrivalsAlert() {
     .filter((u): u is string => Boolean(u))
     .slice(0, 3);
 
-  if (total === 0) return null;
+  // Alleen de allereerste keer wachten op het antwoord; daarna blijft de
+  // vorige stand staan tot de nieuwe er is. Anders flitst er een "0".
+  if (!data) return null;
 
   return (
     <Pressable
@@ -1138,27 +1139,29 @@ function NewArrivalsAlert() {
       }}
       style={styles.newAlert}
     >
-      <View style={styles.newAlertStack}>
-        {thumbs.map((uri, i) => (
-          <View
-            key={uri}
-            style={[
-              styles.newAlertThumb,
-              {
-                left: i * 22,
-                zIndex: thumbs.length - i,
-                borderColor: roles.bg,
-              },
-            ]}
-          >
-            <Image
-              source={{ uri }}
-              style={styles.newAlertImg}
-              contentFit="cover"
-            />
-          </View>
-        ))}
-      </View>
+      {thumbs.length > 0 ? (
+        <View style={styles.newAlertStack}>
+          {thumbs.map((uri, i) => (
+            <View
+              key={uri}
+              style={[
+                styles.newAlertThumb,
+                {
+                  left: i * 22,
+                  zIndex: thumbs.length - i,
+                  borderColor: roles.bg,
+                },
+              ]}
+            >
+              <Image
+                source={{ uri }}
+                style={styles.newAlertImg}
+                contentFit="cover"
+              />
+            </View>
+          ))}
+        </View>
+      ) : null}
       <View style={styles.newAlertBody}>
         {/* Alleen het getal in accent — dat is wat verandert. Zelfde
             gebaar als de rails, die hun tijd in accent zetten en de rest
@@ -1170,7 +1173,9 @@ function NewArrivalsAlert() {
           {t(' nieuw', ' new')}
         </Text>
         <Text style={[styles.newAlertSub, { color: roles.fgMuted }]}>
-          {t('Bekijk wat er bij kwam', 'See what came in')}
+          {total > 0
+            ? t('in de afgelopen 24 uur', 'in the last 24 hours')
+            : t('Nog niets in de afgelopen 24 uur', 'Nothing in the last 24 hours')}
         </Text>
       </View>
       <Text style={[styles.newAlertMore, { color: roles.fgMuted }]}>→</Text>

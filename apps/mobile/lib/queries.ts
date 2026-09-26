@@ -264,16 +264,10 @@ export function useNewArrivals(
     : undefined;
   const showingFallback = !since || sinceUnfiltered === 0;
 
-  // Middernacht, niet de logische dag-grens van 06:00. Die 06:00-regel
-  // gaat over wannéér een event begint — niet over wanneer een record is
-  // aangemaakt. De scrape-cron draait om 02:00, dus met 06:00 zou alles
-  // wat vannacht binnenkwam onder "gisteren" vallen en stond hier
-  // 's ochtends structureel nul.
-  const todayStart = useMemo(() => {
-    const d = new Date();
-    d.setHours(0, 0, 0, 0);
-    return d;
-  }, []);
+  // De afgelopen 24 uur, net als de strook op Vandaag: die twee noemen
+  // hetzelfde getal. Middernacht stond vlak na twaalven op nul, vóór de
+  // scrapers van de nacht draaiden, terwijl de strook er 90 beloofde.
+  const todayStart = useMemo(() => new Date(Date.now() - 24 * 3600_000), []);
   const {
     data: today,
     isLoading: loadingToday,
