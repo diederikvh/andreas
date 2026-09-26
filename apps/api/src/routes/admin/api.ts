@@ -17,6 +17,7 @@ import { extractFromUrl } from '../../scrapers/extract-from-url.js';
 import { eventFromUrl, venueFromUrl } from '../../scrapers/extract-fields.js';
 import { scrapers, type ScraperName } from '../../scrapers/index.js';
 import { applyBlockedTerms } from '../../jobs/blockedTerms.js';
+import { fillArtistGenres } from '../../jobs/artistGenres.js';
 import { fillArtistImages } from '../../jobs/artistImages.js';
 import { uploadToBunny } from '../../storage/bunny.js';
 import { requireAdminAny } from './auth.js';
@@ -1227,10 +1228,21 @@ adminApi.post('/enrich-artists', async (c) => {
     } catch (e) {
       console.error('[enrich-artists] foto\'s ophalen mislukt', e);
     }
+    // Genres uit Last.fm, ook in dezelfde beurt: net verrijkte artiesten
+    // hebben nu een MusicBrainz-id, en daarmee is de match exact. Eigen
+    // sleutel, dus geen last van de Spotify-limiet. Draait vóór
+    // recompute-effective-genres (volgende stap in de cron).
+    let genres = { looked: 0, filled: 0, fromTitles: 0, stopped: false };
+    try {
+      genres = await fillArtistGenres({ limit: 400 });
+    } catch (e) {
+      console.error('[enrich-artists] genres ophalen mislukt', e);
+    }
     return c.json({
       durationMs: Date.now() - startedAt,
       ...result,
       images,
+      genres,
     });
   } catch (e) {
     return c.json(

@@ -94,7 +94,15 @@ async function mbFetch<T>(url: string): Promise<FetchOutcome<T>> {
 /** Slug uit een artist-name: lowercase, diacritics weg, niet-alphanum
     naar '-'. Voor de PK van `artists`. Korte hash-suffix voorkomt
     collisions tussen twee artists met dezelfde slug (zeldzaam). */
-function slugify(name: string): string {
+/** MusicBrainz-tags, tenzij Last.fm al genres gaf: die zijn beter (zie
+    `jobs/artistGenres.ts`) en horen niet elke week overschreven te worden. */
+function mbGenres(tags: string[]) {
+  const mb = tags.length ? sql`ARRAY[${sql.join(tags.map((t) => sql`${t}`), sql`, `)}]::text[]` : sql`ARRAY[]::text[]`;
+  return sql`CASE WHEN ${schema.artists.genresTriedAt} IS NOT NULL AND cardinality(${schema.artists.genres}) > 0
+    THEN ${schema.artists.genres} ELSE ${mb} END`;
+}
+
+export function slugify(name: string): string {
   const base = name
     .toLowerCase()
     .normalize('NFD')
@@ -395,7 +403,7 @@ export async function enrichLineupArtists(
           bandcampUrl: data.bandcampUrl,
           youtubeUrl: data.youtubeUrl,
           officialUrl: data.officialUrl,
-          genres: data.genres,
+          genres: mbGenres(data.genres),
           enrichedAt: new Date(),
         })
         .where(eq(schema.artists.id, existing.id));
@@ -412,7 +420,7 @@ export async function enrichLineupArtists(
           bandcampUrl: data.bandcampUrl,
           youtubeUrl: data.youtubeUrl,
           officialUrl: data.officialUrl,
-          genres: data.genres,
+          genres: mbGenres(data.genres),
           enrichedAt: new Date(),
         })
         .where(eq(schema.artists.id, existing.id));

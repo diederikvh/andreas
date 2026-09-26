@@ -16,6 +16,7 @@ import { db } from '../db/index.js';
 import {
   DEEP_LABEL_KEYS,
   EXCLUDED_BY_DEFAULT,
+  GENRE_KEYS,
   KIDS_TITLE_REGEX,
   MAIN_LABELS,
   genreAliasValuesSql,
@@ -43,6 +44,31 @@ function hasGenre(keysExpr: string, mainOnly: boolean): string {
     WHERE ga.key = ANY(${keysExpr})
       ${mainOnly ? `AND (t.pos <= ${MAIN_LABELS} OR (t.pos = ${MAIN_LABELS + 1} AND ga.key = ANY(${deepKeys})))` : ''}
   )`;
+}
+
+/** Alle genres die iets over de smaak zeggen (niet kinderaanbod,
+    workshops of tributes). Heeft het event daar zelf geen van, dan weten
+    de labels van de zaal het niet. */
+const tasteKeys = `ARRAY[${GENRE_KEYS.filter((k) => !['familie', 'workshop', 'tribute'].includes(k)).map((k) => `'${k}'`).join(',')}]`;
+const NA = normalizeGenreSql('ag');
+
+/** Terugval op de artiest: zeggen de labels van de zaal niets ("Pop /
+    Rock", of niets), dan telt het genre van de hoofdact. Dat is de eerste
+    naam in de line-up, of een artiest die precies zo heet als de titel
+    ("Kim Wilde"). Alleen de eerste twee tags van die artiest, net als bij
+    de zaal. Nooit als de zaal zelf al een genre gaf: dan wint de zaal, en
+    wordt Ezra Collective geen hiphop omdat de artiest dat label ook heeft. */
+function artistHasGenre(keysExpr: string): string {
+  return `(NOT ${hasGenre(tasteKeys, true)} AND EXISTS (
+    SELECT 1 FROM artists ar
+    CROSS JOIN LATERAL unnest(ar.genres[1:${MAIN_LABELS}]) ag
+    JOIN genre_alias ga ON ga.category = e.category::text
+      AND CASE WHEN ga.is_like THEN position('/' in ${NA}) = 0 AND ${NA} LIKE ga.pattern
+               ELSE ${NA} = ga.pattern END
+    WHERE ga.key = ANY(${keysExpr})
+      AND (ar.id = CASE WHEN jsonb_typeof(o.lineup) = 'array' THEN o.lineup->0->>'artistId' END
+           OR lower(ar.name) = lower(e.title))
+  ))`;
 }
 
 /** Woorden van een tekst, gescheiden door spaties en met een spatie aan
@@ -106,7 +132,7 @@ export const ALERT_MATCH = sql.raw(`
         OR ${titleHasName('an')}
     ))
     OR ((a.genres IS NOT NULL OR a.keywords IS NOT NULL)
-      AND (a.genres IS NULL OR ${hasGenre('a.genres', true)})
+      AND (a.genres IS NULL OR ${hasGenre('a.genres', true)} OR ${artistHasGenre('a.genres')})
       -- Trefwoord: als hele woorden in titel of beschrijving.
       AND (a.keywords IS NULL OR EXISTS (
         SELECT 1 FROM unnest(a.keywords) k

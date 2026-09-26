@@ -620,6 +620,9 @@ export const artists = pgTable(
         poging, ook als Spotify niets teruggaf. Anders blijft zo'n
         artiest voor altijd vooraan in de wachtrij staan. */
     imageTriedAt: timestamp({ withTimezone: true }),
+    /** Laatste poging om genres bij Last.fm te vinden, ook als er niets
+        uitkwam. */
+    genresTriedAt: timestamp({ withTimezone: true }),
     createdAt: timestamp({ withTimezone: true })
       .notNull()
       .default(sql`now()`),
