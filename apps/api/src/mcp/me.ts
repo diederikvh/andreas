@@ -21,6 +21,7 @@ import { and, eq, sql } from 'drizzle-orm';
 import { z } from 'zod';
 
 import { GENRES, GENRE_KEYS, type GenreKey } from '../alerts/genres.js';
+import { ALERT_MATCH, GENRE_ALIAS_CTE, alertSource } from '../alerts/match.js';
 import { recommendEvents } from '../alerts/recommend.js';
 import { db, schema } from '../db/index.js';
 import { parseAmsterdamLocal } from '../scrapers/_amsterdam-tz.js';
@@ -540,6 +541,114 @@ export function registerMeTools(server: McpServer, userId: string): void {
           `${r.city !== 'amsterdam' ? ` (${r.city})` : ''}, ${whenFmt.format(new Date(r.startsAt))}: ${r.reason}`
       );
       return text(`${recommendations.length} aanbevelingen (van ${judged} bekeken; basis: ${basis}):\n${lines.join('\n')}`);
+    }
+  );
+
+  server.registerTool(
+    'around_evening',
+    {
+      title: 'Rond je avond',
+      description:
+        'Wat er vóór en na een avond te doen is in de buurt (binnen 2 km, met looptijd): een film of expo ' +
+        'ervoor, een club of concert erna. Standaard de eerstvolgende avond waar de gebruiker heen gaat; of ' +
+        'geef event_id (+ date bij meerdere data). Geblokkeerde zalen en niet-leuk-genres vallen weg. Kies ' +
+        'zelf met de smaak van de gebruiker wat je aanraadt, en houd rekening met de looptijd.',
+      inputSchema: {
+        event_id: z.string().optional().describe('Event-id of link. Default: eerstvolgende "ik ga".'),
+        date: DATE.optional(),
+        radius_km: z.number().min(0.3).max(10).optional().describe('Default 2.'),
+      },
+    },
+    async ({ event_id, date, radius_km = 2 }) => {
+      // De avond zelf: gegeven, of de eerstvolgende waar je heen gaat.
+      let occId: string | null = null;
+      if (event_id) {
+        const occ = await findOccurrence(event_id, date);
+        if (typeof occ === 'string') return { ...text(occ), isError: true };
+        occId = occ.id;
+      } else {
+        const next = await db.execute<{ id: string }>(sql`
+          SELECT o.id FROM occurrences o
+          WHERE o.starts_at > NOW() AND o.status <> 'cancelled' AND (
+            EXISTS (SELECT 1 FROM attendance a WHERE a.user_id = ${userId} AND a.occurrence_id = o.id)
+            OR EXISTS (SELECT 1 FROM invitation_responses ir
+                       JOIN invitations i ON i.id = ir.invitation_id AND i.revoked_at IS NULL
+                       WHERE ir.user_id = ${userId} AND ir.status = 'going' AND i.occurrence_id = o.id)
+          )
+          ORDER BY o.starts_at LIMIT 1
+        `);
+        occId = next.rows[0]?.id ?? null;
+        if (!occId) return text('Er staat geen avond in de agenda. Geef een event op.');
+      }
+
+      // Zonder eindtijd: gangbare duur per soort. Een concert loopt langer
+      // dan een film; een tentoonstelling doet hier niet mee (hele dag).
+      const END = (occ: string, ev: string) =>
+        `COALESCE(${occ}.ends_at, ${occ}.starts_at + CASE ${ev}.category WHEN 'Muziek' THEN INTERVAL '3 hours' ELSE INTERVAL '2 hours' END)`;
+
+      const base = await db.execute<{ title: string; venue: string; lat: number; lng: number; starts_at: string; ends_at: string }>(sql`
+        SELECT e.title, v.name AS venue, v.lat, v.lng, o.starts_at, ${sql.raw(END('o', 'e'))} AS ends_at
+        FROM occurrences o JOIN events e ON e.id = o.event_id
+        JOIN venues v ON v.id = COALESCE(o.venue_id, e.venue_id)
+        WHERE o.id = ${occId}
+      `);
+      const b = base.rows[0];
+      if (!b) return { ...text('Die avond kon ik niet vinden.'), isError: true };
+
+      const source = alertSource({
+        userId, venueIds: null, cities: null, categories: null, genres: null,
+        artistNames: null, priceMaxCents: null, startsFrom: null, startsUntil: null,
+      });
+      // Afstand in km (haversine) vanaf de zaal van je avond.
+      const km = sql.raw(`(6371 * 2 * asin(sqrt(
+        power(sin(radians(v.lat - ${Number(b.lat)}) / 2), 2) +
+        cos(radians(${Number(b.lat)})) * cos(radians(v.lat)) * power(sin(radians(v.lng - ${Number(b.lng)}) / 2), 2)
+      )))`);
+      const res = await db.execute<{
+        event_id: string; title: string; venue: string; category: string; genres: string[];
+        starts_at: string; ends_at: string; km: number; slot: 'voor' | 'na';
+      }>(sql`
+        WITH ${GENRE_ALIAS_CTE}
+        SELECT DISTINCT ON (e.id) e.id AS event_id, e.title, v.name AS venue, e.category::text AS category,
+               e.genres, o.starts_at, ${sql.raw(END('o', 'e'))} AS ends_at, ${km} AS km,
+               CASE WHEN o.starts_at < ${b.starts_at}::timestamptz THEN 'voor' ELSE 'na' END AS slot
+        FROM ${source} a
+        JOIN occurrences o ON o.status <> 'cancelled'
+          AND o.starts_at BETWEEN ${b.starts_at}::timestamptz - INTERVAL '5 hours'
+                              AND ${b.ends_at}::timestamptz + INTERVAL '3 hours'
+        JOIN events e ON e.id = o.event_id AND e.published AND e.kind <> 'exhibition'
+        JOIN venues v ON v.id = COALESCE(o.venue_id, e.venue_id) AND v.published
+        WHERE ${ALERT_MATCH}
+          AND (
+            -- Ervoor: begint hooguit 5 uur eerder en is een kwartier voor
+            -- de aanvang afgelopen.
+            (o.starts_at < ${b.starts_at}::timestamptz
+              AND ${sql.raw(END('o', 'e'))} <= ${b.starts_at}::timestamptz - INTERVAL '15 minutes')
+            -- Erna: begint vanaf een half uur voor het einde tot 3 uur erna.
+            OR o.starts_at >= ${b.ends_at}::timestamptz - INTERVAL '30 minutes'
+          )
+          AND o.id <> ${occId}
+          AND ${km} <= ${radius_km}
+        ORDER BY e.id, o.starts_at
+      `);
+
+      const walk = (d: number) => (d < 0.15 ? 'zelfde plek' : `${Math.max(1, Math.round(d * 12))} min lopen`);
+      const t = (x: string) => new Intl.DateTimeFormat('nl-NL', { timeZone: 'Europe/Amsterdam', hour: '2-digit', minute: '2-digit' }).format(new Date(x));
+      const line = (r: (typeof res.rows)[number]) =>
+        `- ${t(r.starts_at)}–${t(r.ends_at)} [${r.title.replace(/[[\]]/g, '')}](${PUBLIC_BASE_URL}/e/${r.event_id}) — ` +
+        `${r.venue} (${walk(Number(r.km))}) · ${r.category}${r.genres[0] ? `, ${r.genres.slice(0, 2).join(', ')}` : ''}`;
+      const byTime = (x: (typeof res.rows)[number], y: (typeof res.rows)[number]) =>
+        new Date(x.starts_at).getTime() - new Date(y.starts_at).getTime();
+      // Ervoor: het dichtst bij je aanvang bovenaan (de film van 17:45 is
+      // relevanter dan die van 15:00). Erna: gewoon op tijd.
+      const before = res.rows.filter((r) => r.slot === 'voor').sort((x, y) => byTime(y, x)).slice(0, 12);
+      const after = res.rows.filter((r) => r.slot === 'na').sort(byTime).slice(0, 12);
+
+      const head = `Je avond: ${b.title} — ${b.venue}, ${whenFmt.format(new Date(b.starts_at))} (tot ~${t(b.ends_at)}).`;
+      const parts = [head];
+      parts.push(before.length ? `Ervoor (${before.length}):\n${before.map(line).join('\n')}` : 'Ervoor: niets in de buurt.');
+      parts.push(after.length ? `Erna (${after.length}):\n${after.map(line).join('\n')}` : 'Erna: niets in de buurt.');
+      return text(parts.join('\n\n'));
     }
   );
 }

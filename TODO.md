@@ -194,7 +194,7 @@ Doel (Diederik, 26 sep 2026): precies weten wat er in de stad gebeurt dat hij re
 6. **Feedback op meldingen** ✅ (26 sep, `alert_hits`, `alert_feedback`, `update_alert`; correcties gaan als voorbeelden mee naar de keurder) — "die van gisteren klopte niet": oordeel in `alert_verdicts` corrigeren en gecorrigeerde oordelen als voorbeelden meegeven aan de keurder, zodat een smaakregel leert.
 7. **Gevolgde artiesten in andere steden** ✅ (26 sep; ook: MCP niet meer Amsterdam-only, `search_events` met `cities`, en `andreas_help`) — "Afghan Whigs spelen ook in Utrecht". Data is er (`venues.city`); vooral een tool/weergave.
 8. **"Meer zoals wat je doet"** ✅ (26 sep; `recommend_events`, `alerts/recommend.ts`) — aanbevelingen met reden: de keurder met je "ik ga"-avonden, hartjes en gevolgde artiesten als voorbeelden.
-9. **Rond je avond** ⬜ — iets ervoor of erna in de buurt (film vóór, club na), op basis van `venues.lat/lng` en tijden.
+9. **Rond je avond** ✅ (26 sep; `around_evening` in `mcp/me.ts`) — iets ervoor of erna in de buurt (film vóór, club na), op basis van `venues.lat/lng` en tijden.
 10. **Uitnodigen vanuit Claude** ⬜ — "nodig Roos uit voor Mood Bored" via de bestaande invitations-flow, met bevestigingsstap (versturen namens de gebruiker).
 11. **Groepsplanning** ⬜ — "zoek iets voor zaterdag dat bij ons alle drie past": smaken van groepsleden combineren, binnen wat zij delen.
 12. **Terugblik** ⬜ — "hoe ziet mijn jaar eruit", Wrapped-stijl, uit de spiegel (`routes/mirror.ts`). Plus achteraf "hoe was het?" als sterkste smaaksignaal voor de keurder.

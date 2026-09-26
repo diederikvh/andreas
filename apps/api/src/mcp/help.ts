@@ -32,6 +32,7 @@ Aanbevelingen
 Je agenda en je vrienden
 - "Wat doe ik deze week?" / "Botst er iets in november?"
 - "Wie gaat er naar Paradiso deze maand?" / "Wat heeft Midas gered?"
+- "Wat kan ik doen voor of na The Afghan Whigs?"
 
 Doen, zoals in de app
 - "Zet een hartje op Band of Horses." / "Ik ga naar LSD and the Search for God."
