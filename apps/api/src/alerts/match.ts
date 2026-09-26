@@ -46,6 +46,16 @@ function hasGenre(keysExpr: string, mainOnly: boolean): string {
 const words = (expr: string) =>
   `(' ' || lower(trim(regexp_replace(${expr}, '[^[:alnum:]]+', ' ', 'g'))) || ' ')`;
 
+/** Staat deze artiestnaam als hele woorden in de titel? Alleen bij namen
+    van 4+ tekens ("Eve" zit ook in "New Year's Eve") en niet bij tributes
+    ("Tribute to Adele" is geen Adele). Line-ups zijn maar bij een op de
+    vijf avonden gekoppeld; bij concerten is de titel vaak gewoon de naam. */
+export function titleHasName(nameExpr: string, titleExpr = 'e.title'): string {
+  return `(length(${nameExpr}) >= 4
+    AND ${titleExpr} !~* 'tribute'
+    AND position(${words(nameExpr)} in ${words(titleExpr)}) > 0)`;
+}
+
 const excluded = `ARRAY[${EXCLUDED_BY_DEFAULT.map((k) => `'${k}'`).join(',')}]`;
 
 export const ALERT_MATCH = sql.raw(`
@@ -60,9 +70,7 @@ export const ALERT_MATCH = sql.raw(`
   -- Kinder- en workshopaanbod valt erbuiten, tenzij de regel erom vraagt.
   AND NOT ${hasGenre(`ARRAY(SELECT x FROM unnest(${excluded}) x WHERE NOT x = ANY(COALESCE(a.genres, '{}')))`, false)}
   AND ('familie' = ANY(COALESCE(a.genres, '{}')) OR e.title !~* '${KIDS_TITLE_REGEX}')
-  -- Artiest: in de line-up op naam, of als hele woorden in de titel. De
-  -- titel alleen bij namen van 4+ tekens ("Eve" zit ook in "New Year's
-  -- Eve") en niet bij tributes ("Tribute to Adele" is geen Adele).
+  -- Artiest: in de line-up op naam, of als hele woorden in de titel.
   AND (a.artist_names IS NULL OR EXISTS (
     SELECT 1 FROM unnest(a.artist_names) an
     WHERE EXISTS (
@@ -71,9 +79,7 @@ export const ALERT_MATCH = sql.raw(`
         ) le
         WHERE lower(le->>'name') = lower(an)
       )
-      OR (length(an) >= 4
-          AND e.title !~* 'tribute'
-          AND position(${words('an')} in ${words('e.title')}) > 0)
+      OR ${titleHasName('an')}
   ))
 `);
 
@@ -97,7 +103,7 @@ function arr(xs: string[] | null, type: string): SQL {
 const ts = (d: Date | null) => (d ? sql`${d.toISOString()}::timestamptz` : sql`NULL::timestamptz`);
 
 /** Een regel die (nog) niet in de database staat, als rij `a`. */
-function alertSource(f: AlertFilters): SQL {
+export function alertSource(f: AlertFilters): SQL {
   return sql`(SELECT
     ${arr(f.venueIds, 'text')} AS venue_ids,
     ${arr(f.cities, 'city')} AS cities,
@@ -131,4 +137,22 @@ export async function previewAlert(
     .map((r) => ({ id: r.id, title: r.title, venue: r.venue, startsAt: new Date(r.starts_at) }))
     .sort((x, y) => x.startsAt.getTime() - y.startsAt.getTime());
   return { total: all.length, events: all.slice(0, limit) };
+}
+
+/** De meest recent toegevoegde events die door de harde filters komen: de
+    steekproef waarop een smaakregel bij het aanmaken wordt voorgekeurd. */
+export async function recentCandidates(f: AlertFilters, limit: number): Promise<string[]> {
+  const res = await db.execute<{ id: string }>(sql`
+    WITH ${GENRE_ALIAS_CTE}
+    SELECT e.id
+    FROM ${alertSource(f)} a
+    JOIN occurrences o ON o.starts_at > NOW() AND o.status <> 'cancelled'
+    JOIN events e ON e.id = o.event_id AND e.published
+    JOIN venues v ON v.id = COALESCE(o.venue_id, e.venue_id) AND v.published
+    WHERE ${ALERT_MATCH}
+    GROUP BY e.id
+    ORDER BY MAX(o.created_at) DESC
+    LIMIT ${limit}
+  `);
+  return res.rows.map((r) => r.id);
 }

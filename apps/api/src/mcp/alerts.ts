@@ -18,7 +18,8 @@ import { and, desc, eq, sql } from 'drizzle-orm';
 import { z } from 'zod';
 
 import { GENRES, GENRE_KEYS, type GenreKey } from '../alerts/genres.js';
-import { previewAlert, type AlertFilters } from '../alerts/match.js';
+import { judgeMany, loadEventInfo } from '../alerts/judge.js';
+import { previewAlert, recentCandidates, type AlertFilters } from '../alerts/match.js';
 import { db, schema } from '../db/index.js';
 import { parseAmsterdamLocal } from '../scrapers/_amsterdam-tz.js';
 import { CATEGORY_VALUES, PUBLIC_BASE_URL } from './events.js';
@@ -34,7 +35,7 @@ const text = (t: string, isError = false): ToolText => ({
 
 /** Venues op naam: exact eerst, anders een unieke deeltreffer. Geen of
     meerdere treffers → een vraag terug met kandidaten. */
-async function resolveVenues(
+export async function resolveVenues(
   names: string[]
 ): Promise<{ ids: string[]; names: string[] } | { error: string }> {
   const ids: string[] = [];
@@ -89,6 +90,7 @@ const dateLabel = (d: string) => dayFmt.format(new Date(`${d}T12:00:00Z`));
 const cityLabel = (c: string) => c.split('-').map((p) => p[0].toUpperCase() + p.slice(1)).join(' ');
 
 function describe(p: {
+  taste?: string;
   genres?: GenreKey[];
   artists?: string[];
   venues?: string[];
@@ -99,6 +101,7 @@ function describe(p: {
   priceMaxEuro?: number;
 }): string {
   const parts: string[] = [];
+  if (p.taste) parts.push(`smaak: "${p.taste}"`);
   if (p.genres?.length) parts.push(p.genres.map((g) => GENRES[g].label).join(' of '));
   if (p.categories?.length) parts.push(p.categories.map((c) => c.toLowerCase()).join(' of '));
   if (p.artists?.length) parts.push(p.artists.join(' of '));
@@ -123,6 +126,12 @@ function dayAfter(d: string): string {
 /** Breder dan dit in de komende maanden is eerder een feed dan een melding. */
 const BROAD_RULE = 60;
 
+/** Hoeveel recente kandidaten de preview van een smaakregel laat keuren. */
+const TASTE_SAMPLE = 25;
+
+const eventLink = (id: string, title: string) =>
+  `[${title.replace(/[[\]]/g, '')}](${PUBLIC_BASE_URL}/e/${id})`;
+
 export function registerAlertTools(server: McpServer, userId: string): void {
   server.registerTool(
     'create_alert',
@@ -135,11 +144,22 @@ export function registerAlertTools(server: McpServer, userId: string): void {
         'speeldatum wil beperken ("alleen als het in december speelt"); reken zo\'n periode dan om naar ' +
         'absolute datums. Vraagt de gebruiker wat er nu al is ("wat is er deze maand?"), gebruik dan ' +
         '`search_events` en geen melding. Geef minstens ' +
-        'één van `genres`, `artists` of `venues`. Past geen genre uit de lijst, zeg dat dan eerlijk ' +
-        'in plaats van het dichtstbijzijnde te kiezen. Roep eerst aan ZONDER `confirm`: je krijgt dan ' +
+        'één van `genres`, `artists` of `venues`. ' +
+        'Gaat het om smaak die niet in een genre past ("gitaarbands met een jaren-90-randje, zoals ' +
+        'Afghan Whigs"), zet die dan in `taste`, in de woorden van de gebruiker en met de genoemde ' +
+        'voorbeeldartiesten; laat `genres` dan meestal weg. Elk nieuw event binnen de harde filters ' +
+        '(`venues`, `cities`, `categories`, minstens één daarvan) wordt dan door een model gekeurd tegen ' +
+        'die smaak, en de reden komt in de push. Past geen genre uit de lijst en is er geen smaak, zeg ' +
+        'dat dan eerlijk in plaats van het dichtstbijzijnde te kiezen. Roep eerst aan ZONDER `confirm`: je krijgt dan ' +
         'een samenvatting en wat er nu al past. Leg die voor aan de gebruiker ("Klopt dat?") en roep ' +
         'pas na een ja opnieuw aan met dezelfde velden en `confirm: true`.',
       inputSchema: {
+        taste: z
+          .string()
+          .min(3)
+          .max(500)
+          .optional()
+          .describe('Smaak in de woorden van de gebruiker, met voorbeeldartiesten. Wordt per nieuw event gekeurd.'),
         genres: z
           .array(z.enum(GENRE_KEYS))
           .optional()
@@ -158,7 +178,11 @@ export function registerAlertTools(server: McpServer, userId: string): void {
       },
     },
     async (args) => {
-      if (!args.genres?.length && !args.artists?.length && !args.venues?.length) {
+      if (args.taste) {
+        if (!args.venues?.length && !args.cities?.length && !args.categories?.length) {
+          return text('Een smaakmelding heeft een grens nodig: een venue, stad of categorie (bv. Muziek).', true);
+        }
+      } else if (!args.genres?.length && !args.artists?.length && !args.venues?.length) {
         return text('Een melding heeft minstens een genre, artiest of venue nodig; anders wordt het een stroom pushes.', true);
       }
       const today = new Date().toISOString().slice(0, 10);
@@ -179,7 +203,9 @@ export function registerAlertTools(server: McpServer, userId: string): void {
         startsFrom: args.from ? dayStart(args.from) : null,
         startsUntil: args.to ? dayStart(dayAfter(args.to)) : null,
       };
+      const taste = args.taste?.trim() || null;
       const label = describe({
+        taste: taste ?? undefined,
         genres: args.genres,
         artists: artists.names,
         venues: venues.names,
@@ -204,6 +230,7 @@ export function registerAlertTools(server: McpServer, userId: string): void {
           priceMaxCents: filters.priceMaxCents,
           startsFrom: filters.startsFrom,
           startsUntil: filters.startsUntil,
+          taste,
         });
         return text(
           `Opgeslagen: ${label}.\nDe gebruiker krijgt om 10:00 een push zodra er nieuw aanbod bijkomt dat past. ` +
@@ -211,8 +238,29 @@ export function registerAlertTools(server: McpServer, userId: string): void {
         );
       }
 
-      const { total, events } = await previewAlert(filters);
       const lines = [`Voorstel, nog NIET opgeslagen. Melding bij nieuw aanbod: ${label}.`];
+      if (taste) {
+        // Voorproeven op wat er het laatst binnenkwam: zo ziet de gebruiker
+        // hoe de keurder de smaak opvat, met de redenen erbij.
+        const ids = await recentCandidates(filters, TASTE_SAMPLE);
+        const info = await loadEventInfo(ids);
+        const verdicts = await judgeMany(taste, [...info.values()]);
+        const yes = ids.filter((id) => verdicts.get(id)?.match);
+        const no = ids.filter((id) => verdicts.get(id) && !verdicts.get(id)!.match);
+        lines.push(
+          `Proef op de ${ids.length} laatst toegevoegde events binnen de grenzen: ${yes.length} zou ik melden. ` +
+            'Over wat er al staat komt géén melding; dit laat zien hoe ik de smaak opvat.'
+        );
+        for (const id of yes) {
+          lines.push(`- JA ${eventLink(id, info.get(id)!.title)} — ${info.get(id)!.venue}: ${verdicts.get(id)!.reason}`);
+        }
+        for (const id of no.slice(0, 4)) {
+          lines.push(`- nee ${eventLink(id, info.get(id)!.title)}: ${verdicts.get(id)!.reason}`);
+        }
+        lines.push('Vraag de gebruiker of dit klopt, of de smaak scherper moet. Zo ja: roep create_alert opnieuw aan met dezelfde velden en confirm: true.');
+        return text(lines.join('\n'));
+      }
+      const { total, events } = await previewAlert(filters);
       if (artists.unknown.length) {
         lines.push(
           `${artists.unknown.join(', ')} speelde nog niet eerder bij ons; ik zoek op die naam in titels en line-ups.`
@@ -224,7 +272,7 @@ export function registerAlertTools(server: McpServer, userId: string): void {
         lines.push(`Nu al passend: ${total} events. Daarover komt géén melding, alleen over wat er vanaf nu bijkomt. De eerste:`);
         for (const e of events) {
           const day = dayFmt.format(e.startsAt);
-          lines.push(`- [${e.title.replace(/[[\]]/g, '')}](${PUBLIC_BASE_URL}/e/${e.id}) — ${e.venue}, ${day}`);
+          lines.push(`- ${eventLink(e.id, e.title)} — ${e.venue}, ${day}`);
         }
         if (total > BROAD_RULE) {
           lines.push(`Let op: dit is een brede regel. Stel voor om een venue, stad of periode toe te voegen.`);

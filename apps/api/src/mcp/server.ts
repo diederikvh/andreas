@@ -12,6 +12,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 
 import { registerAlertTools } from './alerts.js';
+import { registerArtistTools } from './artists.js';
 import { buildEventsUiResource } from './card.js';
 import {
   CATEGORY_VALUES,
@@ -46,7 +47,9 @@ const INSTRUCTIONS =
   'ook niet in een korte samenvatting of bij de eerste reactie: elke genoemde ' +
   'event moet doorklikbaar zijn naar zijn Andreas-pagina. ' +
   'Wil de gebruiker een seintje als er iets bijkomt ("laat me weten als…"), ' +
-  'gebruik dan `create_alert` en volg de bevestigingsstap in die tool.';
+  'gebruik dan `create_alert` en volg de bevestigingsstap in die tool. ' +
+  'Artiesten volgen, ontvolgen en voorstellen gaat met `list_followed_artists`, ' +
+  '`follow_artists`, `unfollow_artists` en `artists_playing`.';
 
 const TOOL_DESCRIPTION =
   'Zoek concrete events in Amsterdam voor een gegeven periode. Geef `category` ' +
@@ -121,7 +124,10 @@ export function buildMcpServer(userId: string | null = null): McpServer {
   );
 
   // Meldingen horen bij een persoon; via de service-key is er niemand.
-  if (userId) registerAlertTools(server, userId);
+  if (userId) {
+    registerAlertTools(server, userId);
+    registerArtistTools(server, userId);
+  }
 
   return server;
 }

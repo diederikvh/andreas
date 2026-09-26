@@ -175,6 +175,18 @@ artistFollowsRoute.post('/by-name', async (c) => {
     return c.json({ error: 'Naam ontbreekt of is te lang.' }, 400);
   }
 
+  const artistId = await followArtistByName(userId, name, body.spotifyUrl);
+  if (!artistId) return c.json({ error: 'Kon de artiest niet vastleggen.' }, 500);
+  return c.json({ following: true, artistId });
+});
+
+/** Volg een artiest op naam; maakt de rij aan als we 'm nog niet kennen.
+    Ook gebruikt door de MCP-tool `follow_artists`. Geeft het id terug. */
+export async function followArtistByName(
+  userId: string,
+  name: string,
+  spotifyUrl?: string
+): Promise<string | null> {
   // Eerst kijken of we 'm toch al hebben, hoofdletter-ongevoelig -- exact
   // zoals de verrijking dat doet.
   const existing = await db.execute<{ id: string }>(
@@ -195,7 +207,7 @@ artistFollowsRoute.post('/by-name', async (c) => {
     const id = `${slug}-${Math.random().toString(36).slice(2, 6)}`;
     const inserted = await db.execute<{ id: string }>(sql`
       INSERT INTO artists (id, name, spotify_url)
-      VALUES (${id}, ${name}, ${body.spotifyUrl ?? null})
+      VALUES (${id}, ${name}, ${spotifyUrl ?? null})
       ON CONFLICT DO NOTHING
       RETURNING id
     `);
@@ -208,15 +220,14 @@ artistFollowsRoute.post('/by-name', async (c) => {
       artistId = again.rows?.[0]?.id ?? null;
     }
   }
-  if (!artistId) return c.json({ error: 'Kon de artiest niet vastleggen.' }, 500);
+  if (!artistId) return null;
 
   await db
     .insert(schema.artistFollows)
     .values({ userId, artistId })
     .onConflictDoNothing();
-
-  return c.json({ following: true, artistId });
-});
+  return artistId;
+}
 
 artistFollowsRoute.delete('/:artistId', async (c) => {
   const userId = await requireUserId(c);

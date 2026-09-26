@@ -1582,10 +1582,37 @@ export const alerts = pgTable(
     priceMaxCents: integer(),
     startsFrom: timestamp({ withTimezone: true }),
     startsUntil: timestamp({ withTimezone: true }),
+    /** Smaak in de eigen woorden van de gebruiker ("gitaarbands met een
+        jaren-90-randje, zoals Afghan Whigs"). Gezet = een LLM keurt elk
+        nieuw event binnen de harde filters; leeg = puur de filters. */
+    taste: text(),
     active: boolean().notNull().default(true),
     createdAt: timestamp({ withTimezone: true })
       .notNull()
       .default(sql`now()`),
   },
   (t) => [index('alerts_user_idx').on(t.userId)]
+);
+
+/**
+ * Het oordeel van de keurder over één event voor één smaakregel. Bewaard
+ * zodat een event nooit twee keer wordt gekeurd, en zodat je achteraf kunt
+ * zien waarom iets wel of niet doorkwam.
+ */
+export const alertVerdicts = pgTable(
+  'alert_verdicts',
+  {
+    alertId: text()
+      .notNull()
+      .references(() => alerts.id, { onDelete: 'cascade' }),
+    eventId: text()
+      .notNull()
+      .references(() => events.id, { onDelete: 'cascade' }),
+    match: boolean().notNull(),
+    reason: text(),
+    createdAt: timestamp({ withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+  },
+  (t) => [primaryKey({ columns: [t.alertId, t.eventId] })]
 );
