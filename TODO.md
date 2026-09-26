@@ -199,7 +199,7 @@ Doel (Diederik, 26 sep 2026): precies weten wat er in de stad gebeurt dat hij re
 11. **Groepsplanning** ⬜ — "zoek iets voor zaterdag dat bij ons alle drie past": smaken van groepsleden combineren, binnen wat zij delen.
 12. **Terugblik** ⬜ — "hoe ziet mijn jaar eruit", Wrapped-stijl, uit de spiegel (`routes/mirror.ts`). Plus achteraf "hoe was het?" als sterkste smaaksignaal voor de keurder.
 13. **Meldingen in de app** ✅ (26 sep; `app/meldingen.tsx`, `app/melding/`; lijst, detail, nieuw/bewerken met proef, "Gevonden voor jou") — scherm met je regels (aan/uit, verwijderen) en per treffer de reden van de keurder. Was ticket 6 uit het oorspronkelijke voorstel.
-14. **Reden op /new** ⬜ — "past bij je smaak: donkere gitaarrock" als regel op /new-rijen die een regel raakten.
+14. **Reden op /new** ✅ (26 sep; `matchReason` op `/events/new`, `reason` op `EventListRow`) — "past bij je smaak: donkere gitaarrock" als regel op /new-rijen die een regel raakten.
 15. **Zoek in de app herbouwen** ⬜ — de AI-zoek in de app vindt slecht wat je zoekt en pakt het tijdvenster verkeerd op. Zelfde recept als de MCP: model vertaalt naar vaste filters (absolute datums, vaste genres), keurder oordeelt met reden.
 16. **Spotify koppelen** ⬜ — gevolgde en meest beluisterde artiesten importeren en in één keer volgen. Let op: dev-mode max 25 gebruikers, en de Spotify-sleutel is gedeeld met de zoek (rustig importeren, anders ligt de zoek een etmaal plat).
 

@@ -736,6 +736,7 @@ function NewArrivalRow({ event }: { event: ApiEvent }) {
       tags={tags}
       genreLabel={(event.genres ?? [])[0]}
       tick={tone}
+      reason={event.matchReason ?? undefined}
       onPress={() => router.push(`/event/${event.id}?source=new` as never)}
     />
   );

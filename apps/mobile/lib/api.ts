@@ -112,6 +112,9 @@ export type ApiEvent = {
   /** Alleen `/events/new`: bestond het event zelf nog niet (true), of
       kreeg een bestaand event er datums bij (false)? */
   isNewEvent?: boolean;
+  /** Alleen `/events/new`: waarom dit voor jou is (een melding of gevolgde
+      artiest vond het), of null. */
+  matchReason?: string | null;
   /** Alleen `/events/new`: de occurrence waar een ja/nee op landt. */
   rateOccurrenceId?: string;
   /** Venue van de eerstvolgende occurrence. Voor films met multi-venue
@@ -2033,6 +2036,9 @@ export type ApiFeedEvent = {
   /** Alleen `/events/new`: bestond het event zelf nog niet (true), of
       kreeg een bestaand event er datums bij (false)? */
   isNewEvent?: boolean;
+  /** Alleen `/events/new`: waarom dit voor jou is (een melding of gevolgde
+      artiest vond het), of null. */
+  matchReason?: string | null;
   genres: string[];
   venue: {
     id: string;
