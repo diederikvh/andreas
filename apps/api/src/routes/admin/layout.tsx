@@ -26,6 +26,7 @@ const NAV: { key: string; href: string; label: string }[][] = [
     { key: 'import', href: '/admin/import', label: 'Import' },
     { key: 'aanmeldingen', href: '/admin/aanmeldingen', label: 'Aanmeldingen' },
     { key: 'trefwoorden', href: '/admin/trefwoorden', label: 'Trefwoorden' },
+    { key: 'artiesten', href: '/admin/artiesten', label: 'Artiesten' },
   ],
   [
     { key: 'insights', href: '/admin/insights', label: 'Insights' },

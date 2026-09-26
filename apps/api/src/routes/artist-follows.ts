@@ -187,6 +187,18 @@ export async function followArtistByName(
   name: string,
   spotifyUrl?: string
 ): Promise<string | null> {
+  const artistId = await ensureArtistByName(name, spotifyUrl);
+  if (!artistId) return null;
+  await db
+    .insert(schema.artistFollows)
+    .values({ userId, artistId })
+    .onConflictDoNothing();
+  return artistId;
+}
+
+/** De artiest-rij bij deze naam; maakt 'm aan als we 'm nog niet kennen.
+    Ook gebruikt door de admin, bij het invullen van een line-up. */
+export async function ensureArtistByName(name: string, spotifyUrl?: string): Promise<string | null> {
   // Eerst kijken of we 'm toch al hebben, hoofdletter-ongevoelig -- exact
   // zoals de verrijking dat doet.
   const existing = await db.execute<{ id: string }>(
@@ -220,12 +232,6 @@ export async function followArtistByName(
       artistId = again.rows?.[0]?.id ?? null;
     }
   }
-  if (!artistId) return null;
-
-  await db
-    .insert(schema.artistFollows)
-    .values({ userId, artistId })
-    .onConflictDoNothing();
   return artistId;
 }
 

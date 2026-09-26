@@ -52,6 +52,10 @@ function hasGenre(keysExpr: string, mainOnly: boolean): string {
 const tasteKeys = `ARRAY[${GENRE_KEYS.filter((k) => !['familie', 'workshop', 'tribute'].includes(k)).map((k) => `'${k}'`).join(',')}]`;
 const NA = normalizeGenreSql('ag');
 
+/** Geeft de zaal (eigen labels van `e`) een genre dat iets over de smaak
+    zegt? Verwacht de CTE `genre_alias`. */
+export const EVENT_HAS_TASTE_GENRE = sql.raw(hasGenre(tasteKeys, true));
+
 /** Terugval op de artiest: zeggen de labels van de zaal niets ("Pop /
     Rock", of niets), dan telt het genre van de hoofdact. Dat is de eerste
     naam in de line-up, of een artiest die precies zo heet als de titel

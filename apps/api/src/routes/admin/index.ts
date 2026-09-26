@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 
 import { adminApi } from './api.js';
+import { artiestenUi } from './artiesten.js';
 import { adminUi } from './ui.js';
 
 /**
@@ -10,4 +11,5 @@ import { adminUi } from './ui.js';
 export const adminRoute = new Hono();
 
 adminRoute.route('/api', adminApi);
+adminRoute.route('/artiesten', artiestenUi);
 adminRoute.route('/', adminUi);

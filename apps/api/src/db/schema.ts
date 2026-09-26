@@ -487,6 +487,9 @@ export const events = pgTable(
     category: eventCategory().notNull(),
     /** Editorial-pick voor de Avond-tab. Curator zet deze aan. */
     featured: boolean().notNull().default(false),
+    /** Geen artiest bij dit event (feest, quiz, jamsessie), gezet in de
+        admin. Dan komt het niet terug in de lijst "concerten zonder artiest". */
+    noArtist: boolean().notNull().default(false),
     /** Specifieke genres binnen `category` — vrije array (zoals
         `venues.subtype`). Voor muziek: techno/hip-hop/jazz; voor
         theater: drama/dans/cabaret; etc. Filter-sheet groepeert
