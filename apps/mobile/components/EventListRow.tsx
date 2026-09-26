@@ -74,9 +74,6 @@ type Props = {
       die bevat alleen `time` zodat 'ie smal en leesbaar blijft. */
   dateLabel?: string;
   onPress?: () => void;
-  /** Waarom dit event er voor jou staat (een melding of gevolgde artiest
-      vond het). Een regel onder de labels, met een belletje ervoor. */
-  reason?: string;
 };
 
 /**
@@ -107,7 +104,6 @@ export function EventListRow({
   dateLabel,
   onPress,
   onTicketPress,
-  reason,
 }: Props) {
   const mode = useMode();
   const roles = useRoles();
@@ -293,16 +289,6 @@ export function EventListRow({
               )}
             </View>
           )}
-          {/* Waarom dit er voor jou staat. Alleen het belletje in accent:
-              de reden zelf is leesstof, geen signaal. */}
-          {reason ? (
-            <View style={styles.reasonRow}>
-              <Ionicons name="notifications" size={12} color={roles.accent} style={styles.reasonIcon} />
-              <Text numberOfLines={2} style={[styles.reasonText, { color: roles.fgMuted }]}>
-                {reason}
-              </Text>
-            </View>
-          ) : null}
         </View>
         {showTimeRight && (
           <View style={styles.rowTimeCol}>
@@ -423,9 +409,6 @@ const styles = StyleSheet.create({
     borderRadius: 10,
   },
   rowBody: { flex: 1, minWidth: 0, gap: 4 },
-  reasonRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 5, paddingTop: 2 },
-  reasonIcon: { marginTop: 2 },
-  reasonText: { flex: 1, fontFamily: fontFamily.body, fontSize: 12.5, lineHeight: 17 },
   rowTitle: {
     fontFamily: fontFamily.bold,
     fontSize: 15,

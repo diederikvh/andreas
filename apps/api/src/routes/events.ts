@@ -3,7 +3,6 @@ import { Hono, type Context } from 'hono';
 
 import { db, displayGenres, schema } from '../db/index.js';
 import { MAIN_LABELS, genresOf, type Category } from '../alerts/genres.js';
-import { titleHasName } from '../alerts/match.js';
 import {
   buildFriendsByOccurrence,
   buildOccurrencesByEvent,
@@ -1749,54 +1748,6 @@ eventsRoute.get('/new', async (c) => {
 
   const rowById = new Map(eventRows.map((r) => [r.id, r]));
 
-  // Waarom dit event er voor jóu toe doet: een melding of gevolgde artiest
-  // vond het. Uit `reminders`, zelfde bron als de push en "Gevonden voor
-  // jou", zodat /new en de melding hetzelfde zeggen.
-  const reasonByEvent = new Map<string, string>();
-  if (me) {
-    const reasons = await db.execute<{
-      event_id: string;
-      kind: string;
-      note: string | null;
-      alert_label: string | null;
-      artist_name: string | null;
-    }>(sql`
-      SELECT DISTINCT ON (o.event_id) o.event_id, r.kind::text AS kind, r.note,
-        a.label AS alert_label,
-        (
-          SELECT ar.name FROM artist_follows af
-          JOIN artists ar ON ar.id = af.artist_id
-          WHERE af.user_id = r.user_id AND (
-            (jsonb_typeof(o.lineup) = 'array' AND EXISTS (
-              SELECT 1 FROM jsonb_array_elements(o.lineup) le WHERE le->>'artistId' = ar.id
-            ))
-            OR ${sql.raw(titleHasName('ar.name'))}
-          )
-          LIMIT 1
-        ) AS artist_name
-      FROM reminders r
-      JOIN occurrences o ON o.id = r.occurrence_id
-      JOIN events e ON e.id = o.event_id
-      LEFT JOIN alerts a ON a.id = r.alert_id
-      WHERE r.user_id = ${me}
-        AND r.kind IN ('regel', 'artiest')
-        AND o.event_id IN (${sql.join(page.map((a) => sql`${a.eventId}`), sql`, `)})
-      ORDER BY o.event_id, r.created_at DESC
-    `);
-    for (const r of reasons.rows) {
-      const text =
-        r.kind === 'artiest'
-          ? r.artist_name
-            ? `Je volgt ${r.artist_name}`
-            : 'Een artiest die je volgt'
-          : r.note ||
-            (r.alert_label
-              ? `Past bij je melding: ${r.alert_label.replace(/^smaak: "([^"]*)".*$/, '$1')}`
-              : 'Past bij je melding');
-      reasonByEvent.set(r.event_id, text);
-    }
-  }
-
   // Volgorde van `page` aanhouden (nieuwste toevoeging eerst), niet die
   // van de DB-select.
   const events = page
@@ -1849,8 +1800,6 @@ eventsRoute.get('/new', async (c) => {
         venueFollowed: followedVenueIds.has(event.venue.id),
         series: [],
         myInvitesCount: 0,
-        /** Waarom dit voor jou is (melding of gevolgde artiest), of null. */
-        matchReason: reasonByEvent.get(agg.eventId) ?? null,
       };
     })
     .filter((e) => e !== null);
