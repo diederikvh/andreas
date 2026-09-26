@@ -25,12 +25,11 @@ import { fontFamily, palette } from '@/theme/tokens';
 /**
  * Meldingen: de regels die je via je AI-assistent of hier instelt.
  *
- * Aan/uit en verwijderen zijn gewone knoppen. Toevoegen gaat als smaak in
- * je eigen woorden plus een grens (stad of soort), met eerst een proef: de
- * keurder op de server leest de laatste 25 kandidaten en zegt per event
- * waarom wel of niet. Geen vertaalstap; de omschrijving ís de regel.
- * Regels op een zaal of een vast genre, en feedback op treffers, lopen via
- * je eigen AI-assistent (via MCP) -- daarom onderaan de verwijzing naar /ai.
+ * Aan/uit en verwijderen zijn gewone knoppen. Toevoegen gaat met vaste
+ * velden (soort, genres, artiesten, trefwoorden, stad), met eerst een
+ * proef van wat er nu al past. Smaak in eigen woorden en regels op een
+ * zaal lopen via je eigen AI-assistent (MCP), daarom onderaan de
+ * verwijzing naar /ai.
  */
 
 export default function MeldingenScreen() {
@@ -105,8 +104,8 @@ export default function MeldingenScreen() {
     <View style={styles.claudeNote}>
       <Text style={[styles.claudeText, { color: roles.fgMuted }]}>
         {t(
-          'Je kunt meldingen ook instellen met je eigen AI-assistent, zoals Claude of ChatGPT: bijvoorbeeld op een zaal of een genre, en zeggen wanneer een treffer niet klopte.',
-          'You can also set alerts with your own AI assistant, like Claude or ChatGPT: for example on a venue or a genre, and say when a match was off.',
+          'Het makkelijkst stel je meldingen in met je eigen AI-assistent, zoals Claude of ChatGPT: in je eigen woorden, of op een zaal.',
+          'The easiest way to set alerts is with your own AI assistant, like Claude or ChatGPT: in your own words, or on a venue.',
         )}
       </Text>
       <Pressable
@@ -157,8 +156,8 @@ export default function MeldingenScreen() {
             </View>
             <Text style={[styles.empty, { color: roles.fgMuted }]}>
               {t(
-                'Nog geen meldingen. Omschrijf waar je van wil horen, dan krijg je om 10:00 bericht als er iets nieuws bijkomt dat past.',
-                'No alerts yet. Describe what you want to hear about, and you get a message at 10:00 when something new comes in that fits.',
+                'Nog geen meldingen. Kies genres, artiesten of trefwoorden, dan krijg je om 10:00 bericht als er iets nieuws bijkomt dat past.',
+                'No alerts yet. Pick genres, artists or keywords, and you get a message at 10:00 when something new comes in that fits.',
               )}
             </Text>
             {claudeNote}
@@ -224,10 +223,10 @@ function FoundRow({ hit }: { hit: ApiFoundItem }) {
  */
 function AlertRow({ alert }: { alert: ApiAlert }) {
   const t = useT();
-  // Bij een smaakregel is de omschrijving de titel; eronder de grenzen en
-  // wat hij het laatst vond. Een vaste regel heeft alleen z'n label.
-  const title = alert.taste ?? alert.label;
-  const bounds = alert.taste ? alert.label.replace(/^smaak: "[^"]*"( · )?/, '') : '';
+  // Een oude smaakmelding houdt z'n omschrijving als titel, met de
+  // mededeling dat hij niets meer doet. Verder is het label de titel.
+  const title = alert.legacy && alert.taste ? alert.taste : alert.label;
+  const bounds = alert.legacy ? t('doet niets meer, bouw opnieuw op', 'inactive, rebuild it') : '';
   const last = alert.hits[0] ? t(`laatst: ${alert.hits[0].title}`, `latest: ${alert.hits[0].title}`) : '';
   const sub = [bounds, last].filter(Boolean).join(' · ');
   const state = alert.expired ? t('Verlopen', 'Expired') : !alert.active ? t('Uit', 'Off') : undefined;

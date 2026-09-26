@@ -16,10 +16,9 @@ const PERSONAL = `
 
 Meldingen (een push om 10:00, gebundeld, alleen bij nieuw aanbod)
 - "Laat me weten als er hiphop in Paradiso bijkomt."
-- "Seintje bij gitaarbands met een jaren-90-randje, zoals The Afghan Whigs." Smaak in eigen woorden: een model keurt elk nieuw event en zet de reden in de push.
+- "Seintje bij gitaarbands met een jaren-90-randje, zoals The Afghan Whigs." Smaak in eigen woorden: jij (de AI) vertaalt die naar genres, verwante artiesten en trefwoorden.
 - "Welke meldingen heb ik?" / "Zet de hiphop-melding even uit." / "Verwijder die melding."
-- "Die melding over Moss klopte niet, ik wil geen luistersessies." De keurder leert van je correcties.
-- "Wat heeft de keurder deze week afgewezen?"
+- "Wat heeft die melding deze week gevonden?" / "Die klopte niet, maak hem scherper."
 
 Artiesten
 - "Volg The Afghan Whigs." Werkt ook voor wie hier nog nooit speelde.

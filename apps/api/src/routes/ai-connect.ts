@@ -81,7 +81,7 @@ const CAPABILITIES: Array<{ title: string; body: string; prompts: string[]; acco
   },
   {
     title: 'Seintjes bij nieuw aanbod',
-    body: 'Eén gebundelde push om 10:00, alleen als er echt iets nieuws bij is. Ook op smaak in je eigen woorden: elk nieuw event wordt gekeurd en de reden staat in de push. Klopt een seintje niet, zeg het, en hij leert ervan.',
+    body: 'Eén gebundelde push om 10:00, alleen als er echt iets nieuws bij is. Ook op smaak in je eigen woorden: je AI vertaalt die naar genres, verwante artiesten en trefwoorden. Klopt een seintje niet, zeg het, en je AI stelt hem scherper af.',
     prompts: ['Laat me weten als er hiphop in Paradiso bijkomt', 'Seintje bij gitaarbands met een jaren-90-randje, zoals The Afghan Whigs'],
     account: true,
   },

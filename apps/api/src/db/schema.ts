@@ -1584,9 +1584,10 @@ export const alerts = pgTable(
     priceMaxCents: integer(),
     startsFrom: timestamp({ withTimezone: true }),
     startsUntil: timestamp({ withTimezone: true }),
-    /** Smaak in de eigen woorden van de gebruiker ("gitaarbands met een
-        jaren-90-randje, zoals Afghan Whigs"). Gezet = een LLM keurt elk
-        nieuw event binnen de harde filters; leeg = puur de filters. */
+    /** Hele woorden die in titel of beschrijving moeten staan ("90s"). */
+    keywords: text().array(),
+    /** Oude smaakregels, uit de tijd van de keurder (tot 27 sep 2026). Gezet
+        = de regel doet niets meer tot hij opnieuw is ingesteld. */
     taste: text(),
     active: boolean().notNull().default(true),
     createdAt: timestamp({ withTimezone: true })
@@ -1597,9 +1598,8 @@ export const alerts = pgTable(
 );
 
 /**
- * Het oordeel van de keurder over één event voor één smaakregel. Bewaard
- * zodat een event nooit twee keer wordt gekeurd, en zodat je achteraf kunt
- * zien waarom iets wel of niet doorkwam.
+ * Het oordeel van de keurder over één event voor één smaakregel. Sinds 27
+ * sep 2026 draait er geen keurder meer; de tabel blijft als archief.
  */
 export const alertVerdicts = pgTable(
   'alert_verdicts',

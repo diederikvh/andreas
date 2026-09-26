@@ -48,4 +48,3 @@ export const EMPTY_PROFILE: PreferenceProfile = {
   when: 'tonight',
 };
 
-export type ZoekChatTurn = { role: 'user' | 'assistant'; content: string };

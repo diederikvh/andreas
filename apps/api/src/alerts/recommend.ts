@@ -17,7 +17,10 @@ import { sql } from 'drizzle-orm';
 
 import { db } from '../db/index.js';
 import { GENRES, MAIN_LABELS, genresOf, type Category, type GenreKey } from './genres.js';
-import { loadEventInfo, type EventInfo, type FeedbackExample } from './judge.js';
+import { loadEventInfo, type EventInfo } from './search.js';
+
+/** Iets wat de gebruiker koos (past wel) of wegveegde (past niet). */
+export type FeedbackExample = { title: string; venue: string; fits: boolean; note: string | null };
 import { ALERT_MATCH, GENRE_ALIAS_CTE, alertSource } from './match.js';
 
 
@@ -31,8 +34,8 @@ type Profile = {
   cities: Map<string, number>;
 };
 
-/** Alles wat we van iemands smaak weten, samengevat voor de keurder en de
-    voorselectie. */
+/** Alles wat we van iemands smaak weten, samengevat voor de AI van de
+    gebruiker en de voorselectie. */
 async function buildProfile(userId: string): Promise<Profile> {
   const chosen = await db.execute<{
     title: string;

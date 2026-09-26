@@ -448,5 +448,7 @@ serve({ fetch: app.fetch, port, hostname: '0.0.0.0' });
 console.log(`andreas-api listening on 0.0.0.0:${port}`);
 
 // In-process planner voor de dagelijkse aanwinsten-push. Vereist dat de
-// machine blijft draaien — zie de toelichting in jobs/scheduler.ts.
-startScheduler();
+// machine blijft draaien — zie de toelichting in jobs/scheduler.ts. Alleen
+// in productie: een lokale API praat met dezelfde database en zou anders
+// echte pushes versturen.
+if (isProd) startScheduler();

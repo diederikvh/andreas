@@ -78,7 +78,7 @@ export default function MeerScreen() {
           {
             key: 'gids',
             icon: <Cross20 color={roles.accent} />,
-            label: t('Vraag Andreas', 'Ask Andreas'),
+            label: t('Gids', 'Guide'),
             onPress: () => {
               softTap();
               openGuide();

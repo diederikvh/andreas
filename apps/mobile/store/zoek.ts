@@ -1,40 +1,36 @@
 /**
- * Client-state voor de conversationele zoek ("Andreas-gids").
+ * Client-state voor de gids (zoeken met filters) en de zoek-overlay.
  *
- * Stateless aan de serverkant (brief §5): deze store houdt het
- * `PreferenceProfile` + de berichtgeschiedenis vast en stuurt die elke beurt
- * mee. De server geeft het bijgewerkte profiel terug, dat we hier bewaren.
- *
- * In-memory (geen persist): een gesprek leeft per sessie. Reopenen van het
- * scherm behoudt de lopende conversatie; een app-herstart begint vers.
+ * In-memory (geen persist): de filters en het laatste resultaat blijven
+ * staan tussen openen en sluiten; een app-herstart begint vers.
  */
 import { create } from 'zustand';
 
-import {
-  EMPTY_PROFILE,
-  postZoek,
-  type ApiEvent,
-  type PreferenceProfile,
-  type ZoekChatTurn,
-} from '@/lib/api';
+import { postZoek, type ApiEvent, type ZoekFields } from '@/lib/api';
+import { periodOf, type ZoekWhen } from '@/lib/period';
 
-let nextId = 0;
-const makeId = () => `m${nextId++}`;
+export type { ZoekWhen };
 
-export type ChatMessage =
-  | { id: string; role: 'user'; text: string }
-  | {
-      id: string;
-      role: 'assistant';
-      text: string;
-      events: ApiEvent[];
-      reasonByEventId: Record<string, string>;
-      needsMoreInfo?: string;
-    };
+export type ZoekFilters = {
+  when: ZoekWhen;
+  cities: string[];
+  categories: string[];
+  genres: string[];
+  query: string;
+};
+
+export type ZoekResult = {
+  reply: string;
+  events: ApiEvent[];
+  reasonByEventId: Record<string, string>;
+};
+
+const EMPTY_FILTERS: ZoekFilters = { when: 'week', cities: [], categories: [], genres: [], query: '' };
 
 type ZoekState = {
-  messages: ChatMessage[];
-  profile: PreferenceProfile;
+  filters: ZoekFilters;
+  setFilters: (patch: Partial<ZoekFilters>) => void;
+  result: ZoekResult | null;
   sending: boolean;
   error: string | null;
   /** Zichtbaarheid van de gids-overlay. Globaal (niet per scherm) zodat de
@@ -42,21 +38,19 @@ type ZoekState = {
   guideOpen: boolean;
   openGuide: () => void;
   closeGuide: () => void;
-  /** Idem voor de zoek-overlay. Zat eerder als lokale state in avond.tsx,
-      maar de zoek-knop staat nu in de AppHeader en moet dus vanaf elk
-      scherm te openen zijn. */
+  /** Idem voor de zoek-overlay: de zoek-knop staat in de AppHeader en moet
+      vanaf elk scherm te openen zijn. */
   searchOpen: boolean;
   openSearch: () => void;
   closeSearch: () => void;
-  /** Verstuur een gebruikersbericht en verwerk de beurt. */
-  send: (text: string) => Promise<void>;
-  /** Begin een vers gesprek. */
+  search: () => Promise<void>;
   reset: () => void;
 };
 
 export const useZoekStore = create<ZoekState>((set, get) => ({
-  messages: [],
-  profile: { ...EMPTY_PROFILE },
+  filters: EMPTY_FILTERS,
+  setFilters: (patch) => set((s) => ({ filters: { ...s.filters, ...patch } })),
+  result: null,
   sending: false,
   error: null,
   guideOpen: false,
@@ -66,55 +60,27 @@ export const useZoekStore = create<ZoekState>((set, get) => ({
   openSearch: () => set({ searchOpen: true }),
   closeSearch: () => set({ searchOpen: false }),
 
-  send: async (raw: string) => {
-    const text = raw.trim();
-    if (!text || get().sending) return;
-
-    // History = de tekst-beurten van vóór dit bericht (server krijgt het
-    // nieuwe bericht apart als `message`).
-    const history: ZoekChatTurn[] = get().messages.map((m) => ({
-      role: m.role,
-      content: m.text,
-    }));
-
-    const userMsg: ChatMessage = { id: makeId(), role: 'user', text };
-    set((s) => ({
-      messages: [...s.messages, userMsg],
-      sending: true,
-      error: null,
-    }));
-
+  search: async () => {
+    if (get().sending) return;
+    const f = get().filters;
+    const fields: ZoekFields = {
+      ...periodOf(f.when),
+      cities: f.cities.length ? f.cities : undefined,
+      categories: f.categories.length ? f.categories : undefined,
+      genres: f.genres.length ? f.genres : undefined,
+      query: f.query.trim() || undefined,
+    };
+    set({ sending: true, error: null });
     try {
-      const res = await postZoek({ message: text, profile: get().profile, history });
-      const assistant: ChatMessage = {
-        id: makeId(),
-        role: 'assistant',
-        text: res.reply,
-        events: res.events ?? [],
-        reasonByEventId: res.reasonByEventId ?? {},
-        needsMoreInfo: res.needsMoreInfo,
-      };
-      set((s) => ({
-        messages: [...s.messages, assistant],
-        profile: res.updatedProfile ?? s.profile,
-        sending: false,
-      }));
-    } catch (e) {
+      const res = await postZoek(fields);
       set({
+        result: { reply: res.reply, events: res.events ?? [], reasonByEventId: res.reasonByEventId ?? {} },
         sending: false,
-        error:
-          e instanceof Error
-            ? e.message
-            : 'Er ging iets mis. Probeer het nog eens.',
       });
+    } catch (e) {
+      set({ sending: false, error: e instanceof Error ? e.message : 'Er ging iets mis. Probeer het nog eens.' });
     }
   },
 
-  reset: () =>
-    set({
-      messages: [],
-      profile: { ...EMPTY_PROFILE },
-      sending: false,
-      error: null,
-    }),
+  reset: () => set({ filters: EMPTY_FILTERS, result: null, sending: false, error: null }),
 }));

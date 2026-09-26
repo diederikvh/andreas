@@ -3,26 +3,27 @@
  * op een scherm.
  *
  *   GET    /alerts          — mijn regels, met de laatste treffers
+ *   GET    /alerts/genres   — de vaste genres om uit te kiezen
  *   GET    /alerts/found    — "Gevonden voor jou": alles wat meldingen en
  *                             gevolgde artiesten recent opleverden
- *   PATCH  /alerts/:id      — aan/uit (`{ active }`), of de smaak en grenzen
- *                             aanpassen (`{ taste, cities, categories }`)
- *   DELETE /alerts/:id      — weg (met alle feedback)
- *   POST   /alerts/preview  — proef op een smaak, zonder op te slaan
+ *   PATCH  /alerts/:id      — aan/uit (`{ active }`), of de velden aanpassen
+ *   DELETE /alerts/:id      — weg
+ *   POST   /alerts/preview  — wat er nu al zou passen, zonder op te slaan
  *   POST   /alerts          — opslaan
  *
- * Toevoegen kan hier alleen als smaakregel: een omschrijving in eigen
- * woorden plus een grens (stad of categorie). Geen vertaalstap nodig, want
- * de omschrijving ís de regel; de keurder leest hem per nieuw event. Vaste
- * genreregels en regels op een zaal blijven via Claude lopen.
+ * In de app bouw je een regel uit vaste velden: soort, stad, genres,
+ * artiesten en trefwoorden. Geen model, geen kosten. Smaak in eigen
+ * woorden en zalen gaan via de MCP: de AI van de gebruiker vertaalt die
+ * naar dezelfde velden.
  */
 import { randomUUID } from 'node:crypto';
 
 import { and, desc, eq, sql } from 'drizzle-orm';
 import { Hono, type Context } from 'hono';
 
-import { titleHasName, type AlertFilters } from '../alerts/match.js';
-import { describeAlert, previewTaste } from '../alerts/service.js';
+import { GENRES, GENRE_KEYS, type GenreKey } from '../alerts/genres.js';
+import { previewAlert, titleHasName, type AlertFilters } from '../alerts/match.js';
+import { describeAlert } from '../alerts/service.js';
 import { auth } from '../auth.js';
 import { db, schema } from '../db/index.js';
 
@@ -37,41 +38,96 @@ export const alertsRoute = new Hono();
 const CITIES = new Set<string>(schema.city.enumValues);
 const CATEGORIES = new Set<string>(schema.eventCategory.enumValues);
 
-type TasteInput = { taste: string; cities: string[]; categories: string[] };
+const GENRE_SET = new Set<string>(GENRE_KEYS);
 
-type TasteBody = { taste?: unknown; cities?: unknown; categories?: unknown };
+type RuleInput = {
+  cities: string[];
+  categories: string[];
+  genres: GenreKey[];
+  artists: string[];
+  keywords: string[];
+};
 
-/** Controleer wat de app stuurt. Een smaak zonder grens wordt een stroom. */
-async function readTasteInput(c: Context): Promise<TasteInput | Response> {
-  return checkTasteInput(c, (await c.req.json().catch(() => ({}))) as TasteBody);
+type RuleBody = Partial<Record<keyof RuleInput, unknown>>;
+
+/** Controleer wat de app stuurt. Zonder genre, artiest of trefwoord wordt
+    het een stroom. */
+async function readRuleInput(c: Context): Promise<RuleInput | Response> {
+  return checkRuleInput(c, (await c.req.json().catch(() => ({}))) as RuleBody);
 }
 
-function checkTasteInput(c: Context, body: TasteBody): TasteInput | Response {
-  const taste = typeof body.taste === 'string' ? body.taste.trim() : '';
-  if (taste.length < 3 || taste.length > 500) {
-    return c.json({ error: 'Omschrijf in een paar woorden waar je van wil horen.' }, 400);
+function checkRuleInput(c: Context, body: RuleBody): RuleInput | Response {
+  const list = (v: unknown, ok?: Set<string>) =>
+    Array.isArray(v)
+      ? [
+          ...new Set(
+            v
+              .filter((x): x is string => typeof x === 'string')
+              .map((x) => x.trim())
+              .filter((x) => x.length >= 2 && x.length <= 60 && (!ok || ok.has(x)))
+          ),
+        ].slice(0, 20)
+      : [];
+  const input = {
+    cities: list(body.cities, CITIES),
+    categories: list(body.categories, CATEGORIES),
+    genres: list(body.genres, GENRE_SET) as GenreKey[],
+    artists: list(body.artists),
+    keywords: list(body.keywords),
+  };
+  if (!input.genres.length && !input.artists.length && !input.keywords.length) {
+    // Ook wat een oudere app ziet die nog een smaakzin stuurt.
+    return c.json(
+      {
+        error:
+          'Kies een genre, artiest of trefwoord. Een melding in eigen woorden stel je in via je eigen AI: andreas.amsterdam/ai.',
+      },
+      400
+    );
   }
-  const list = (v: unknown, ok: Set<string>) =>
-    Array.isArray(v) ? [...new Set(v.filter((x): x is string => typeof x === 'string' && ok.has(x)))] : [];
-  const cities = list(body.cities, CITIES);
-  const categories = list(body.categories, CATEGORIES);
-  if (cities.length === 0 && categories.length === 0) {
-    return c.json({ error: 'Kies een stad of een soort, anders wordt het een stroom meldingen.' }, 400);
-  }
-  return { taste, cities, categories };
+  return input;
 }
 
-const filtersOf = (userId: string, i: TasteInput): AlertFilters => ({
+const nullIfEmpty = <T,>(xs: T[]) => (xs.length ? xs : null);
+
+const filtersOf = (userId: string, i: RuleInput): AlertFilters => ({
   userId,
   venueIds: null,
-  cities: i.cities.length ? i.cities : null,
-  categories: i.categories.length ? i.categories : null,
-  genres: null,
-  artistNames: null,
+  cities: nullIfEmpty(i.cities),
+  categories: nullIfEmpty(i.categories),
+  genres: nullIfEmpty(i.genres),
+  artistNames: nullIfEmpty(i.artists),
+  keywords: nullIfEmpty(i.keywords),
   priceMaxCents: null,
   startsFrom: null,
   startsUntil: null,
 });
+
+const labelOf = (i: RuleInput) => describeAlert(i);
+
+/** De kolommen voor insert/update. */
+const columnsOf = (i: RuleInput) => ({
+  label: labelOf(i),
+  cities: nullIfEmpty(i.cities) as (typeof schema.city.enumValues)[number][] | null,
+  categories: nullIfEmpty(i.categories) as (typeof schema.eventCategory.enumValues)[number][] | null,
+  genres: nullIfEmpty(i.genres),
+  artistNames: nullIfEmpty(i.artists),
+  keywords: nullIfEmpty(i.keywords),
+  // Opnieuw ingesteld: een oude smaakregel is nu een gewone regel.
+  taste: null,
+});
+
+/** De genres waaruit je in de app kiest, per soort. Kinder- en
+    workshopaanbod en tributes zijn soorten om uit te sluiten, geen smaak. */
+alertsRoute.get('/genres', (c) =>
+  c.json({
+    genres: GENRE_KEYS.filter((k) => !['familie', 'workshop', 'tribute'].includes(k)).map((k) => ({
+      key: k,
+      label: GENRES[k].label,
+      categories: GENRES[k].categories,
+    })),
+  })
+);
 
 alertsRoute.get('/', async (c) => {
   const userId = await requireUserId(c);
@@ -84,6 +140,10 @@ alertsRoute.get('/', async (c) => {
       taste: schema.alerts.taste,
       cities: schema.alerts.cities,
       categories: schema.alerts.categories,
+      genres: schema.alerts.genres,
+      artistNames: schema.alerts.artistNames,
+      keywords: schema.alerts.keywords,
+      venueIds: schema.alerts.venueIds,
       active: schema.alerts.active,
       startsUntil: schema.alerts.startsUntil,
       createdAt: schema.alerts.createdAt,
@@ -92,9 +152,8 @@ alertsRoute.get('/', async (c) => {
     .where(eq(schema.alerts.userId, userId))
     .orderBy(desc(schema.alerts.createdAt));
 
-  // De laatste treffers per regel: bij een smaakregel de ja's van de
-  // keurder met reden, bij een vaste regel wat er is klaargezet. Zo zie je
-  // op het scherm wat een regel eigenlijk doet.
+  // De laatste treffers per regel: wat er is klaargezet of verstuurd. Zo
+  // zie je op het scherm wat een regel eigenlijk doet.
   const hits = await db.execute<{
     alert_id: string;
     event_id: string;
@@ -106,22 +165,11 @@ alertsRoute.get('/', async (c) => {
   }>(sql`
     SELECT * FROM (
       SELECT h.*, ROW_NUMBER() OVER (PARTITION BY h.alert_id ORDER BY h.at DESC) AS n FROM (
-        SELECT av.alert_id, av.event_id, e.title, v.name AS venue, av.reason,
-               EXISTS (
-                 SELECT 1 FROM reminders r JOIN occurrences o ON o.id = r.occurrence_id
-                 WHERE r.alert_id = av.alert_id AND o.event_id = av.event_id AND r.sent_at IS NOT NULL
-               ) AS sent,
-               av.created_at AS at
-        FROM alert_verdicts av
-        JOIN alerts a ON a.id = av.alert_id AND a.user_id = ${userId}
-        JOIN events e ON e.id = av.event_id
-        JOIN venues v ON v.id = e.venue_id
-        WHERE av.match AND av.created_at > NOW() - INTERVAL '30 days'
-        UNION ALL
         SELECT DISTINCT ON (r.alert_id, o.event_id)
-               r.alert_id, o.event_id, e.title, v.name, NULL, r.sent_at IS NOT NULL, r.created_at
+               r.alert_id, o.event_id, e.title, v.name AS venue, r.note AS reason,
+               r.sent_at IS NOT NULL AS sent, r.created_at AS at
         FROM reminders r
-        JOIN alerts a ON a.id = r.alert_id AND a.user_id = ${userId} AND a.taste IS NULL
+        JOIN alerts a ON a.id = r.alert_id AND a.user_id = ${userId}
         JOIN occurrences o ON o.id = r.occurrence_id
         JOIN events e ON e.id = o.event_id
         JOIN venues v ON v.id = COALESCE(o.venue_id, e.venue_id)
@@ -139,9 +187,16 @@ alertsRoute.get('/', async (c) => {
       id: a.id,
       label: a.label,
       taste: a.taste,
+      // Oude smaakregel van de keurder: doet niets tot hij opnieuw is ingesteld.
+      legacy: a.taste !== null,
+      // Een regel met zalen is via de MCP gemaakt; de app kan die niet bewerken.
+      viaAi: a.venueIds !== null,
       // Voor het bewerk-formulier in de app.
       cities: a.cities ?? [],
       categories: a.categories ?? [],
+      genres: a.genres ?? [],
+      artists: a.artistNames ?? [],
+      keywords: a.keywords ?? [],
       active: a.active,
       expired: a.startsUntil ? a.startsUntil.getTime() < Date.now() : false,
       createdAt: a.createdAt.toISOString(),
@@ -180,7 +235,6 @@ alertsRoute.get('/found', async (c) => {
     kind: string;
     reason: string | null;
     alert_id: string | null;
-    alert_taste: string | null;
     alert_label: string | null;
     artist_name: string | null;
     sent: boolean;
@@ -188,7 +242,7 @@ alertsRoute.get('/found', async (c) => {
     SELECT DISTINCT ON (o.event_id)
       o.event_id, e.title, v.name AS venue, v.city::text AS city, o.starts_at,
       r.kind::text AS kind, r.note AS reason, r.alert_id,
-      a.taste AS alert_taste, a.label AS alert_label,
+      a.label AS alert_label,
       (
         SELECT ar.name FROM artist_follows af
         JOIN artists ar ON ar.id = af.artist_id
@@ -224,15 +278,15 @@ alertsRoute.get('/found', async (c) => {
       venue: r.venue,
       city: r.city,
       startsAt: new Date(r.starts_at).toISOString(),
-      // Waarom het hier staat: de reden van de keurder, of welke melding
-      // of artiest het vond.
+      // Waarom het hier staat: welke artiest of melding het vond (en bij
+      // oude vondsten de reden van de keurder).
       reason:
         r.kind === 'artiest'
           ? r.artist_name
             ? `Je volgt ${r.artist_name}`
             : 'Een artiest die je volgt'
           : (r.reason ?? null),
-      via: r.kind === 'artiest' ? null : (r.alert_taste ?? r.alert_label ?? null),
+      via: r.kind === 'artiest' ? null : (r.alert_label ?? null),
       alertId: r.alert_id,
       // Nog niet verstuurd: komt in de push van 10:00.
       sent: r.sent,
@@ -244,29 +298,17 @@ alertsRoute.get('/found', async (c) => {
 alertsRoute.patch('/:id', async (c) => {
   const userId = await requireUserId(c);
   if (typeof userId !== 'string') return userId;
-  const body = (await c.req.json().catch(() => ({}))) as TasteBody & { active?: unknown };
+  const body = (await c.req.json().catch(() => ({}))) as RuleBody & { active?: unknown };
   const where = and(eq(schema.alerts.id, c.req.param('id')), eq(schema.alerts.userId, userId));
 
-  // Bewerken: nieuwe smaak en grenzen. De feedback (alert_verdicts) blijft
-  // staan; wat de keurder leerde gaat niet weg omdat je de tekst bijschaaft.
-  if (body.taste !== undefined) {
-    const input = checkTasteInput(c, body);
+  // Bewerken: nieuwe velden. Zalen (via de MCP) blijven staan.
+  if (body.genres !== undefined || body.artists !== undefined || body.keywords !== undefined) {
+    const input = checkRuleInput(c, body);
     if (input instanceof Response) return input;
-    const label = describeAlert({ taste: input.taste, cities: input.cities, categories: input.categories });
-    const [row] = await db
-      .update(schema.alerts)
-      .set({
-        taste: input.taste,
-        label,
-        cities: input.cities.length ? (input.cities as (typeof schema.city.enumValues)[number][]) : null,
-        categories: input.categories.length
-          ? (input.categories as (typeof schema.eventCategory.enumValues)[number][])
-          : null,
-      })
-      .where(where)
-      .returning({ id: schema.alerts.id });
+    const cols = columnsOf(input);
+    const [row] = await db.update(schema.alerts).set(cols).where(where).returning({ id: schema.alerts.id });
     if (!row) return c.json({ error: 'niet gevonden' }, 404);
-    return c.json({ id: row.id, label });
+    return c.json({ id: row.id, label: cols.label });
   }
 
   if (typeof body.active !== 'boolean') return c.json({ error: 'active ontbreekt' }, 400);
@@ -291,33 +333,25 @@ alertsRoute.delete('/:id', async (c) => {
 alertsRoute.post('/preview', async (c) => {
   const userId = await requireUserId(c);
   if (typeof userId !== 'string') return userId;
-  const input = await readTasteInput(c);
+  const input = await readRuleInput(c);
   if (input instanceof Response) return input;
-  const { sampled, yes, no } = await previewTaste(filtersOf(userId, input), input.taste);
+  // Wat er nú al staat en past. Daarover komt geen melding (alleen over wat
+  // erbij komt), maar zo zie je of de regel te ruim of te krap is.
+  const { total, events } = await previewAlert(filtersOf(userId, input), 6);
   return c.json({
-    label: describeAlert({ taste: input.taste, cities: input.cities, categories: input.categories }),
-    sampled,
-    yes,
-    no: no.slice(0, 4),
+    label: labelOf(input),
+    total,
+    events: events.map((e) => ({ id: e.id, title: e.title, venue: e.venue, startsAt: e.startsAt.toISOString() })),
   });
 });
 
 alertsRoute.post('/', async (c) => {
   const userId = await requireUserId(c);
   if (typeof userId !== 'string') return userId;
-  const input = await readTasteInput(c);
+  const input = await readRuleInput(c);
   if (input instanceof Response) return input;
   const id = randomUUID();
-  const label = describeAlert({ taste: input.taste, cities: input.cities, categories: input.categories });
-  await db.insert(schema.alerts).values({
-    id,
-    userId,
-    label,
-    taste: input.taste,
-    cities: input.cities.length ? (input.cities as (typeof schema.city.enumValues)[number][]) : null,
-    categories: input.categories.length
-      ? (input.categories as (typeof schema.eventCategory.enumValues)[number][])
-      : null,
-  });
-  return c.json({ id, label });
+  const cols = columnsOf(input);
+  await db.insert(schema.alerts).values({ id, userId, ...cols });
+  return c.json({ id, label: cols.label });
 });

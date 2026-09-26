@@ -1,8 +1,9 @@
 /**
  * Wanneer past een occurrence bij een meldingsregel?
  *
- * Eén SQL-fragment, gebruikt op twee plekken: de job die nieuwe events aan
- * regels koppelt (`jobs/reminders.ts`) en de preview in `create_alert`. Zo
+ * Eén SQL-fragment, gebruikt door de job die nieuwe events aan regels
+ * koppelt (`jobs/reminders.ts`), de preview bij het aanmaken, en het zoeken
+ * (`alerts/search.ts`). Zo
  * is wat je bij het aanmaken te zien krijgt precies wat de melding later
  * zou vangen — geen tweede, net iets andere interpretatie.
  *
@@ -66,7 +67,6 @@ export const ALERT_MATCH = sql.raw(`
   AND (a.starts_until IS NULL OR o.starts_at < a.starts_until)
   -- Onbekende prijs telt als passend: dat is bij de helft van het aanbod zo.
   AND (a.price_max_cents IS NULL OR o.price_cents IS NULL OR o.price_cents <= a.price_max_cents)
-  AND (a.genres IS NULL OR ${hasGenre('a.genres', true)})
   -- Kinder- en workshopaanbod valt erbuiten, tenzij de regel erom vraagt.
   AND NOT ${hasGenre(`ARRAY(SELECT x FROM unnest(${excluded}) x WHERE NOT x = ANY(COALESCE(a.genres, '{}')))`, false)}
   AND ('familie' = ANY(COALESCE(a.genres, '{}')) OR e.title !~* '${KIDS_TITLE_REGEX}')
@@ -83,17 +83,32 @@ export const ALERT_MATCH = sql.raw(`
     SELECT 1 FROM genre_prefs gp
     WHERE gp.user_id = a.user_id AND gp.genre = 'tribute' AND gp.sentiment = 'dislike'
   ))
-  -- Artiest: in de line-up op naam, of als hele woorden in de titel.
-  AND (a.artist_names IS NULL OR EXISTS (
-    SELECT 1 FROM unnest(a.artist_names) an
-    WHERE EXISTS (
-        SELECT 1 FROM jsonb_array_elements(
-          CASE WHEN jsonb_typeof(o.lineup) = 'array' THEN o.lineup ELSE '[]'::jsonb END
-        ) le
-        WHERE lower(le->>'name') = lower(an)
-      )
-      OR ${titleHasName('an')}
-  ))
+  -- Wat: een van de artiesten, óf genre en trefwoord samen. Zo is
+  -- "gitaarbands met een jaren-90-randje, zoals Afghan Whigs" te schrijven
+  -- als artiesten [Afghan Whigs, Screaming Trees] of genres [rock, indie]
+  -- met trefwoord "90s": verwante artiesten altijd, een onbekende band
+  -- alleen als hij rock is én "90s" in titel of beschrijving heeft.
+  AND (
+    (a.genres IS NULL AND a.artist_names IS NULL AND a.keywords IS NULL)
+    -- Artiest: in de line-up op naam, of als hele woorden in de titel.
+    OR (a.artist_names IS NOT NULL AND EXISTS (
+      SELECT 1 FROM unnest(a.artist_names) an
+      WHERE EXISTS (
+          SELECT 1 FROM jsonb_array_elements(
+            CASE WHEN jsonb_typeof(o.lineup) = 'array' THEN o.lineup ELSE '[]'::jsonb END
+          ) le
+          WHERE lower(le->>'name') = lower(an)
+        )
+        OR ${titleHasName('an')}
+    ))
+    OR ((a.genres IS NOT NULL OR a.keywords IS NOT NULL)
+      AND (a.genres IS NULL OR ${hasGenre('a.genres', true)})
+      -- Trefwoord: als hele woorden in titel of beschrijving.
+      AND (a.keywords IS NULL OR EXISTS (
+        SELECT 1 FROM unnest(a.keywords) k
+        WHERE position(${words('k')} in ${words(`e.title || ' ' || COALESCE(e.description, '')`)}) > 0
+      )))
+  )
 `);
 
 export type AlertFilters = {
@@ -104,6 +119,8 @@ export type AlertFilters = {
   categories: string[] | null;
   genres: string[] | null;
   artistNames: string[] | null;
+  /** Woorden die in titel of beschrijving moeten staan ("90s", "grunge"). */
+  keywords?: string[] | null;
   priceMaxCents: number | null;
   startsFrom: Date | null;
   startsUntil: Date | null;
@@ -126,6 +143,7 @@ export function alertSource(f: AlertFilters): SQL {
     ${arr(f.categories, 'event_category')} AS categories,
     ${arr(f.genres, 'text')} AS genres,
     ${arr(f.artistNames, 'text')} AS artist_names,
+    ${arr(f.keywords ?? null, 'text')} AS keywords,
     ${f.priceMaxCents}::int AS price_max_cents,
     ${ts(f.startsFrom)} AS starts_from,
     ${ts(f.startsUntil)} AS starts_until)`;
@@ -153,25 +171,4 @@ export async function previewAlert(
     .map((r) => ({ id: r.id, title: r.title, venue: r.venue, startsAt: new Date(r.starts_at) }))
     .sort((x, y) => x.startsAt.getTime() - y.startsAt.getTime());
   return { total: all.length, events: all.slice(0, limit) };
-}
-
-/** De nieuwste events die door de harde filters komen: de steekproef
-    waarop een smaakregel bij het aanmaken wordt voorgekeurd. "Nieuw" =
-    wanneer het event voor het eerst binnenkwam (`MIN`), niet z'n laatste
-    nieuwe datum: een wekelijkse jam krijgt elke week een datum erbij en
-    stond daardoor bij elke proef bovenaan. */
-export async function recentCandidates(f: AlertFilters, limit: number): Promise<string[]> {
-  const res = await db.execute<{ id: string }>(sql`
-    WITH ${GENRE_ALIAS_CTE}
-    SELECT e.id
-    FROM ${alertSource(f)} a
-    JOIN occurrences o ON o.starts_at > NOW() AND o.status <> 'cancelled'
-    JOIN events e ON e.id = o.event_id AND e.published
-    JOIN venues v ON v.id = COALESCE(o.venue_id, e.venue_id) AND v.published
-    WHERE ${ALERT_MATCH}
-    GROUP BY e.id
-    ORDER BY MIN(o.created_at) DESC
-    LIMIT ${limit}
-  `);
-  return res.rows.map((r) => r.id);
 }

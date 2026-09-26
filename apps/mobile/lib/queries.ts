@@ -18,14 +18,15 @@ import {
   deleteReminder,
   getArtist,
   followArtistByName,
-  createTasteAlert,
+  createRuleAlert,
   deleteAlert,
   getAlerts,
   getFound,
   getArtistFollows,
-  previewTasteAlert,
+  getGenreOptions,
+  previewRuleAlert,
   setAlertActive,
-  updateTasteAlert,
+  updateRuleAlert,
   getFollowedArtists,
   getFollowedShows,
   getReminders,
@@ -81,7 +82,7 @@ import {
   getMyMirror,
   type AgendaFilters,
   type ApiMe,
-  type TasteAlertInput,
+  type RuleAlertInput,
   type EventsFilter,
   type Mirror,
   type SaveSource,
@@ -514,23 +515,26 @@ export function useDeleteAlert() {
   });
 }
 
-/** De proef duurt een paar seconden (de keurder leest 25 events). */
-export function usePreviewTasteAlert() {
-  return useMutation({ mutationFn: (input: TasteAlertInput) => previewTasteAlert(input) });
+export function useGenreOptions() {
+  return useQuery({ queryKey: ['alert-genres'], queryFn: getGenreOptions, staleTime: 24 * 60 * 60 * 1000 });
 }
 
-export function useUpdateTasteAlert() {
+export function usePreviewRuleAlert() {
+  return useMutation({ mutationFn: (input: RuleAlertInput) => previewRuleAlert(input) });
+}
+
+export function useUpdateRuleAlert() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, input }: { id: string; input: TasteAlertInput }) => updateTasteAlert(id, input),
+    mutationFn: ({ id, input }: { id: string; input: RuleAlertInput }) => updateRuleAlert(id, input),
     onSettled: () => void qc.invalidateQueries({ queryKey: queryKeys.alerts() }),
   });
 }
 
-export function useCreateTasteAlert() {
+export function useCreateRuleAlert() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (input: TasteAlertInput) => createTasteAlert(input),
+    mutationFn: (input: RuleAlertInput) => createRuleAlert(input),
     onSettled: () => void qc.invalidateQueries({ queryKey: queryKeys.alerts() }),
   });
 }

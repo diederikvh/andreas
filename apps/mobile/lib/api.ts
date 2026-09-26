@@ -424,69 +424,36 @@ export async function search(
   return authedRequest<SearchResponse>(`/search?${params.toString()}`);
 }
 
-// ─── Conversationele zoek ("Andreas-gids") ──────────────────────────────────
-// Stateless: client houdt profile + history vast (React/Zustand state) en
-// stuurt die elke beurt mee; server geeft het bijgewerkte profiel terug.
-// Backend: POST /zoek (apps/api/src/routes/zoek.ts). Types lokaal, net als
-// ApiEvent — packages/shared is niet in mobile gewired.
+// ─── De gids: zoeken met filters ────────────────────────────────────────────
+// Backend: POST /zoek (apps/api/src/routes/zoek.ts). Geen model: de app
+// stuurt vaste velden, de server zoekt precies dat.
 
-export type PriceTier = 0 | 1 | 2 | 3;
-export type ZoekWhen =
-  | 'tonight'
-  | 'this_weekend'
-  | 'this_week'
-  | 'this_month'
-  | 'this_year'
-  | 'next_weekend'
-  | 'next_week'
-  | 'next_month'
-  | 'specific';
-
-export type PreferenceProfile = {
-  want: string[];
-  avoid: string[];
-  excludeVenueIds: string[];
-  excludeEventIds: string[];
-  maxDistanceKm: number | null;
-  priceMax: PriceTier | null;
-  when: ZoekWhen;
-  whenDate?: string;
-  origin?: { lat: number; lng: number };
-};
-
-export const EMPTY_PROFILE: PreferenceProfile = {
-  want: [],
-  avoid: [],
-  excludeVenueIds: [],
-  excludeEventIds: [],
-  maxDistanceKm: null,
-  priceMax: null,
-  when: 'tonight',
-};
-
-export type ZoekChatTurn = { role: 'user' | 'assistant'; content: string };
-
-export type ZoekRequest = {
-  message: string;
-  profile: PreferenceProfile;
-  history: ZoekChatTurn[];
+/** De velden van een zoekopdracht. Datums als YYYY-MM-DD; een dag loopt tot
+    06:00 de volgende ochtend. */
+export type ZoekFields = {
+  from?: string;
+  to?: string;
+  cities?: string[];
+  categories?: string[];
+  genres?: string[];
+  /** Woord uit de titel of een naam in de line-up. */
+  query?: string;
 };
 
 export type ZoekResponse = {
+  /** Waarop gezocht is, in één zin. */
   reply: string;
-  /** Volledige DB-events in `ApiEvent`-shape — bron van waarheid voor de
-      UI. Render kaarten hieruit, nooit uit `reply`. */
+  /** Volledige DB-events in `ApiEvent`-shape — bron van waarheid voor de UI. */
   events: ApiEvent[];
   reasonByEventId: Record<string, string>;
-  updatedProfile: PreferenceProfile;
-  needsMoreInfo?: string;
+  total?: number;
 };
 
-/** Eén gespreksbeurt. Retry't bij netwerkfouten of 5xx (de API-machine kan
+/** Eén zoekopdracht. Retry't bij netwerkfouten of 5xx (de API-machine kan
     op Fly in slaap staan en koud opstarten → eerste poging faalt soms). Niet
     bij 4xx (auth/validatie/limiet) — die lossen niet op met opnieuw proberen. */
-export async function postZoek(req: ZoekRequest): Promise<ZoekResponse> {
-  const body = JSON.stringify(req);
+export async function postZoek(fields: ZoekFields): Promise<ZoekResponse> {
+  const body = JSON.stringify({ fields });
   let lastErr: unknown;
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
@@ -1234,8 +1201,7 @@ export async function setArtistFollow(
   });
 }
 
-/** Een recente treffer van een melding: bij een smaakmelding met de reden
-    van de keurder. */
+/** Een recente treffer van een melding. */
 export type ApiAlertHit = {
   eventId: string;
   title: string;
@@ -1245,32 +1211,47 @@ export type ApiAlertHit = {
   sent: boolean;
 };
 
-/** Een meldingsregel, via Claude of in de app aangemaakt. */
+/** Een meldingsregel, via je AI (MCP) of in de app aangemaakt. */
 export type ApiAlert = {
   id: string;
   label: string;
-  /** Smaak in eigen woorden; leeg bij een vaste regel (genre/zaal). */
+  /** Oude smaakomschrijving (uit de tijd van de keurder). */
   taste: string | null;
-  /** De grenzen, voor het bewerk-formulier. Leeg = geen grens. */
+  /** Oude smaakregel: doet niets tot hij opnieuw is ingesteld. */
+  legacy?: boolean;
+  /** Met zalen, via je AI gemaakt: in de app niet te bewerken. */
+  viaAi?: boolean;
+  /** De velden, voor het bewerk-formulier. Leeg = geen grens. */
   cities: string[];
   categories: string[];
+  genres?: string[];
+  artists?: string[];
+  keywords?: string[];
   active: boolean;
   expired: boolean;
   createdAt: string;
   hits: ApiAlertHit[];
 };
 
-export type ApiTasteSample = { id: string; title: string; venue: string; reason: string };
+/** Een vast genre om uit te kiezen, met de soorten waar het bij hoort. */
+export type ApiGenreOption = { key: string; label: string; categories: string[] };
 
-/** De proef op een smaak: wat de keurder van de laatste 25 kandidaten vond. */
-export type ApiTastePreview = {
+/** Wat er nú al past bij een regel die je aan het bouwen bent. */
+export type ApiRulePreview = {
   label: string;
-  sampled: number;
-  yes: ApiTasteSample[];
-  no: ApiTasteSample[];
+  total: number;
+  events: { id: string; title: string; venue: string; startsAt: string }[];
 };
 
-export type TasteAlertInput = { taste: string; cities: string[]; categories: string[] };
+/** Een regel: een van de artiesten, óf genre en trefwoord samen, binnen de
+    steden en soorten. */
+export type RuleAlertInput = {
+  cities: string[];
+  categories: string[];
+  genres: string[];
+  artists: string[];
+  keywords: string[];
+};
 
 /** Een treffer in "Gevonden voor jou": van een melding of gevolgde artiest. */
 export type ApiFoundItem = {
@@ -1279,7 +1260,7 @@ export type ApiFoundItem = {
   venue: string;
   city: string;
   startsAt: string;
-  /** Waarom: de reden van de keurder, of "Je volgt …". */
+  /** Waarom: "Je volgt …", of bij oude vondsten de reden van de keurder. */
   reason: string | null;
   /** Welke melding het vond (omschrijving of label); leeg bij een artiest. */
   via: string | null;
@@ -1309,21 +1290,26 @@ export async function deleteAlert(id: string): Promise<void> {
   await authedRequest(`/alerts/${encodeURIComponent(id)}`, { method: 'DELETE' });
 }
 
-export async function previewTasteAlert(input: TasteAlertInput): Promise<ApiTastePreview> {
-  return authedRequest<ApiTastePreview>('/alerts/preview', {
+export async function getGenreOptions(): Promise<ApiGenreOption[]> {
+  const { genres } = await authedRequest<{ genres: ApiGenreOption[] }>('/alerts/genres');
+  return genres;
+}
+
+export async function previewRuleAlert(input: RuleAlertInput): Promise<ApiRulePreview> {
+  return authedRequest<ApiRulePreview>('/alerts/preview', {
     method: 'POST',
     body: JSON.stringify(input),
   });
 }
 
-export async function updateTasteAlert(id: string, input: TasteAlertInput): Promise<{ id: string; label: string }> {
+export async function updateRuleAlert(id: string, input: RuleAlertInput): Promise<{ id: string; label: string }> {
   return authedRequest<{ id: string; label: string }>(`/alerts/${encodeURIComponent(id)}`, {
     method: 'PATCH',
     body: JSON.stringify(input),
   });
 }
 
-export async function createTasteAlert(input: TasteAlertInput): Promise<{ id: string; label: string }> {
+export async function createRuleAlert(input: RuleAlertInput): Promise<{ id: string; label: string }> {
   return authedRequest<{ id: string; label: string }>('/alerts', {
     method: 'POST',
     body: JSON.stringify(input),

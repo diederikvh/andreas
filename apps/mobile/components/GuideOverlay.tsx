@@ -1,20 +1,22 @@
 /**
  * De Andreas-gids als in-place overlay (zelfde "vibe" als SearchOverlay):
- * backdrop fade-in + sheet slide-up. Conversationele uitgaans-zoek — één
- * invoerveld, een gesprek, en eventkaarten die UIT de DB-events (`ApiEvent`)
- * worden gerenderd, nooit uit de model-tekst (brief §8).
+ * backdrop fade-in + sheet slide-up. Zoeken met filters: periode, soort,
+ * genres, stad en een naam. Geen model aan onze kant; zoeken in eigen
+ * woorden gaat via je eigen AI (MCP), daar verwijst het scherm onderaan
+ * naar.
  *
- * Profiel + history leven in de zoek-store; de server is stateless. De
- * conversatie blijft staan tussen openen/sluiten (geen reset on close).
+ * Filters en het laatste resultaat leven in de zoek-store en blijven staan
+ * tussen openen en sluiten.
  */
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import {
-  FlatList,
   Keyboard,
+  Linking,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -30,6 +32,7 @@ import Animated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { EventListRow } from '@/components/EventListRow';
+import { FilterChip } from '@/components/FilterChip';
 import { SpinningCross } from '@/components/SpinningCross';
 import type { ApiEvent } from '@/lib/api';
 import {
@@ -41,27 +44,42 @@ import {
   rowTimeLabel,
   translateCategory,
 } from '@/lib/eventDisplay';
+import { softTap } from '@/lib/haptics';
 import { useLocale, useT } from '@/lib/i18n';
+import type { ZoekWhen } from '@/lib/period';
+import { useGenreOptions } from '@/lib/queries';
 import type { BadgeTone } from '@/lib/types';
 import { useMode, useRoles } from '@/store/mode';
-import { useZoekStore, type ChatMessage } from '@/store/zoek';
+import { useZoekStore } from '@/store/zoek';
 import { fontFamily, palette } from '@/theme/tokens';
 
 const ENTER_MS = 260;
 const EXIT_MS = 200;
 
-const SUGGESTIONS_NL = [
-  'techno, niet te ver',
-  'iets rustigs vanavond',
-  'film in de buurt',
-  'wat kan ik dit weekend doen?',
+const WHENS: { key: ZoekWhen; nl: string; en: string }[] = [
+  { key: 'tonight', nl: 'Vanavond', en: 'Tonight' },
+  { key: 'tomorrow', nl: 'Morgen', en: 'Tomorrow' },
+  { key: 'weekend', nl: 'Dit weekend', en: 'This weekend' },
+  { key: 'week', nl: 'Deze week', en: 'This week' },
+  { key: 'month', nl: 'Deze maand', en: 'This month' },
+  { key: 'any', nl: 'Alles', en: 'Any time' },
 ];
-const SUGGESTIONS_EN = [
-  'techno, not too far',
-  'something low-key tonight',
-  'a film nearby',
-  "what's on this weekend?",
+const CATEGORIES = ['Muziek', 'Film', 'Theater', 'Kunst', 'Lezing', 'Literatuur'] as const;
+const CITIES: { key: string; label: string }[] = [
+  { key: 'amsterdam', label: 'Amsterdam' },
+  { key: 'utrecht', label: 'Utrecht' },
+  { key: 'rotterdam', label: 'Rotterdam' },
+  { key: 'den-haag', label: 'Den Haag' },
+  { key: 'haarlem', label: 'Haarlem' },
+  { key: 'eindhoven', label: 'Eindhoven' },
+  { key: 'tilburg', label: 'Tilburg' },
+  { key: 'nijmegen', label: 'Nijmegen' },
+  { key: 'groningen', label: 'Groningen' },
+  { key: 'antwerpen', label: 'Antwerpen' },
 ];
+
+const toggleIn = (list: string[], key: string) =>
+  list.includes(key) ? list.filter((k) => k !== key) : [...list, key];
 
 export function GuideOverlay({
   visible,
@@ -75,32 +93,18 @@ export function GuideOverlay({
   const isNacht = mode === 'nacht';
   const insets = useSafeAreaInsets();
   const t = useT();
+  const locale = useLocale();
 
-  const messages = useZoekStore((s) => s.messages);
+  const filters = useZoekStore((s) => s.filters);
+  const setFilters = useZoekStore((s) => s.setFilters);
+  const result = useZoekStore((s) => s.result);
   const sending = useZoekStore((s) => s.sending);
   const error = useZoekStore((s) => s.error);
-  const send = useZoekStore((s) => s.send);
+  const search = useZoekStore((s) => s.search);
   const reset = useZoekStore((s) => s.reset);
+  const { data: genreOptions } = useGenreOptions();
 
-  const [input, setInput] = useState('');
   const [mounted, setMounted] = useState(visible);
-  const [kbHeight, setKbHeight] = useState(0);
-  const listRef = useRef<FlatList<ChatMessage>>(null);
-
-  // Zelf toetsenbordhoogte tracken i.p.v. KeyboardAvoidingView: die werkt
-  // niet betrouwbaar binnen een absolute sheet (zie CLAUDE.md). We zetten
-  // de dock via marginBottom boven het toetsenbord.
-  useEffect(() => {
-    const showEvt = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
-    const hideEvt = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
-    const showSub = Keyboard.addListener(showEvt, (e) => setKbHeight(e.endCoordinates.height));
-    const hideSub = Keyboard.addListener(hideEvt, () => setKbHeight(0));
-    return () => {
-      showSub.remove();
-      hideSub.remove();
-    };
-  }, []);
-
   const backdrop = useSharedValue(0);
   const sheet = useSharedValue(0);
 
@@ -121,27 +125,10 @@ export function GuideOverlay({
     }
   }, [visible, backdrop, sheet]);
 
-  // Scroll mee naar onderen bij nieuwe berichten / tijdens het wachten.
-  useEffect(() => {
-    if (!visible) return;
-    const tid = setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 60);
-    return () => clearTimeout(tid);
-  }, [messages.length, sending, visible]);
-
   const handleClose = useCallback(() => {
     Keyboard.dismiss();
     onClose();
   }, [onClose]);
-
-  const submit = useCallback(
-    (text: string) => {
-      const v = text.trim();
-      if (!v) return;
-      setInput('');
-      void send(v);
-    },
-    [send]
-  );
 
   const backdropStyle = useAnimatedStyle(() => ({ opacity: backdrop.value }));
   const sheetStyle = useAnimatedStyle(() => ({
@@ -151,7 +138,10 @@ export function GuideOverlay({
 
   if (!mounted) return null;
 
-  const empty = messages.length === 0;
+  // Genres van de gekozen soorten; zonder soort alles.
+  const shownGenres = (genreOptions ?? []).filter(
+    (g) => filters.categories.length === 0 || g.categories.some((c) => filters.categories.includes(c))
+  );
 
   return (
     <View style={styles.root} pointerEvents="box-none">
@@ -167,7 +157,6 @@ export function GuideOverlay({
       </Animated.View>
 
       <Animated.View style={[styles.sheet, { backgroundColor: roles.bg, paddingTop: insets.top }, sheetStyle]}>
-        {/* Header */}
         <View style={styles.header}>
           <Pressable
             onPress={handleClose}
@@ -181,152 +170,172 @@ export function GuideOverlay({
             onPress={reset}
             hitSlop={8}
             style={[styles.headerBtn, { backgroundColor: roles.bgLift }]}
-            disabled={empty}
+            accessibilityLabel={t('Filters wissen', 'Clear filters')}
           >
-            <Ionicons name="refresh" size={18} color={empty ? roles.fgMuted : roles.fg} />
+            <Ionicons name="refresh" size={18} color={roles.fg} />
           </Pressable>
         </View>
 
-        <View style={styles.flex}>
-          {empty ? (
-            <EmptyState onPick={submit} />
-          ) : (
-            <FlatList
-              ref={listRef}
-              data={messages}
-              keyExtractor={(m) => m.id}
-              renderItem={({ item }) => <MessageBubble message={item} />}
-              contentContainerStyle={styles.listContent}
-              keyboardShouldPersistTaps="handled"
-              keyboardDismissMode="on-drag"
-              ListFooterComponent={
-                sending ? (
-                  <View style={styles.typing}>
-                    <SpinningCross size={22} color={roles.accent} pulse />
-                  </View>
-                ) : null
-              }
+        <ScrollView
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+          automaticallyAdjustKeyboardInsets
+          contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 40 }]}
+        >
+          <Text style={[styles.label, { color: roles.fg }]}>{t('Wanneer', 'When')}</Text>
+          <ChipRow>
+            {WHENS.map((w) => (
+              <FilterChip
+                key={w.key}
+                label={t(w.nl, w.en)}
+                active={filters.when === w.key}
+                onPress={() => {
+                  softTap();
+                  setFilters({ when: w.key });
+                }}
+              />
+            ))}
+          </ChipRow>
+
+          <Text style={[styles.label, { color: roles.fg }]}>{t('Wat', 'What')}</Text>
+          <ChipRow>
+            {CATEGORIES.map((c) => (
+              <FilterChip
+                key={c}
+                label={translateCategory(c, locale)}
+                active={filters.categories.includes(c)}
+                onPress={() => {
+                  softTap();
+                  setFilters({ categories: toggleIn(filters.categories, c) });
+                }}
+              />
+            ))}
+          </ChipRow>
+
+          {shownGenres.length > 0 ? (
+            <>
+              <Text style={[styles.label, { color: roles.fg }]}>{t('Genres', 'Genres')}</Text>
+              <View style={styles.wrap}>
+                {shownGenres.map((g) => (
+                  <FilterChip
+                    key={g.key}
+                    label={g.label}
+                    active={filters.genres.includes(g.key)}
+                    onPress={() => {
+                      softTap();
+                      setFilters({ genres: toggleIn(filters.genres, g.key) });
+                    }}
+                  />
+                ))}
+              </View>
+            </>
+          ) : null}
+
+          <Text style={[styles.label, { color: roles.fg }]}>{t('Waar', 'Where')}</Text>
+          <ChipRow>
+            <FilterChip
+              label={t('Overal', 'Anywhere')}
+              active={filters.cities.length === 0}
+              onPress={() => {
+                softTap();
+                setFilters({ cities: [] });
+              }}
             />
-          )}
+            {CITIES.map((c) => (
+              <FilterChip
+                key={c.key}
+                label={c.label}
+                active={filters.cities.includes(c.key)}
+                onPress={() => {
+                  softTap();
+                  setFilters({ cities: toggleIn(filters.cities, c.key) });
+                }}
+              />
+            ))}
+          </ChipRow>
 
-          {error ? <Text style={[styles.error, { color: palette.red }]}>{error}</Text> : null}
-
-          <View
+          <Text style={[styles.label, { color: roles.fg }]}>{t('Artiest of titel', 'Artist or title')}</Text>
+          <TextInput
+            value={filters.query}
+            onChangeText={(v) => setFilters({ query: v })}
+            placeholder={t('Bijv. Fontaines D.C.', 'E.g. Fontaines D.C.')}
+            placeholderTextColor={roles.fgPlaceholder}
+            autoCorrect={false}
+            returnKeyType="search"
+            onSubmitEditing={() => void search()}
             style={[
-              styles.dock,
+              styles.input,
               {
-                backgroundColor: roles.bg,
-                // marginBottom tilt de dock boven het toetsenbord; als 't dicht
-                // is houden we de home-indicator-inset aan.
-                marginBottom: kbHeight,
-                paddingBottom: kbHeight > 0 ? 8 : insets.bottom + 8,
+                color: roles.fg,
+                borderColor: isNacht ? '#2a2a2d' : palette.paper,
+                backgroundColor: isNacht ? palette.noir2 : palette.paper2,
               },
             ]}
+          />
+
+          <Pressable
+            onPress={() => {
+              softTap();
+              Keyboard.dismiss();
+              void search();
+            }}
+            disabled={sending}
+            style={[styles.bigBtn, { backgroundColor: roles.accent }]}
           >
-            <View
-              style={[styles.inputWrap, { backgroundColor: roles.bgLift, borderColor: roles.bgChip }]}
-            >
-              <TextInput
-                value={input}
-                onChangeText={setInput}
-                placeholder={t('Wat zoek je?', 'What are you after?')}
-                placeholderTextColor={roles.fgMuted}
-                style={[styles.input, { color: roles.fg }]}
-                multiline
-                returnKeyType="send"
-                onSubmitEditing={() => submit(input)}
-                editable={!sending}
-              />
-              <Pressable
-                onPress={() => submit(input)}
-                disabled={sending || input.trim().length === 0}
-                hitSlop={6}
-                style={[
-                  styles.sendBtn,
-                  {
-                    backgroundColor:
-                      input.trim().length === 0 || sending ? roles.bgChip : roles.accent,
-                  },
-                ]}
-              >
-                <Ionicons
-                  name="arrow-up"
-                  size={20}
-                  color={input.trim().length === 0 || sending ? roles.fgMuted : roles.onAccent}
-                />
-              </Pressable>
+            <Text style={[styles.bigLabel, { color: roles.onAccent }]}>{t('Zoek', 'Search')}</Text>
+          </Pressable>
+
+          {sending ? (
+            <View style={styles.waiting}>
+              <SpinningCross size={22} color={roles.accent} pulse />
             </View>
+          ) : null}
+          {error ? <Text style={[styles.error, { color: palette.red }]}>{error}</Text> : null}
+
+          {result && !sending ? (
+            <View style={styles.results}>
+              <Text style={[styles.reply, { color: roles.fg }]}>{result.reply}</Text>
+              {result.events.map((ev) => (
+                <ZoekEventRow key={ev.id} event={ev} reason={result.reasonByEventId[ev.id]} />
+              ))}
+            </View>
+          ) : null}
+
+          <View style={styles.aiNote}>
+            <Text style={[styles.hint, { color: roles.fgMuted }]}>
+              {t(
+                'Liever in eigen woorden zoeken, zoals "iets met een jaren-90-vibe dit weekend"? Vraag het je eigen AI, zoals Claude of ChatGPT, met Andreas gekoppeld.',
+                'Rather search in your own words, like "something with a 90s vibe this weekend"? Ask your own AI, like Claude or ChatGPT, with Andreas connected.'
+              )}
+            </Text>
+            <Pressable
+              onPress={() => {
+                softTap();
+                void Linking.openURL('https://andreas.amsterdam/ai');
+              }}
+              hitSlop={10}
+            >
+              <Text style={[styles.link, { color: roles.fg }]}>{t('Zo koppel je Andreas →', 'How to connect Andreas →')}</Text>
+            </Pressable>
           </View>
-        </View>
+        </ScrollView>
       </Animated.View>
     </View>
   );
 }
 
-function EmptyState({ onPick }: { onPick: (text: string) => void }) {
-  const roles = useRoles();
-  const locale = useLocale();
-  const t = useT();
-  const suggestions = locale === 'nl' ? SUGGESTIONS_NL : SUGGESTIONS_EN;
+/** Een rij chips die tot de rand doorloopt, onder de duim weg te vegen. */
+function ChipRow({ children }: { children: ReactNode }) {
   return (
-    <View style={styles.emptyWrap}>
-      <Text style={[styles.emptyTitle, { color: roles.fg }]}>
-        {t('Vertel waar je zin in hebt', 'Tell me what you feel like')}
-      </Text>
-      <Text style={[styles.emptySub, { color: roles.fgMuted }]}>
-        {t(
-          'In gewone taal — ik zoek het echte aanbod van vanavond, dit weekend of verder bij elkaar.',
-          "In plain words — I'll pull together what's actually on tonight, this weekend or beyond."
-        )}
-      </Text>
-      <View style={styles.chips}>
-        {suggestions.map((s) => (
-          <Pressable
-            key={s}
-            onPress={() => onPick(s)}
-            style={[styles.chip, { borderColor: roles.bgChip, backgroundColor: roles.bgLift }]}
-          >
-            <Text style={[styles.chipText, { color: roles.fg }]}>{s}</Text>
-          </Pressable>
-        ))}
-      </View>
-    </View>
-  );
-}
-
-function MessageBubble({ message }: { message: ChatMessage }) {
-  const roles = useRoles();
-  const mode = useMode();
-  const isNacht = mode === 'nacht';
-
-  if (message.role === 'user') {
-    return (
-      <View style={styles.userRow}>
-        <View style={[styles.userBubble, { backgroundColor: roles.accent }]}>
-          <Text style={[styles.userText, { color: isNacht ? palette.noir : '#fff' }]}>
-            {message.text}
-          </Text>
-        </View>
-      </View>
-    );
-  }
-
-  return (
-    <View style={styles.assistantWrap}>
-      {message.text ? (
-        <Text style={[styles.assistantText, { color: roles.fg }]}>{message.text}</Text>
-      ) : null}
-      {message.events.map((ev) => (
-        <ZoekEventRow
-          key={ev.id}
-          event={ev}
-          reason={message.reasonByEventId[ev.id]}
-        />
-      ))}
-      {message.needsMoreInfo ? (
-        <Text style={[styles.followup, { color: roles.fgMuted }]}>{message.needsMoreInfo}</Text>
-      ) : null}
-    </View>
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      keyboardShouldPersistTaps="handled"
+      style={styles.chipScroll}
+      contentContainerStyle={styles.chips}
+    >
+      {children}
+    </ScrollView>
   );
 }
 
@@ -371,7 +380,7 @@ function ZoekEventRow({
         tick={tone}
         onPress={() => {
           // Alleen toetsenbord weg — overlay blijft open (zoals de zoek),
-          // zodat je na 'terug' weer in je gesprek staat.
+          // zodat je na 'terug' weer bij je resultaten staat.
           Keyboard.dismiss();
           router.push(`/event/${event.id}?source=search` as never);
         }}
@@ -399,7 +408,6 @@ const styles = StyleSheet.create({
       android: { elevation: 20 },
     }),
   },
-  flex: { flex: 1 },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -415,36 +423,28 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   title: { fontFamily: fontFamily.displayBold, fontSize: 18, letterSpacing: -0.36 },
-  listContent: { paddingHorizontal: 22, paddingTop: 8, paddingBottom: 12 },
-  emptyWrap: { flex: 1, paddingHorizontal: 30, justifyContent: 'center' },
-  emptyTitle: {
-    fontFamily: fontFamily.displayBold,
-    fontSize: 24,
-    letterSpacing: -0.5,
-    marginBottom: 10,
-  },
-  emptySub: { fontFamily: fontFamily.body, fontSize: 14, lineHeight: 20, marginBottom: 22 },
-  chips: { gap: 10 },
-  chip: {
-    alignSelf: 'flex-start',
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 999,
+  content: { paddingHorizontal: 22, paddingTop: 4, gap: 10 },
+  label: { fontFamily: fontFamily.bold, fontSize: 14, marginTop: 6 },
+  // De chip-rijen lopen tot de rand door: negatieve marge tegen de
+  // padding van de pagina, zodat je ze onder de duim wegveegt.
+  chipScroll: { marginHorizontal: -22 },
+  chips: { gap: 6, paddingHorizontal: 22 },
+  // Genres zijn er te veel voor één veegrij: die lopen door naar onder.
+  wrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  input: {
+    fontFamily: fontFamily.medium,
+    fontSize: 16,
     borderWidth: 1,
-  },
-  chipText: { fontFamily: fontFamily.medium, fontSize: 14 },
-  userRow: { alignItems: 'flex-end', marginVertical: 6 },
-  userBubble: {
-    maxWidth: '86%',
+    borderRadius: 12,
     paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 18,
-    borderBottomRightRadius: 4,
+    paddingVertical: 12,
   },
-  userText: { fontFamily: fontFamily.medium, fontSize: 15, lineHeight: 20 },
-  assistantWrap: { marginVertical: 6, gap: 8 },
-  assistantText: { fontFamily: fontFamily.body, fontSize: 15, lineHeight: 21 },
-  followup: { fontFamily: fontFamily.body, fontSize: 14, lineHeight: 20, fontStyle: 'italic' },
+  bigBtn: { alignItems: 'center', justifyContent: 'center', paddingVertical: 13, borderRadius: 8, marginTop: 10 },
+  bigLabel: { fontFamily: fontFamily.bold, fontSize: 15 },
+  waiting: { paddingVertical: 14, alignItems: 'flex-start' },
+  error: { fontFamily: fontFamily.body, fontSize: 13 },
+  results: { gap: 8, paddingTop: 10 },
+  reply: { fontFamily: fontFamily.medium, fontSize: 15, lineHeight: 21 },
   eventBlock: { marginHorizontal: -22 },
   reason: {
     fontFamily: fontFamily.body,
@@ -454,32 +454,7 @@ const styles = StyleSheet.create({
     marginTop: -4,
     marginBottom: 6,
   },
-  typing: { paddingVertical: 14, alignItems: 'flex-start' },
-  error: { fontFamily: fontFamily.body, fontSize: 13, paddingHorizontal: 22, paddingBottom: 6 },
-  dock: { paddingHorizontal: 18, paddingTop: 8 },
-  inputWrap: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    gap: 8,
-    paddingLeft: 16,
-    paddingRight: 6,
-    paddingVertical: 6,
-    borderRadius: 24,
-    borderWidth: 1,
-  },
-  input: {
-    flex: 1,
-    fontFamily: fontFamily.body,
-    fontSize: 15,
-    lineHeight: 20,
-    paddingVertical: 8,
-    maxHeight: 120,
-  },
-  sendBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 999,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+  hint: { fontFamily: fontFamily.body, fontSize: 14, lineHeight: 20 },
+  aiNote: { gap: 8, paddingTop: 24 },
+  link: { fontFamily: fontFamily.bold, fontSize: 14 },
 });

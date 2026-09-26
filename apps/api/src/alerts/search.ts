@@ -11,11 +11,10 @@
  */
 import { randomUUID } from 'node:crypto';
 
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 
 import { db, schema } from '../db/index.js';
 import { GENRES, MAIN_LABELS, genresOf, type Category, type GenreKey } from './genres.js';
-import { loadEventInfo } from './judge.js';
 import { ALERT_MATCH, GENRE_ALIAS_CTE, alertSource } from './match.js';
 import { parseAmsterdamLocal } from '../scrapers/_amsterdam-tz.js';
 
@@ -29,6 +28,8 @@ export type StructuredQuery = {
   genres?: GenreKey[];
   venueIds?: string[];
   artists?: string[];
+  /** Hele woorden in titel of beschrijving ("90s"). */
+  keywords?: string[];
   /** Woord uit de titel of een naam in de line-up. */
   text?: string;
   priceMaxCents?: number;
@@ -83,6 +84,7 @@ export async function searchStructured(
     categories: q.categories?.length ? q.categories : null,
     genres: q.genres?.length ? q.genres : null,
     artistNames: q.artists?.length ? q.artists : null,
+    keywords: q.keywords?.length ? q.keywords : null,
     priceMaxCents: q.priceMaxCents ?? null,
     startsFrom: from,
     startsUntil: to,
@@ -164,6 +166,7 @@ function whyOf(
     const hit = genresOf(r.category, (r.genres ?? []).slice(0, MAIN_LABELS)).filter((k) => q.genres!.includes(k));
     if (hit.length) parts.push(hit.map((k) => GENRES[k].label).join(', '));
   }
+  if (q.keywords?.length) parts.push(`met ${q.keywords.map((k) => `"${k}"`).join(' of ')}`);
   if (q.venueIds?.length) parts.push(`in ${r.venue}`);
   if (text) parts.push(`"${text}" in titel of line-up`);
   if (parts.length === 0) parts.push([r.category, r.genres?.[0]].filter(Boolean).join(' · '));
@@ -205,6 +208,7 @@ export type SearchEventsArgs = {
   genres?: GenreKey[];
   venues?: string[];
   artists?: string[];
+  keywords?: string[];
   query?: string;
   priceMaxEuros?: number;
   limit?: number;
@@ -236,6 +240,7 @@ export async function searchEvents(userId: string | null, args: SearchEventsArgs
     genres: args.genres,
     venueIds: venues?.ids,
     artists: args.artists,
+    keywords: args.keywords,
     text: args.query,
     priceMaxCents: args.priceMaxEuros != null ? Math.round(args.priceMaxEuros * 100) : undefined,
     limit: args.limit,
@@ -278,4 +283,71 @@ export async function logSearch(
   } catch (e) {
     console.warn('[zoek] kon zoekopdracht niet loggen:', (e as Error).message);
   }
+}
+
+// ─── Rijke event-data ────────────────────────────────────────────────────────
+
+export type EventInfo = {
+  id: string;
+  title: string;
+  category: string;
+  venue: string;
+  city: string;
+  genres: string[];
+  description: string | null;
+  startsAt: Date;
+  /** Line-up met de genres die we van die artiesten kennen. */
+  lineup: { name: string; genres: string[] }[];
+};
+
+/** Beschrijving en line-up (met de genres van de artiesten) per event, in
+    één query. */
+export async function loadEventInfo(eventIds: string[]): Promise<Map<string, EventInfo>> {
+  if (eventIds.length === 0) return new Map();
+  const res = await db.execute<{
+    id: string;
+    title: string;
+    category: string;
+    venue: string;
+    city: string;
+    genres: string[];
+    description: string | null;
+    starts_at: string;
+    lineup: { name: string; genres: string[] }[] | null;
+  }>(sql`
+    SELECT e.id, e.title, e.category::text AS category, v.name AS venue, v.city::text AS city,
+           e.genres, e.description,
+           (SELECT MIN(o.starts_at) FROM occurrences o WHERE o.event_id = e.id AND o.starts_at > NOW()) AS starts_at,
+           (
+             SELECT jsonb_agg(DISTINCT jsonb_build_object(
+               'name', le->>'name',
+               'genres', COALESCE(to_jsonb(ar.genres), '[]'::jsonb)
+             ))
+             FROM occurrences o
+             CROSS JOIN LATERAL jsonb_array_elements(
+               CASE WHEN jsonb_typeof(o.lineup) = 'array' THEN o.lineup ELSE '[]'::jsonb END
+             ) le
+             LEFT JOIN artists ar ON ar.id = le->>'artistId'
+             WHERE o.event_id = e.id
+           ) AS lineup
+    FROM events e
+    JOIN venues v ON v.id = e.venue_id
+    WHERE ${inArray(sql`e.id`, eventIds)}
+  `);
+  return new Map(
+    res.rows.map((r) => [
+      r.id,
+      {
+        id: r.id,
+        title: r.title,
+        category: r.category,
+        venue: r.venue,
+        city: r.city,
+        genres: r.genres,
+        description: r.description,
+        startsAt: new Date(r.starts_at),
+        lineup: (r.lineup ?? []).slice(0, 12),
+      },
+    ])
+  );
 }

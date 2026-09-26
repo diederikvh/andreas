@@ -21,7 +21,6 @@
  */
 import { sql } from 'drizzle-orm';
 
-import { judgeMany, loadEventInfo, loadFeedbackExamples } from '../alerts/judge.js';
 import { ALERT_MATCH, GENRE_ALIAS_CTE, titleHasName } from '../alerts/match.js';
 import { db } from '../db/index.js';
 import { sendPushToUser } from '../push.js';
@@ -195,7 +194,8 @@ export async function ensureAlertRows(): Promise<number> {
     JOIN events e ON e.id = o.event_id AND e.published
     JOIN venues v ON v.id = COALESCE(o.venue_id, e.venue_id) AND v.published
     WHERE a.active
-      -- Smaakregels gaan langs de keurder, zie hieronder.
+      -- Oude smaakregels (van de keurder) doen niets tot ze opnieuw zijn
+      -- ingesteld: zonder genre, artiest of trefwoord zouden ze alles vangen.
       AND a.taste IS NULL
       AND ${ALERT_MATCH}
       AND NOT EXISTS (
@@ -216,93 +216,6 @@ export async function ensureAlertRows(): Promise<number> {
     RETURNING id
   `);
   return rows.rows?.length ?? 0;
-}
-
-/**
- * Smaakregels: nieuwe events binnen de harde filters langs de keurder.
- *
- * Zelfde kandidaten als bij `ensureAlertRows`, maar in plaats van meteen
- * een melding klaar te zetten beoordeelt `alerts/judge.ts` elk event tegen
- * de smaak. Het oordeel komt in `alert_verdicts`, zodat niets twee keer
- * gekeurd wordt; bij een ja komt de reden als `note` op de melding.
- *
- * Hooguit `JUDGE_PER_TICK` per doorloop: een nacht met veel aanwinsten
- * loopt dan over een paar tikken uit in plaats van alles tegelijk naar de
- * API te sturen. Om 10:00 is alles van die nacht ruim gekeurd.
- */
-const JUDGE_PER_TICK = 40;
-
-export async function judgeTasteAlerts(): Promise<number> {
-  const candidates = await db.execute<{
-    alert_id: string;
-    user_id: string;
-    taste: string;
-    event_id: string;
-    occurrence_id: string;
-  }>(sql`
-    WITH ${GENRE_ALIAS_CTE}
-    SELECT DISTINCT ON (a.id, o.event_id)
-      a.id AS alert_id, a.user_id, a.taste, o.event_id, o.id AS occurrence_id
-    FROM alerts a
-    JOIN occurrences o ON o.created_at > a.created_at
-      AND o.created_at > NOW() - INTERVAL '7 days'
-      AND o.starts_at > NOW()
-      AND o.status <> 'cancelled'
-    JOIN events e ON e.id = o.event_id AND e.published
-    JOIN venues v ON v.id = COALESCE(o.venue_id, e.venue_id) AND v.published
-    WHERE a.active
-      AND a.taste IS NOT NULL
-      AND ${ALERT_MATCH}
-      AND NOT EXISTS (
-        SELECT 1 FROM alert_verdicts av WHERE av.alert_id = a.id AND av.event_id = o.event_id
-      )
-      AND NOT EXISTS (
-        SELECT 1 FROM reminders r JOIN occurrences ro ON ro.id = r.occurrence_id
-        WHERE r.user_id = a.user_id AND ro.event_id = o.event_id
-          AND r.kind IN ('artiest', 'regel')
-      )
-      AND NOT EXISTS (
-        SELECT 1 FROM saves s JOIN occurrences so ON so.id = s.occurrence_id
-        WHERE s.user_id = a.user_id AND so.event_id = o.event_id
-      )
-      AND NOT EXISTS (
-        SELECT 1 FROM dismisses d JOIN occurrences dobj ON dobj.id = d.occurrence_id
-        WHERE d.user_id = a.user_id AND dobj.event_id = o.event_id
-      )
-    ORDER BY a.id, o.event_id, o.starts_at
-    LIMIT ${JUDGE_PER_TICK}
-  `);
-  const rows = candidates.rows ?? [];
-  if (rows.length === 0) return 0;
-
-  const info = await loadEventInfo([...new Set(rows.map((r) => r.event_id))]);
-  let added = 0;
-  // Per regel keuren: elke regel heeft z'n eigen smaak.
-  const byAlert = new Map<string, typeof rows>();
-  for (const r of rows) byAlert.set(r.alert_id, [...(byAlert.get(r.alert_id) ?? []), r]);
-  for (const [alertId, items] of byAlert) {
-    const events = items.map((i) => info.get(i.event_id)).filter((e) => e !== undefined);
-    const verdicts = await judgeMany(items[0].taste, events, await loadFeedbackExamples(alertId));
-    for (const item of items) {
-      const v = verdicts.get(item.event_id);
-      if (!v) continue; // model niet bereikbaar: volgende tik opnieuw
-      await db.execute(sql`
-        INSERT INTO alert_verdicts (alert_id, event_id, match, reason)
-        VALUES (${alertId}, ${item.event_id}, ${v.match}, ${v.reason})
-        ON CONFLICT DO NOTHING
-      `);
-      if (!v.match) continue;
-      const res = await db.execute(sql`
-        INSERT INTO reminders (id, user_id, occurrence_id, kind, fire_at, alert_id, note)
-        VALUES (gen_random_uuid()::text, ${item.user_id}, ${item.occurrence_id},
-                'regel', ${NEXT_MORNING}, ${alertId}, ${v.reason || null})
-        ON CONFLICT (user_id, occurrence_id, kind) DO NOTHING
-        RETURNING id
-      `);
-      added += res.rows?.length ?? 0;
-    }
-  }
-  return added;
 }
 
 /**
@@ -505,7 +418,7 @@ function formatDay(d: Date): string {
 
 type NewsRow = {
   kind: string;
-  /** Bij een smaakregel: de reden van de keurder. */
+  /** Een reden bij de melding (oude rijen: van de keurder). */
   note: string | null;
   event_id: string;
   title: string;
@@ -563,8 +476,7 @@ export async function runReminders(
     ? 0
     : (await ensureReminderRows()) +
       (await ensureArtistRows()) +
-      (await ensureAlertRows()) +
-      (await judgeTasteAlerts());
+      (await ensureAlertRows());
   const sent = await sendDueReminders(opts);
   return { added, sent };
 }

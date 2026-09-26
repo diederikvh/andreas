@@ -69,7 +69,8 @@ const INSTRUCTIONS =
 const TOOL_DESCRIPTION =
   'Zoek concrete events in Amsterdam en de rest van het land. Vertaal de vraag zelf naar de velden: ' +
   'periode (`from`/`to`, absolute datums; een dag loopt tot 06:00 de volgende ochtend), `cities`, ' +
-  '`categories`, `genres` (vaste lijst), `venues` (zaalnamen), `artists`, en `query` alleen voor een ' +
+  '`categories`, `genres` (vaste lijst), `venues` (zaalnamen), `artists`, `keywords` (woorden in titel of ' +
+  'beschrijving, zoals "90s") en `query` alleen voor een ' +
   'woord uit de titel. Zonder periode: de komende 7 dagen, of een jaar als je op artiest of query zoekt. ' +
   'Geblokkeerde zalen en genres die de gebruiker niet leuk vindt vallen al weg. Elk event komt met ' +
   'beschrijving en line-up (met de genres van de artiesten): beoordeel daarmee zelf wat bij de vraag en ' +
@@ -98,7 +99,11 @@ export function buildMcpServer(userId: string | null = null): McpServer {
           .optional()
           .describe(`Vaste genres (OF): ${GENRE_KEYS.map((k) => `${k} (${GENRES[k].label})`).join(', ')}.`),
         venues: z.array(z.string()).optional().describe('Zaalnamen, bv. "Paradiso".'),
-        artists: z.array(z.string()).optional().describe('Artiestnamen (in line-up of titel).'),
+        artists: z.array(z.string()).optional().describe('Artiestnamen (in line-up of titel). Een artiest telt los van genres en trefwoorden.'),
+        keywords: z
+          .array(z.string())
+          .optional()
+          .describe('Hele woorden in titel of beschrijving, bv. "90s", "grunge". Samen met genres: beide moeten passen.'),
         query: z.string().optional().describe('Woord uit de titel of een naam in de line-up, bv. "Hamlet".'),
         limit: z.number().int().min(1).max(50).optional().describe('Aantal events (default 15, max 50).'),
       },

@@ -61,19 +61,18 @@ export default function MeldingDetail() {
     );
   }
 
-  const title = alert.taste ?? alert.label;
-  const bounds = alert.taste ? alert.label.replace(/^smaak: "[^"]*"( · )?/, '') : null;
+  // Een oude smaakmelding houdt z'n omschrijving als titel; die doet niets
+  // meer tot hij opnieuw is opgebouwd.
+  const title = alert.legacy && alert.taste ? alert.taste : alert.label;
+  const bounds = alert.legacy
+    ? t('Doet niets meer: bouw hem opnieuw op met Bewerken.', 'No longer active: rebuild it with Edit.')
+    : null;
 
   const confirmDelete = () => {
     softTap();
     Alert.alert(
       t('Melding verwijderen?', 'Delete alert?'),
-      alert.taste
-        ? t(
-            'Ook wat de keurder van je feedback leerde gaat weg. Liever even pauzeren? Zet hem dan uit.',
-            'What the judge learned from your feedback goes too. Rather pause it? Switch it off instead.',
-          )
-        : undefined,
+      undefined,
       [
         { text: t('Annuleren', 'Cancel'), style: 'cancel' },
         {
@@ -137,10 +136,9 @@ export default function MeldingDetail() {
           </View>
         </Pressable>
 
-        {/* Bewerken kan alleen bij een smaakmelding: die heeft een
-            omschrijving om aan te passen. Een melding op een zaal of genre
-            (via je AI-assistent) pas je daar aan. */}
-        {alert.taste ? (
+        {/* Bewerken kan hier, behalve bij een melding op een zaal: die komt
+            van je AI-assistent en pas je daar aan. */}
+        {!alert.viaAi ? (
           <Pressable
             onPress={() => {
               softTap();
@@ -153,8 +151,8 @@ export default function MeldingDetail() {
         ) : (
           <Text style={[styles.small, styles.centered, { color: roles.fgMuted }]}>
             {t(
-              'Deze melding is op een zaal of genre gezet. Aanpassen doe je via je AI-assistent.',
-              'This alert is set on a venue or genre. Change it through your AI assistant.',
+              'Deze melding is op een zaal gezet, via je AI-assistent. Aanpassen doe je daar.',
+              'This alert is set on a venue, through your AI assistant. Change it there.',
             )}
           </Text>
         )}
