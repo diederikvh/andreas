@@ -22,6 +22,7 @@
 import { sql } from 'drizzle-orm';
 
 import { ALERT_MATCH, GENRE_ALIAS_CTE, titleHasName } from '../alerts/match.js';
+import { whyMatched } from '../alerts/service.js';
 import { db } from '../db/index.js';
 import { sendPushToUser } from '../push.js';
 
@@ -215,7 +216,57 @@ export async function ensureAlertRows(): Promise<number> {
     ON CONFLICT (user_id, occurrence_id, kind) DO NOTHING
     RETURNING id
   `);
-  return rows.rows?.length ?? 0;
+  const ids = (rows.rows ?? []).map((r) => (r as { id: string }).id);
+  if (ids.length) await annotateAlertRows(ids);
+  return ids.length;
+}
+
+/**
+ * De reden bij een klaargezette melding: wát van de regel matchte ("Met
+ * Pixies", "folk, via Abigail Lapell"). Staat in `note`, en daar lezen de
+ * push en "Gevonden voor jou" hem. Zonder ids: alles van de laatste 30
+ * dagen dat nog geen reden heeft.
+ */
+export async function annotateAlertRows(ids?: string[]): Promise<number> {
+  const res = await db.execute<{
+    id: string; a_genres: string[] | null; artist_names: string[] | null; keywords: string[] | null; label: string;
+    title: string; category: string; e_genres: string[]; description: string | null;
+    lineup: string[] | null; hl_name: string | null; hl_genres: string[] | null;
+  }>(sql`
+    SELECT r.id, a.genres AS a_genres, a.artist_names, a.keywords, a.label,
+      e.title, e.category::text AS category, e.genres AS e_genres, e.description,
+      (SELECT array_agg(le->>'name') FROM jsonb_array_elements(
+         CASE WHEN jsonb_typeof(o.lineup) = 'array' THEN o.lineup ELSE '[]'::jsonb END) le) AS lineup,
+      hl.name AS hl_name, hl.genres AS hl_genres
+    FROM reminders r
+    JOIN alerts a ON a.id = r.alert_id
+    JOIN occurrences o ON o.id = r.occurrence_id
+    JOIN events e ON e.id = o.event_id
+    LEFT JOIN LATERAL (
+      SELECT ar.name, ar.genres FROM artists ar
+      WHERE cardinality(ar.genres) > 0
+        AND (ar.id = CASE WHEN jsonb_typeof(o.lineup) = 'array' THEN o.lineup->0->>'artistId' END
+             OR lower(ar.name) = lower(e.title))
+      LIMIT 1
+    ) hl ON true
+    WHERE r.kind = 'regel' AND r.note IS NULL
+      AND ${ids ? sql`r.id IN (${sql.join(ids.map((x) => sql`${x}`), sql`, `)})` : sql`r.created_at > NOW() - INTERVAL '30 days'`}
+  `);
+  for (const r of res.rows) {
+    const note = whyMatched(
+      { genres: r.a_genres, artistNames: r.artist_names, keywords: r.keywords, label: r.label },
+      {
+        title: r.title,
+        category: r.category,
+        genres: r.e_genres ?? [],
+        description: r.description,
+        lineup: r.lineup ?? [],
+        headliner: r.hl_name ? { name: r.hl_name, genres: r.hl_genres ?? [] } : null,
+      }
+    );
+    await db.execute(sql`UPDATE reminders SET note = ${note} WHERE id = ${r.id}`);
+  }
+  return res.rows.length;
 }
 
 /**
