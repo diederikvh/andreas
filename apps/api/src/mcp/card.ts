@@ -178,7 +178,7 @@ export function buildEventsUiResource(events: McpEvent[], when: string): UiResou
   return {
     type: 'resource',
     resource: {
-      uri: `ui://andreas/events/${when}-${events.length}`,
+      uri: `ui://andreas/events/${encodeURIComponent(when)}-${events.length}`,
       mimeType: 'text/html',
       text: renderHtml(events, when),
     },

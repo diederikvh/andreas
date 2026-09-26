@@ -5,8 +5,8 @@
  * model doorheen kunnen zoeken. Wij leveren de verse, gestructureerde data;
  * de client doet het gesprek.
  *
- * `search_events`: deterministische retrieval (geen LLM aan onze kant),
- * categorie als harde filter, deeplinks terug naar Andreas. Voor ingelogde
+ * `search_events`: zoeken op vaste velden (geen LLM aan onze kant), met
+ * beschrijving en line-up, deeplinks terug naar Andreas. Voor ingelogde
  * gebruikers daarnaast de meldingstools uit `alerts.ts`.
  */
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -18,13 +18,10 @@ import { registerHelpTool } from './help.js';
 import { registerMeTools } from './me.js';
 import { schema } from '../db/index.js';
 import { buildEventsUiResource } from './card.js';
-import {
-  CATEGORY_VALUES,
-  WHEN_VALUES,
-  logMcpSearch,
-  searchEvents,
-  type McpEvent,
-} from './events.js';
+import { GENRES, GENRE_KEYS } from '../alerts/genres.js';
+import { CATEGORY_VALUES, logSearch, searchEvents, type McpEvent } from './events.js';
+
+const DATE = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'YYYY-MM-DD');
 
 const EVENT_SHAPE = {
   id: z.string(),
@@ -40,6 +37,9 @@ const EVENT_SHAPE = {
   ticketUrl: z.string().nullable(),
   imageUrl: z.string().nullable(),
   url: z.string(),
+  description: z.string().nullable(),
+  lineup: z.array(z.object({ name: z.string(), genres: z.array(z.string()) })),
+  why: z.string(),
 };
 
 const INSTRUCTIONS =
@@ -67,12 +67,13 @@ const INSTRUCTIONS =
   'iets ervoor of erna in de buurt van een avond via `around_evening`.';
 
 const TOOL_DESCRIPTION =
-  'Zoek concrete events voor een gegeven periode, in Amsterdam en de rest van het ' +
-  'land (filter met `cities`). Geef `category` ' +
-  'op (Muziek/Film/Theater/Kunst/Lezing/Literatuur) om strikt op één type te ' +
-  'filteren; gebruik `query` voor een genre, sfeer, artiest of venue (bv. ' +
-  '"techno", "singer-songwriter", "Guns N Roses", "Paradiso"). Retourneert ' +
-  'volledige event-data met deeplinks; verzin zelf nooit events.';
+  'Zoek concrete events in Amsterdam en de rest van het land. Vertaal de vraag zelf naar de velden: ' +
+  'periode (`from`/`to`, absolute datums; een dag loopt tot 06:00 de volgende ochtend), `cities`, ' +
+  '`categories`, `genres` (vaste lijst), `venues` (zaalnamen), `artists`, en `query` alleen voor een ' +
+  'woord uit de titel. Zonder periode: de komende 7 dagen, of een jaar als je op artiest of query zoekt. ' +
+  'Geblokkeerde zalen en genres die de gebruiker niet leuk vindt vallen al weg. Elk event komt met ' +
+  'beschrijving en line-up (met de genres van de artiesten): beoordeel daarmee zelf wat bij de vraag en ' +
+  'de smaak past, en zoek breder (minder velden) als er weinig terugkomt. Verzin zelf nooit events.';
 
 /** @param userId Ingelogde OAuth-gebruiker (of null bij service-key). Wordt
     gebruikt om zoekgedrag te loggen voor personalisatie. */
@@ -88,55 +89,40 @@ export function buildMcpServer(userId: string | null = null): McpServer {
       title: 'Zoek events',
       description: TOOL_DESCRIPTION,
       inputSchema: {
-        query: z
-          .string()
+        from: DATE.optional().describe('Eerste dag (YYYY-MM-DD).'),
+        to: DATE.optional().describe('Laatste dag (YYYY-MM-DD), tot en met.'),
+        cities: z.array(z.enum(schema.city.enumValues)).optional().describe('Weglaten = overal.'),
+        categories: z.array(z.enum(CATEGORY_VALUES)).optional().describe('Weglaten = alle soorten.'),
+        genres: z
+          .array(z.enum(GENRE_KEYS))
           .optional()
-          .describe('Genre, sfeer, artiest of venue, bv. "techno" of "Paradiso".'),
-        when: z
-          .enum(WHEN_VALUES)
-          .optional()
-          .describe('Periode. Default this_week. "next_*" = de periode ná deze.'),
-        category: z
-          .enum(CATEGORY_VALUES)
-          .optional()
-          .describe('Hard filter op één type. Weglaten = alle types (of afgeleid uit query).'),
-        priceMax: z
-          .number()
-          .int()
-          .min(0)
-          .max(3)
-          .optional()
-          .describe('Max prijs-tier: 0 gratis · 1 ≤€15 · 2 ≤€35 · 3 duurder.'),
-        cities: z
-          .array(z.enum(schema.city.enumValues))
-          .optional()
-          .describe('Alleen deze steden. Weglaten = overal.'),
-        limit: z
-          .number()
-          .int()
-          .min(1)
-          .max(25)
-          .optional()
-          .describe('Aantal events (default 8, max 25).'),
+          .describe(`Vaste genres (OF): ${GENRE_KEYS.map((k) => `${k} (${GENRES[k].label})`).join(', ')}.`),
+        venues: z.array(z.string()).optional().describe('Zaalnamen, bv. "Paradiso".'),
+        artists: z.array(z.string()).optional().describe('Artiestnamen (in line-up of titel).'),
+        query: z.string().optional().describe('Woord uit de titel of een naam in de line-up, bv. "Hamlet".'),
+        limit: z.number().int().min(1).max(50).optional().describe('Aantal events (default 15, max 50).'),
       },
       outputSchema: {
         events: z.array(z.object(EVENT_SHAPE)),
         count: z.number(),
-        window: z.object({ from: z.string(), to: z.string(), when: z.string() }),
+        total: z.number(),
+        window: z.object({ from: z.string(), to: z.string() }),
       },
     },
     async (args) => {
-      const { events, window } = await searchEvents(args);
-      if (userId) await logMcpSearch(userId, args, events);
-      const structuredContent = { events, count: events.length, window };
+      const { events, total, window, unknownVenues } = await searchEvents(userId, args);
+      if (userId) await logSearch(userId, `(mcp) ${JSON.stringify(args)}`.slice(0, 500), args, events);
+      const label = periodLabel(window.from, window.to);
+      const structuredContent = { events, count: events.length, total, window };
+      const unknown = unknownVenues.length ? `Onbekende zaal: ${unknownVenues.join(', ')}.\n` : '';
       // Drie lagen, progressive enhancement:
-      //  - text: markdown-fallback met klikbare links (alle hosts)
+      //  - text: markdown met klikbare links, beschrijving en line-up (alle hosts)
       //  - resource (ui://): interactieve card-widget voor MCP-UI-hosts
       //  - structuredContent: machine-leesbaar voor programmatic clients
       return {
         content: [
-          { type: 'text' as const, text: summarize(events, window.when) },
-          buildEventsUiResource(events, window.when),
+          { type: 'text' as const, text: unknown + summarize(events, total, label) },
+          buildEventsUiResource(events, label),
         ],
         structuredContent,
       };
@@ -155,13 +141,25 @@ export function buildMcpServer(userId: string | null = null): McpServer {
   return server;
 }
 
-function summarize(events: McpEvent[], when: string): string {
-  if (events.length === 0) {
-    return `Geen events gevonden voor ${when} in deze zoekopdracht.`;
-  }
+const dayFmt = new Intl.DateTimeFormat('nl-NL', {
+  timeZone: 'Europe/Amsterdam',
+  weekday: 'short',
+  day: 'numeric',
+  month: 'short',
+});
+
+/** "za 26 sep – vr 2 okt". `to` is exclusief (06:00 de dag erna). */
+function periodLabel(from: string, to: string): string {
+  const last = new Date(Date.parse(to) - 6 * 3_600_000 - 1);
+  const a = dayFmt.format(new Date(from));
+  const b = dayFmt.format(last);
+  return a === b ? a : `${a} – ${b}`;
+}
+
+function summarize(events: McpEvent[], total: number, label: string): string {
+  if (events.length === 0) return `Geen events gevonden voor ${label}. Zoek breder: minder velden of een langere periode.`;
   const lines = events.map((e) => {
-    const d = new Date(e.start);
-    const day = d.toLocaleString('nl-NL', {
+    const day = new Date(e.start).toLocaleString('nl-NL', {
       timeZone: 'Europe/Amsterdam',
       weekday: 'short',
       day: 'numeric',
@@ -169,19 +167,23 @@ function summarize(events: McpEvent[], when: string): string {
       hour: '2-digit',
       minute: '2-digit',
     });
-    const genre = e.genres[0] ? ` · ${e.genres[0]}` : '';
-    // Titel als Markdown-link → klikbaar in de client, doorklikken naar de
-    // Andreas-pagina (die deeplinkt naar de app). `]` uit het label strippen
-    // zodat een rare titel de link-syntax niet breekt.
-    const label = e.title.replace(/[[\]]/g, '');
+    // Titel als Markdown-link → klikbaar in de client. `]` uit het label
+    // strippen zodat een rare titel de link-syntax niet breekt.
+    const title = e.title.replace(/[[\]]/g, '');
     const city =
       e.city !== 'amsterdam'
         ? ` (${e.city.split('-').map((p) => p[0].toUpperCase() + p.slice(1)).join(' ')})`
         : '';
-    return `- [${label}](${e.url}) — ${e.venue}${city}, ${day}${genre}`;
+    const lineup = e.lineup.length
+      ? `\n  Line-up: ${e.lineup.map((l) => (l.genres.length ? `${l.name} (${l.genres.slice(0, 4).join(', ')})` : l.name)).join('; ')}`
+      : '';
+    const about = e.description ? `\n  ${e.description}` : '';
+    const genres = e.genres.length ? ` · ${e.genres.slice(0, 3).join(', ')}` : '';
+    return `- [${title}](${e.url}) — ${e.venue}${city}, ${day}${genres}${lineup}${about}`;
   });
+  const more = total > events.length ? ` (van ${total}; verfijn of verhoog limit voor meer)` : '';
   return (
-    `${events.length} events voor ${when}:\n${lines.join('\n')}\n\n` +
-    'Tik op een titel om de event-pagina op Andreas te openen.'
+    `${events.length} events voor ${label}${more}:\n${lines.join('\n')}\n\n` +
+    'Kies zelf wat past; presenteer elk event als [titel](url).'
   );
 }

@@ -200,7 +200,7 @@ Doel (Diederik, 26 sep 2026): precies weten wat er in de stad gebeurt dat hij re
 12. **Terugblik** ⬜ — "hoe ziet mijn jaar eruit", Wrapped-stijl, uit de spiegel (`routes/mirror.ts`). Plus achteraf "hoe was het?" als sterkste smaaksignaal voor de keurder.
 13. **Meldingen in de app** ✅ (26 sep; `app/meldingen.tsx`, `app/melding/`; lijst, detail, nieuw/bewerken met proef, "Gevonden voor jou") — scherm met je regels (aan/uit, verwijderen) en per treffer de reden van de keurder. Was ticket 6 uit het oorspronkelijke voorstel.
 14. **Reden op /new** — vervallen (26 sep): Diederik wil /new rustig houden. Wat meldingen en gevolgde artiesten vonden staat onder "Gevonden voor jou" op het meldingenscherm, en de gebundelde push opent dat scherm.
-15. **Zoek in de app herbouwen** ⬜ — de AI-zoek in de app vindt slecht wat je zoekt en pakt het tijdvenster verkeerd op. Zelfde recept als de MCP: model vertaalt naar vaste filters (absolute datums, vaste genres), keurder oordeelt met reden.
+15. **Zoek in de app herbouwen** ✅ (2026-09-26) — één motor (`alerts/search.ts`, vaste velden, `ALERT_MATCH`) onder MCP `search_events` en `POST /zoek`. De app doet één Haiku-vertaling per vraag naar die velden (absolute datums, dag 06:00–06:00), geen keurder; MCP stuurt beschrijving + line-up mee zodat de AI van de gebruiker zelf de smaak beoordeelt. `recommend_events` geeft profiel + voorselectie terug in plaats van ons oordeel (~1s i.p.v. ~10s). Oude gids-LLM en retrieval (`zoek/llm.ts`, `zoek/retrieval.ts`) weg.
 16. **Spotify koppelen** ⬜ — gevolgde en meest beluisterde artiesten importeren en in één keer volgen. Let op: dev-mode max 25 gebruikers, en de Spotify-sleutel is gedeeld met de zoek (rustig importeren, anders ligt de zoek een etmaal plat).
 
 ---

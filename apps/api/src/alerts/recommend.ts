@@ -1,38 +1,25 @@
 /**
- * "Meer zoals wat je doet": aanbevelingen met een reden per event.
+ * "Meer zoals wat je doet": het profiel en een voorselectie, zodat de AI van
+ * de gebruiker zelf kiest en uitlegt waarom. Wij keuren niet (geen eigen
+ * modelkosten); wij leveren de kennis.
  *
- * Geen score die je niet kan uitleggen, maar dezelfde keurder als bij de
- * smaakmeldingen, met jouw keuzes als voorbeelden: waar je heen gaat en wat
- * je gered hebt (past wel), wat je wegveegde (past niet), plus je gevolgde
- * artiesten, genres leuk/niet leuk en de omschrijvingen van je meldingen.
+ * Het profiel: waar je heen gaat en wat je gered hebt, wat je wegveegde,
+ * gevolgde artiesten, genres leuk/niet leuk en de omschrijvingen van je
+ * meldingen.
  *
- * Twee stappen, zodat het betaalbaar en snel blijft:
- *  1. Kandidaten binnen de grenzen, zonder wat al in je agenda staat, wat je
- *     gered of weggeveegd hebt, geblokkeerde zalen en niet-leuk-genres (dat
- *     laatste via `ALERT_MATCH`, dezelfde regels als de meldingen). Een
- *     snelle voorselectie op zalen waar je komt, genre-overlap en gevolgde
- *     artiesten kiest er `JUDGE_TOP` uit.
- *  2. De keurder beoordeelt die en geeft per treffer een reden.
+ * De voorselectie: kandidaten binnen de grenzen, zonder wat al in je agenda
+ * staat, wat je gered of weggeveegd hebt, geblokkeerde zalen en
+ * niet-leuk-genres (via `ALERT_MATCH`, dezelfde regels als de meldingen),
+ * gerangschikt op zalen waar je komt en genre-overlap. De top gaat mee met
+ * beschrijving en line-up.
  */
 import { sql } from 'drizzle-orm';
 
 import { db } from '../db/index.js';
 import { GENRES, MAIN_LABELS, genresOf, type Category, type GenreKey } from './genres.js';
-import { judgeMany, loadEventInfo, type FeedbackExample } from './judge.js';
+import { loadEventInfo, type EventInfo, type FeedbackExample } from './judge.js';
 import { ALERT_MATCH, GENRE_ALIAS_CTE, alertSource } from './match.js';
-import { honestReason } from './reason.js';
 
-/** Hoeveel kandidaten de keurder ziet. */
-const JUDGE_TOP = 50;
-
-export type Recommendation = {
-  eventId: string;
-  title: string;
-  venue: string;
-  city: string;
-  startsAt: string;
-  reason: string;
-};
 
 type Profile = {
   taste: string;
@@ -124,9 +111,7 @@ async function buildProfile(userId: string): Promise<Profile> {
   ];
 
   return {
-    taste:
-      'Aanbevelingen: zou deze persoon dit event willen weten, gezien wat die tot nu toe koos? ' +
-      (parts.join(' ') || 'Nog weinig bekend; ga af op de voorbeelden.'),
+    taste: parts.join(' ') || 'Nog weinig bekend; ga af op de voorbeelden.',
     examples,
     venueIds,
     genreWeights,
@@ -139,7 +124,7 @@ async function buildProfile(userId: string): Promise<Profile> {
 export async function recommendEvents(
   userId: string,
   opts: { cities?: string[]; categories?: string[]; from?: Date; to?: Date; limit?: number } = {}
-): Promise<{ recommendations: Recommendation[]; judged: number; basis: string }> {
+): Promise<{ taste: string; examples: FeedbackExample[]; candidates: EventInfo[]; cities: string[] }> {
   const profile = await buildProfile(userId);
   // Zonder opgegeven stad: de steden waar je zelf heen gaat. Zonder soort:
   // de soorten die je kiest. Zo blijft de kandidatenlijst behapbaar.
@@ -193,8 +178,8 @@ export async function recommendEvents(
     LIMIT 1500
   `);
 
-  // ponytail: grove voorselectie op signalen; de keurder beslist. Als de
-  // keurder te vaak iets mist, is dit de plek om ruimer te kiezen.
+  // ponytail: grove voorselectie op signalen; de AI van de gebruiker kiest.
+  // Mist die te vaak iets, dan is dit de plek om ruimer te kiezen.
   // Avonden van artiesten die je al volgt vallen eruit: die hoor je via je
   // artiest-meldingen al, en "meer zoals" hoort iets nieuws te laten zien.
   const followsArtist = (r: (typeof rows.rows)[number]) => {
@@ -207,29 +192,9 @@ export async function recommendEvents(
     for (const k of genresOf(r.category, r.genres.slice(0, MAIN_LABELS))) score += 2 * (profile.genreWeights.get(k) ?? 0);
     return { id: r.id, score };
   });
-  const top = scored.filter((s) => s.score > 0).sort((a, b) => b.score - a.score).slice(0, JUDGE_TOP);
+  const top = scored.filter((s) => s.score > 0).sort((a, b) => b.score - a.score).slice(0, opts.limit ?? 30);
 
   const info = await loadEventInfo(top.map((s) => s.id));
-  const verdicts = await judgeMany(profile.taste, [...info.values()], profile.examples, 10);
-  const recommendations = [...info.values()]
-    .filter((e) => verdicts.get(e.id)?.match)
-    .sort((a, b) => a.startsAt.getTime() - b.startsAt.getTime())
-    .slice(0, opts.limit ?? 15)
-    .map((e) => ({
-      eventId: e.id,
-      title: e.title,
-      venue: e.venue,
-      city: e.city,
-      startsAt: e.startsAt.toISOString(),
-      reason: honestReason(verdicts.get(e.id)!.reason, profile.artistNames),
-    }));
-
-  return {
-    recommendations,
-    judged: info.size,
-    basis:
-      `${profile.examples.filter((x) => x.fits).length} keuzes (ik ga/gered), ` +
-      `${profile.examples.filter((x) => !x.fits).length} weggeveegd, ${profile.artistNames.length} gevolgde artiesten` +
-      (cities.length ? `; in ${cities.join(', ')}` : ''),
-  };
+  const candidates = [...info.values()].sort((a, b) => a.startsAt.getTime() - b.startsAt.getTime());
+  return { taste: profile.taste, examples: profile.examples, candidates, cities };
 }

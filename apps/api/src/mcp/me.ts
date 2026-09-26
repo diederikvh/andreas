@@ -510,37 +510,54 @@ export function registerMeTools(server: McpServer, userId: string): void {
     {
       title: 'Meer zoals wat je doet',
       description:
-        'Aanbevelingen voor de gebruiker, elk met een reden, op basis van waar die heen gaat, wat die gered ' +
-        'en weggeveegd heeft, gevolgde artiesten, genres leuk/niet leuk en de omschrijvingen van zijn ' +
-        'meldingen. Laat weg wat al in de agenda staat, gered of weggeveegd is, en avonden van artiesten die ' +
-        'de gebruiker al volgt. Zonder stad: de steden waar de gebruiker zelf heen gaat; zonder periode: de ' +
-        'komende 60 dagen. Duurt ongeveer 10 seconden. Presenteer de redenen, en bied aan om iets een hartje ' +
-        'te geven (save_event) of er een melding van te maken.',
+        'Materiaal voor aanbevelingen: het smaakprofiel van de gebruiker (waar die heen gaat, wat die gered ' +
+        'en weggeveegd heeft, gevolgde artiesten, genres leuk/niet leuk, omschrijvingen van meldingen) en een ' +
+        'voorselectie van kandidaten met beschrijving en line-up. Kies zelf wat past en geef per keuze een ' +
+        'korte, concrete reden; verzin niets over de gebruiker dat niet in het profiel staat. Weggelaten is al ' +
+        'wat in de agenda staat, gered of weggeveegd is, geblokkeerde zalen, niet-leuk-genres en avonden van ' +
+        'artiesten die de gebruiker al volgt. Zonder stad: de steden waar de gebruiker zelf heen gaat; zonder ' +
+        'periode: de komende 60 dagen. Bied daarna aan om iets een hartje te geven (save_event) of er een ' +
+        'melding van te maken.',
       inputSchema: {
         cities: z.array(z.enum(schema.city.enumValues)).optional(),
         categories: z.array(z.enum(['Muziek', 'Film', 'Theater', 'Kunst', 'Lezing', 'Literatuur'])).optional(),
         from: DATE.optional(),
         to: DATE.optional(),
-        limit: z.number().int().min(1).max(30).optional().describe('Default 15.'),
+        limit: z.number().int().min(1).max(50).optional().describe('Aantal kandidaten, default 30.'),
       },
     },
     async ({ cities, categories, from, to, limit }) => {
-      const { recommendations, judged, basis } = await recommendEvents(userId, {
+      const { taste, examples, candidates, cities: usedCities } = await recommendEvents(userId, {
         cities,
         categories,
         from: from ? parseAmsterdamLocal(`${from}T06:00:00`) : undefined,
         to: to ? new Date(parseAmsterdamLocal(`${to}T06:00:00`).getTime() + 86_400_000) : undefined,
         limit,
       });
-      if (recommendations.length === 0) {
-        return text(`Geen aanbevelingen gevonden (${judged} kandidaten bekeken; basis: ${basis}). Probeer een andere stad of periode.`);
+      const profile = [
+        `Smaak: ${taste}`,
+        examples.length
+          ? `Eerdere keuzes:\n${examples.map((x) => `- ${x.title} (${x.venue}): ${x.note}`).join('\n')}`
+          : '',
+      ].filter(Boolean).join('\n');
+      if (candidates.length === 0) {
+        return text(`${profile}\n\nGeen kandidaten gevonden${usedCities.length ? ` in ${usedCities.join(', ')}` : ''}. Probeer een andere stad of periode.`);
       }
-      const lines = recommendations.map(
-        (r) =>
-          `- [${r.title.replace(/[[\]]/g, '')}](${PUBLIC_BASE_URL}/e/${r.eventId}) — ${r.venue}` +
-          `${r.city !== 'amsterdam' ? ` (${r.city})` : ''}, ${whenFmt.format(new Date(r.startsAt))}: ${r.reason}`
+      const lines = candidates.map((e) => {
+        const lineup = e.lineup.length
+          ? `\n  Line-up: ${e.lineup.map((l) => (l.genres.length ? `${l.name} (${l.genres.slice(0, 4).join(', ')})` : l.name)).join('; ')}`
+          : '';
+        const about = e.description ? `\n  ${e.description.replace(/\s+/g, ' ').trim().slice(0, 400)}` : '';
+        return (
+          `- [${e.title.replace(/[[\]]/g, '')}](${PUBLIC_BASE_URL}/e/${e.id}) — ${e.venue}` +
+          `${e.city !== 'amsterdam' ? ` (${e.city})` : ''}, ${whenFmt.format(e.startsAt)} · ${e.category}` +
+          `${e.genres.length ? ` · ${e.genres.slice(0, 3).join(', ')}` : ''}${lineup}${about}`
+        );
+      });
+      return text(
+        `${profile}\n\n${candidates.length} kandidaten${usedCities.length ? ` in ${usedCities.join(', ')}` : ''}. ` +
+          `Kies er de beste uit voor deze persoon, met een reden per keuze:\n${lines.join('\n')}`
       );
-      return text(`${recommendations.length} aanbevelingen (van ${judged} bekeken; basis: ${basis}):\n${lines.join('\n')}`);
     }
   );
 

@@ -48,18 +48,4 @@ export const EMPTY_PROFILE: PreferenceProfile = {
   when: 'tonight',
 };
 
-/** Compacte event-vorm die het LLM krijgt om te kiezen + te motiveren.
-    Bewust mager: geen coördinaten of interne velden — scheelt tokens. */
-export type ZoekCandidate = {
-  id: string;
-  title: string;
-  venueId: string;
-  venueName: string;
-  start: string; // ISO 8601
-  end?: string | null;
-  genres: string[];
-  priceTier: PriceTier | null;
-  vibe: string[];
-};
-
 export type ZoekChatTurn = { role: 'user' | 'assistant'; content: string };

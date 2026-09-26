@@ -16,7 +16,7 @@ import {
   getBlockedVenueIds,
   getFollowedVenueIds,
 } from './venue-follows.js';
-import { resolveWhenWindow } from '../zoek/retrieval.js';
+import { resolveWhenWindow } from '../zoek/retrieval-core.js';
 import type { PreferenceProfile } from '../zoek/types.js';
 
 type EventCategory = 'Muziek' | 'Theater' | 'Literatuur' | 'Film' | 'Kunst' | 'Lezing';
