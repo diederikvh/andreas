@@ -155,8 +155,11 @@ export async function previewAlert(
   return { total: all.length, events: all.slice(0, limit) };
 }
 
-/** De meest recent toegevoegde events die door de harde filters komen: de
-    steekproef waarop een smaakregel bij het aanmaken wordt voorgekeurd. */
+/** De nieuwste events die door de harde filters komen: de steekproef
+    waarop een smaakregel bij het aanmaken wordt voorgekeurd. "Nieuw" =
+    wanneer het event voor het eerst binnenkwam (`MIN`), niet z'n laatste
+    nieuwe datum: een wekelijkse jam krijgt elke week een datum erbij en
+    stond daardoor bij elke proef bovenaan. */
 export async function recentCandidates(f: AlertFilters, limit: number): Promise<string[]> {
   const res = await db.execute<{ id: string }>(sql`
     WITH ${GENRE_ALIAS_CTE}
@@ -167,7 +170,7 @@ export async function recentCandidates(f: AlertFilters, limit: number): Promise<
     JOIN venues v ON v.id = COALESCE(o.venue_id, e.venue_id) AND v.published
     WHERE ${ALERT_MATCH}
     GROUP BY e.id
-    ORDER BY MAX(o.created_at) DESC
+    ORDER BY MIN(o.created_at) DESC
     LIMIT ${limit}
   `);
   return res.rows.map((r) => r.id);

@@ -3,7 +3,8 @@
  * op een scherm.
  *
  *   GET    /alerts          — mijn regels, met de laatste treffers
- *   PATCH  /alerts/:id      — aan/uit (`{ active }`)
+ *   PATCH  /alerts/:id      — aan/uit (`{ active }`), of de smaak en grenzen
+ *                             aanpassen (`{ taste, cities, categories }`)
  *   DELETE /alerts/:id      — weg (met alle feedback)
  *   POST   /alerts/preview  — proef op een smaak, zonder op te slaan
  *   POST   /alerts          — opslaan
@@ -36,13 +37,14 @@ const CATEGORIES = new Set<string>(schema.eventCategory.enumValues);
 
 type TasteInput = { taste: string; cities: string[]; categories: string[] };
 
+type TasteBody = { taste?: unknown; cities?: unknown; categories?: unknown };
+
 /** Controleer wat de app stuurt. Een smaak zonder grens wordt een stroom. */
 async function readTasteInput(c: Context): Promise<TasteInput | Response> {
-  const body = (await c.req.json().catch(() => ({}))) as {
-    taste?: unknown;
-    cities?: unknown;
-    categories?: unknown;
-  };
+  return checkTasteInput(c, (await c.req.json().catch(() => ({}))) as TasteBody);
+}
+
+function checkTasteInput(c: Context, body: TasteBody): TasteInput | Response {
   const taste = typeof body.taste === 'string' ? body.taste.trim() : '';
   if (taste.length < 3 || taste.length > 500) {
     return c.json({ error: 'Omschrijf in een paar woorden waar je van wil horen.' }, 400);
@@ -78,6 +80,8 @@ alertsRoute.get('/', async (c) => {
       id: schema.alerts.id,
       label: schema.alerts.label,
       taste: schema.alerts.taste,
+      cities: schema.alerts.cities,
+      categories: schema.alerts.categories,
       active: schema.alerts.active,
       startsUntil: schema.alerts.startsUntil,
       createdAt: schema.alerts.createdAt,
@@ -133,6 +137,9 @@ alertsRoute.get('/', async (c) => {
       id: a.id,
       label: a.label,
       taste: a.taste,
+      // Voor het bewerk-formulier in de app.
+      cities: a.cities ?? [],
+      categories: a.categories ?? [],
       active: a.active,
       expired: a.startsUntil ? a.startsUntil.getTime() < Date.now() : false,
       createdAt: a.createdAt.toISOString(),
@@ -152,12 +159,36 @@ alertsRoute.get('/', async (c) => {
 alertsRoute.patch('/:id', async (c) => {
   const userId = await requireUserId(c);
   if (typeof userId !== 'string') return userId;
-  const body = (await c.req.json().catch(() => ({}))) as { active?: unknown };
+  const body = (await c.req.json().catch(() => ({}))) as TasteBody & { active?: unknown };
+  const where = and(eq(schema.alerts.id, c.req.param('id')), eq(schema.alerts.userId, userId));
+
+  // Bewerken: nieuwe smaak en grenzen. De feedback (alert_verdicts) blijft
+  // staan; wat de keurder leerde gaat niet weg omdat je de tekst bijschaaft.
+  if (body.taste !== undefined) {
+    const input = checkTasteInput(c, body);
+    if (input instanceof Response) return input;
+    const label = describeAlert({ taste: input.taste, cities: input.cities, categories: input.categories });
+    const [row] = await db
+      .update(schema.alerts)
+      .set({
+        taste: input.taste,
+        label,
+        cities: input.cities.length ? (input.cities as (typeof schema.city.enumValues)[number][]) : null,
+        categories: input.categories.length
+          ? (input.categories as (typeof schema.eventCategory.enumValues)[number][])
+          : null,
+      })
+      .where(where)
+      .returning({ id: schema.alerts.id });
+    if (!row) return c.json({ error: 'niet gevonden' }, 404);
+    return c.json({ id: row.id, label });
+  }
+
   if (typeof body.active !== 'boolean') return c.json({ error: 'active ontbreekt' }, 400);
   const [row] = await db
     .update(schema.alerts)
     .set({ active: body.active })
-    .where(and(eq(schema.alerts.id, c.req.param('id')), eq(schema.alerts.userId, userId)))
+    .where(where)
     .returning({ id: schema.alerts.id });
   if (!row) return c.json({ error: 'niet gevonden' }, 404);
   return c.json({ active: body.active });

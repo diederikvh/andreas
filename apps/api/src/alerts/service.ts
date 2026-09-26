@@ -41,7 +41,7 @@ export function describeAlert(p: {
 export type TasteSampleItem = { id: string; title: string; venue: string; reason: string };
 
 /** Hoeveel recente kandidaten de proef van een smaakregel laat keuren. */
-const TASTE_SAMPLE = 25;
+const TASTE_SAMPLE = 40;
 
 /**
  * Keur de laatst toegevoegde events binnen de grenzen tegen de smaak. Over
@@ -54,7 +54,8 @@ export async function previewTaste(
 ): Promise<{ sampled: number; yes: TasteSampleItem[]; no: TasteSampleItem[] }> {
   const ids = await recentCandidates(filters, TASTE_SAMPLE);
   const info = await loadEventInfo(ids);
-  const verdicts = await judgeMany(taste, [...info.values()]);
+  // Meer tegelijk dan in de nachtelijke job: hier zit iemand te wachten.
+  const verdicts = await judgeMany(taste, [...info.values()], [], 10);
   const item = (id: string): TasteSampleItem => ({
     id,
     title: info.get(id)!.title,
