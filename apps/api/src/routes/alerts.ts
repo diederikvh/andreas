@@ -3,6 +3,8 @@
  * op een scherm.
  *
  *   GET    /alerts          — mijn regels, met de laatste treffers
+ *   GET    /alerts/found    — "Gevonden voor jou": alles wat meldingen en
+ *                             gevolgde artiesten recent opleverden
  *   PATCH  /alerts/:id      — aan/uit (`{ active }`), of de smaak en grenzen
  *                             aanpassen (`{ taste, cities, categories }`)
  *   DELETE /alerts/:id      — weg (met alle feedback)
@@ -19,7 +21,7 @@ import { randomUUID } from 'node:crypto';
 import { and, desc, eq, sql } from 'drizzle-orm';
 import { Hono, type Context } from 'hono';
 
-import type { AlertFilters } from '../alerts/match.js';
+import { titleHasName, type AlertFilters } from '../alerts/match.js';
 import { describeAlert, previewTaste } from '../alerts/service.js';
 import { auth } from '../auth.js';
 import { db, schema } from '../db/index.js';
@@ -154,6 +156,89 @@ alertsRoute.get('/', async (c) => {
         })),
     })),
   });
+});
+
+/**
+ * Gevonden voor jou: wat je meldingen en gevolgde artiesten opleverden, in
+ * één lijst. Hier landt de gebundelde push ("3 nieuwe dingen voor jou");
+ * op /new stonden die events tussen al het andere en waren ze niet terug
+ * te vinden.
+ *
+ * Uit `reminders`, want dat is precies wat er gemeld is of om 10:00 klaar
+ * staat. Alleen wat nog komt, nieuwste vondst eerst.
+ */
+alertsRoute.get('/found', async (c) => {
+  const userId = await requireUserId(c);
+  if (typeof userId !== 'string') return userId;
+
+  const rows = await db.execute<{
+    event_id: string;
+    title: string;
+    venue: string;
+    city: string;
+    starts_at: string;
+    kind: string;
+    reason: string | null;
+    alert_id: string | null;
+    alert_taste: string | null;
+    alert_label: string | null;
+    artist_name: string | null;
+    sent: boolean;
+  }>(sql`
+    SELECT DISTINCT ON (o.event_id)
+      o.event_id, e.title, v.name AS venue, v.city::text AS city, o.starts_at,
+      r.kind::text AS kind, r.note AS reason, r.alert_id,
+      a.taste AS alert_taste, a.label AS alert_label,
+      (
+        SELECT ar.name FROM artist_follows af
+        JOIN artists ar ON ar.id = af.artist_id
+        WHERE af.user_id = r.user_id AND (
+          (jsonb_typeof(o.lineup) = 'array' AND EXISTS (
+            SELECT 1 FROM jsonb_array_elements(o.lineup) le WHERE le->>'artistId' = ar.id
+          ))
+          OR ${sql.raw(titleHasName('ar.name'))}
+        )
+        LIMIT 1
+      ) AS artist_name,
+      r.sent_at IS NOT NULL AS sent,
+      r.created_at
+    FROM reminders r
+    JOIN occurrences o ON o.id = r.occurrence_id
+    JOIN events e ON e.id = o.event_id AND e.published
+    JOIN venues v ON v.id = COALESCE(o.venue_id, e.venue_id)
+    LEFT JOIN alerts a ON a.id = r.alert_id
+    WHERE r.user_id = ${userId}
+      AND r.kind IN ('regel', 'artiest')
+      AND r.created_at > NOW() - INTERVAL '30 days'
+      AND o.starts_at > NOW()
+      AND o.status <> 'cancelled'
+    ORDER BY o.event_id, r.created_at DESC
+  `);
+
+  const found = rows.rows
+    .sort((x, y) => new Date((y as any).created_at).getTime() - new Date((x as any).created_at).getTime())
+    .slice(0, 50)
+    .map((r) => ({
+      eventId: r.event_id,
+      title: r.title,
+      venue: r.venue,
+      city: r.city,
+      startsAt: new Date(r.starts_at).toISOString(),
+      // Waarom het hier staat: de reden van de keurder, of welke melding
+      // of artiest het vond.
+      reason:
+        r.kind === 'artiest'
+          ? r.artist_name
+            ? `Je volgt ${r.artist_name}`
+            : 'Een artiest die je volgt'
+          : (r.reason ?? null),
+      via: r.kind === 'artiest' ? null : (r.alert_taste ?? r.alert_label ?? null),
+      alertId: r.alert_id,
+      // Nog niet verstuurd: komt in de push van 10:00.
+      sent: r.sent,
+    }));
+
+  return c.json({ found });
 });
 
 alertsRoute.patch('/:id', async (c) => {

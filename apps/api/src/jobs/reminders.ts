@@ -530,7 +530,9 @@ export function newsPayload(items: NewsRow[]): {
     return {
       title: `${items.length} nieuwe dingen voor jou`,
       body: rest > 0 ? `${named} en ${rest} meer.` : `${named}.`,
-      data: { url: '/new' },
+      // Naar "Gevonden voor jou" op het meldingenscherm, niet naar /new:
+      // daar stonden deze events tussen al het andere nieuwe aanbod.
+      data: { url: '/meldingen' },
     };
   }
   const row = items[0];
