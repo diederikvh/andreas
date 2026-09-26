@@ -185,8 +185,7 @@ export default function NewScreen() {
    */
   const [historyPages, setHistoryPages] = useState(0);
   const historySince = useMemo(() => {
-    if (!since) return null;
-    const d = new Date(since);
+    const d = since ? new Date(since) : new Date();
     d.setDate(d.getDate() - 30);
     return d;
   }, [since]);
@@ -195,6 +194,13 @@ export default function NewScreen() {
     lanes: activeLanes,
     limit: Math.min((pages + historyPages) * PAGE, SERVER_MAX),
   });
+  // Niets nieuws sinds je vorige bezoek (en vandaag nog niets): meteen de
+  // geschiedenis in. Anders stond er een leeg scherm, en omdat de
+  // geschiedenis pas laadt als je onderaan doorscrolt kwam je er nooit.
+  const windowEmpty = !isLoading && !error && active !== undefined && active.events.length === 0;
+  useEffect(() => {
+    if (windowEmpty && historyPages === 0) setHistoryPages(1);
+  }, [windowEmpty, historyPages]);
   const rawEvents = useMemo(() => {
     const head = active?.events;
     if (!head) return undefined;
@@ -377,8 +383,10 @@ export default function NewScreen() {
     </Pressable>
   );
 
+  /** De geschiedenis is gevraagd maar nog niet binnen. */
+  const historyLoading = inHistory && history === undefined;
   const isEmpty =
-    !isLoading && !error && (events?.length ?? 0) === 0;
+    !isLoading && !historyLoading && !error && (events?.length ?? 0) === 0;
 
   // Leeg door jouw filter, of leeg omdat er niets is? Dat verschil moet
   // de tekst maken. "Je bent bij" terwijl er 23 films klaarstaan die je
@@ -455,7 +463,7 @@ export default function NewScreen() {
             </Text>
           </View>
         </View>
-      ) : isLoading ? (
+      ) : isLoading || historyLoading ? (
         <View style={[styles.loadingWrap, { paddingTop: topInset }]}>
           <SpinningCross size={28} color={roles.fgPlaceholder} />
         </View>
