@@ -91,6 +91,7 @@ const SYSTEM = [
   'De genre-labels van de zaal zijn grof en vaak fout. Weeg ze licht; de artiest zelf telt.',
   '',
   'Zeg ja als iemand met deze smaak dit event waarschijnlijk wil weten. Zeg nee als je twijfelt en je kennis van de artiest die twijfel niet wegneemt.',
+  'Verzin niets. Ken je de artiest niet en zeggen beschrijving en line-up niets over de muziek, dan weet je het niet: zet `onderbouwd` op false en zeg nee. Een titel en een los label zijn geen onderbouwing.',
   'Tribute- en coverbands, feesten met hits uit een decennium en kinderprogramma zijn nee, tenzij de smaak daar expliciet om vraagt.',
   '',
   'De reden leest de persoon in een pushbericht: kort (hooguit 15 woorden), Nederlands, concreet over de muziek of de artiest.',
@@ -104,9 +105,14 @@ const TOOL = {
     type: 'object',
     properties: {
       match: { type: 'boolean', description: 'Past het bij de smaak?' },
+      onderbouwd: {
+        type: 'boolean',
+        description:
+          'True als je oordeel rust op concrete kennis van deze artiest of op wat beschrijving/line-up over de muziek zeggen. False als je gokt.',
+      },
       reason: { type: 'string', description: 'Korte reden voor de persoon, hooguit 15 woorden.' },
     },
-    required: ['match', 'reason'],
+    required: ['match', 'onderbouwd', 'reason'],
   },
 } as const;
 
@@ -164,11 +170,21 @@ export async function judgeEvent(taste: string, event: EventInfo): Promise<Verdi
       return null;
     }
     const data = (await response.json()) as {
-      content?: { type: string; name?: string; input?: { match?: unknown; reason?: unknown } }[];
+      content?: {
+        type: string;
+        name?: string;
+        input?: { match?: unknown; onderbouwd?: unknown; reason?: unknown };
+      }[];
     };
     const input = data.content?.find((c) => c.type === 'tool_use' && c.name === TOOL.name)?.input;
     if (typeof input?.match !== 'boolean') return null;
-    return { match: input.match, reason: typeof input.reason === 'string' ? input.reason.trim() : '' };
+    // Een ja zonder onderbouwing is een gok; een gok is geen melding waard.
+    // (Loavies X Chin Chin: alleen een titel en "pop", en toch "dromerige
+    // gitaren met synths".)
+    return {
+      match: input.match && input.onderbouwd === true,
+      reason: typeof input.reason === 'string' ? input.reason.trim() : '',
+    };
   } catch (err) {
     console.warn('[judge] mislukt', (err as Error).message);
     return null;

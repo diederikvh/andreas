@@ -179,6 +179,32 @@ Laatste sync: 2026-08-31 · branch `main`.
 
 ---
 
+## MCP & meldingen — de "ultieme ervaring"
+
+Doel (Diederik, 26 sep 2026): precies weten wat er in de stad gebeurt dat hij relevant vindt, vanuit Claude via de Andreas-MCP, en alles wat daar gebeurt terug in de app. Precisie boven volledigheid: geen rommel in de treffers.
+
+**Al gedaan (26 sep):** meldingsregels (`create_alert`/`list_alerts`/`delete_alert`, vaste genrelijst in `apps/api/src/alerts/genres.ts`), smaakregels met een Haiku-keurder (`alerts/judge.ts`, oordelen in `alert_verdicts`), artiesten volgen via de MCP (`mcp/artists.ts`), gevolgde artiesten ook herkend aan hun naam in de titel. Nieuws vertrekt om 10:00, gebundeld per persoon (`jobs/reminders.ts`).
+
+**Open, in deze volgorde:**
+1. **Agenda lezen** ⬜ — MCP-tool `my_plans`: waar ga ik heen (`attendance` + `invitation_responses` going + `submission_going`, zie `routes/going.ts`), wat heb ik gered (`saves`), welke vrienden gaan ook. Claude kan daarmee ook "wat staat er dit weekend / botst er iets" beantwoorden.
+2. **Tickets-vlag** ⬜ — *beslissing nodig.* De server weet niet waar je kaartjes voor hebt: tickets verlaten het toestel nooit (harde regel, zie `docs/share-naar-andreas.md`). Optie: alleen een boolean "heeft ticket" per occurrence mee naar de server, nooit bestand of barcode.
+3. **Vrienden lezen** ⬜ — "wat hebben mijn vrienden gered / wie gaat naar X". Respecteer `savesVisibility` en de bestaande privacy-gates (`buildFriendsByEvent`).
+4. **Acties vanuit Claude** ⬜ — hartje, "ik ga", "niet interessant" (`dismisses`). Met bevestigingsstap waar het anderen raakt.
+5. **Uitsluiten** ⬜ — "laat nooit meer iets van Ziggo Dome zien" (`venue_follows.state = 'blokken'`), en artiesten/soorten uitsluiten ("geen tributebands"). Past bij de richting voor /new: behapbaar maken door uit te sluiten, niet door slimmer te sorteren. Artiest- en soort-uitsluiting bestaat nog niet in het datamodel, en /new kent nog geen venue-filter.
+6. **Feedback op meldingen** ⬜ — "die van gisteren klopte niet": oordeel in `alert_verdicts` corrigeren en gecorrigeerde oordelen als voorbeelden meegeven aan de keurder, zodat een smaakregel leert.
+7. **Gevolgde artiesten in andere steden** ⬜ — "Afghan Whigs spelen ook in Utrecht". Data is er (`venues.city`); vooral een tool/weergave.
+8. **"Meer zoals wat je doet"** ⬜ — aanbevelingen met reden: de keurder met je "ik ga"-avonden, hartjes en gevolgde artiesten als voorbeelden.
+9. **Rond je avond** ⬜ — iets ervoor of erna in de buurt (film vóór, club na), op basis van `venues.lat/lng` en tijden.
+10. **Uitnodigen vanuit Claude** ⬜ — "nodig Roos uit voor Mood Bored" via de bestaande invitations-flow, met bevestigingsstap (versturen namens de gebruiker).
+11. **Groepsplanning** ⬜ — "zoek iets voor zaterdag dat bij ons alle drie past": smaken van groepsleden combineren, binnen wat zij delen.
+12. **Terugblik** ⬜ — "hoe ziet mijn jaar eruit", Wrapped-stijl, uit de spiegel (`routes/mirror.ts`). Plus achteraf "hoe was het?" als sterkste smaaksignaal voor de keurder.
+13. **Meldingen in de app** ⬜ — scherm met je regels (aan/uit, verwijderen) en per treffer de reden van de keurder. Was ticket 6 uit het oorspronkelijke voorstel.
+14. **Reden op /new** ⬜ — "past bij je smaak: donkere gitaarrock" als regel op /new-rijen die een regel raakten.
+15. **Zoek in de app herbouwen** ⬜ — de AI-zoek in de app vindt slecht wat je zoekt en pakt het tijdvenster verkeerd op. Zelfde recept als de MCP: model vertaalt naar vaste filters (absolute datums, vaste genres), keurder oordeelt met reden.
+16. **Spotify koppelen** ⬜ — gevolgde en meest beluisterde artiesten importeren en in één keer volgen. Let op: dev-mode max 25 gebruikers, en de Spotify-sleutel is gedeeld met de zoek (rustig importeren, anders ligt de zoek een etmaal plat).
+
+---
+
 ## Toekomstige slice — niet-leden uitnodigen via token
 
 Ontworpen 2026-05-03, niet ingebouwd omdat de basis (share-buttons + universal-links) al volstaat voor v1.
