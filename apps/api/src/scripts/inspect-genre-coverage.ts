@@ -9,7 +9,7 @@
  */
 import { sql } from 'drizzle-orm';
 
-import { MAIN_LABELS, genresOf, normalizeGenre, type Category } from '../alerts/genres.js';
+import { genresOf, mainGenresOf, normalizeGenre, type Category } from '../alerts/genres.js';
 import { db } from '../db/index.js';
 
 const res = await db.execute<{ category: Category; genres: string[] }>(sql`
@@ -25,7 +25,7 @@ for (const row of res.rows) {
   byCat.set(row.category, c);
   c.total++;
   // Zoals een regel matcht: alleen de eerste labels.
-  const keys = genresOf(row.category, row.genres.slice(0, MAIN_LABELS));
+  const keys = mainGenresOf(row.category, row.genres);
   if (keys.length > 0) c.covered++;
   for (const k of keys) c.perKey.set(k, (c.perKey.get(k) ?? 0) + 1);
   for (const raw of row.genres) {

@@ -16,7 +16,7 @@
 import { sql } from 'drizzle-orm';
 
 import { db } from '../db/index.js';
-import { GENRES, MAIN_LABELS, genresOf, type Category, type GenreKey } from './genres.js';
+import { GENRES, mainGenresOf, type Category, type GenreKey } from './genres.js';
 import { loadEventInfo, type EventInfo } from './search.js';
 
 /** Iets wat de gebruiker koos (past wel) of wegveegde (past niet). */
@@ -89,7 +89,7 @@ async function buildProfile(userId: string): Promise<Profile> {
     venueIds.add(c.venue_id);
     categories.add(c.category);
     cities.set(c.city, (cities.get(c.city) ?? 0) + 1);
-    for (const k of genresOf(c.category, c.genres.slice(0, MAIN_LABELS))) bump(k, c.how === 'going' ? 2 : 1);
+    for (const k of mainGenresOf(c.category, c.genres)) bump(k, c.how === 'going' ? 2 : 1);
   }
   const likes = prefs.rows.filter((p) => p.sentiment === 'like').map((p) => p.genre as GenreKey);
   const dislikes = prefs.rows.filter((p) => p.sentiment === 'dislike').map((p) => p.genre as GenreKey);
@@ -192,7 +192,7 @@ export async function recommendEvents(
   const scored = rows.rows.filter((r) => !followsArtist(r)).map((r) => {
     let score = 0;
     if (profile.venueIds.has(r.venue_id)) score += 3;
-    for (const k of genresOf(r.category, r.genres.slice(0, MAIN_LABELS))) score += 2 * (profile.genreWeights.get(k) ?? 0);
+    for (const k of mainGenresOf(r.category, r.genres)) score += 2 * (profile.genreWeights.get(k) ?? 0);
     return { id: r.id, score };
   });
   const top = scored.filter((s) => s.score > 0).sort((a, b) => b.score - a.score).slice(0, opts.limit ?? 30);

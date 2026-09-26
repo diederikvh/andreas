@@ -14,6 +14,7 @@ import { sql, type SQL } from 'drizzle-orm';
 
 import { db } from '../db/index.js';
 import {
+  DEEP_LABEL_KEYS,
   EXCLUDED_BY_DEFAULT,
   KIDS_TITLE_REGEX,
   MAIN_LABELS,
@@ -27,17 +28,20 @@ export const GENRE_ALIAS_CTE = sql.raw(
 
 const N = normalizeGenreSql('g');
 
+const deepKeys = `ARRAY[${DEEP_LABEL_KEYS.map((k) => `'${k}'`).join(',')}]`;
+
 /** Heeft het event (eigen `genres`, binnen z'n categorie) een van deze
-    vaste genres? Met `mainOnly` alleen in de eerste labels. Verzamellabels
-    met een `/` doen alleen exact mee. */
+    vaste genres? Met `mainOnly` alleen in de eerste labels (techno en house
+    ook op de plek erna, zie `mainGenresOf`). Verzamellabels met een `/`
+    doen alleen exact mee. */
 function hasGenre(keysExpr: string, mainOnly: boolean): string {
-  const labels = mainOnly ? `e.genres[1:${MAIN_LABELS}]` : 'e.genres';
   return `EXISTS (
-    SELECT 1 FROM unnest(${labels}) g
+    SELECT 1 FROM unnest(e.genres) WITH ORDINALITY AS t(g, pos)
     JOIN genre_alias ga ON ga.category = e.category::text
       AND CASE WHEN ga.is_like THEN position('/' in ${N}) = 0 AND ${N} LIKE ga.pattern
                ELSE ${N} = ga.pattern END
     WHERE ga.key = ANY(${keysExpr})
+      ${mainOnly ? `AND (t.pos <= ${MAIN_LABELS} OR (t.pos = ${MAIN_LABELS + 1} AND ga.key = ANY(${deepKeys})))` : ''}
   )`;
 }
 

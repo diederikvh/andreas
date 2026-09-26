@@ -21,9 +21,12 @@
  *    zo werden Jungle en een jazzfestival hiphop. Prijs: een ADE-nacht met
  *    `house,electronic,techno` telt niet als techno (wel als elektronisch).
  *    Voor het uitsluiten van kinderaanbod tellen wél alle labels.
+ *    Uitzondering: techno en house tellen ook op de derde plek, want een
+ *    clubnacht zet ze vaak achter `house, electronic`.
  *  - **Verzamellabels met een `/` doen niet mee** in de ruime patronen.
  *    `pop / rock` (418× bij TivoliVredenburg) zegt niet of het pop óf
- *    rock is, dus het telt voor geen van beide.
+ *    rock is, dus het telt voor geen van beide. Een verzamellabel dat wél
+ *    iets zegt (`dance / by night`) staat er exact in.
  *
  * Een patroon is een genormaliseerd label (zie `normalizeGenre`). Met `%`
  * erin is het een LIKE-patroon; zonder is het een exacte match.
@@ -54,12 +57,12 @@ export const GENRES = {
   soul: { label: 'soul', categories: ['Muziek'], match: ['soul', 'neosoul', 'northernsoul', 'motown', 'gospel'] },
   funk: { label: 'funk', categories: ['Muziek'], match: ['funk', 'funky', 'pfunk', 'jazzfunk'] },
   jazz: { label: 'jazz', categories: ['Muziek'], match: ['%jazz%', 'bebop', 'bigband'] },
-  blues: { label: 'blues', categories: ['Muziek'], match: ['blues', 'bluesrock', 'deltablues'] },
-  rock: { label: 'rock', categories: ['Muziek'], match: ['rock', '%rock', 'rock&roll', 'rocknroll', 'grunge', 'psychedelic', 'psychedelica', 'psychedelisch', 'psych'] },
+  blues: { label: 'blues', categories: ['Muziek'], match: ['blues', 'bluesrock', 'deltablues', 'roots/blues'] },
+  rock: { label: 'rock', categories: ['Muziek'], match: ['rock', '%rock', 'rock&roll', 'rocknroll', 'grunge', 'psychedelic', 'psychedelica', 'psychedelisch', 'psych', 'prog'] },
   indie: { label: 'indie', categories: ['Muziek'], match: ['%indie%', 'alternative', 'alternatief', 'shoegaze', 'dreampop', 'slowcore'] },
-  wave: { label: 'new wave & darkwave', categories: ['Muziek'], match: ['newwave', 'darkwave', 'coldwave', 'synthwave', 'gothic', 'goth', 'gothicrock'] },
+  wave: { label: 'new wave & darkwave', categories: ['Muziek'], match: ['newwave', 'darkwave', 'coldwave', 'synthwave', 'gothic', 'goth', 'gothicrock', 'industrial'] },
   punk: { label: 'punk', categories: ['Muziek'], match: ['%punk%', 'emo', 'posthardcore'] },
-  metal: { label: 'metal', categories: ['Muziek'], match: ['%metal%', 'deathcore', 'grindcore', 'doom', 'sludge', 'thrash', 'djent'] },
+  metal: { label: 'metal', categories: ['Muziek'], match: ['%metal%', 'deathcore', 'grindcore', 'doom', 'sludge', 'thrash', 'djent', 'heavy'] },
   pop: {
     label: 'pop',
     categories: ['Muziek'],
@@ -69,7 +72,9 @@ export const GENRES = {
     label: 'elektronisch',
     categories: ['Muziek'],
     // Wie "elektronisch" zegt bedoelt techno en house ook.
-    match: ['electronic', 'elektronisch', 'elektronische', 'elektronischemuziek', 'electronica', 'elektronica', 'electro', 'idm', 'experimenteleelektronica', 'triphop', 'trance', 'hardstyle', 'gabber', 'ebm', ...TECHNO, ...HOUSE, ...DNB],
+    match: ['electronic', 'elektronisch', 'elektronische', 'elektronischemuziek', 'electronica', 'elektronica', 'electro', 'idm', 'experimenteleelektronica', 'triphop', 'trance', 'hardstyle', 'gabber', 'ebm', ...TECHNO, ...HOUSE, ...DNB,
+      // Verzamellabel van TivoliVredenburg voor hun clubprogramma.
+      'dance/bynight'],
   },
   techno: { label: 'techno', categories: ['Muziek'], match: TECHNO },
   house: { label: 'house', categories: ['Muziek'], match: HOUSE },
@@ -85,8 +90,9 @@ export const GENRES = {
   },
   opera: { label: 'opera', categories: ['Muziek', 'Theater'], match: ['opera', 'operette', 'operetta'] },
   folk: { label: 'folk', categories: ['Muziek'], match: ['folk', 'indiefolk', 'folkrock', 'irishfolk', 'celtic'] },
-  country: { label: 'country & americana', categories: ['Muziek'], match: ['country', 'americana', 'bluegrass', 'altcountry'] },
-  singersongwriter: { label: 'singer-songwriter', categories: ['Muziek'], match: ['singersongwriter'] },
+  // "singer – songwriter / americana" (Effenaar) telt voor allebei.
+  country: { label: 'country & americana', categories: ['Muziek'], match: ['country', 'americana', 'bluegrass', 'altcountry', 'singersongwriter/americana'] },
+  singersongwriter: { label: 'singer-songwriter', categories: ['Muziek'], match: ['singersongwriter', 'singersongwriter/americana'] },
   reggae: { label: 'reggae', categories: ['Muziek'], match: ['reggae', 'dub', 'ska', 'dancehall', 'rootsreggae'] },
   latin: {
     label: 'latin',
@@ -137,6 +143,9 @@ export const GENRES = {
 
 /** Hoeveel labels vooraan in `events.genres` meetellen voor een regel. */
 export const MAIN_LABELS = 2;
+/** Deze genres tellen ook op plek 3: een ADE-nacht met
+    `house, electronic, techno` is gewoon techno. */
+export const DEEP_LABEL_KEYS = ['techno', 'house'] as const;
 
 export type GenreKey = keyof typeof GENRES;
 export const GENRE_KEYS = Object.keys(GENRES) as [GenreKey, ...GenreKey[]];
@@ -185,6 +194,17 @@ export function genresOf(category: Category, raw: string[]): GenreKey[] {
     const def: GenreDef = GENRES[key];
     return def.categories.includes(category) && def.match.some((p) => norms.some((n) => patternMatches(n, p)));
   });
+}
+
+/** De vaste genres die voor een regel tellen: die van de eerste twee
+    labels, plus techno en house van de derde. Tweeling van `hasGenre` in
+    `match.ts`. */
+export function mainGenresOf(category: Category, raw: string[]): GenreKey[] {
+  const main = genresOf(category, raw.slice(0, MAIN_LABELS));
+  const deep = genresOf(category, raw.slice(MAIN_LABELS, MAIN_LABELS + 1)).filter(
+    (k) => (DEEP_LABEL_KEYS as readonly string[]).includes(k) && !main.includes(k)
+  );
+  return [...main, ...deep];
 }
 
 /**

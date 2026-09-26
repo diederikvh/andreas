@@ -14,7 +14,7 @@ import { randomUUID } from 'node:crypto';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 
 import { db, schema } from '../db/index.js';
-import { GENRES, MAIN_LABELS, genresOf, type Category, type GenreKey } from './genres.js';
+import { GENRES, mainGenresOf, type Category, type GenreKey } from './genres.js';
 import { ALERT_MATCH, GENRE_ALIAS_CTE, alertSource } from './match.js';
 import { parseAmsterdamLocal } from '../scrapers/_amsterdam-tz.js';
 
@@ -163,7 +163,7 @@ function whyOf(
   );
   if (artists.length) parts.push(`met ${artists.join(', ')}`);
   if (q.genres?.length) {
-    const hit = genresOf(r.category, (r.genres ?? []).slice(0, MAIN_LABELS)).filter((k) => q.genres!.includes(k));
+    const hit = mainGenresOf(r.category, r.genres ?? []).filter((k) => q.genres!.includes(k));
     if (hit.length) parts.push(hit.map((k) => GENRES[k].label).join(', '));
   }
   if (q.keywords?.length) parts.push(`met ${q.keywords.map((k) => `"${k}"`).join(' of ')}`);

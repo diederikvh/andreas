@@ -2,7 +2,7 @@ import { aliasedTable, and, asc, count, desc, eq, gt, gte, ilike, inArray, isNul
 import { Hono, type Context } from 'hono';
 
 import { db, displayGenres, schema } from '../db/index.js';
-import { MAIN_LABELS, genresOf, type Category } from '../alerts/genres.js';
+import { mainGenresOf, type Category } from '../alerts/genres.js';
 import {
   buildFriendsByOccurrence,
   buildOccurrencesByEvent,
@@ -1597,7 +1597,7 @@ eventsRoute.get('/new', async (c) => {
     );
     if (disliked.size > 0) {
       for (const [id, ev] of byEvent) {
-        const keys = genresOf(ev.category, ev.ownGenres.slice(0, MAIN_LABELS));
+        const keys = mainGenresOf(ev.category, ev.ownGenres);
         if (
           keys.some((k) => disliked.has(k)) ||
           (disliked.has('tribute') && /tribute/i.test(ev.title))

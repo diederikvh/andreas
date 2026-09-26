@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { genresOf, KIDS_TITLE_REGEX, normalizeGenre } from './genres.js';
+import { genresOf, KIDS_TITLE_REGEX, mainGenresOf, normalizeGenre } from './genres.js';
 
 /** Alle voorbeelden komen uit de echte data van sep 2026. */
 
@@ -53,4 +53,20 @@ test('kinderaanbod wordt herkend, ook alleen aan de titel', () => {
   assert.ok(kids.test('LENNOX — Muzikaal avontuur voor iedereen vanaf 8 jaar!'));
   assert.ok(!kids.test('WIFEY | 20+'));
   assert.ok(!kids.test('Mula B • PHIL'));
+});
+
+test('verzamellabels die wél iets zeggen tellen exact mee', () => {
+  assert.deepEqual(genresOf('Muziek', ['Dance / By Night']), ['electronic']);
+  assert.deepEqual(genresOf('Muziek', ['singer – songwriter / americana']), ['country', 'singersongwriter']);
+  assert.deepEqual(genresOf('Muziek', ['heavy']), ['metal']);
+  assert.deepEqual(genresOf('Muziek', ['roots / blues']), ['blues']);
+  // Maar "Pop / Rock" blijft niets: pop óf rock?
+  assert.deepEqual(genresOf('Muziek', ['Pop / Rock']), []);
+});
+
+test('techno en house tellen ook op plek 3, de rest niet', () => {
+  assert.deepEqual(mainGenresOf('Muziek', ['house', 'electronic', 'techno']), ['electronic', 'house', 'techno']);
+  // Paradiso zet hiphop achter jazz: dat blijft buiten.
+  assert.deepEqual(mainGenresOf('Muziek', ['soul', 'jazz', 'hip-hop']), ['soul', 'jazz']);
+  assert.deepEqual(mainGenresOf('Muziek', ['a', 'b', 'c', 'techno']), []);
 });
