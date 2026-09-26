@@ -130,8 +130,11 @@ export function registerAlertTools(server: McpServer, userId: string): void {
       title: 'Melding instellen',
       description:
         'Stel een melding in: de gebruiker krijgt een push (om 10:00, gebundeld) zodra er in Andreas ' +
-        'NIEUW aanbod bijkomt dat past. Vertaal de wens van de gebruiker naar de velden; tijden als ' +
-        '"deze maand" of "in december" reken je om naar absolute datums `from`/`to`. Geef minstens ' +
+        'NIEUW aanbod bijkomt dat past, ongeacht wanneer het speelt: een show die nu wordt aangekondigd ' +
+        'voor mei volgend jaar telt ook. Laat `from`/`to` dus weg, tenzij de gebruiker expliciet de ' +
+        'speeldatum wil beperken ("alleen als het in december speelt"); reken zo\'n periode dan om naar ' +
+        'absolute datums. Vraagt de gebruiker wat er nu al is ("wat is er deze maand?"), gebruik dan ' +
+        '`search_events` en geen melding. Geef minstens ' +
         'één van `genres`, `artists` of `venues`. Past geen genre uit de lijst, zeg dat dan eerlijk ' +
         'in plaats van het dichtstbijzijnde te kiezen. Roep eerst aan ZONDER `confirm`: je krijgt dan ' +
         'een samenvatting en wat er nu al past. Leg die voor aan de gebruiker ("Klopt dat?") en roep ' +
@@ -148,8 +151,8 @@ export function registerAlertTools(server: McpServer, userId: string): void {
         venues: z.array(z.string().min(2)).optional().describe('Zaalnamen (OF), bv. "Paradiso".'),
         cities: z.array(z.enum(CITY_VALUES)).optional().describe('Steden (OF).'),
         categories: z.array(z.enum(CATEGORY_VALUES)).optional().describe('Categorieën (OF).'),
-        from: DATE.optional().describe('Eerste dag (YYYY-MM-DD) waarop het event plaatsvindt.'),
-        to: DATE.optional().describe('Laatste dag (YYYY-MM-DD). Na deze dag verloopt de regel vanzelf.'),
+        from: DATE.optional().describe('Alleen events die op of na deze dag (YYYY-MM-DD) spelen. Meestal weglaten.'),
+        to: DATE.optional().describe('Alleen events die uiterlijk op deze dag (YYYY-MM-DD) spelen; daarna verloopt de regel. Meestal weglaten.'),
         priceMaxEuro: z.number().min(0).optional().describe('Maximale prijs in euro. Onbekende prijs telt als passend.'),
         confirm: z.boolean().optional().describe('Pas op true zetten nadat de gebruiker de samenvatting heeft bevestigd.'),
       },
