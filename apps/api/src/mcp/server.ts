@@ -51,7 +51,8 @@ const INSTRUCTIONS =
   'gebruik dan `create_alert` en volg de bevestigingsstap in die tool. ' +
   'Artiesten volgen, ontvolgen en voorstellen gaat met `list_followed_artists`, ' +
   '`follow_artists`, `unfollow_artists` en `artists_playing`. ' +
-  'De eigen agenda (waar ga ik heen, wat heb ik gered, wie gaat er mee) staat in `my_plans`.';
+  'De eigen agenda (waar ga ik heen, wat heb ik gered, wie gaat er mee) staat in `my_plans`; ' +
+  'wat vrienden gered hebben en waar ze heen gaan in `friends_plans`.';
 
 const TOOL_DESCRIPTION =
   'Zoek concrete events in Amsterdam voor een gegeven periode. Geef `category` ' +

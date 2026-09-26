@@ -188,7 +188,7 @@ Doel (Diederik, 26 sep 2026): precies weten wat er in de stad gebeurt dat hij re
 **Open, in deze volgorde:**
 1. **Agenda lezen** ✅ (26 sep, `mcp/me.ts`) — MCP-tool `my_plans`: waar ga ik heen (`attendance` + `invitation_responses` going + `submission_going`, zie `routes/going.ts`), wat heb ik gered (`saves`), welke vrienden gaan ook. Claude kan daarmee ook "wat staat er dit weekend / botst er iets" beantwoorden.
 2. **Tickets-vlag** ⬜ — *beslissing nodig.* De server weet niet waar je kaartjes voor hebt: tickets verlaten het toestel nooit (harde regel, zie `docs/share-naar-andreas.md`). Optie: alleen een boolean "heeft ticket" per occurrence mee naar de server, nooit bestand of barcode.
-3. **Vrienden lezen** ⬜ — "wat hebben mijn vrienden gered / wie gaat naar X". Respecteer `savesVisibility` en de bestaande privacy-gates (`buildFriendsByEvent`).
+3. **Vrienden lezen** ✅ (26 sep, `friends_plans` in `mcp/me.ts`) — "wat hebben mijn vrienden gered / wie gaat naar X". Respecteer `savesVisibility` en de bestaande privacy-gates (`buildFriendsByEvent`).
 4. **Acties vanuit Claude** ⬜ — hartje, "ik ga", "niet interessant" (`dismisses`). Met bevestigingsstap waar het anderen raakt.
 5. **Uitsluiten** ⬜ — "laat nooit meer iets van Ziggo Dome zien" (`venue_follows.state = 'blokken'`), en artiesten/soorten uitsluiten ("geen tributebands"). Past bij de richting voor /new: behapbaar maken door uit te sluiten, niet door slimmer te sorteren. Artiest- en soort-uitsluiting bestaat nog niet in het datamodel, en /new kent nog geen venue-filter.
 6. **Feedback op meldingen** ⬜ — "die van gisteren klopte niet": oordeel in `alert_verdicts` corrigeren en gecorrigeerde oordelen als voorbeelden meegeven aan de keurder, zodat een smaakregel leert.

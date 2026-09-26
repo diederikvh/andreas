@@ -1,5 +1,6 @@
 /**
- * MCP-tools over de gebruiker zelf. Nu: `my_plans`, de agenda.
+ * MCP-tools over de gebruiker zelf: `my_plans` (de agenda) en
+ * `friends_plans` (wat vrienden gered hebben en waar ze heen gaan).
  *
  * Eén overzicht van wat er voor je klaarstaat: waar je heen gaat (zelf
  * "ik ga" of ja op een uitnodiging, zelfde bronnen als `routes/going.ts`),
@@ -19,6 +20,7 @@ import { z } from 'zod';
 
 import { db } from '../db/index.js';
 import { parseAmsterdamLocal } from '../scrapers/_amsterdam-tz.js';
+import { resolveVenues } from './alerts.js';
 import { PUBLIC_BASE_URL } from './events.js';
 
 const DATE = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'YYYY-MM-DD');
@@ -31,6 +33,28 @@ const whenFmt = new Intl.DateTimeFormat('nl-NL', {
   hour: '2-digit',
   minute: '2-digit',
 });
+
+/**
+ * CTE's `friends` en `visible`: mijn geaccepteerde vrienden, en per vriend
+ * of ik diens "ik ga" (`going_ok`) en likes (`saves_ok`) mag zien. Zelfde
+ * regels als `routes/social.ts`; op `favorites` alleen als die vriend mij
+ * als favoriet heeft.
+ */
+export function visibleFriendsCte(userId: string) {
+  return sql`friends AS (
+      SELECT CASE WHEN f.from_user_id = ${userId} THEN f.to_user_id ELSE f.from_user_id END AS id
+      FROM friendships f
+      WHERE f.status = 'accepted' AND ${userId} IN (f.from_user_id, f.to_user_id)
+    ),
+    visible AS (
+      SELECT u.id, u.name, u.handle,
+        (u.going_visibility = 'friends' OR (u.going_visibility = 'favorites' AND fav.user_id IS NOT NULL)) AS going_ok,
+        (u.saves_visibility = 'friends' OR (u.saves_visibility = 'favorites' AND fav.user_id IS NOT NULL)) AS saves_ok
+      FROM friends fr
+      JOIN users u ON u.id = fr.id
+      LEFT JOIN friend_favorites fav ON fav.user_id = u.id AND fav.friend_id = ${userId}
+    )`;
+}
 
 type PlanRow = {
   event_id: string;
@@ -67,20 +91,7 @@ export function registerMeTools(server: McpServer, userId: string): void {
         : null;
 
       const res = await db.execute<PlanRow>(sql`
-        WITH friends AS (
-          SELECT CASE WHEN f.from_user_id = ${userId} THEN f.to_user_id ELSE f.from_user_id END AS id
-          FROM friendships f
-          WHERE f.status = 'accepted' AND ${userId} IN (f.from_user_id, f.to_user_id)
-        ),
-        -- Welke vrienden mogen mij wat laten zien.
-        visible AS (
-          SELECT u.id, u.name,
-            (u.going_visibility = 'friends' OR (u.going_visibility = 'favorites' AND fav.user_id IS NOT NULL)) AS going_ok,
-            (u.saves_visibility = 'friends' OR (u.saves_visibility = 'favorites' AND fav.user_id IS NOT NULL)) AS saves_ok
-          FROM friends fr
-          JOIN users u ON u.id = fr.id
-          LEFT JOIN friend_favorites fav ON fav.user_id = u.id AND fav.friend_id = ${userId}
-        ),
+        WITH ${visibleFriendsCte(userId)},
         mine AS (
           SELECT a.occurrence_id, 'going' AS how, NULL::text AS invited_by
           FROM attendance a WHERE a.user_id = ${userId}
@@ -176,6 +187,120 @@ export function registerMeTools(server: McpServer, userId: string): void {
       }
       if (saved.length) sections.push(`Gered (${saved.length}):\n${saved.map(line).join('\n')}`);
       return text(sections.join('\n\n'));
+    }
+  );
+
+  server.registerTool(
+    'friends_plans',
+    {
+      title: 'Wat doen mijn vrienden',
+      description:
+        'Waar vrienden van de gebruiker heen gaan en wat ze gered hebben, per avond, met of de gebruiker ' +
+        'zelf ook gaat. Alleen wat die vrienden delen (hun privacy-instellingen gelden). Filter op vriend ' +
+        '(naam of handle), zaal, titel of periode; bv. "wie gaat er naar Paradiso" of "wat heeft Midas gered".',
+      inputSchema: {
+        friends: z.array(z.string().min(2)).optional().describe('Namen of handles van vrienden (deel van de naam mag).'),
+        venues: z.array(z.string().min(2)).optional(),
+        query: z.string().min(2).optional().describe('Deel van de titel, bv. een artiest.'),
+        from: DATE.optional().describe('Vanaf deze dag (YYYY-MM-DD). Default: nu.'),
+        to: DATE.optional().describe('Tot en met deze dag (YYYY-MM-DD).'),
+      },
+    },
+    async (args) => {
+      const venues = args.venues?.length ? await resolveVenues(args.venues) : { ids: [], names: [] };
+      if ('error' in venues) return { ...text(venues.error), isError: true };
+      const start = args.from ? parseAmsterdamLocal(`${args.from}T06:00:00`) : new Date();
+      const end = args.to
+        ? new Date(parseAmsterdamLocal(`${args.to}T06:00:00`).getTime() + 86_400_000)
+        : null;
+      const patterns = (args.friends ?? []).map((f) => `%${f.trim()}%`);
+
+      const res = await db.execute<{
+        event_id: string;
+        title: string;
+        venue: string;
+        starts_at: string;
+        status: string;
+        going: string[] | null;
+        saved: string[] | null;
+        me_going: boolean;
+        me_saved: boolean;
+      }>(sql`
+        WITH ${visibleFriendsCte(userId)},
+        chosen AS (
+          SELECT * FROM visible
+          ${patterns.length
+            ? sql`WHERE ${sql.join(patterns.map((p) => sql`(name ILIKE ${p} OR handle ILIKE ${p})`), sql` OR `)}`
+            : sql``}
+        ),
+        acts AS (
+          SELECT c.name, a.occurrence_id, 'going' AS how
+          FROM chosen c JOIN attendance a ON a.user_id = c.id WHERE c.going_ok
+          UNION
+          SELECT c.name, i.occurrence_id, 'going'
+          FROM chosen c
+          JOIN invitation_responses ir ON ir.user_id = c.id AND ir.status = 'going'
+          JOIN invitations i ON i.id = ir.invitation_id AND i.revoked_at IS NULL
+          WHERE c.going_ok
+          UNION
+          SELECT c.name, s.occurrence_id, 'saved'
+          FROM chosen c JOIN saves s ON s.user_id = c.id WHERE c.saves_ok
+        )
+        SELECT e.id AS event_id, e.title, v.name AS venue, o.starts_at, o.status::text AS status,
+               array_agg(DISTINCT acts.name) FILTER (WHERE acts.how = 'going') AS going,
+               array_agg(DISTINCT acts.name) FILTER (WHERE acts.how = 'saved') AS saved,
+               (
+                 EXISTS (SELECT 1 FROM attendance a WHERE a.user_id = ${userId} AND a.occurrence_id = o.id)
+                 OR EXISTS (
+                   SELECT 1 FROM invitation_responses ir
+                   JOIN invitations i ON i.id = ir.invitation_id AND i.revoked_at IS NULL
+                   WHERE ir.user_id = ${userId} AND ir.status = 'going' AND i.occurrence_id = o.id
+                 )
+               ) AS me_going,
+               EXISTS (SELECT 1 FROM saves s WHERE s.user_id = ${userId} AND s.occurrence_id = o.id) AS me_saved
+        FROM acts
+        JOIN occurrences o ON o.id = acts.occurrence_id
+        JOIN events e ON e.id = o.event_id AND e.published
+        JOIN venues v ON v.id = COALESCE(o.venue_id, e.venue_id)
+        WHERE o.starts_at >= ${start.toISOString()}::timestamptz
+          ${end ? sql`AND o.starts_at < ${end.toISOString()}::timestamptz` : sql``}
+          ${venues.ids.length ? sql`AND v.id IN (${sql.join(venues.ids.map((id) => sql`${id}`), sql`, `)})` : sql``}
+          ${args.query ? sql`AND e.title ILIKE ${'%' + args.query.trim() + '%'}` : sql``}
+        GROUP BY e.id, e.title, v.name, o.id, o.starts_at, o.status
+        ORDER BY o.starts_at
+        LIMIT 150
+      `);
+
+      if (res.rows.length === 0) {
+        if (patterns.length) {
+          const known = await db.execute<{ name: string }>(sql`
+            WITH ${visibleFriendsCte(userId)} SELECT name FROM visible ORDER BY name
+          `);
+          return text(
+            `Niets gevonden. Vrienden van de gebruiker: ${known.rows.map((r) => r.name).join(', ') || '(geen)'}. ` +
+              'Wie z\'n likes of plannen op privé heeft, verschijnt hier niet.'
+          );
+        }
+        return text('Geen gedeelde plannen of likes van vrienden in deze periode.');
+      }
+
+      const lines = res.rows.map((r) => {
+        const going = r.going ?? [];
+        // Wie gaat, heeft 'm meestal ook gered; dat hoeft niet twee keer.
+        const saved = (r.saved ?? []).filter((n) => !going.includes(n));
+        const bits = [
+          `[${r.title.replace(/[[\]]/g, '')}](${PUBLIC_BASE_URL}/e/${r.event_id})`,
+          `${r.venue}, ${whenFmt.format(new Date(r.starts_at))}`,
+        ];
+        if (r.status === 'cancelled') bits.push('AFGELAST');
+        if (r.status === 'sold_out') bits.push('uitverkocht');
+        if (going.length) bits.push(`gaan: ${going.join(', ')}`);
+        if (saved.length) bits.push(`gered: ${saved.join(', ')}`);
+        if (r.me_going) bits.push('jij gaat ook');
+        else if (r.me_saved) bits.push('jij hebt het ook gered');
+        return `- ${bits.join(' — ')}`;
+      });
+      return text(`${res.rows.length} avonden:\n${lines.join('\n')}`);
     }
   );
 }
