@@ -101,6 +101,8 @@ export function GuideOverlay({
   const sending = useZoekStore((s) => s.sending);
   const error = useZoekStore((s) => s.error);
   const search = useZoekStore((s) => s.search);
+  const loadMore = useZoekStore((s) => s.loadMore);
+  const loadingMore = useZoekStore((s) => s.loadingMore);
   const reset = useZoekStore((s) => s.reset);
   const { data: genreOptions } = useGenreOptions();
 
@@ -295,9 +297,54 @@ export function GuideOverlay({
           {result && !sending ? (
             <View style={styles.results}>
               <Text style={[styles.reply, { color: roles.fg }]}>{result.reply}</Text>
+              {result.events.length > 1 ? (
+                // Volgorde: eerst wat bij je past (zalen en artiesten die je
+                // volgt, genres die je leuk vindt), of gewoon op datum.
+                <View style={styles.sortRow}>
+                  {(
+                    [
+                      ['personal', t('Voor jou', 'For you')],
+                      ['date', t('Op datum', 'By date')],
+                    ] as const
+                  ).map(([key, label]) => (
+                    <FilterChip
+                      key={key}
+                      label={label}
+                      active={filters.sort === key}
+                      onPress={() => {
+                        if (filters.sort === key) return;
+                        softTap();
+                        setFilters({ sort: key });
+                        void search();
+                      }}
+                    />
+                  ))}
+                </View>
+              ) : null}
               {result.events.map((ev) => (
                 <ZoekEventRow key={ev.id} event={ev} reason={result.reasonByEventId[ev.id]} />
               ))}
+              {result.events.length < result.total ? (
+                <Pressable
+                  onPress={() => {
+                    softTap();
+                    void loadMore();
+                  }}
+                  disabled={loadingMore}
+                  style={[styles.moreBtn, { backgroundColor: roles.bgChip }]}
+                >
+                  {loadingMore ? (
+                    <SpinningCross size={16} color={roles.fgMuted} />
+                  ) : (
+                    <Text style={[styles.moreLabel, { color: roles.fg }]}>
+                      {t(
+                        `Meer (nog ${result.total - result.events.length})`,
+                        `More (${result.total - result.events.length} left)`
+                      )}
+                    </Text>
+                  )}
+                </Pressable>
+              ) : null}
             </View>
           ) : null}
 
@@ -445,6 +492,9 @@ const styles = StyleSheet.create({
   error: { fontFamily: fontFamily.body, fontSize: 13 },
   results: { gap: 8, paddingTop: 10 },
   reply: { fontFamily: fontFamily.medium, fontSize: 15, lineHeight: 21 },
+  sortRow: { flexDirection: 'row', gap: 6 },
+  moreBtn: { alignItems: 'center', justifyContent: 'center', paddingVertical: 13, borderRadius: 8, marginTop: 6 },
+  moreLabel: { fontFamily: fontFamily.bold, fontSize: 15 },
   eventBlock: { marginHorizontal: -22 },
   reason: {
     fontFamily: fontFamily.body,

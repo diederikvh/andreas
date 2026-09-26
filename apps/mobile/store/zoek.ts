@@ -13,6 +13,8 @@ export type { ZoekWhen };
 
 export type ZoekFilters = {
   when: ZoekWhen;
+  /** Eerst wat bij jou past, of gewoon op datum. */
+  sort: 'personal' | 'date';
   cities: string[];
   categories: string[];
   genres: string[];
@@ -23,9 +25,11 @@ export type ZoekResult = {
   reply: string;
   events: ApiEvent[];
   reasonByEventId: Record<string, string>;
+  /** Hoeveel er in totaal passen; meer dan `events.length` = knop "meer". */
+  total: number;
 };
 
-const EMPTY_FILTERS: ZoekFilters = { when: 'week', cities: [], categories: [], genres: [], query: '' };
+const EMPTY_FILTERS: ZoekFilters = { when: 'week', sort: 'personal', cities: [], categories: [], genres: [], query: '' };
 
 type ZoekState = {
   filters: ZoekFilters;
@@ -44,8 +48,22 @@ type ZoekState = {
   openSearch: () => void;
   closeSearch: () => void;
   search: () => Promise<void>;
+  /** De volgende 20 van dezelfde zoekopdracht, erachter geplakt. */
+  loadMore: () => Promise<void>;
+  loadingMore: boolean;
   reset: () => void;
 };
+
+/** De filters als velden voor de server. */
+function fieldsOf(f: ZoekFilters): ZoekFields {
+  return {
+    ...periodOf(f.when),
+    cities: f.cities.length ? f.cities : undefined,
+    categories: f.categories.length ? f.categories : undefined,
+    genres: f.genres.length ? f.genres : undefined,
+    query: f.query.trim() || undefined,
+  };
+}
 
 export const useZoekStore = create<ZoekState>((set, get) => ({
   filters: EMPTY_FILTERS,
@@ -62,19 +80,16 @@ export const useZoekStore = create<ZoekState>((set, get) => ({
 
   search: async () => {
     if (get().sending) return;
-    const f = get().filters;
-    const fields: ZoekFields = {
-      ...periodOf(f.when),
-      cities: f.cities.length ? f.cities : undefined,
-      categories: f.categories.length ? f.categories : undefined,
-      genres: f.genres.length ? f.genres : undefined,
-      query: f.query.trim() || undefined,
-    };
     set({ sending: true, error: null });
     try {
-      const res = await postZoek(fields);
+      const res = await postZoek(fieldsOf(get().filters), { sort: get().filters.sort });
       set({
-        result: { reply: res.reply, events: res.events ?? [], reasonByEventId: res.reasonByEventId ?? {} },
+        result: {
+          reply: res.reply,
+          events: res.events ?? [],
+          reasonByEventId: res.reasonByEventId ?? {},
+          total: res.total ?? (res.events ?? []).length,
+        },
         sending: false,
       });
     } catch (e) {
@@ -82,5 +97,26 @@ export const useZoekStore = create<ZoekState>((set, get) => ({
     }
   },
 
-  reset: () => set({ filters: EMPTY_FILTERS, result: null, sending: false, error: null }),
+  loadingMore: false,
+  loadMore: async () => {
+    const prev = get().result;
+    if (!prev || get().loadingMore || prev.events.length >= prev.total) return;
+    set({ loadingMore: true });
+    try {
+      const res = await postZoek(fieldsOf(get().filters), { offset: prev.events.length, sort: get().filters.sort });
+      const seen = new Set(prev.events.map((e) => e.id));
+      set({
+        result: {
+          ...prev,
+          events: [...prev.events, ...(res.events ?? []).filter((e) => !seen.has(e.id))],
+          reasonByEventId: { ...prev.reasonByEventId, ...(res.reasonByEventId ?? {}) },
+        },
+        loadingMore: false,
+      });
+    } catch {
+      set({ loadingMore: false });
+    }
+  },
+
+  reset: () => set({ filters: EMPTY_FILTERS, result: null, sending: false, loadingMore: false, error: null }),
 }));

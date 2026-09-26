@@ -15,7 +15,7 @@ import { and, eq, inArray, sql } from 'drizzle-orm';
 
 import { db, schema } from '../db/index.js';
 import { GENRES, mainGenresOf, type Category, type GenreKey } from './genres.js';
-import { ALERT_MATCH, GENRE_ALIAS_CTE, alertSource } from './match.js';
+import { ALERT_MATCH, GENRE_ALIAS_CTE, alertSource, hasGenre, titleHasName } from './match.js';
 import { parseAmsterdamLocal } from '../scrapers/_amsterdam-tz.js';
 
 export const PUBLIC_BASE_URL = process.env.PUBLIC_BASE_URL ?? 'https://andreas.amsterdam';
@@ -34,6 +34,11 @@ export type StructuredQuery = {
   text?: string;
   priceMaxCents?: number;
   limit?: number;
+  /** Vanaf het hoeveelste resultaat (voor "meer"). */
+  offset?: number;
+  /** `personal`: eerst wat past bij wie je volgt en wat je leuk vindt,
+      binnen dezelfde score op datum. Zonder gebruiker gewoon op datum. */
+  sort?: 'date' | 'personal';
 };
 
 export type FoundEvent = {
@@ -103,9 +108,23 @@ export async function searchStructured(
     price_cents: number | null;
     ticket_url: string | null;
     lineup_names: string[] | null;
+    followed_venue: boolean;
+    liked_genre: boolean;
+    followed_artist: string | null;
   }>(sql`
     WITH ${GENRE_ALIAS_CTE}
     SELECT DISTINCT ON (e.id) e.id, e.title, e.category::text AS category, e.genres,
+      -- Wat bij jou past, voor het sorteren "voor jou" en de reden erbij.
+      EXISTS (SELECT 1 FROM venue_follows vf
+              WHERE vf.user_id = a.user_id AND vf.venue_id = v.id AND vf.state = 'volgen') AS followed_venue,
+      ${sql.raw(hasGenre(`ARRAY(SELECT gp.genre FROM genre_prefs gp WHERE gp.user_id = a.user_id AND gp.sentiment = 'like')`, true))} AS liked_genre,
+      (SELECT ar.name FROM artist_follows af JOIN artists ar ON ar.id = af.artist_id
+       WHERE af.user_id = a.user_id AND (
+         EXISTS (SELECT 1 FROM jsonb_array_elements(
+           CASE WHEN jsonb_typeof(o.lineup) = 'array' THEN o.lineup ELSE '[]'::jsonb END) le
+           WHERE le->>'artistId' = ar.id)
+         OR ${sql.raw(titleHasName('ar.name'))})
+       LIMIT 1) AS followed_artist,
       COALESCE(e.poster_url, e.image_url, v.image_url) AS image,
       v.name AS venue, v.city::text AS city, v.wijk,
       o.starts_at, o.ends_at, o.price_cents, o.ticket_url,
@@ -122,8 +141,11 @@ export async function searchStructured(
         WHERE le->>'name' ILIKE ${like}))` : sql``}
     ORDER BY e.id, o.starts_at
   `);
-  const rows = res.rows.sort((x, y) => Date.parse(x.starts_at) - Date.parse(y.starts_at));
-  const page = rows.slice(0, limit);
+  const score = (r: (typeof res.rows)[number]) =>
+    q.sort === 'personal' ? (r.followed_artist ? 5 : 0) + (r.followed_venue ? 3 : 0) + (r.liked_genre ? 2 : 0) : 0;
+  const rows = res.rows.sort((x, y) => score(y) - score(x) || Date.parse(x.starts_at) - Date.parse(y.starts_at));
+  const offset = Math.max(q.offset ?? 0, 0);
+  const page = rows.slice(offset, offset + limit);
   const info = await loadEventInfo(page.map((r) => r.id));
 
   const events = page.map((r): FoundEvent => {
@@ -152,11 +174,21 @@ export async function searchStructured(
 
 /** Welk gevraagd veld dit event binnenhaalde. Alleen feiten, geen smaak. */
 function whyOf(
-  r: { title: string; category: Category; genres: string[]; venue: string; lineup_names: string[] | null },
+  r: {
+    title: string;
+    category: Category;
+    genres: string[];
+    venue: string;
+    lineup_names: string[] | null;
+    followed_venue?: boolean;
+    followed_artist?: string | null;
+  },
   q: StructuredQuery,
   text: string | null
 ): string {
   const parts: string[] = [];
+  if (r.followed_artist) parts.push(`je volgt ${r.followed_artist}`);
+  if (r.followed_venue) parts.push('zaal die je volgt');
   const lineup = (r.lineup_names ?? []).map((n) => n.toLowerCase());
   const artists = (q.artists ?? []).filter(
     (a) => lineup.includes(a.toLowerCase()) || r.title.toLowerCase().includes(a.toLowerCase())
@@ -212,6 +244,8 @@ export type SearchEventsArgs = {
   query?: string;
   priceMaxEuros?: number;
   limit?: number;
+  offset?: number;
+  sort?: 'date' | 'personal';
 };
 
 export type SearchEventsResult = {
@@ -244,6 +278,8 @@ export async function searchEvents(userId: string | null, args: SearchEventsArgs
     text: args.query,
     priceMaxCents: args.priceMaxEuros != null ? Math.round(args.priceMaxEuros * 100) : undefined,
     limit: args.limit,
+    offset: args.offset,
+    sort: args.sort,
   });
   return {
     events,

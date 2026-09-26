@@ -452,8 +452,11 @@ export type ZoekResponse = {
 /** Eén zoekopdracht. Retry't bij netwerkfouten of 5xx (de API-machine kan
     op Fly in slaap staan en koud opstarten → eerste poging faalt soms). Niet
     bij 4xx (auth/validatie/limiet) — die lossen niet op met opnieuw proberen. */
-export async function postZoek(fields: ZoekFields): Promise<ZoekResponse> {
-  const body = JSON.stringify({ fields });
+export async function postZoek(
+  fields: ZoekFields,
+  opts: { offset?: number; sort?: 'date' | 'personal' } = {},
+): Promise<ZoekResponse> {
+  const body = JSON.stringify({ fields, offset: opts.offset ?? 0, sort: opts.sort ?? 'personal' });
   let lastErr: unknown;
   for (let attempt = 0; attempt < 3; attempt++) {
     try {

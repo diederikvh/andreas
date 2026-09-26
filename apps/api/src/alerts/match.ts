@@ -35,7 +35,7 @@ const deepKeys = `ARRAY[${DEEP_LABEL_KEYS.map((k) => `'${k}'`).join(',')}]`;
     vaste genres? Met `mainOnly` alleen in de eerste labels (techno en house
     ook op de plek erna, zie `mainGenresOf`). Verzamellabels met een `/`
     doen alleen exact mee. */
-function hasGenre(keysExpr: string, mainOnly: boolean): string {
+export function hasGenre(keysExpr: string, mainOnly: boolean): string {
   return `EXISTS (
     SELECT 1 FROM unnest(e.genres) WITH ORDINALITY AS t(g, pos)
     JOIN genre_alias ga ON ga.category = e.category::text

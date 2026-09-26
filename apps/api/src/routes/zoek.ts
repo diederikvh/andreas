@@ -62,21 +62,28 @@ zoekRoute.post('/', async (c) => {
   }
 
   const fields = cleanFields((body.fields ?? {}) as Record<string, unknown>);
+  // "Meer" vraagt de volgende 20; sorteren standaard "voor jou".
+  const offset = Math.min(Math.max(Number(body.offset) || 0, 0), 500);
+  const sort = body.sort === 'date' ? 'date' : 'personal';
   const { events: found, total, window, unknownVenues } = await searchEvents(session.user.id, {
     ...fields,
     limit: 20,
+    offset,
+    sort,
   });
   const events = await hydrateEvents(
     found.map((e) => e.id),
     { from: new Date(window.from), to: new Date(window.to) }
   );
-  await logSearch(session.user.id, `(filters) ${describeFields(fields)}`.slice(0, 500), fields, found);
+  // Alleen de eerste pagina is een nieuwe zoekopdracht; "meer" niet.
+  if (offset === 0) await logSearch(session.user.id, `(filters) ${describeFields(fields)}`.slice(0, 500), fields, found);
 
   return c.json({
-    reply: summarize(fields, found.length, total, window, unknownVenues),
+    reply: summarize(fields, total, window, unknownVenues),
     events,
     reasonByEventId: Object.fromEntries(found.map((e) => [e.id, e.why])),
     total,
+    offset,
   });
 });
 
@@ -112,7 +119,6 @@ const cityName = (c: string) => c.split('-').map((p) => p[0].toUpperCase() + p.s
 /** Waarop gezocht is, in één zin: "Jazz in Utrecht, za 27 sep: 4 gevonden." */
 function summarize(
   f: SearchEventsArgs,
-  shown: number,
   total: number,
   window: { from: string; to: string },
   unknownVenues: string[]
@@ -136,8 +142,8 @@ function summarize(
   const head = `${parts.join(' ')}, ${period}`;
   const unknown = unknownVenues.length ? ` ${unknownVenues.join(', ')} ken ik niet.` : '';
   if (total === 0) return `${head}: niets gevonden.${unknown} Probeer een langere periode of minder eisen.`;
-  const count = total > shown ? `${total} gevonden, hier de eerste ${shown}` : `${total} gevonden`;
-  return `${head}: ${count}.${unknown}`;
+  // Meer dan er staat? Dan is er een knop "meer" in de app.
+  return `${head}: ${total} gevonden.${unknown}`;
 }
 
 function describeFields(f: SearchEventsArgs): string {
