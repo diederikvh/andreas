@@ -1612,6 +1612,12 @@ export const alertVerdicts = pgTable(
       .references(() => events.id, { onDelete: 'cascade' }),
     match: boolean().notNull(),
     reason: text(),
+    /** Wat de gebruiker ervan vond: true = past wél, false = past níét.
+        Leeg = geen feedback. Gecorrigeerde oordelen gaan als voorbeelden
+        mee naar de keurder, zodat de regel leert. */
+    feedback: boolean(),
+    feedbackNote: text(),
+    feedbackAt: timestamp({ withTimezone: true }),
     createdAt: timestamp({ withTimezone: true })
       .notNull()
       .default(sql`now()`),

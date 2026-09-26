@@ -21,7 +21,7 @@
  */
 import { sql } from 'drizzle-orm';
 
-import { judgeMany, loadEventInfo } from '../alerts/judge.js';
+import { judgeMany, loadEventInfo, loadFeedbackExamples } from '../alerts/judge.js';
 import { ALERT_MATCH, GENRE_ALIAS_CTE, titleHasName } from '../alerts/match.js';
 import { db } from '../db/index.js';
 import { sendPushToUser } from '../push.js';
@@ -282,7 +282,7 @@ export async function judgeTasteAlerts(): Promise<number> {
   for (const r of rows) byAlert.set(r.alert_id, [...(byAlert.get(r.alert_id) ?? []), r]);
   for (const [alertId, items] of byAlert) {
     const events = items.map((i) => info.get(i.event_id)).filter((e) => e !== undefined);
-    const verdicts = await judgeMany(items[0].taste, events);
+    const verdicts = await judgeMany(items[0].taste, events, await loadFeedbackExamples(alertId));
     for (const item of items) {
       const v = verdicts.get(item.event_id);
       if (!v) continue; // model niet bereikbaar: volgende tik opnieuw

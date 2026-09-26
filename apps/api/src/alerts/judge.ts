@@ -32,6 +32,36 @@ export type EventInfo = {
 
 export type Verdict = { match: boolean; reason: string };
 
+/** Een event dat de gebruiker zelf beoordeelde voor deze regel. */
+export type FeedbackExample = { title: string; venue: string; fits: boolean; note: string | null };
+
+/** De laatste correcties van de gebruiker op deze regel: die wegen zwaarder
+    dan de eigen inschatting van de keurder. */
+export async function loadFeedbackExamples(alertId: string, limit = 12): Promise<FeedbackExample[]> {
+  const res = await db.execute<{ title: string; venue: string; feedback: boolean; feedback_note: string | null }>(sql`
+    SELECT e.title, v.name AS venue, av.feedback, av.feedback_note
+    FROM alert_verdicts av
+    JOIN events e ON e.id = av.event_id
+    JOIN venues v ON v.id = e.venue_id
+    WHERE av.alert_id = ${alertId} AND av.feedback IS NOT NULL
+    ORDER BY av.feedback_at DESC
+    LIMIT ${limit}
+  `);
+  return res.rows.map((r) => ({ title: r.title, venue: r.venue, fits: r.feedback, note: r.feedback_note }));
+}
+
+function describeExamples(examples: FeedbackExample[]): string {
+  if (examples.length === 0) return '';
+  const lines = examples.map(
+    (x) => `- ${x.title} (${x.venue}): ${x.fits ? 'past WEL' : 'past NIET'}${x.note ? ` — "${x.note}"` : ''}`
+  );
+  return (
+    '\n\nDeze persoon heeft eerder zelf geoordeeld. Die oordelen gaan boven je eigen inschatting; ' +
+    'trek er de lijn uit en pas die toe:\n' +
+    lines.join('\n')
+  );
+}
+
 /** Alles wat de keurder over deze events moet weten, in één query. */
 export async function loadEventInfo(eventIds: string[]): Promise<Map<string, EventInfo>> {
   if (eventIds.length === 0) return new Map();
@@ -144,7 +174,11 @@ function describeEvent(e: EventInfo): string {
  * antwoord gaf: dan leggen we niets vast en probeert de volgende tik het
  * opnieuw, in plaats van een event voorgoed af te keuren om een storing.
  */
-export async function judgeEvent(taste: string, event: EventInfo): Promise<Verdict | null> {
+export async function judgeEvent(
+  taste: string,
+  event: EventInfo,
+  examples: FeedbackExample[] = []
+): Promise<Verdict | null> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) return null;
   try {
@@ -162,7 +196,12 @@ export async function judgeEvent(taste: string, event: EventInfo): Promise<Verdi
         system: SYSTEM,
         tools: [TOOL],
         tool_choice: { type: 'tool', name: TOOL.name },
-        messages: [{ role: 'user', content: `Smaak: ${taste}\n\nEvent:\n${describeEvent(event)}` }],
+        messages: [
+          {
+            role: 'user',
+            content: `Smaak: ${taste}${describeExamples(examples)}\n\nEvent:\n${describeEvent(event)}`,
+          },
+        ],
       }),
     });
     if (!response.ok) {
@@ -195,6 +234,7 @@ export async function judgeEvent(taste: string, event: EventInfo): Promise<Verdi
 export async function judgeMany(
   taste: string,
   events: EventInfo[],
+  examples: FeedbackExample[] = [],
   concurrency = 5
 ): Promise<Map<string, Verdict>> {
   const out = new Map<string, Verdict>();
@@ -202,7 +242,7 @@ export async function judgeMany(
   const worker = async () => {
     while (next < events.length) {
       const e = events[next++];
-      const v = await judgeEvent(taste, e);
+      const v = await judgeEvent(taste, e, examples);
       if (v) out.set(e.id, v);
     }
   };
