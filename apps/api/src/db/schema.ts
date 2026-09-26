@@ -1450,6 +1450,8 @@ export const reminderKind = pgEnum('reminder_kind', [
       soort) precies het dubbel-sturen voorkomt waar je hier bang voor
       bent. `fire_at` is het moment van ontdekken: dit nieuws wacht niet. */
   'artiest',
+  /** Nieuw aanbod dat past bij een meldingsregel (`alerts`). */
+  'regel',
 ]);
 
 /**
@@ -1476,6 +1478,9 @@ export const reminders = pgTable(
     /** Eigen tekst bij een zelfgezette herinnering. Leeg bij de
         automatische: die schrijven zichzelf uit de event-gegevens. */
     note: text(),
+    /** Bij `regel`: welke regel het vond. Weg met de regel = weg met de
+        melding die nog klaarstond. */
+    alertId: text().references(() => alerts.id, { onDelete: 'cascade' }),
     /** Gezet zodra hij de deur uit is. Dit is ook het dubbel-verzend-slot:
         de job mag vaker draaien dan er meldingen zijn. */
     sentAt: timestamp({ withTimezone: true }),
@@ -1544,3 +1549,43 @@ export const searchMisses = pgTable('search_misses', {
     .notNull()
     .default(sql`now()`),
 });
+
+/**
+ * Meldingsregels: "laat me weten als er in oktober hiphop in Paradiso
+ * bijkomt". Aangemaakt via de MCP-tool `create_alert`.
+ *
+ * Elk filter is optioneel en NULL betekent "maakt niet uit"; binnen een
+ * filter is het OF, tussen filters EN. Genres zijn sleutels uit de vaste
+ * lijst in `alerts/genres.ts`, niet de vrije tekst van de scrapers.
+ * Artiesten staan op naam, niet op id: wie iemand wil volgen die hier nog
+ * nooit speelde heeft geen `artists`-rij, en juist dat is de melding die
+ * je wil hebben.
+ *
+ * Tijden worden bij het aanmaken absoluut vastgelegd ("deze maand" wordt
+ * 1 okt 06:00 – 1 nov 06:00, de logische dag). Na `starts_until` kan er
+ * niets meer matchen, dus de regel verloopt vanzelf.
+ */
+export const alerts = pgTable(
+  'alerts',
+  {
+    id: text().primaryKey(),
+    userId: text()
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    /** Leesbare samenvatting, door de server opgesteld uit de filters. */
+    label: text().notNull(),
+    venueIds: text().array(),
+    cities: city().array(),
+    categories: eventCategory().array(),
+    genres: text().array(),
+    artistNames: text().array(),
+    priceMaxCents: integer(),
+    startsFrom: timestamp({ withTimezone: true }),
+    startsUntil: timestamp({ withTimezone: true }),
+    active: boolean().notNull().default(true),
+    createdAt: timestamp({ withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+  },
+  (t) => [index('alerts_user_idx').on(t.userId)]
+);

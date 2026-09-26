@@ -4,12 +4,14 @@
  * model doorheen kunnen zoeken. Wij leveren de verse, gestructureerde data;
  * de client doet het gesprek.
  *
- * Eén tool: `search_events`. Deterministische retrieval (geen LLM aan onze
- * kant), categorie als harde filter, deeplinks terug naar Andreas.
+ * `search_events`: deterministische retrieval (geen LLM aan onze kant),
+ * categorie als harde filter, deeplinks terug naar Andreas. Voor ingelogde
+ * gebruikers daarnaast de meldingstools uit `alerts.ts`.
  */
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 
+import { registerAlertTools } from './alerts.js';
 import { buildEventsUiResource } from './card.js';
 import {
   CATEGORY_VALUES,
@@ -42,7 +44,9 @@ const INSTRUCTIONS =
   'BELANGRIJK: presenteer elk event als een klikbare Markdown-link op de titel ' +
   '— [titel](url) — met de `url` uit het resultaat. Laat die links nooit weg, ' +
   'ook niet in een korte samenvatting of bij de eerste reactie: elke genoemde ' +
-  'event moet doorklikbaar zijn naar zijn Andreas-pagina.';
+  'event moet doorklikbaar zijn naar zijn Andreas-pagina. ' +
+  'Wil de gebruiker een seintje als er iets bijkomt ("laat me weten als…"), ' +
+  'gebruik dan `create_alert` en volg de bevestigingsstap in die tool.';
 
 const TOOL_DESCRIPTION =
   'Zoek concrete events in Amsterdam voor een gegeven periode. Geef `category` ' +
@@ -115,6 +119,9 @@ export function buildMcpServer(userId: string | null = null): McpServer {
       };
     }
   );
+
+  // Meldingen horen bij een persoon; via de service-key is er niemand.
+  if (userId) registerAlertTools(server, userId);
 
   return server;
 }

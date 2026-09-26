@@ -20,7 +20,7 @@ import { gatherCandidates } from '../zoek/retrieval.js';
 import { EMPTY_PROFILE } from '../zoek/types.js';
 import type { PreferenceProfile, PriceTier, ZoekWhen } from '../zoek/types.js';
 
-const PUBLIC_BASE_URL = process.env.PUBLIC_BASE_URL ?? 'https://andreas.amsterdam';
+export const PUBLIC_BASE_URL = process.env.PUBLIC_BASE_URL ?? 'https://andreas.amsterdam';
 
 /** Tijd-vensters die de tool accepteert (geen `specific` in v1). */
 export const WHEN_VALUES = [
