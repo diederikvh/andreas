@@ -18,7 +18,14 @@ import {
   deleteReminder,
   getArtist,
   followArtistByName,
+  createTasteAlert,
+  deleteAlert,
+  getAlerts,
+  getFound,
   getArtistFollows,
+  previewTasteAlert,
+  setAlertActive,
+  updateTasteAlert,
   getFollowedArtists,
   getFollowedShows,
   getReminders,
@@ -58,6 +65,7 @@ import {
   respondInvitation,
   revokeInvitation,
   setFriendFavorite,
+  type ApiAlert,
   type ApiFriendDetail,
   searchUsers,
   sendFriendRequest,
@@ -73,6 +81,7 @@ import {
   getMyMirror,
   type AgendaFilters,
   type ApiMe,
+  type TasteAlertInput,
   type EventsFilter,
   type Mirror,
   type SaveSource,
@@ -153,6 +162,8 @@ export const queryKeys = {
   me: (userId: string | null) => ['me', userId] as const,
   reminders: () => ['reminders'] as const,
   artistFollows: () => ['artist-follows'] as const,
+  alerts: () => ['alerts'] as const,
+  found: () => ['alerts-found'] as const,
   followedArtists: () => ['followed-artists'] as const,
   followedShows: () => ['followed-shows'] as const,
 };
@@ -443,6 +454,84 @@ export function useToggleArtistFollow() {
       void qc.invalidateQueries({ queryKey: queryKeys.followedArtists() });
       void qc.invalidateQueries({ queryKey: queryKeys.followedShows() });
     },
+  });
+}
+
+/** Je meldingsregels, met de laatste treffers. */
+export function useAlerts(opts: { enabled?: boolean } = {}) {
+  return useQuery({
+    queryKey: queryKeys.alerts(),
+    queryFn: getAlerts,
+    enabled: opts.enabled ?? true,
+    staleTime: 60_000,
+  });
+}
+
+/** "Gevonden voor jou": wat meldingen en gevolgde artiesten opleverden. */
+export function useFound(opts: { enabled?: boolean } = {}) {
+  return useQuery({
+    queryKey: queryKeys.found(),
+    queryFn: getFound,
+    enabled: opts.enabled ?? true,
+    staleTime: 60_000,
+  });
+}
+
+/** Aan/uit, meteen zichtbaar; bij een fout terug naar hoe het was. */
+export function useSetAlertActive() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, active }: { id: string; active: boolean }) => setAlertActive(id, active),
+    onMutate: async ({ id, active }) => {
+      await qc.cancelQueries({ queryKey: queryKeys.alerts() });
+      const prev = qc.getQueryData<ApiAlert[]>(queryKeys.alerts());
+      qc.setQueryData<ApiAlert[]>(queryKeys.alerts(), (old) =>
+        (old ?? []).map((a) => (a.id === id ? { ...a, active } : a)),
+      );
+      return { prev };
+    },
+    onError: (_e, _v, ctx) => {
+      if (ctx?.prev) qc.setQueryData(queryKeys.alerts(), ctx.prev);
+    },
+    onSettled: () => void qc.invalidateQueries({ queryKey: queryKeys.alerts() }),
+  });
+}
+
+export function useDeleteAlert() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => deleteAlert(id),
+    onMutate: async (id) => {
+      await qc.cancelQueries({ queryKey: queryKeys.alerts() });
+      const prev = qc.getQueryData<ApiAlert[]>(queryKeys.alerts());
+      qc.setQueryData<ApiAlert[]>(queryKeys.alerts(), (old) => (old ?? []).filter((a) => a.id !== id));
+      return { prev };
+    },
+    onError: (_e, _v, ctx) => {
+      if (ctx?.prev) qc.setQueryData(queryKeys.alerts(), ctx.prev);
+    },
+    onSettled: () => void qc.invalidateQueries({ queryKey: queryKeys.alerts() }),
+  });
+}
+
+/** De proef duurt een paar seconden (de keurder leest 25 events). */
+export function usePreviewTasteAlert() {
+  return useMutation({ mutationFn: (input: TasteAlertInput) => previewTasteAlert(input) });
+}
+
+export function useUpdateTasteAlert() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, input }: { id: string; input: TasteAlertInput }) => updateTasteAlert(id, input),
+    onSettled: () => void qc.invalidateQueries({ queryKey: queryKeys.alerts() }),
+  });
+}
+
+export function useCreateTasteAlert() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: TasteAlertInput) => createTasteAlert(input),
+    onSettled: () => void qc.invalidateQueries({ queryKey: queryKeys.alerts() }),
   });
 }
 

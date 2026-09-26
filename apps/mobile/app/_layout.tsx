@@ -161,6 +161,10 @@ function RootLayout() {
                       options={{ presentation: 'modal' }}
                     />
                     <Stack.Screen
+                      name="melding/nieuw"
+                      options={{ presentation: 'modal' }}
+                    />
+                    <Stack.Screen
                       name="import"
                       options={{
                         presentation: 'modal',

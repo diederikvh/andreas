@@ -127,6 +127,14 @@ export default function MeerScreen() {
       label: t('Artiesten die je volgt', 'Artists you follow'),
       onPress: go('/artiesten'),
     },
+    {
+      // Naast de artiesten: allebei een abonnement op nieuws. De regels
+      // die je via Claude zet staan hier ook, om te pauzeren of weg te doen.
+      key: 'meldingen',
+      icon: <Ionicons name="notifications-outline" size={22} color={roles.accent} />,
+      label: t('Meldingen', 'Alerts'),
+      onPress: go('/meldingen'),
+    },
   ];
 
   // Volgorde: eerst de mensen, dan wat ze je vragen, dan wat jullie leuk

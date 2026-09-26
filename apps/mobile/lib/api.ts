@@ -1234,6 +1234,102 @@ export async function setArtistFollow(
   });
 }
 
+/** Een recente treffer van een melding: bij een smaakmelding met de reden
+    van de keurder. */
+export type ApiAlertHit = {
+  eventId: string;
+  title: string;
+  venue: string;
+  reason: string | null;
+  /** Al als push verstuurd, of nog klaargezet voor 10:00. */
+  sent: boolean;
+};
+
+/** Een meldingsregel, via Claude of in de app aangemaakt. */
+export type ApiAlert = {
+  id: string;
+  label: string;
+  /** Smaak in eigen woorden; leeg bij een vaste regel (genre/zaal). */
+  taste: string | null;
+  /** De grenzen, voor het bewerk-formulier. Leeg = geen grens. */
+  cities: string[];
+  categories: string[];
+  active: boolean;
+  expired: boolean;
+  createdAt: string;
+  hits: ApiAlertHit[];
+};
+
+export type ApiTasteSample = { id: string; title: string; venue: string; reason: string };
+
+/** De proef op een smaak: wat de keurder van de laatste 25 kandidaten vond. */
+export type ApiTastePreview = {
+  label: string;
+  sampled: number;
+  yes: ApiTasteSample[];
+  no: ApiTasteSample[];
+};
+
+export type TasteAlertInput = { taste: string; cities: string[]; categories: string[] };
+
+/** Een treffer in "Gevonden voor jou": van een melding of gevolgde artiest. */
+export type ApiFoundItem = {
+  eventId: string;
+  title: string;
+  venue: string;
+  city: string;
+  startsAt: string;
+  /** Waarom: de reden van de keurder, of "Je volgt …". */
+  reason: string | null;
+  /** Welke melding het vond (omschrijving of label); leeg bij een artiest. */
+  via: string | null;
+  alertId: string | null;
+  /** Al als push verstuurd, of nog klaar voor 10:00. */
+  sent: boolean;
+};
+
+export async function getFound(): Promise<ApiFoundItem[]> {
+  const { found } = await authedRequest<{ found: ApiFoundItem[] }>('/alerts/found');
+  return found;
+}
+
+export async function getAlerts(): Promise<ApiAlert[]> {
+  const { alerts } = await authedRequest<{ alerts: ApiAlert[] }>('/alerts');
+  return alerts;
+}
+
+export async function setAlertActive(id: string, active: boolean): Promise<void> {
+  await authedRequest(`/alerts/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ active }),
+  });
+}
+
+export async function deleteAlert(id: string): Promise<void> {
+  await authedRequest(`/alerts/${encodeURIComponent(id)}`, { method: 'DELETE' });
+}
+
+export async function previewTasteAlert(input: TasteAlertInput): Promise<ApiTastePreview> {
+  return authedRequest<ApiTastePreview>('/alerts/preview', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+export async function updateTasteAlert(id: string, input: TasteAlertInput): Promise<{ id: string; label: string }> {
+  return authedRequest<{ id: string; label: string }>(`/alerts/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(input),
+  });
+}
+
+export async function createTasteAlert(input: TasteAlertInput): Promise<{ id: string; label: string }> {
+  return authedRequest<{ id: string; label: string }>('/alerts', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
 export async function getReminders(): Promise<ApiReminder[]> {
   const { reminders } = await authedRequest<{ reminders: ApiReminder[] }>(
     '/reminders',
