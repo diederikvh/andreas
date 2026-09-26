@@ -81,6 +81,8 @@ export const saveSource = pgEnum('save_source', [
   'scan',
   /** De plannen-lijst (/going) — waar je je eigen afspraken teruginziet. */
   'going',
+  /** Via Claude, met de MCP-tools `save_event` / `set_going`. */
+  'mcp',
   'other',
 ]);
 export const venueFollowState = pgEnum('venue_follow_state', [
@@ -1615,4 +1617,24 @@ export const alertVerdicts = pgTable(
       .default(sql`now()`),
   },
   (t) => [primaryKey({ columns: [t.alertId, t.eventId] })]
+);
+
+/**
+ * Genres die iemand leuk of niet leuk vindt, als sleutel uit de vaste lijst
+ * in `alerts/genres.ts`. Niet leuk = weg uit /new en uit meldingen. Leuk
+ * voedt (straks) aanbevelingen. Gezet via de MCP-tool `set_genre_taste`.
+ */
+export const genrePrefs = pgTable(
+  'genre_prefs',
+  {
+    userId: text()
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    genre: text().notNull(),
+    sentiment: text().$type<'like' | 'dislike'>().notNull(),
+    createdAt: timestamp({ withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.genre] })]
 );

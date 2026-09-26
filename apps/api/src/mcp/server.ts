@@ -52,7 +52,9 @@ const INSTRUCTIONS =
   'Artiesten volgen, ontvolgen en voorstellen gaat met `list_followed_artists`, ' +
   '`follow_artists`, `unfollow_artists` en `artists_playing`. ' +
   'De eigen agenda (waar ga ik heen, wat heb ik gered, wie gaat er mee) staat in `my_plans`; ' +
-  'wat vrienden gered hebben en waar ze heen gaan in `friends_plans`.';
+  'wat vrienden gered hebben en waar ze heen gaan in `friends_plans`. ' +
+  'Hartje, "ik ga", zalen volgen/blokkeren en genres leuk/niet leuk gaan met `save_event`, ' +
+  '`set_going`, `set_venue` en `set_genre_taste`; `my_taste` toont wat er is ingesteld.';
 
 const TOOL_DESCRIPTION =
   'Zoek concrete events in Amsterdam voor een gegeven periode. Geef `category` ' +

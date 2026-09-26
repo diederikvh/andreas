@@ -194,6 +194,7 @@ export function registerAlertTools(server: McpServer, userId: string): void {
       const artists = args.artists?.length ? await resolveArtists(args.artists) : { names: [], unknown: [] };
 
       const filters: AlertFilters = {
+        userId,
         venueIds: venues.ids.length ? venues.ids : null,
         cities: args.cities?.length ? args.cities : null,
         categories: args.categories?.length ? args.categories : null,

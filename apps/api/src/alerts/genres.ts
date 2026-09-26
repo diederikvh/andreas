@@ -127,6 +127,9 @@ export const GENRES = {
   schilderkunst: { label: 'schilderkunst', categories: ['Kunst'], match: ['schilderkunst', 'painting'] },
   fotografie: { label: 'fotografie', categories: ['Kunst'], match: ['fotografie', 'photography'] },
 
+  // ── Soorten, vooral om uit te sluiten ("geen tributebands") ──
+  tribute: { label: 'tribute- en coverbands', categories: ['Muziek', 'Theater'], match: ['tribute', 'tributes', 'tributeband', 'coverband', 'covers'] },
+
   // ── Wat standaard buiten elke regel valt ──
   familie: { label: 'kinderen & familie', categories: ALL, match: ['familie', 'family', 'kindertheater', 'jeugd', 'kinderen', 'kinderliedjes', 'kids', 'poppenspel'] },
   workshop: { label: 'workshop', categories: ALL, match: ['workshop', 'masterclass', 'cursus'] },

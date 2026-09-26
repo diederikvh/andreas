@@ -163,6 +163,7 @@ export function registerArtistTools(server: McpServer, userId: string): void {
       const venues = args.venues?.length ? await resolveVenues(args.venues) : { ids: [], names: [] };
       if ('error' in venues) return text(venues.error, true);
       const source = alertSource({
+        userId,
         venueIds: venues.ids.length ? venues.ids : null,
         cities: args.cities?.length ? args.cities : null,
         categories: args.categories?.length ? args.categories : ['Muziek'],

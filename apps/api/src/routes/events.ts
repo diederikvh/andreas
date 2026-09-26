@@ -2,6 +2,7 @@ import { aliasedTable, and, asc, count, desc, eq, gt, gte, ilike, inArray, isNul
 import { Hono, type Context } from 'hono';
 
 import { db, displayGenres, schema } from '../db/index.js';
+import { MAIN_LABELS, genresOf, type Category } from '../alerts/genres.js';
 import {
   buildFriendsByOccurrence,
   buildOccurrencesByEvent,
@@ -1492,6 +1493,9 @@ eventsRoute.get('/new', async (c) => {
       wijk: schema.venues.wijk,
       city: schema.venues.city,
       genres: displayGenres,
+      ownGenres: schema.events.genres,
+      category: schema.events.category,
+      title: schema.events.title,
       lane: LANE_SQL,
     })
     .from(schema.occurrences)
@@ -1530,6 +1534,10 @@ eventsRoute.get('/new', async (c) => {
     wijk: string | null;
     city: string;
     genres: string[];
+    /** Voor het wegfilteren van niet-leuk-genres (zie hieronder). */
+    ownGenres: string[];
+    category: Category;
+    title: string;
     /** Smaak-score; 0 zolang je nog geen profiel hebt. */
     score: number;
   };
@@ -1556,6 +1564,9 @@ eventsRoute.get('/new', async (c) => {
         wijk: row.wijk,
         city: row.city,
         genres: row.genres ?? [],
+        ownGenres: row.ownGenres ?? [],
+        category: row.category,
+        title: row.title,
         score: 0,
       });
       continue;
@@ -1564,6 +1575,36 @@ eventsRoute.get('/new', async (c) => {
     if (startMs < existing.laneStartsAt) {
       existing.lane = row.lane;
       existing.laneStartsAt = startMs;
+    }
+  }
+
+  // Genres die je niet leuk vindt (via Claude gezet, `genre_prefs`) =
+  // weg. Zelfde regel als de meldingen: de eerste eigen labels, plus
+  // tributes aan de titel, want "Tribute to Adele" heeft zelden het label.
+  if (me && byEvent.size > 0) {
+    const disliked = new Set(
+      (
+        await db
+          .select({ genre: schema.genrePrefs.genre })
+          .from(schema.genrePrefs)
+          .where(
+            and(
+              eq(schema.genrePrefs.userId, me),
+              eq(schema.genrePrefs.sentiment, 'dislike')
+            )
+          )
+      ).map((r) => r.genre)
+    );
+    if (disliked.size > 0) {
+      for (const [id, ev] of byEvent) {
+        const keys = genresOf(ev.category, ev.ownGenres.slice(0, MAIN_LABELS));
+        if (
+          keys.some((k) => disliked.has(k)) ||
+          (disliked.has('tribute') && /tribute/i.test(ev.title))
+        ) {
+          byEvent.delete(id);
+        }
+      }
     }
   }
 

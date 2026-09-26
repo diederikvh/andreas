@@ -1,6 +1,8 @@
 /**
- * MCP-tools over de gebruiker zelf: `my_plans` (de agenda) en
- * `friends_plans` (wat vrienden gered hebben en waar ze heen gaan).
+ * MCP-tools over de gebruiker zelf: `my_plans` (de agenda), `friends_plans`
+ * (wat vrienden gered hebben en waar ze heen gaan), en de acties die in de
+ * app hetzelfde doen: `save_event` (hartje), `set_going` ("ik ga"),
+ * `set_venue` (volgen/blokkeren), `set_genre_taste` en `my_taste`.
  *
  * Eén overzicht van wat er voor je klaarstaat: waar je heen gaat (zelf
  * "ik ga" of ja op een uitnodiging, zelfde bronnen als `routes/going.ts`),
@@ -15,10 +17,11 @@
  * Tickets staan hier bewust niet in: die verlaten het toestel nooit.
  */
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { z } from 'zod';
 
-import { db } from '../db/index.js';
+import { GENRES, GENRE_KEYS, type GenreKey } from '../alerts/genres.js';
+import { db, schema } from '../db/index.js';
 import { parseAmsterdamLocal } from '../scrapers/_amsterdam-tz.js';
 import { resolveVenues } from './alerts.js';
 import { PUBLIC_BASE_URL } from './events.js';
@@ -55,6 +58,41 @@ export function visibleFriendsCte(userId: string) {
       LEFT JOIN friend_favorites fav ON fav.user_id = u.id AND fav.friend_id = ${userId}
     )`;
 }
+
+type Occ = { id: string; title: string; venue: string; startsAt: Date; others: number };
+
+/** De voorstelling waar een actie over gaat. `eventId` mag ook de hele
+    link zijn (…/e/<id>). Zonder datum de eerstvolgende. */
+async function findOccurrence(eventIdOrUrl: string, date?: string): Promise<Occ | string> {
+  const eventId = eventIdOrUrl.trim().split('/e/').pop()!.split(/[?#]/)[0];
+  const res = await db.execute<{ id: string; title: string; venue: string; starts_at: string }>(sql`
+    SELECT o.id, e.title, v.name AS venue, o.starts_at
+    FROM occurrences o
+    JOIN events e ON e.id = o.event_id AND e.published
+    JOIN venues v ON v.id = COALESCE(o.venue_id, e.venue_id)
+    WHERE o.event_id = ${eventId} AND o.starts_at > NOW() AND o.status <> 'cancelled'
+    ORDER BY o.starts_at
+  `);
+  if (res.rows.length === 0) return `Geen komende voorstelling gevonden voor event "${eventId}".`;
+  let rows = res.rows;
+  if (date) {
+    // Dag loopt van 06:00 tot 06:00.
+    const from = parseAmsterdamLocal(`${date}T06:00:00`).getTime();
+    rows = rows.filter((r) => {
+      const t = new Date(r.starts_at).getTime();
+      return t >= from && t < from + 86_400_000;
+    });
+    if (rows.length === 0) {
+      return `Op ${date} speelt dit niet. Wel: ${res.rows.slice(0, 6).map((r) => whenFmt.format(new Date(r.starts_at))).join(', ')}.`;
+    }
+  }
+  const r = rows[0];
+  return { id: r.id, title: r.title, venue: r.venue, startsAt: new Date(r.starts_at), others: res.rows.length - 1 };
+}
+
+const occLabel = (o: Occ) =>
+  `${o.title} — ${o.venue}, ${whenFmt.format(o.startsAt)}` +
+  (o.others > 0 ? ` (er zijn nog ${o.others} andere data; geef \`date\` voor een andere)` : '');
 
 type PlanRow = {
   event_id: string;
@@ -301,6 +339,167 @@ export function registerMeTools(server: McpServer, userId: string): void {
         return `- ${bits.join(' — ')}`;
       });
       return text(`${res.rows.length} avonden:\n${lines.join('\n')}`);
+    }
+  );
+
+  const eventArgs = {
+    event_id: z.string().min(3).describe('Event-id of de hele link (…/e/<id>) uit een eerder resultaat.'),
+    date: DATE.optional().describe('Welke voorstelling (YYYY-MM-DD), bij events met meerdere data. Default: de eerstvolgende.'),
+    on: z.boolean().optional().describe('true = aan (default), false = weer uit.'),
+  };
+
+  server.registerTool(
+    'save_event',
+    {
+      title: 'Hartje',
+      description:
+        'Zet een hartje op een voorstelling (of haal het weg met on: false), precies zoals in de app. ' +
+        'Een hartje is interesse, geen belofte om te gaan; het staat meteen in de app en telt mee voor ' +
+        'herinneringen als die aanstaan.',
+      inputSchema: eventArgs,
+    },
+    async ({ event_id, date, on = true }) => {
+      const occ = await findOccurrence(event_id, date);
+      if (typeof occ === 'string') return { ...text(occ), isError: true };
+      if (on) {
+        await db.insert(schema.saves).values({ userId, occurrenceId: occ.id, source: 'mcp' }).onConflictDoNothing();
+        return text(`Hartje gezet: ${occLabel(occ)}.`);
+      }
+      await db.delete(schema.saves).where(and(eq(schema.saves.userId, userId), eq(schema.saves.occurrenceId, occ.id)));
+      return text(`Hartje weggehaald: ${occLabel(occ)}.`);
+    }
+  );
+
+  server.registerTool(
+    'set_going',
+    {
+      title: 'Ik ga',
+      description:
+        'Zet "ik ga" op een voorstelling (of haal het weg met on: false), zoals in de app. Vrienden zien ' +
+        'het als de gebruiker dat deelt. Bevestig eerst met de gebruiker als die het niet zelf zo vroeg.',
+      inputSchema: eventArgs,
+    },
+    async ({ event_id, date, on = true }) => {
+      const occ = await findOccurrence(event_id, date);
+      if (typeof occ === 'string') return { ...text(occ), isError: true };
+      if (on) {
+        await db.insert(schema.attendance).values({ userId, occurrenceId: occ.id, source: 'mcp' }).onConflictDoNothing();
+        return text(`Genoteerd, je gaat: ${occLabel(occ)}.`);
+      }
+      await db
+        .delete(schema.attendance)
+        .where(and(eq(schema.attendance.userId, userId), eq(schema.attendance.occurrenceId, occ.id)));
+      // Een ja op een uitnodiging staat in een andere tabel en blijft staan;
+      // die zet je om in de app bij de uitnodiging zelf.
+      return text(
+        `"Ik ga" weggehaald: ${occLabel(occ)}. Zei je ja op een uitnodiging voor deze avond, dan staat die nog; ` +
+          'dat pas je aan bij de uitnodiging in de app.'
+      );
+    }
+  );
+
+  server.registerTool(
+    'set_venue',
+    {
+      title: 'Venue volgen of blokkeren',
+      description:
+        'Volg een zaal (nieuw aanbod daar in de ochtendpush en bovenaan), blokkeer er een (verdwijnt overal ' +
+        'in de app, ook uit /new en uit meldingen), of zet hem terug op normaal.',
+      inputSchema: {
+        venue: z.string().min(2).describe('Naam van de zaal.'),
+        state: z.enum(['volgen', 'blokken', 'normaal']),
+      },
+    },
+    async ({ venue, state }) => {
+      const found = await resolveVenues([venue]);
+      if ('error' in found) return { ...text(found.error), isError: true };
+      const venueId = found.ids[0];
+      if (state === 'normaal') {
+        await db
+          .delete(schema.venueFollows)
+          .where(and(eq(schema.venueFollows.userId, userId), eq(schema.venueFollows.venueId, venueId)));
+        return text(`${found.names[0]} staat weer op normaal.`);
+      }
+      await db
+        .insert(schema.venueFollows)
+        .values({ userId, venueId, state })
+        .onConflictDoUpdate({ target: [schema.venueFollows.userId, schema.venueFollows.venueId], set: { state } });
+      return text(state === 'volgen' ? `Je volgt nu ${found.names[0]}.` : `${found.names[0]} is geblokkeerd: je ziet er niets meer van.`);
+    }
+  );
+
+  server.registerTool(
+    'set_genre_taste',
+    {
+      title: 'Genres leuk of niet leuk',
+      description:
+        'Leg vast welke genres de gebruiker leuk of niet leuk vindt. Niet leuk = weg uit /new en uit alle ' +
+        'meldingen (bv. "geen tributebands" = tribute). Leuk = wordt meegewogen bij aanbevelingen. ' +
+        '"neutraal" haalt de voorkeur weg. Alleen genres uit de vaste lijst.',
+      inputSchema: {
+        genres: z
+          .array(z.enum(GENRE_KEYS))
+          .min(1)
+          .describe(GENRE_KEYS.map((k) => `${k} = ${GENRES[k].label}`).join('; ')),
+        sentiment: z.enum(['like', 'dislike', 'neutraal']),
+      },
+    },
+    async ({ genres, sentiment }) => {
+      for (const genre of genres) {
+        if (sentiment === 'neutraal') {
+          await db
+            .delete(schema.genrePrefs)
+            .where(and(eq(schema.genrePrefs.userId, userId), eq(schema.genrePrefs.genre, genre)));
+        } else {
+          await db
+            .insert(schema.genrePrefs)
+            .values({ userId, genre, sentiment })
+            .onConflictDoUpdate({ target: [schema.genrePrefs.userId, schema.genrePrefs.genre], set: { sentiment } });
+        }
+      }
+      const labels = genres.map((g) => GENRES[g].label).join(', ');
+      return text(
+        sentiment === 'dislike'
+          ? `Niet leuk: ${labels}. Die zie je niet meer op /new en ze komen niet meer in meldingen.`
+          : sentiment === 'like'
+            ? `Leuk: ${labels}. Wordt meegewogen bij aanbevelingen.`
+            : `Voorkeur weggehaald voor: ${labels}.`
+      );
+    }
+  );
+
+  server.registerTool(
+    'my_taste',
+    {
+      title: 'Mijn smaak-instellingen',
+      description:
+        'Alles wat de gebruiker heeft ingesteld: gevolgde en geblokkeerde zalen, genres leuk/niet leuk, ' +
+        'gevolgde artiesten en meldingen.',
+      inputSchema: {},
+    },
+    async () => {
+      const [venues, prefs, artists, alerts] = await Promise.all([
+        db.execute<{ name: string; state: string }>(sql`
+          SELECT v.name, vf.state::text AS state FROM venue_follows vf JOIN venues v ON v.id = vf.venue_id
+          WHERE vf.user_id = ${userId} ORDER BY v.name`),
+        db.select().from(schema.genrePrefs).where(eq(schema.genrePrefs.userId, userId)),
+        db.execute<{ name: string }>(sql`
+          SELECT ar.name FROM artist_follows f JOIN artists ar ON ar.id = f.artist_id
+          WHERE f.user_id = ${userId} ORDER BY lower(ar.name)`),
+        db.select({ label: schema.alerts.label }).from(schema.alerts).where(eq(schema.alerts.userId, userId)),
+      ]);
+      const label = (g: string) => (g in GENRES ? GENRES[g as GenreKey].label : g);
+      const list = (xs: string[]) => (xs.length ? xs.join(', ') : '(geen)');
+      return text(
+        [
+          `Zalen gevolgd: ${list(venues.rows.filter((v) => v.state === 'volgen').map((v) => v.name))}`,
+          `Zalen geblokkeerd: ${list(venues.rows.filter((v) => v.state === 'blokken').map((v) => v.name))}`,
+          `Genres leuk: ${list(prefs.filter((p) => p.sentiment === 'like').map((p) => label(p.genre)))}`,
+          `Genres niet leuk: ${list(prefs.filter((p) => p.sentiment === 'dislike').map((p) => label(p.genre)))}`,
+          `Artiesten gevolgd: ${list(artists.rows.map((a) => a.name))}`,
+          `Meldingen: ${list(alerts.map((a) => a.label))}`,
+        ].join('\n')
+      );
     }
   );
 }

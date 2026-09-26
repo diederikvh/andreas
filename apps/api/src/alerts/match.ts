@@ -70,6 +70,19 @@ export const ALERT_MATCH = sql.raw(`
   -- Kinder- en workshopaanbod valt erbuiten, tenzij de regel erom vraagt.
   AND NOT ${hasGenre(`ARRAY(SELECT x FROM unnest(${excluded}) x WHERE NOT x = ANY(COALESCE(a.genres, '{}')))`, false)}
   AND ('familie' = ANY(COALESCE(a.genres, '{}')) OR e.title !~* '${KIDS_TITLE_REGEX}')
+  -- Genres die deze gebruiker niet leuk vindt (genre_prefs), en
+  -- tributes ook aan de titel herkend: "Tribute to Adele" heeft zelden
+  -- het label.
+  AND NOT ${hasGenre(`ARRAY(SELECT gp.genre FROM genre_prefs gp WHERE gp.user_id = a.user_id AND gp.sentiment = 'dislike')`, true)}
+  -- Een geblokkeerde zaal is overal weg, ook uit meldingen en voorstellen.
+  AND NOT EXISTS (
+    SELECT 1 FROM venue_follows vf
+    WHERE vf.user_id = a.user_id AND vf.venue_id = v.id AND vf.state = 'blokken'
+  )
+  AND NOT (e.title ~* 'tribute' AND EXISTS (
+    SELECT 1 FROM genre_prefs gp
+    WHERE gp.user_id = a.user_id AND gp.genre = 'tribute' AND gp.sentiment = 'dislike'
+  ))
   -- Artiest: in de line-up op naam, of als hele woorden in de titel.
   AND (a.artist_names IS NULL OR EXISTS (
     SELECT 1 FROM unnest(a.artist_names) an
@@ -84,6 +97,8 @@ export const ALERT_MATCH = sql.raw(`
 `);
 
 export type AlertFilters = {
+  /** Voor wie: diens niet-leuk-genres vallen weg. Leeg = niemand. */
+  userId?: string | null;
   venueIds: string[] | null;
   cities: string[] | null;
   categories: string[] | null;
@@ -105,6 +120,7 @@ const ts = (d: Date | null) => (d ? sql`${d.toISOString()}::timestamptz` : sql`N
 /** Een regel die (nog) niet in de database staat, als rij `a`. */
 export function alertSource(f: AlertFilters): SQL {
   return sql`(SELECT
+    ${f.userId ?? null}::text AS user_id,
     ${arr(f.venueIds, 'text')} AS venue_ids,
     ${arr(f.cities, 'city')} AS cities,
     ${arr(f.categories, 'event_category')} AS categories,
