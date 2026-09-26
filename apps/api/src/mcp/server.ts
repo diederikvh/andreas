@@ -1,5 +1,6 @@
 /**
- * MCP-server voor Andreas — biedt het Amsterdamse event-aanbod aan als tool,
+ * MCP-server voor Andreas — biedt het event-aanbod (Amsterdam en de rest van
+ * het land) aan als tool,
  * zodat externe AI-clients (Claude, ChatGPT, eigen agents) er met hún eigen
  * model doorheen kunnen zoeken. Wij leveren de verse, gestructureerde data;
  * de client doet het gesprek.
@@ -13,7 +14,9 @@ import { z } from 'zod';
 
 import { registerAlertTools } from './alerts.js';
 import { registerArtistTools } from './artists.js';
+import { registerHelpTool } from './help.js';
 import { registerMeTools } from './me.js';
+import { schema } from '../db/index.js';
 import { buildEventsUiResource } from './card.js';
 import {
   CATEGORY_VALUES,
@@ -29,6 +32,7 @@ const EVENT_SHAPE = {
   category: z.string(),
   genres: z.array(z.string()),
   venue: z.string(),
+  city: z.string(),
   wijk: z.string().nullable(),
   start: z.string(),
   end: z.string().nullable(),
@@ -39,7 +43,11 @@ const EVENT_SHAPE = {
 };
 
 const INSTRUCTIONS =
-  'Andreas is een uitgaansgids voor Amsterdam. Gebruik `search_events` om het ' +
+  'Andreas is een uitgaansgids: concerten, film, theater, kunst, lezingen en ' +
+  'literatuur in Amsterdam en steden als Utrecht, Rotterdam, Den Haag, Haarlem, ' +
+  'Eindhoven, Tilburg, Nijmegen, Groningen en Antwerpen. Beperk je niet tot ' +
+  'Amsterdam tenzij de gebruiker dat vraagt. Vraagt de gebruiker wat hij met ' +
+  'Andreas kan, gebruik dan `andreas_help`. Gebruik `search_events` om het ' +
   'écht beschikbare aanbod op te halen voor een periode en (optioneel) een ' +
   'type/genre. Toon alleen events die de tool teruggeeft — verzin nooit zelf ' +
   'titels, venues, tijden of prijzen. ' +
@@ -57,7 +65,8 @@ const INSTRUCTIONS =
   '`set_going`, `set_venue` en `set_genre_taste`; `my_taste` toont wat er is ingesteld.';
 
 const TOOL_DESCRIPTION =
-  'Zoek concrete events in Amsterdam voor een gegeven periode. Geef `category` ' +
+  'Zoek concrete events voor een gegeven periode, in Amsterdam en de rest van het ' +
+  'land (filter met `cities`). Geef `category` ' +
   'op (Muziek/Film/Theater/Kunst/Lezing/Literatuur) om strikt op één type te ' +
   'filteren; gebruik `query` voor een genre, sfeer, artiest of venue (bv. ' +
   '"techno", "singer-songwriter", "Guns N Roses", "Paradiso"). Retourneert ' +
@@ -74,7 +83,7 @@ export function buildMcpServer(userId: string | null = null): McpServer {
   server.registerTool(
     'search_events',
     {
-      title: 'Zoek Amsterdamse events',
+      title: 'Zoek events',
       description: TOOL_DESCRIPTION,
       inputSchema: {
         query: z
@@ -96,6 +105,10 @@ export function buildMcpServer(userId: string | null = null): McpServer {
           .max(3)
           .optional()
           .describe('Max prijs-tier: 0 gratis · 1 ≤€15 · 2 ≤€35 · 3 duurder.'),
+        cities: z
+          .array(z.enum(schema.city.enumValues))
+          .optional()
+          .describe('Alleen deze steden. Weglaten = overal.'),
         limit: z
           .number()
           .int()
@@ -128,6 +141,8 @@ export function buildMcpServer(userId: string | null = null): McpServer {
     }
   );
 
+  registerHelpTool(server, Boolean(userId));
+
   // Meldingen horen bij een persoon; via de service-key is er niemand.
   if (userId) {
     registerAlertTools(server, userId);
@@ -157,7 +172,11 @@ function summarize(events: McpEvent[], when: string): string {
     // Andreas-pagina (die deeplinkt naar de app). `]` uit het label strippen
     // zodat een rare titel de link-syntax niet breekt.
     const label = e.title.replace(/[[\]]/g, '');
-    return `- [${label}](${e.url}) — ${e.venue}, ${day}${genre}`;
+    const city =
+      e.city !== 'amsterdam'
+        ? ` (${e.city.split('-').map((p) => p[0].toUpperCase() + p.slice(1)).join(' ')})`
+        : '';
+    return `- [${label}](${e.url}) — ${e.venue}${city}, ${day}${genre}`;
   });
   return (
     `${events.length} events voor ${when}:\n${lines.join('\n')}\n\n` +

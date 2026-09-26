@@ -36,24 +36,19 @@ const dayFmt = new Intl.DateTimeFormat('nl-NL', {
 });
 const link = (id: string, title: string) => `[${title.replace(/[[\]]/g, '')}](${PUBLIC_BASE_URL}/e/${id})`;
 
-/** Gevolgde artiesten met hun eerstvolgende avond, als die er is. Zelfde
-    herkenning als de melding: in de line-up, of de naam in de titel. */
+/** Gevolgde artiesten met hun komende avonden (tot vijf), in alle steden.
+    Zelfde herkenning als de melding: in de line-up, of de naam in de titel. */
 async function followedWithNextShow(userId: string, names?: string[]) {
   const filter = names?.length
     ? sql`AND lower(ar.name) IN (${sql.join(names.map((n) => sql`lower(${n})`), sql`, `)})`
     : sql``;
-  const res = await db.execute<{
-    name: string;
-    event_id: string | null;
-    title: string | null;
-    venue: string | null;
-    starts_at: string | null;
-  }>(sql`
-    SELECT ar.name, nx.event_id, nx.title, nx.venue, nx.starts_at
+  const res = await db.execute<{ name: string; shows: Show[] | null }>(sql`
+    SELECT ar.name, nx.shows
     FROM artist_follows f
     JOIN artists ar ON ar.id = f.artist_id
     LEFT JOIN LATERAL (
-      SELECT e.id AS event_id, e.title, v.name AS venue, o.starts_at
+      SELECT jsonb_agg(s ORDER BY s.starts_at) AS shows FROM (
+      SELECT DISTINCT ON (e.id) e.id AS event_id, e.title, v.name AS venue, v.city::text AS city, o.starts_at
       FROM occurrences o
       JOIN events e ON e.id = o.event_id AND e.published
       JOIN venues v ON v.id = COALESCE(o.venue_id, e.venue_id) AND v.published
@@ -64,8 +59,8 @@ async function followedWithNextShow(userId: string, names?: string[]) {
           ))
           OR ${sql.raw(titleHasName('ar.name'))}
         )
-      ORDER BY o.starts_at
-      LIMIT 1
+      ORDER BY e.id, o.starts_at
+      ) s
     ) nx ON TRUE
     WHERE f.user_id = ${userId} ${filter}
     ORDER BY lower(ar.name)
@@ -73,10 +68,21 @@ async function followedWithNextShow(userId: string, names?: string[]) {
   return res.rows;
 }
 
-function showLine(r: { name: string; event_id: string | null; title: string | null; venue: string | null; starts_at: string | null }) {
-  return r.event_id
-    ? `- ${r.name} — speelt: ${link(r.event_id, r.title!)}, ${r.venue}, ${dayFmt.format(new Date(r.starts_at!))}`
-    : `- ${r.name} — nog niets aangekondigd`;
+type Show = { event_id: string; title: string; venue: string; city: string; starts_at: string };
+
+const cityName = (c: string) => c.split('-').map((p) => p[0].toUpperCase() + p.slice(1)).join(' ');
+
+function showLine(r: { name: string; shows: Show[] | null }) {
+  const shows = (r.shows ?? []).slice(0, 5);
+  if (shows.length === 0) return `- ${r.name} — nog niets aangekondigd`;
+  const more = (r.shows?.length ?? 0) - shows.length;
+  return (
+    `- ${r.name}:\n` +
+    shows
+      .map((s) => `    ${link(s.event_id, s.title)} — ${s.venue} (${cityName(s.city)}), ${dayFmt.format(new Date(s.starts_at))}`)
+      .join('\n') +
+    (more > 0 ? `\n    …en nog ${more}` : '')
+  );
 }
 
 export function registerArtistTools(server: McpServer, userId: string): void {
@@ -85,8 +91,8 @@ export function registerArtistTools(server: McpServer, userId: string): void {
     {
       title: 'Artiesten die ik volg',
       description:
-        'De artiesten die de gebruiker volgt, met de eerstvolgende avond als die er is. Volgen = een push ' +
-        'om 10:00 zodra er een nieuwe avond met die artiest bijkomt.',
+        'De artiesten die de gebruiker volgt, met hun komende avonden in alle steden. Volgen = een push ' +
+        'om 10:00 zodra er een nieuwe avond met die artiest bijkomt, waar dan ook.',
       inputSchema: {},
     },
     async () => {

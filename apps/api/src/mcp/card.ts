@@ -81,7 +81,7 @@ function cardHtml(e: McpEvent): string {
   const img = safeImg
     ? `<div class="thumb" style="background-image:url('${safeImg}')"></div>`
     : `<div class="thumb thumb--empty">✕</div>`;
-  const wijk = e.wijk ? ` · ${esc(e.wijk)}` : '';
+  const wijk = e.city !== 'amsterdam' ? ` · ${esc(e.city)}` : e.wijk ? ` · ${esc(e.wijk)}` : '';
   const price = fmtPrice(e.priceCents);
   const chips = [
     e.category ? `<span class="chip chip--cat">${esc(e.category)}</span>` : '',

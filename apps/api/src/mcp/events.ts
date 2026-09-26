@@ -50,6 +50,8 @@ export type McpEvent = {
   category: string;
   genres: string[];
   venue: string;
+  /** Stad van de zaal (amsterdam, utrecht, rotterdam, …). */
+  city: string;
   wijk: string | null;
   start: string; // ISO 8601
   end: string | null;
@@ -67,6 +69,8 @@ export type SearchEventsArgs = {
   /** 0–3; gevalideerd door het tool-schema, hier als number aangenomen. */
   priceMax?: number;
   limit?: number;
+  /** Alleen zalen in deze steden. Leeg = overal. */
+  cities?: string[];
 };
 
 export type SearchEventsResult = {
@@ -100,7 +104,21 @@ export async function searchEvents(args: SearchEventsArgs): Promise<SearchEvents
     explicitCategories: args.category ? [args.category] : undefined,
     hasExplicitTime: explicitWhen,
   });
-  const ids = candidates.slice(0, limit).map((c) => c.id);
+  let pool = candidates;
+  if (args.cities?.length) {
+    // De retrieval kent geen stad; hier filteren, vóór het afkappen op
+    // `limit`, zodat "Utrecht" niet leeg blijft omdat Amsterdam bovenaan stond.
+    const venueIds = [...new Set(candidates.map((c) => c.venueId))];
+    const rows = venueIds.length
+      ? await db
+          .select({ id: schema.venues.id, city: schema.venues.city })
+          .from(schema.venues)
+          .where(inArray(schema.venues.id, venueIds))
+      : [];
+    const cityOf = new Map(rows.map((r) => [r.id, r.city as string]));
+    pool = candidates.filter((c) => args.cities!.includes(cityOf.get(c.venueId) ?? ''));
+  }
+  const ids = pool.slice(0, limit).map((c) => c.id);
 
   const events = await hydrate(ids, window);
   return {
@@ -158,6 +176,7 @@ async function hydrate(
       venueName: schema.venues.name,
       venueImage: schema.venues.imageUrl,
       wijk: schema.venues.wijk,
+      city: schema.venues.city,
     })
     .from(schema.events)
     .innerJoin(schema.venues, eq(schema.events.venueId, schema.venues.id))
@@ -183,6 +202,7 @@ async function hydrate(
       category: ev.category,
       genres: ev.genres ?? [],
       venue: head.venue?.name ?? ev.venueName,
+      city: ev.city,
       wijk: ev.wijk ?? null,
       start: head.startsAt.toISOString(),
       end: head.endsAt ? head.endsAt.toISOString() : null,
