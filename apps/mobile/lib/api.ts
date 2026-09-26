@@ -1178,6 +1178,12 @@ export async function getArtistFollows(): Promise<string[]> {
   return artistIds;
 }
 
+/** Begin een Spotify-import: de inlog-URL bij Spotify, en waar Spotify ons
+    daarna naartoe terugstuurt. */
+export async function startSpotifyImport(): Promise<{ url: string; returnUrl: string }> {
+  return authedRequest<{ url: string; returnUrl: string }>('/spotify/start', { method: 'POST' });
+}
+
 export async function getFollowedArtists(): Promise<ApiFollowedArtist[]> {
   const { artists } = await authedRequest<{ artists: ApiFollowedArtist[] }>(
     '/artist-follows',

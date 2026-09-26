@@ -94,16 +94,22 @@ export async function fillArtistGenres(
   // 2. Concerten zonder line-up waarvan de titel een artiestnaam kan zijn:
   // kort, zonder "presents", "+", ":" en dergelijke.
   const titles = await db.execute<{ title: string }>(sql`
-    SELECT DISTINCT e.title
+    SELECT e.title
     FROM events e
-    JOIN occurrences o ON o.event_id = e.id AND o.starts_at > NOW()
     WHERE e.published AND e.category = 'Muziek'
+      AND EXISTS (SELECT 1 FROM occurrences o WHERE o.event_id = e.id AND o.starts_at > NOW())
       AND NOT EXISTS (
         SELECT 1 FROM occurrences o2
         WHERE o2.event_id = e.id AND jsonb_typeof(o2.lineup) = 'array' AND jsonb_array_length(o2.lineup) > 0)
       AND length(e.title) BETWEEN 2 AND 40
       AND e.title !~* '(presents|present|feat\\.?|ft\\.|w/|:|\\||\\+| x | & friends|tribute|festival|party|night|nacht|live|tour|b2b|\\()'
       AND NOT EXISTS (SELECT 1 FROM artists ar WHERE lower(ar.name) = lower(e.title))
+    -- ponytail: elke keer een willekeurige greep, zonder bij te houden wat
+    -- al mislukte. Een gevonden titel valt eruit (er is dan een artiest);
+    -- een mislukte kan later nog eens langskomen. Kost wat dubbele
+    -- opzoekingen; een eigen tabel met pogingen als dat gaat knellen.
+    GROUP BY e.title
+    ORDER BY md5(e.title || ${String(Date.now())})
     LIMIT ${titleShare}
   `);
   for (const { title } of titles.rows) {

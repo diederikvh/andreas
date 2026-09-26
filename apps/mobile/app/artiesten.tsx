@@ -1,4 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
+import { useQueryClient } from '@tanstack/react-query';
+import * as WebBrowser from 'expo-web-browser';
 import { router } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -23,11 +25,12 @@ import {
 import { softTap } from '@/lib/haptics';
 import { useLocale, useT } from '@/lib/i18n';
 import {
+  queryKeys,
   useFollowedArtists,
   useFollowedShows,
   useToggleArtistFollow,
 } from '@/lib/queries';
-import type { ApiFollowedShow } from '@/lib/api';
+import { startSpotifyImport, type ApiFollowedShow } from '@/lib/api';
 import { useRoles } from '@/store/mode';
 import type { BadgeToneKey } from '@/theme/tones';
 import { fontFamily } from '@/theme/tokens';
@@ -188,6 +191,7 @@ export default function ArtiestenScreen() {
                 {t('Zoek een artiest', 'Search for an artist')}
               </Text>
             </Pressable>
+            <SpotifyImport />
           </View>
         ) : null}
 
@@ -261,6 +265,7 @@ export default function ArtiestenScreen() {
                 </Pressable>
               </Pressable>
             ))}
+            <SpotifyImport />
           </>
         ) : null}
       </ScrollView>
@@ -320,7 +325,93 @@ function FollowedShowRow({ show }: { show: ApiFollowedShow }) {
   );
 }
 
+/**
+ * Wie je op Spotify volgt en het meest luistert, in één keer volgen.
+ *
+ * De inlog loopt in een browservenster bij Spotify; onze server haalt de
+ * artiesten op, volgt ze en stuurt je terug met hoeveel het er waren. De
+ * Spotify-toegang wordt daarna weggegooid. Zolang de Spotify-app in
+ * development mode staat, kan alleen wie is toegevoegd koppelen.
+ */
+// ponytail: uit tot het Spotify-dashboard weer werkt en de redirect-URI en
+// testgebruikers erin staan. Dan op true, testen, en de schakelaar weg.
+const SPOTIFY_READY = false;
+
+function SpotifyImport() {
+  const roles = useRoles();
+  const t = useT();
+  const qc = useQueryClient();
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+
+  const run = async () => {
+    softTap();
+    setBusy(true);
+    setMessage(null);
+    try {
+      const { url, returnUrl } = await startSpotifyImport();
+      const res = await WebBrowser.openAuthSessionAsync(url, returnUrl);
+      if (res.type !== 'success') return;
+      const param = (k: string) => res.url.match(new RegExp(`[?&]${k}=([^&]*)`))?.[1];
+      const added = param('added');
+      const error = param('error');
+      if (added !== undefined) {
+        await qc.invalidateQueries({ queryKey: queryKeys.followedArtists() });
+        setMessage(
+          Number(added) > 0
+            ? t(`${added} artiesten uit Spotify gevolgd.`, `Followed ${added} artists from Spotify.`)
+            : t('Geen artiesten gevonden op je Spotify.', 'No artists found on your Spotify.'),
+        );
+      } else if (error === 'geen-toegang') {
+        setMessage(
+          t(
+            'Spotify koppelen is nog in een testfase: je account moet eerst worden toegevoegd. Vraag het ons via de app.',
+            'Connecting Spotify is still in a test phase: your account needs to be added first. Ask us through the app.',
+          ),
+        );
+      } else if (error !== 'geweigerd') {
+        setMessage(t('Dat lukte niet. Probeer het nog eens.', 'That did not work. Please try again.'));
+      }
+    } catch {
+      setMessage(t('Dat lukte niet. Probeer het nog eens.', 'That did not work. Please try again.'));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (!SPOTIFY_READY) return null;
+  return (
+    <View style={styles.spotify}>
+      <Pressable
+        onPress={run}
+        disabled={busy}
+        style={[styles.spotifyBtn, { backgroundColor: roles.bgChip }]}
+      >
+        {busy ? (
+          <SpinningCross size={16} color={roles.fgMuted} />
+        ) : (
+          <Ionicons name="musical-notes-outline" size={17} color={roles.fg} />
+        )}
+        <Text style={[styles.spotifyText, { color: roles.fg }]}>
+          {t('Volg wie je op Spotify volgt', 'Follow who you follow on Spotify')}
+        </Text>
+      </Pressable>
+      {message ? <Text style={[styles.note, { color: roles.fgMuted }]}>{message}</Text> : null}
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
+  spotify: { paddingHorizontal: 22, paddingTop: 20, gap: 4, alignSelf: 'stretch' },
+  spotifyBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 12,
+    borderRadius: 999,
+  },
+  spotifyText: { fontFamily: fontFamily.bold, fontSize: 14 },
   root: { flex: 1 },
   // Vult de vaste rijhoogte in de header, net als op /nieuw -- zo staan
   // de chips verticaal gecentreerd zonder losse paddings.
