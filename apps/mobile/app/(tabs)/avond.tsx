@@ -79,6 +79,7 @@ import {
   useMyGoing,
   usePendingEvents,
   useVenues,
+  useFollowedShows,
   useForYouEvents,
   useMusea,
   useNewArrivalsSince,
@@ -250,6 +251,8 @@ export default function Avond() {
   const activeTypes = useVandaagFilters((s) => s.activeTypes);
   const { data: session } = useSession();
   const authed = Boolean(session?.user?.id);
+  // Komende avonden van artiesten die je volgt: eigen rail onder je plannen.
+  const { data: followedShows } = useFollowedShows({ enabled: authed });
   // Waar jij binnenkort heen gaat — je eigen "ik ga"-markeringen plus de
   // uitnodigingen waar je ja op zei, door de server al samengevoegd.
   //
@@ -774,6 +777,34 @@ export default function Avond() {
           </Rail>
         )}
 
+        {/* Tussen je plannen en je zalen: wat eraan komt van artiesten die
+            je volgt. Zelfde tegels als je plannen, want het is dezelfde
+            vraag: wanneer en waar. */}
+        {(followedShows ?? []).length > 0 && (
+          <Rail
+            kicker={t('Van artiesten die je volgt', 'From artists you follow')}
+            moreLabel={t('Alles →', 'See all →')}
+            onMore={() => router.push('/komt-eraan' as never)}
+            cardWidth={goingCardW}
+          >
+            {(followedShows ?? []).slice(0, 12).map((show) => (
+              <GoingRailCard
+                key={show.occurrence.id}
+                entry={{
+                  id: show.id,
+                  occurrenceId: show.occurrence.id,
+                  startsAt: show.occurrence.startsAt,
+                  endsAt: show.occurrence.endsAt,
+                  title: show.title,
+                  imageUrl: show.imageUrl,
+                  venue: { name: show.venue.name },
+                }}
+                width={goingCardW}
+              />
+            ))}
+          </Rail>
+        )}
+
         {/* Hier stonden twee rijen ingangen: vier grote banners (gids,
             voor jou, net binnen, zoek) plus zeven kleine icoonknopjes
             (films, clubs, live, theater, kaart, friends, vibes). Elf
@@ -1294,17 +1325,29 @@ type AgendaRailItem =
   | { kind: 'going'; at: number; entry: SavedApiEvent }
   | { kind: 'pending'; at: number; pending: PendingEvent };
 
+/** Wat een agenda-tegel nodig heeft. Een `SavedApiEvent` (je plannen)
+    past erin, en een avond van een artiest die je volgt ook. */
+type RailTileEntry = {
+  id: string;
+  occurrenceId: string;
+  startsAt: string;
+  endsAt: string | null;
+  title: string;
+  imageUrl: string | null;
+  venue: { name?: string; imageUrl?: string | null } | null;
+};
+
 function GoingRailCard({
   entry,
   width,
 }: {
-  entry: SavedApiEvent;
+  entry: RailTileEntry;
   width: number;
 }) {
   const roles = useRoles();
   const locale = useLocale();
   const { surface } = useRailCardStyles();
-  const thumb = eventImageUrl(entry) ?? entry.venue?.imageUrl ?? null;
+  const thumb = entry.imageUrl ?? entry.venue?.imageUrl ?? null;
   // Ticket in huis? Dan een tikbaar hoekje rechtsboven op de tegel, zodat
   // je 'm vanaf de homepage in één tik open hebt.
   const ticket = useTicketFor(entry.occurrenceId);

@@ -8,20 +8,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AccountWall } from '@/components/AccountWall';
 import { AppHeader, HEADER_HEIGHT } from '@/components/AppHeader';
-import { EventListRow } from '@/components/EventListRow';
-import { FILTER_ROW_HEIGHT, FilterChip } from '@/components/FilterChip';
 import { ProfileAvatar } from '@/components/ProfileAvatar';
 import { SearchOverlay } from '@/components/SearchOverlay';
 import { SpinningCross } from '@/components/SpinningCross';
 import { useIsRegistered } from '@/lib/authClient';
-import {
-  CATEGORY_TICK,
-  VENUE_TYPE_TICK,
-  dowMixed,
-  monthShort,
-  rowTimeLabel,
-  translateCategory,
-} from '@/lib/eventDisplay';
 import { softTap } from '@/lib/haptics';
 import { useLocale, useT } from '@/lib/i18n';
 import {
@@ -30,9 +20,8 @@ import {
   useFollowedShows,
   useToggleArtistFollow,
 } from '@/lib/queries';
-import { disconnectSpotify, getSpotifyStatus, startSpotifyImport, type ApiFollowedShow } from '@/lib/api';
+import { disconnectSpotify, getSpotifyStatus, startSpotifyImport } from '@/lib/api';
 import { useRoles } from '@/store/mode';
-import type { BadgeToneKey } from '@/theme/tones';
 import { fontFamily } from '@/theme/tokens';
 
 /**
@@ -64,13 +53,6 @@ export default function ArtiestenScreen() {
   // opdracht zonder knop -- "zoek een artiest" en dan nergens heen.
   const [searchOpen, setSearchOpen] = useState(false);
 
-  // Twee tabbladen in plaats van twee secties onder elkaar. Bij veel
-  // gevolgde artiesten wordt "Je volgt" anders weggedrukt door de
-  // avonden erboven, en juist daar zit de knop om iemand te ontvolgen.
-  // Null betekent "nog niet gekozen": dan opent het scherm op de
-  // avonden, of op de namen als er niks aangekondigd is.
-  const [picked, setPicked] = useState<'shows' | 'artists' | null>(null);
-
   const headerButtons = (
     <View style={styles.headerRow}>
       <Pressable
@@ -91,42 +73,12 @@ export default function ArtiestenScreen() {
   );
   const nShows = (shows ?? []).length;
   const nArtists = (artists ?? []).length;
-  const tab = picked ?? (nShows > 0 ? 'shows' : 'artists');
-
-  // Geen tabs als je nog niemand volgt: dan is er niets om tussen te
-  // wisselen en staat er alleen de lege staat.
-  const chips =
-    nArtists > 0 ? (
-      <View style={styles.chipRow}>
-        <FilterChip
-          label={t('Komt eraan', 'Coming up')}
-          count={nShows}
-          active={tab === 'shows'}
-          onPress={() => {
-            softTap();
-            setPicked('shows');
-          }}
-        />
-        <FilterChip
-          label={t('Je volgt', 'You follow')}
-          count={nArtists}
-          active={tab === 'artists'}
-          onPress={() => {
-            softTap();
-            setPicked('artists');
-          }}
-        />
-      </View>
-    ) : null;
-
   const header = (
     <AppHeader
       title={t('Artiesten', 'Artists')}
       hideAvatar
       rightSlot={headerButtons}
-    >
-      {chips}
-    </AppHeader>
+    />
   );
 
   if (!authed) {
@@ -159,9 +111,7 @@ export default function ArtiestenScreen() {
           // nog een dag-kop tussen die de lucht geeft; die hebben wij
           // niet meer sinds de koppen chips werden, dus tellen we z'n
           // bovenmarge er hier bij op.
-          paddingTop: chips
-            ? insets.top + HEADER_HEIGHT + FILTER_ROW_HEIGHT + 10
-            : insets.top + HEADER_HEIGHT + 8,
+          paddingTop: insets.top + HEADER_HEIGHT + 8,
           paddingBottom: insets.bottom + 96,
         }}
       >
@@ -195,27 +145,26 @@ export default function ArtiestenScreen() {
           </View>
         ) : null}
 
-        {/* De chips in de header dragen nu de koppen, dus hier geen
-            tweede titel meer. */}
-        {tab === 'shows' && nArtists > 0 ? (
-          nShows > 0 ? (
-            (shows ?? []).map((show) => (
-              <FollowedShowRow key={show.id} show={show} />
-            ))
-          ) : (
-            <Text style={[styles.note, { color: roles.fgMuted }]}>
-              {t(
-                'Nog niets aangekondigd. Zodra dat verandert hoor je het.',
-                'Nothing announced yet. You will hear from us when that changes.',
-              )}
-            </Text>
-          )
-        ) : null}
-
-        {tab === 'artists' ? (
+        {nArtists > 0 ? (
           <>
             {/* Bovenaan: koppelen is een actie op de hele lijst. */}
             <SpotifyImport />
+            {/* De avonden van wie je volgt hebben een eigen pagina (en een
+                rail op Vandaag); hier alleen de weg ernaartoe. */}
+            {nShows > 0 ? (
+              <Pressable
+                onPress={() => {
+                  softTap();
+                  router.push('/komt-eraan' as never);
+                }}
+                style={[styles.comingRow, { borderColor: roles.bgChip }]}
+              >
+                <Text style={[styles.comingText, { color: roles.fg }]}>
+                  {t(`Komt eraan: ${nShows} ${nShows === 1 ? 'avond' : 'avonden'}`, `Coming up: ${nShows} ${nShows === 1 ? 'night' : 'nights'}`)}
+                </Text>
+                <Ionicons name="chevron-forward" size={18} color={roles.fgMuted} />
+              </Pressable>
+            ) : null}
             {(artists ?? []).map((artist) => (
               <Pressable
                 key={artist.id}
@@ -294,50 +243,6 @@ export default function ArtiestenScreen() {
   );
 }
 
-function FollowedShowRow({ show }: { show: ApiFollowedShow }) {
-  const locale = useLocale();
-  const venueTone =
-    show.venue.type &&
-    (VENUE_TYPE_TICK as Record<string, BadgeToneKey>)[show.venue.type]
-      ? (VENUE_TYPE_TICK as Record<string, BadgeToneKey>)[show.venue.type]
-      : undefined;
-  const tone = CATEGORY_TICK[show.category];
-  // Een rij mag niet omvallen op een datum die niet te lezen is. Dat
-  // gebeurde met een gecachet antwoord van vóór een serverfix: de datum
-  // kwam als "2026-09-25 21:00:00+00" en JavaScriptCore op iOS maakt daar
-  // een Invalid Date van. De server stuurt nu ISO, maar een scherm dat
-  // crasht op oude data in de cache is alsnog stuk.
-  const d = new Date(show.occurrence.startsAt);
-  const dateLabel = Number.isNaN(d.getTime())
-    ? undefined
-    : `${dowMixed(d.getDay(), locale)} ${d.getDate()} ${monthShort(
-        d.getMonth(),
-        locale,
-      ).toLowerCase()}`;
-
-  return (
-    <EventListRow
-      thumb={show.imageUrl ?? ''}
-      thumbSize={96}
-      title={show.title}
-      venue={show.venue.name}
-      venueTone={venueTone}
-      time={rowTimeLabel(show.occurrence.startsAt, show.occurrence.endsAt, locale)}
-      dateLabel={dateLabel}
-      dateAbove
-      tags={[{ label: translateCategory(show.category, locale), tone }]}
-      // Waarom deze avond hier staat. Zonder dat is het een willekeurige
-      // rij tussen je andere lijsten.
-      genreLabel={show.artistName}
-      tick={tone}
-      onPress={() =>
-        router.push(
-          `/event/${show.id}?source=other&o=${show.occurrence.id}` as never,
-        )
-      }
-    />
-  );
-}
 
 /**
  * Spotify koppelen: wie je daar volgt en het meest luistert, volg je hier
@@ -467,19 +372,21 @@ const styles = StyleSheet.create({
   },
   spotifyText: { fontFamily: fontFamily.bold, fontSize: 15 },
   artistNameRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  comingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginHorizontal: 22,
+    marginBottom: 8,
+    paddingVertical: 14,
+    borderBottomWidth: StyleSheet.hairlineWidth * 2,
+  },
+  comingText: { fontFamily: fontFamily.bold, fontSize: 15 },
   spotifyLinked: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
   spotifyUnlink: { fontFamily: fontFamily.medium, fontSize: 13, textAlign: 'center', textDecorationLine: 'underline' },
   root: { flex: 1 },
   // Vult de vaste rijhoogte in de header, net als op /nieuw -- zo staan
   // de chips verticaal gecentreerd zonder losse paddings.
-  chipRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 22,
-    paddingVertical: 6,
-    height: FILTER_ROW_HEIGHT,
-  },
   center: { paddingTop: 60, alignItems: 'center' },
   sectionTitle: {
     fontFamily: fontFamily.display,
