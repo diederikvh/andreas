@@ -128,6 +128,13 @@ export default function MeerScreen() {
       onPress: go('/artiesten'),
     },
     {
+      // Hun komende avonden, als eigen ingang (ook de rail op Vandaag).
+      key: 'komt-eraan',
+      icon: <Ionicons name="calendar-outline" size={22} color={roles.accent} />,
+      label: t('Komt eraan van je artiesten', 'Coming up from your artists'),
+      onPress: go('/komt-eraan'),
+    },
+    {
       // Naast de artiesten: allebei een abonnement op nieuws. De regels
       // die je via Claude zet staan hier ook, om te pauzeren of weg te doen.
       key: 'meldingen',

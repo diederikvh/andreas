@@ -17,7 +17,6 @@ import { useLocale, useT } from '@/lib/i18n';
 import {
   queryKeys,
   useFollowedArtists,
-  useFollowedShows,
   useToggleArtistFollow,
 } from '@/lib/queries';
 import { disconnectSpotify, getSpotifyStatus, startSpotifyImport } from '@/lib/api';
@@ -41,9 +40,6 @@ export default function ArtiestenScreen() {
   const t = useT();
   const authed = useIsRegistered();
   const { data: artists, isLoading: loadingArtists } = useFollowedArtists({
-    enabled: authed,
-  });
-  const { data: shows, isLoading: loadingShows } = useFollowedShows({
     enabled: authed,
   });
   const toggle = useToggleArtistFollow();
@@ -71,7 +67,6 @@ export default function ArtiestenScreen() {
       </Pressable>
     </View>
   );
-  const nShows = (shows ?? []).length;
   const nArtists = (artists ?? []).length;
   const header = (
     <AppHeader
@@ -99,7 +94,7 @@ export default function ArtiestenScreen() {
     );
   }
 
-  const loading = loadingArtists || loadingShows;
+  const loading = loadingArtists;
   const nothing = !loading && (artists ?? []).length === 0;
 
   return (
@@ -149,22 +144,6 @@ export default function ArtiestenScreen() {
           <>
             {/* Bovenaan: koppelen is een actie op de hele lijst. */}
             <SpotifyImport />
-            {/* De avonden van wie je volgt hebben een eigen pagina (en een
-                rail op Vandaag); hier alleen de weg ernaartoe. */}
-            {nShows > 0 ? (
-              <Pressable
-                onPress={() => {
-                  softTap();
-                  router.push('/komt-eraan' as never);
-                }}
-                style={[styles.comingRow, { borderColor: roles.bgChip }]}
-              >
-                <Text style={[styles.comingText, { color: roles.fg }]}>
-                  {t(`Komt eraan: ${nShows} ${nShows === 1 ? 'avond' : 'avonden'}`, `Coming up: ${nShows} ${nShows === 1 ? 'night' : 'nights'}`)}
-                </Text>
-                <Ionicons name="chevron-forward" size={18} color={roles.fgMuted} />
-              </Pressable>
-            ) : null}
             {(artists ?? []).map((artist) => (
               <Pressable
                 key={artist.id}
@@ -372,16 +351,6 @@ const styles = StyleSheet.create({
   },
   spotifyText: { fontFamily: fontFamily.bold, fontSize: 15 },
   artistNameRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  comingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginHorizontal: 22,
-    marginBottom: 8,
-    paddingVertical: 14,
-    borderBottomWidth: StyleSheet.hairlineWidth * 2,
-  },
-  comingText: { fontFamily: fontFamily.bold, fontSize: 15 },
   spotifyLinked: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
   spotifyUnlink: { fontFamily: fontFamily.medium, fontSize: 13, textAlign: 'center', textDecorationLine: 'underline' },
   root: { flex: 1 },
