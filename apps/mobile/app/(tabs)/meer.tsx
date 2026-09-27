@@ -24,13 +24,11 @@ import { useT } from '@/lib/i18n';
 import {
   useFriendRequestCount,
   useInviteActionCount,
-  useMe,
   useNewArrivalsSince,
 } from '@/lib/queries';
 import { useNewFilters } from '@/store/newFilters';
 import { useMode, useRoles } from '@/store/mode';
 import { useNewBadgeSince } from '@/store/sessionTimestamps';
-import { useZoekStore } from '@/store/zoek';
 import { fontFamily } from '@/theme/tokens';
 
 type Entry = {
@@ -45,7 +43,6 @@ export default function MeerScreen() {
   const roles = useRoles();
   const insets = useSafeAreaInsets();
   const t = useT();
-  const openGuide = useZoekStore((s) => s.openGuide);
 
   // Dezelfde teller als op Vandaag: hoeveel staat er klaar om te
   // beoordelen, ná jouw baan-voorkeur.
@@ -58,12 +55,6 @@ export default function MeerScreen() {
   });
   const newCount = arrivals?.total ?? 0;
 
-  // `users.guideEnabled` is een opt-in per gebruiker uit het
-  // admin-paneel — /zoek geeft 403 zonder die vlag, dus de ingang mag
-  // niet zichtbaar zijn als 'ie uitstaat. Stond eerder op de banner die
-  // ik weghaalde; hier hoort 'ie weer.
-  const { data: me } = useMe();
-  const guideEnabled = me?.guideEnabled ?? false;
   const friendRequestCount = useFriendRequestCount(Boolean(session?.user?.id));
   const inviteCount = useInviteActionCount(Boolean(session?.user?.id));
 
@@ -73,19 +64,6 @@ export default function MeerScreen() {
   };
 
   const doen: Entry[] = [
-    ...(guideEnabled
-      ? [
-          {
-            key: 'gids',
-            icon: <Cross20 color={roles.accent} />,
-            label: t('Gids', 'Guide'),
-            onPress: () => {
-              softTap();
-              openGuide();
-            },
-          },
-        ]
-      : []),
     {
       // Sinds /going over jouw eigen "ik ga" gaat en niet meer over
       // vrienden, hoort 'ie hier en niet in de vrienden-groep.
@@ -298,16 +276,6 @@ function Row({ entry, last }: { entry: Entry; last: boolean }) {
   );
 }
 
-/** Het brand-kruis op icoon-formaat, zodat de gids-rij als Andreas leest. */
-function Cross20({ color }: { color: string }) {
-  return (
-    <View style={styles.crossBox}>
-      <View style={[styles.crossBar, { backgroundColor: color, transform: [{ rotate: '45deg' }] }]} />
-      <View style={[styles.crossBar, { backgroundColor: color, transform: [{ rotate: '-45deg' }] }]} />
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
   root: { flex: 1 },
   groupWrap: { paddingHorizontal: 22, paddingTop: 14 },
@@ -344,6 +312,4 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   badgeText: { fontFamily: fontFamily.medium, fontSize: 12 },
-  crossBox: { width: 22, height: 22, alignItems: 'center', justifyContent: 'center' },
-  crossBar: { position: 'absolute', width: 20, height: 4, borderRadius: 1 },
 });
