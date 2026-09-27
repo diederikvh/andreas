@@ -109,15 +109,12 @@ export function GuideOverlay({
   const [mounted, setMounted] = useState(visible);
   // Na het zoeken klappen de filters in tot één regel, zodat je meteen de
   // resultaten ziet. Tik op die regel om ze weer open te klappen.
-  const [filtersOpen, setFiltersOpen] = useState(() => !useZoekStore.getState().result?.events.length);
+  const [filtersOpen, setFiltersOpen] = useState(() => !useZoekStore.getState().result);
   const scrollRef = useRef<ScrollView>(null);
   const runSearch = async () => {
     Keyboard.dismiss();
     await search();
-    const st = useZoekStore.getState();
-    // Alleen inklappen als er iets is; bij niets wil je de filters meteen
-    // kunnen aanpassen.
-    if (!st.error && (st.result?.events.length ?? 0) > 0) {
+    if (!useZoekStore.getState().error) {
       setFiltersOpen(false);
       scrollRef.current?.scrollTo({ y: 0, animated: false });
     }
@@ -203,7 +200,7 @@ export function GuideOverlay({
           automaticallyAdjustKeyboardInsets
           contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 40 }]}
         >
-          {!filtersOpen && result && result.events.length > 0 ? (
+          {!filtersOpen && result ? (
             <Pressable
               onPress={() => {
                 softTap();
@@ -340,9 +337,14 @@ export function GuideOverlay({
             <View style={styles.empty}>
               <Ionicons name="search-outline" size={40} color={roles.fgMuted} />
               <Text style={[styles.emptyTitle, { color: roles.fg }]}>{t('Niets gevonden', 'Nothing found')}</Text>
-              {/* Wat er gezocht is en een tip, zonder "niets gevonden" twee keer. */}
+              {/* Wat er gezocht is staat in de ingeklapte regel erboven. */}
               <Text style={[styles.emptyBody, { color: roles.fgMuted }]}>
-                {result.reply.replace(/: niets gevonden\./, '.')}
+                {filtersOpen
+                  ? result.reply.replace(/: niets gevonden\./, '.')
+                  : t(
+                      'Tik op Filters om je zoekopdracht aan te passen, bijvoorbeeld met een langere periode.',
+                      'Tap Filters to change your search, for example with a longer period.'
+                    )}
               </Text>
             </View>
           ) : null}

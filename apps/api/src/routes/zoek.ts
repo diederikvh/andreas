@@ -10,7 +10,7 @@
  * Auth verplicht; alleen users met `guideEnabled` (opt-in via admin). Elke
  * zoekopdracht wordt gelogd en voedt "Voor jou".
  */
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 
@@ -78,8 +78,22 @@ zoekRoute.post('/', async (c) => {
   // Alleen de eerste pagina is een nieuwe zoekopdracht; "meer" niet.
   if (offset === 0) await logSearch(session.user.id, `(filters) ${describeFields(fields)}`.slice(0, 500), fields, found);
 
+  // Niets gevonden op een naam die een zaal is die je blokkeerde? Zeg dat,
+  // anders lijkt de zoek stuk.
+  let blockedNote = '';
+  if (total === 0 && fields.query) {
+    const blocked = await db.execute<{ name: string }>(sql`
+      SELECT v.name FROM venue_follows vf JOIN venues v ON v.id = vf.venue_id
+      WHERE vf.user_id = ${session.user.id} AND vf.state = 'blokken'
+        AND v.name ILIKE ${'%' + fields.query + '%'}
+      LIMIT 3`);
+    if (blocked.rows.length) {
+      blockedNote = ` ${blocked.rows.map((b) => b.name).join(', ')} heb je geblokkeerd; die zalen laten we weg.`;
+    }
+  }
+
   return c.json({
-    reply: summarize(fields, total, window, unknownVenues),
+    reply: summarize(fields, total, window, unknownVenues) + blockedNote,
     events,
     reasonByEventId: Object.fromEntries(found.map((e) => [e.id, e.why])),
     total,
