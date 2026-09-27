@@ -43,6 +43,18 @@ const tagFor = (k: GenreKey) => GENRES[k].match.find((p) => !p.includes('%')) ??
  * om er zelf een te kiezen.
  */
 const ROW_SCRIPT = `
+document.querySelectorAll('button[data-add]').forEach(function (btn) {
+  btn.addEventListener('click', function () {
+    var box = btn.form.querySelector('[data-more]');
+    var input = document.createElement('input');
+    input.type = 'text';
+    input.name = 'names';
+    input.placeholder = 'nog een artiest';
+    input.style.margin = '0';
+    box.appendChild(input);
+    input.focus();
+  });
+});
 document.querySelectorAll('form[data-row]').forEach(function (form) {
   form.addEventListener('submit', async function (ev) {
     ev.preventDefault();
@@ -130,8 +142,9 @@ artiestenUi.get('/', async (c) => {
       <h2>Concerten zonder artiest</h2>
       <p style="opacity:0.7;font-size:14px;margin-top:-8px;">
         {n} concerten in de komende {DAYS} dagen waar we geen genre bij hebben: de zaal geeft geen
-        bruikbaar label en we kennen de artiest niet. Vul de artiest in (meerdere met komma's, de
-        hoofdact eerst), of zeg dat er geen artiest bij hoort. De genres komen dan meteen van Last.fm.
+        bruikbaar label en we kennen de artiest niet. Het eerste veld is de hoofdact (de titel staat er
+        al in); meer bands voeg je toe met "+ artiest". Of zeg dat er geen artiest bij hoort. De
+        genres komen meteen van Last.fm; kent die de artiest niet, vul dan zelf een genre in.
       </p>
       {done ? (
         <article style="padding:12px 16px;">
@@ -166,6 +179,7 @@ artiestenUi.get('/', async (c) => {
                     type="text"
                     name="names"
                     value={r.lineup?.[0] ?? r.title}
+                    aria-label="Hoofdact"
                     style="margin:0;min-width:12rem;flex:1;"
                   />
                   <input
@@ -177,6 +191,11 @@ artiestenUi.get('/', async (c) => {
                     style="margin:0;width:11rem;"
                   />
                   <button type="submit" style="width:auto;margin:0;">Opslaan</button>
+                  {/* Meer bands op één avond: een extra naamveld per artiest. */}
+                  <div data-more style="display:flex;flex-direction:column;gap:6px;flex-basis:100%;"></div>
+                  <button type="button" data-add class="secondary outline" style="width:auto;margin:0;font-size:13px;">
+                    + artiest
+                  </button>
                 </form>
                 <form data-row method="post" action={`/admin/artiesten/${r.id}/geen`} style="margin:6px 0 0;">
                   <button type="submit" class="secondary outline" style="width:auto;margin:0;font-size:13px;">
@@ -207,8 +226,13 @@ function reply(c: any, body: { message: string; done: boolean; needGenre?: boole
 
 artiestenUi.post('/:id', async (c) => {
   const eventId = c.req.param('id');
-  const form = await c.req.parseBody();
-  const names = String(form.names ?? '')
+  // Meerdere naamvelden (+ artiest) komen als lijst binnen; komma's in één
+  // veld werken ook. De eerste naam is de hoofdact.
+  const form = await c.req.parseBody({ all: true });
+  const rawNames = Array.isArray(form.names) ? form.names : [form.names];
+  const names = rawNames
+    .map((n) => String(n ?? ''))
+    .join(',')
     .split(',')
     .map((n) => n.trim())
     .filter((n) => n.length >= 2 && n.length <= 120)
@@ -216,7 +240,7 @@ artiestenUi.post('/:id', async (c) => {
   // Zelf ingevulde genres, met komma's. Een genre uit de lijst (label of
   // sleutel) wordt het label dat de matching herkent; iets anders bewaren we
   // zoals het is: "shoegaze" wordt dan indie.
-  const picked = String(form.genre ?? '')
+  const picked = String((Array.isArray(form.genre) ? form.genre[0] : form.genre) ?? '')
     .split(',')
     .map((g) => g.trim().toLowerCase())
     .filter((g) => g.length >= 2 && g.length <= 40)
