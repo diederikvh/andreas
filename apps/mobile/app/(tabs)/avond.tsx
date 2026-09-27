@@ -2199,7 +2199,9 @@ const styles = StyleSheet.create({
     borderRadius: 999,
   },
   featured: {
-    aspectRatio: 1 / 1.2,
+    // Vierkant: staand (1 : 1,2) nam het halve scherm in en drukte je
+    // plannen en de rest onder de vouw.
+    aspectRatio: 1,
     borderRadius: 18,
     overflow: 'hidden',
     padding: 16,
