@@ -214,6 +214,8 @@ export default function ArtiestenScreen() {
 
         {tab === 'artists' ? (
           <>
+            {/* Bovenaan: koppelen is een actie op de hele lijst. */}
+            <SpotifyImport />
             {(artists ?? []).map((artist) => (
               <Pressable
                 key={artist.id}
@@ -265,7 +267,6 @@ export default function ArtiestenScreen() {
                 </Pressable>
               </Pressable>
             ))}
-            <SpotifyImport />
           </>
         ) : null}
       </ScrollView>
@@ -440,16 +441,18 @@ function SpotifyImport() {
 }
 
 const styles = StyleSheet.create({
-  spotify: { paddingHorizontal: 22, paddingTop: 20, gap: 4, alignSelf: 'stretch' },
+  spotify: { paddingHorizontal: 22, paddingTop: 4, paddingBottom: 16, gap: 6, alignSelf: 'stretch' },
+  // Zelfde maat als de andere secundaire knoppen (Bewerken/Verwijderen bij
+  // een melding): vol breed, hoek 8, 13 hoog.
   spotifyBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    paddingVertical: 12,
-    borderRadius: 999,
+    paddingVertical: 13,
+    borderRadius: 8,
   },
-  spotifyText: { fontFamily: fontFamily.bold, fontSize: 14 },
+  spotifyText: { fontFamily: fontFamily.bold, fontSize: 15 },
   spotifyLinked: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
   spotifyUnlink: { fontFamily: fontFamily.medium, fontSize: 13, textAlign: 'center', textDecorationLine: 'underline' },
   root: { flex: 1 },
