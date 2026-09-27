@@ -109,12 +109,15 @@ export function GuideOverlay({
   const [mounted, setMounted] = useState(visible);
   // Na het zoeken klappen de filters in tot één regel, zodat je meteen de
   // resultaten ziet. Tik op die regel om ze weer open te klappen.
-  const [filtersOpen, setFiltersOpen] = useState(() => !useZoekStore.getState().result);
+  const [filtersOpen, setFiltersOpen] = useState(() => !useZoekStore.getState().result?.events.length);
   const scrollRef = useRef<ScrollView>(null);
   const runSearch = async () => {
     Keyboard.dismiss();
     await search();
-    if (!useZoekStore.getState().error) {
+    const st = useZoekStore.getState();
+    // Alleen inklappen als er iets is; bij niets wil je de filters meteen
+    // kunnen aanpassen.
+    if (!st.error && (st.result?.events.length ?? 0) > 0) {
       setFiltersOpen(false);
       scrollRef.current?.scrollTo({ y: 0, animated: false });
     }
@@ -200,7 +203,7 @@ export function GuideOverlay({
           automaticallyAdjustKeyboardInsets
           contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 40 }]}
         >
-          {!filtersOpen && result ? (
+          {!filtersOpen && result && result.events.length > 0 ? (
             <Pressable
               onPress={() => {
                 softTap();
@@ -333,7 +336,18 @@ export function GuideOverlay({
           ) : null}
           {error ? <Text style={[styles.error, { color: palette.red }]}>{error}</Text> : null}
 
-          {result && !sending ? (
+          {result && !sending && result.events.length === 0 ? (
+            <View style={styles.empty}>
+              <Ionicons name="search-outline" size={40} color={roles.fgMuted} />
+              <Text style={[styles.emptyTitle, { color: roles.fg }]}>{t('Niets gevonden', 'Nothing found')}</Text>
+              {/* Wat er gezocht is en een tip, zonder "niets gevonden" twee keer. */}
+              <Text style={[styles.emptyBody, { color: roles.fgMuted }]}>
+                {result.reply.replace(/: niets gevonden\./, '.')}
+              </Text>
+            </View>
+          ) : null}
+
+          {result && !sending && result.events.length > 0 ? (
             <View style={styles.results}>
               {filtersOpen ? <Text style={[styles.reply, { color: roles.fg }]}>{result.reply}</Text> : null}
               {result.events.length > 1 ? (
@@ -533,6 +547,9 @@ const styles = StyleSheet.create({
   reply: { fontFamily: fontFamily.medium, fontSize: 15, lineHeight: 21 },
   sortRow: { flexDirection: 'row', gap: 6 },
   summary: { borderRadius: 12, padding: 14, gap: 6 },
+  empty: { alignItems: 'center', gap: 10, paddingVertical: 36, paddingHorizontal: 12 },
+  emptyTitle: { fontFamily: fontFamily.bold, fontSize: 17 },
+  emptyBody: { fontFamily: fontFamily.body, fontSize: 14, lineHeight: 20, textAlign: 'center' },
   summaryText: { fontFamily: fontFamily.medium, fontSize: 15, lineHeight: 21 },
   summaryEdit: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   summaryEditText: { fontFamily: fontFamily.bold, fontSize: 13 },
