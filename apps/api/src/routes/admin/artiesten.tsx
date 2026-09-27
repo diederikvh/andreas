@@ -43,6 +43,13 @@ const tagFor = (k: GenreKey) => GENRES[k].match.find((p) => !p.includes('%')) ??
  * om er zelf een te kiezen.
  */
 const ROW_SCRIPT = `
+// Genre opzoeken: wat nu in het naamveld staat, in een nieuw tabblad.
+document.querySelectorAll('button[data-search]').forEach(function (btn) {
+  btn.addEventListener('click', function () {
+    var name = btn.form.querySelector('input[name=names]').value.trim();
+    if (name) window.open('https://www.google.com/search?q=' + encodeURIComponent(name + ' artiest genre'), '_blank');
+  });
+});
 document.querySelectorAll('button[data-add]').forEach(function (btn) {
   btn.addEventListener('click', function () {
     var box = btn.form.querySelector('[data-more]');
@@ -190,6 +197,9 @@ artiestenUi.get('/', async (c) => {
                     aria-label="Genre (optioneel), meerdere met komma's"
                     style="margin:0;width:11rem;"
                   />
+                  <button type="button" data-search class="secondary outline" title="Zoek de artiest op voor het genre" style="width:auto;margin:0;font-size:13px;">
+                    Zoek
+                  </button>
                   <button type="submit" style="width:auto;margin:0;">Opslaan</button>
                   {/* Meer bands op één avond: een extra naamveld per artiest. */}
                   <div data-more style="display:flex;flex-direction:column;gap:6px;flex-basis:100%;"></div>
