@@ -282,7 +282,16 @@ export async function annotateAlertRows(ids?: string[]): Promise<number> {
  * Expo-quota opmaakt. De volgende tick pakt de rest.
  */
 export async function sendDueReminders(
-  opts: { dryRun?: boolean } = {}
+  opts: {
+    dryRun?: boolean;
+    /**
+     * De ochtendronde van 10:00 (`scheduler.ts`): verstuurt het nieuws
+     * meteen, met per persoon het aantal nieuwe aanwinsten erbij, zodat er
+     * één push komt in plaats van twee. Zonder dit (de gewone tik) wacht
+     * nieuws een half uur, als vangnet voor als die ronde niet draaide.
+     */
+    morning?: { newCounts: Map<string, number> };
+  } = {}
 ): Promise<ReminderSend[]> {
   const due = await db.execute<{
     id: string;
@@ -294,10 +303,11 @@ export async function sendDueReminders(
     starts_at: Date;
     note: string | null;
     is_going: boolean;
+    fire_at: string;
     artist_name: string | null;
     alert_label: string | null;
   }>(sql`
-    SELECT r.id, r.user_id, r.kind::text AS kind, r.note,
+    SELECT r.id, r.user_id, r.kind::text AS kind, r.note, r.fire_at,
            e.id AS event_id, e.title, v.name AS venue_name, o.starts_at,
            -- Een hartje is een interessesignaal, geen belofte om te gaan.
            -- "Ik ga" is de trede erboven, en alleen daar mag de melding
@@ -372,12 +382,17 @@ export async function sendDueReminders(
   // allemaal op 10:00 klaar, dus zonder bundelen krijg je na een drukke
   // nacht vijf pushes achter elkaar.
   const news = new Map<string, typeof rows>();
+  const catchUp = Date.now() - 30 * 60_000;
   for (const row of rows) {
     if (row.kind !== 'artiest' && row.kind !== 'regel') continue;
+    // De gewone tik laat vers nieuws aan de ochtendronde, die het samen
+    // met de aanwinsten verstuurt. Pas na een half uur is het een gemiste
+    // ronde en gaat het alsnog.
+    if (!opts.morning && new Date(row.fire_at).getTime() > catchUp) continue;
     news.set(row.user_id, [...(news.get(row.user_id) ?? []), row]);
   }
   for (const [userId, items] of news) {
-    const payload = newsPayload(items);
+    const payload = newsPayload(items, opts.morning?.newCounts.get(userId) ?? 0);
     if (!opts.dryRun) {
       try {
         await sendPushToUser(userId, payload);
@@ -480,7 +495,25 @@ type NewsRow = {
 };
 
 /** De tekst van een nieuws-push: één event uitgeschreven, meer gebundeld. */
-export function newsPayload(items: NewsRow[]): {
+export function newsPayload(
+  items: NewsRow[],
+  /** Nieuwe aanwinsten bij zalen die je volgt: één regel erbij in plaats
+      van een tweede push om 10:00. */
+  newCount = 0
+): {
+  title: string;
+  body: string;
+  data: { url: string };
+} {
+  const withNew = (body: string) =>
+    newCount > 0
+      ? `${body} En ${newCount === 1 ? 'één aanwinst' : `${newCount} aanwinsten`} bij zalen die je volgt.`
+      : body;
+  const p = newsPayloadBase(items);
+  return { ...p, body: withNew(p.body) };
+}
+
+function newsPayloadBase(items: NewsRow[]): {
   title: string;
   body: string;
   data: { url: string };

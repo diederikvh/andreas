@@ -105,9 +105,14 @@ export async function sendNewPushToUserIds(
 }
 
 export async function sendDailyNewPush(
-  opts: { dryRun?: boolean } = {}
+  opts: {
+    dryRun?: boolean;
+    /** Kregen het aantal al mee in de nieuws-push van 10:00: niet nog een
+        keer sturen, wel het dagslot zetten. */
+    alreadyTold?: Set<string>;
+  } = {}
 ): Promise<DailyPushResult> {
-  return runNewPush({ respectDailyGates: true, dryRun: opts.dryRun });
+  return runNewPush({ respectDailyGates: true, dryRun: opts.dryRun, alreadyTold: opts.alreadyTold });
 }
 
 /**
@@ -124,6 +129,7 @@ async function runNewPush(opts: {
    */
   ignoreVisitWindow?: boolean;
   dryRun?: boolean;
+  alreadyTold?: Set<string>;
 }): Promise<DailyPushResult> {
   const dayStart = amsterdamDayStart();
   const lookback = sql`NOW() - INTERVAL '${sql.raw(String(MAX_LOOKBACK_DAYS))} days'`;
@@ -214,6 +220,7 @@ async function runNewPush(opts: {
   // gebruiker. Het aantal ís de tekst, dus dat scheelt flink.
   const byCount = new Map<number, string[]>();
   for (const c of counts) {
+    if (opts.alreadyTold?.has(c.userId)) continue;
     const list = byCount.get(c.newCount) ?? [];
     list.push(c.userId);
     byCount.set(c.newCount, list);

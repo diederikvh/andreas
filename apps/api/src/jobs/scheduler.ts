@@ -13,7 +13,7 @@
  */
 import { sendDailyNewPush } from './daily-new-push.js';
 import { linkSubmissionsToEvents } from './linkSubmissions.js';
-import { runReminders } from './reminders.js';
+import { runReminders, sendDueReminders } from './reminders.js';
 
 /** Lokale tijd waarop de aanwinsten-push de deur uit gaat. */
 const PUSH_HOUR = 10;
@@ -106,9 +106,18 @@ export function startScheduler(): void {
     }
 
     try {
-      const result = await sendDailyNewPush();
+      // Eén push om 10:00, niet twee. Eerst wie er aanwinsten heeft (zonder
+      // te sturen), dan het nieuws van artiesten en meldingen met dat aantal
+      // erbij, en pas dan de aanwinsten-push voor wie geen nieuws had.
+      const planned = await sendDailyNewPush({ dryRun: true });
+      const newCounts = new Map(planned.counts.map((c) => [c.userId, c.newCount]));
+      const sent = await sendDueReminders({ morning: { newCounts } });
+      const alreadyTold = new Set(
+        sent.filter((r) => (r.kind === 'artiest' || r.kind === 'regel') && newCounts.has(r.userId)).map((r) => r.userId)
+      );
+      const result = await sendDailyNewPush({ alreadyTold });
       console.log(
-        `[scheduler] aanwinsten-push: ${result.sent} verstuurd`
+        `[scheduler] ochtend: ${alreadyTold.size} samen met nieuws, ${result.sent - alreadyTold.size} alleen aanwinsten`
       );
     } catch (err) {
       // Nooit doorgooien: een mislukte push mag de planner niet stoppen,
