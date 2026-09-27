@@ -12,6 +12,7 @@ import {
   type ReactNode,
 } from 'react';
 import {
+  AppState,
   KeyboardAvoidingView,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
@@ -139,6 +140,27 @@ const MUSEUM_RAIL_CARD_WIDTH = 130;
 
 /** Eén hero-kaart plus waaróm 'ie er staat — dat verschilt per bron. */
 type Lead = OccurrenceRow & { kicker: string };
+
+/** Voorspelbaar toeval: dezelfde seed geeft dezelfde volgorde, zodat de
+    hero niet bij elke render verspringt. (mulberry32) */
+function seededRandom(seed: number) {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let x = Math.imul(a ^ (a >>> 15), 1 | a);
+    x = (x + Math.imul(x ^ (x >>> 7), 61 | x)) ^ x;
+    return ((x ^ (x >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function shuffled<T>(list: T[], rand: () => number): T[] {
+  const out = [...list];
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(rand() * (i + 1));
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
+}
 
 export default function Avond() {
   const mode = useMode();
@@ -316,6 +338,13 @@ export default function Avond() {
   const [featuredSeed, setFeaturedSeed] = useState(() =>
     Math.floor(Date.now() / 60_000),
   );
+  // Terug in de app na een tijdje weg: andere kaarten.
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') setFeaturedSeed((s) => s + 1);
+    });
+    return () => sub.remove();
+  }, []);
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     setFeaturedSeed((s) => s + 1);
@@ -462,21 +491,19 @@ export default function Avond() {
       );
   }, [events, allRows, now]);
 
-  // Drie hero-kaarten, in vaste volgorde van herkomst:
+  // Drie hero-kaarten:
   //
-  //   1. Eén redactionele keuze — `featured` in de admin. De curator
-  //      krijgt de eerste plek, maar niet alle drie: dan zou de rest van
-  //      de carousel op een goed geprogrammeerde dag nooit persoonlijk
-  //      zijn.
-  //   2. Twee uit `/for-you`, dat gevolgde venues en je smaakprofiel al
-  //      tegen elkaar afweegt.
-  //   3. Aanvullen uit de gewone pool als die twee niks opleveren — een
-  //      verse gebruiker heeft nog geen profiel en volgt nog niks.
-  //
-  // Was eerder een cascade die meestal op één kaart uitkwam (en bij
-  // "niks featured vandaag" op een random pick). Vandaar ook dat het
-  // venster niet meer op vandaag zit: drie kaarten haal je op een
-  // rustige dag alleen uit de dagen erna.
+  //   1. Eén redactionele keuze — `featured` in de admin. Zijn er meer,
+  //      dan wisselen ze. Nooit alle drie: dan zou de carousel op een goed
+  //      geprogrammeerde dag nooit persoonlijk zijn.
+  //   2. Twee uit een persoonlijke pool: `/for-you`, avonden van artiesten
+  //      die je volgt en van zalen die je volgt, de komende twee weken.
+  //      Geschud op `featuredSeed`, zodat het per sessie, na een
+  //      pull-to-refresh en bij terugkeer in de app wisselt. Eerder waren
+  //      dit altijd de bovenste twee van `/for-you`: dag in dag uit
+  //      dezelfde kaarten.
+  //   3. Aanvullen uit de gewone pool — een verse gebruiker heeft nog geen
+  //      profiel en volgt nog niks.
   const leads = useMemo<Lead[]>(() => {
     const out: Lead[] = [];
     const seen = new Set<string>();
@@ -485,31 +512,42 @@ export default function Avond() {
       seen.add(row.event.id);
       out.push({ ...row, kicker });
     };
+    const rand = seededRandom(featuredSeed);
 
-    const editorial = leadsPool.find((r) => r.event.featured);
-    if (editorial) push(editorial, t('Onze keuze', 'Our pick'));
+    const editorials = leadsPool.filter((r) => r.event.featured);
+    if (editorials.length > 0) {
+      push(editorials[Math.floor(rand() * editorials.length)], t('Onze keuze', 'Our pick'));
+    }
 
+    const personal: Lead[] = [];
+    const inPool = new Set<string>();
+    const add = (row: OccurrenceRow, kicker: string) => {
+      if (inPool.has(row.event.id)) return;
+      inPool.add(row.event.id);
+      personal.push({ ...row, kicker });
+    };
+    const artistShows = new Set((followedShows ?? []).map((s) => s.id));
+    const venueSlugs = new Set(followedVenues.map((v) => v.slug));
+    const horizon = Date.now() + 14 * 86_400_000;
+    for (const row of leadsPool) {
+      if (new Date(row.occurrence.startsAt).getTime() > horizon) break;
+      if (artistShows.has(row.event.id)) add(row, t('Jouw artiest', 'Your artist'));
+      else if (venueSlugs.has(row.event.venue.slug)) add(row, t('Jouw venue', 'Your venue'));
+    }
     for (const ev of forYouEvents ?? []) {
       const occ = ev.occurrencesInRange?.[0];
       if (!occ) continue;
-      push(
+      add(
         { id: `${ev.id}::${occ.id}`, event: ev, occurrence: occ },
-        ev.venueFollowed
-          ? t('Jouw venue', 'Your venue')
-          : t('Voor jou', 'For you'),
+        ev.venueFollowed ? t('Jouw venue', 'Your venue') : t('Voor jou', 'For you'),
       );
     }
+    for (const lead of shuffled(personal, rand)) push(lead, lead.kicker);
 
-    // Aanvullen vanaf een roterend startpunt zodat pull-to-refresh iets
-    // anders oplevert in plaats van steeds hetzelfde eerstvolgende event.
     const rest = featuredFallbackPool.filter((r) => !seen.has(r.event.id));
-    for (let i = 0; i < rest.length && out.length < 3; i++) {
-      const idx =
-        (((featuredSeed + i) % rest.length) + rest.length) % rest.length;
-      push(rest[idx], t('Uitgelicht', 'Featured'));
-    }
+    for (const row of shuffled(rest, rand)) push(row, t('Uitgelicht', 'Featured'));
     return out;
-  }, [leadsPool, featuredFallbackPool, forYouEvents, featuredSeed, t]);
+  }, [leadsPool, featuredFallbackPool, forYouEvents, followedShows, followedVenues, featuredSeed, t]);
 
   // Voor 'expo'-rails: events-pool die exhibitions wél meeneemt.
   // Filtering: mode-mapping (cat ∈ expo), overrule via expliciete cats,
