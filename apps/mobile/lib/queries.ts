@@ -92,6 +92,7 @@ import {
   type VenueType,
   myPendingEvents,
   setPendingGoing,
+  type ApiFollowedArtist,
 } from '@/lib/api';
 import { useSession } from '@/lib/authClient';
 import { useNewFilters } from '@/store/newFilters';
@@ -594,9 +595,22 @@ export function useDeleteReminder() {
 }
 
 export function useArtist(slug: string) {
+  const qc = useQueryClient();
   return useQuery({
     queryKey: queryKeys.artist(slug),
-    queryFn: () => getArtist(slug),
+    queryFn: async () => {
+      const data = await getArtist(slug);
+      // De server zoekt een ontbrekende foto op bij het openen en bewaart
+      // 'm. Zet 'm ook meteen in de lijst van wie je volgt, anders blijft
+      // daar het lege rondje staan tot die lijst een keer herlaadt.
+      const url = data.artist.imageUrl;
+      if (url) {
+        qc.setQueryData<ApiFollowedArtist[]>(queryKeys.followedArtists(), (old) =>
+          old?.map((a) => (a.id === data.artist.id && !a.imageUrl ? { ...a, imageUrl: url } : a)),
+        );
+      }
+      return data;
+    },
     enabled: Boolean(slug),
     staleTime: 10 * 60_000,
     refetchOnWindowFocus: true,

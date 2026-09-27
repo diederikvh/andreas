@@ -92,7 +92,10 @@ export async function fillArtistImages(
   const rows = await db.execute<{ id: string; name: string; spotify_url: string }>(sql`
     SELECT id, name, spotify_url FROM artists
     WHERE image_url IS NULL
-    ORDER BY image_tried_at NULLS FIRST, id
+    -- Wie iemand volgt eerst: die staat in een lijst in de app. De rest
+    -- (duizenden uit line-ups) komt daarna, op volgorde.
+    ORDER BY image_tried_at NULLS FIRST,
+      EXISTS (SELECT 1 FROM artist_follows f WHERE f.artist_id = artists.id) DESC, id
     LIMIT ${limit}
   `);
 
