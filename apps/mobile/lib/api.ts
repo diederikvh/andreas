@@ -1187,6 +1187,18 @@ export async function startSpotifyImport(): Promise<{ url: string; returnUrl: st
   return authedRequest<{ url: string; returnUrl: string }>('/spotify/start', { method: 'POST' });
 }
 
+export type SpotifyStatus =
+  | { connected: false }
+  | { connected: true; connectedAt: string; lastSyncAt: string | null; lastAdded: number; artists: number };
+
+export async function getSpotifyStatus(): Promise<SpotifyStatus> {
+  return authedRequest<SpotifyStatus>('/spotify/status');
+}
+
+export async function disconnectSpotify(): Promise<void> {
+  await authedRequest('/spotify', { method: 'DELETE' });
+}
+
 export async function getFollowedArtists(): Promise<ApiFollowedArtist[]> {
   const { artists } = await authedRequest<{ artists: ApiFollowedArtist[] }>(
     '/artist-follows',

@@ -18,6 +18,7 @@ import { eventFromUrl, venueFromUrl } from '../../scrapers/extract-fields.js';
 import { scrapers, type ScraperName } from '../../scrapers/index.js';
 import { applyBlockedTerms } from '../../jobs/blockedTerms.js';
 import { fillArtistGenres } from '../../jobs/artistGenres.js';
+import { syncSpotifyLinks } from '../spotify-import.js';
 import { fillArtistImages } from '../../jobs/artistImages.js';
 import { uploadToBunny } from '../../storage/bunny.js';
 import { requireAdminAny } from './auth.js';
@@ -1232,6 +1233,14 @@ adminApi.post('/enrich-artists', async (c) => {
     // hebben nu een MusicBrainz-id, en daarmee is de match exact. Eigen
     // sleutel, dus geen last van de Spotify-limiet. Draait vóór
     // recompute-effective-genres (volgende stap in de cron).
+    // Spotify-koppelingen bijwerken vóór de genres: wie er vannacht via
+    // Spotify bij komt, krijgt dan meteen genres.
+    let spotify = { users: 0, added: 0, dropped: 0 };
+    try {
+      spotify = await syncSpotifyLinks();
+    } catch (e) {
+      console.error('[enrich-artists] spotify bijwerken mislukt', e);
+    }
     let genres = { looked: 0, filled: 0, fromTitles: 0, stopped: false };
     try {
       genres = await fillArtistGenres({ limit: 400 });
@@ -1242,6 +1251,7 @@ adminApi.post('/enrich-artists', async (c) => {
       durationMs: Date.now() - startedAt,
       ...result,
       images,
+      spotify,
       genres,
     });
   } catch (e) {

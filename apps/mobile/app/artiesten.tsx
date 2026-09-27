@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import * as WebBrowser from 'expo-web-browser';
 import { router } from 'expo-router';
 import { useState } from 'react';
@@ -30,7 +30,7 @@ import {
   useFollowedShows,
   useToggleArtistFollow,
 } from '@/lib/queries';
-import { startSpotifyImport, type ApiFollowedShow } from '@/lib/api';
+import { disconnectSpotify, getSpotifyStatus, startSpotifyImport, type ApiFollowedShow } from '@/lib/api';
 import { useRoles } from '@/store/mode';
 import type { BadgeToneKey } from '@/theme/tones';
 import { fontFamily } from '@/theme/tokens';
@@ -326,12 +326,14 @@ function FollowedShowRow({ show }: { show: ApiFollowedShow }) {
 }
 
 /**
- * Wie je op Spotify volgt en het meest luistert, in één keer volgen.
+ * Spotify koppelen: wie je daar volgt en het meest luistert, volg je hier
+ * ook, en elke nacht komen er nieuwe bij.
  *
- * De inlog loopt in een browservenster bij Spotify; onze server haalt de
- * artiesten op, volgt ze en stuurt je terug met hoeveel het er waren. De
- * Spotify-toegang wordt daarna weggegooid. Zolang de Spotify-app in
- * development mode staat, kan alleen wie is toegevoegd koppelen.
+ * Niet gekoppeld: een knop. De inlog loopt in een browservenster bij
+ * Spotify; onze server volgt de artiesten en bewaart de koppeling.
+ * Gekoppeld: wat er gebeurt en wanneer het laatst bijgewerkt is, en
+ * ontkoppelen. Zolang de Spotify-app in development mode staat, kan alleen
+ * wie is toegevoegd koppelen.
  */
 // ponytail: schakelaar voor de Spotify-knop. Aan sinds 27 sep 2026 (redirect-
 // URI en testgebruikers staan in het dashboard). Werkt het, dan mag hij weg.
@@ -341,8 +343,10 @@ function SpotifyImport() {
   const roles = useRoles();
   const t = useT();
   const qc = useQueryClient();
+  const locale = useLocale();
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const status = useQuery({ queryKey: ['spotify-status'], queryFn: getSpotifyStatus });
 
   const run = async () => {
     softTap();
@@ -357,6 +361,7 @@ function SpotifyImport() {
       const error = param('error');
       if (added !== undefined) {
         await qc.invalidateQueries({ queryKey: queryKeys.followedArtists() });
+        await qc.invalidateQueries({ queryKey: ['spotify-status'] });
         setMessage(
           Number(added) > 0
             ? t(`${added} artiesten uit Spotify gevolgd.`, `Followed ${added} artists from Spotify.`)
@@ -379,7 +384,40 @@ function SpotifyImport() {
     }
   };
 
-  if (!SPOTIFY_READY) return null;
+  if (!SPOTIFY_READY || status.isLoading) return null;
+
+  if (status.data?.connected) {
+    const d = status.data;
+    const when = d.lastSyncAt
+      ? new Date(d.lastSyncAt).toLocaleDateString(locale === 'en' ? 'en-GB' : 'nl-NL', { day: 'numeric', month: 'long' })
+      : null;
+    return (
+      <View style={styles.spotify}>
+        <View style={styles.spotifyLinked}>
+          <Ionicons name="checkmark-circle" size={18} color={roles.fg} />
+          <Text style={[styles.spotifyText, { color: roles.fg }]}>{t('Gekoppeld met Spotify', 'Connected to Spotify')}</Text>
+        </View>
+        <Text style={[styles.note, { color: roles.fgMuted, textAlign: 'center' }]}>
+          {t(
+            `Wie je op Spotify gaat volgen, volg je hier de volgende dag ook.${when ? ` Laatst bijgewerkt ${when}${d.lastAdded ? `, ${d.lastAdded} nieuw` : ''}.` : ''}`,
+            `Artists you follow on Spotify are followed here the next day too.${when ? ` Last updated ${when}${d.lastAdded ? `, ${d.lastAdded} new` : ''}.` : ''}`,
+          )}
+        </Text>
+        {message ? <Text style={[styles.note, { color: roles.fgMuted, textAlign: 'center' }]}>{message}</Text> : null}
+        <Pressable
+          onPress={async () => {
+            softTap();
+            await disconnectSpotify();
+            await qc.invalidateQueries({ queryKey: ['spotify-status'] });
+          }}
+          hitSlop={8}
+        >
+          <Text style={[styles.spotifyUnlink, { color: roles.fgMuted }]}>{t('Ontkoppelen', 'Disconnect')}</Text>
+        </Pressable>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.spotify}>
       <Pressable
@@ -412,6 +450,8 @@ const styles = StyleSheet.create({
     borderRadius: 999,
   },
   spotifyText: { fontFamily: fontFamily.bold, fontSize: 14 },
+  spotifyLinked: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
+  spotifyUnlink: { fontFamily: fontFamily.medium, fontSize: 13, textAlign: 'center', textDecorationLine: 'underline' },
   root: { flex: 1 },
   // Vult de vaste rijhoogte in de header, net als op /nieuw -- zo staan
   // de chips verticaal gecentreerd zonder losse paddings.
