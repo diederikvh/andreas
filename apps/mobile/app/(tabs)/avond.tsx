@@ -843,7 +843,7 @@ export default function Avond() {
             vraag: wanneer en waar. */}
         {openArtistShows.length > 0 && (
           <Rail
-            kicker={t('Van artiesten die je volgt', 'From artists you follow')}
+            kicker={t('Artiesten die je volgt', 'Artists you follow')}
             moreLabel={t('Alles →', 'See all →')}
             onMore={() => router.push('/komt-eraan' as never)}
             cardWidth={goingCardW}
@@ -886,7 +886,7 @@ export default function Avond() {
             volg-lijst snel bereikbaar is (was voorheen onderaan Vandaag). */}
         {followedVenues.length > 0 && (
           <Rail
-            kicker={t('Jouw favoriete venues', 'Your favourite venues')}
+            kicker={t('Favoriete venues', 'Favourite venues')}
             moreLabel={t('Alle venues →', 'All venues →')}
             onMore={() => router.push('/venues' as never)}
             cardWidth={SQUARE_CARD_WIDTH}
