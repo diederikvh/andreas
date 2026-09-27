@@ -451,7 +451,6 @@ function ZoekEventRow({
   event: ApiEvent;
   reason?: string;
 }) {
-  const roles = useRoles();
   const locale = useLocale();
   const start = event.startsAt;
   if (!start) return null;
@@ -481,6 +480,7 @@ function ZoekEventRow({
         tags={[{ label: translateCategory(event.category, locale), tone }]}
         genreLabel={(event.genres ?? [])[0]}
         tick={tone}
+        note={reason}
         onPress={() => {
           // Alleen toetsenbord weg — overlay blijft open (zoals de zoek),
           // zodat je na 'terug' weer bij je resultaten staat.
@@ -488,7 +488,6 @@ function ZoekEventRow({
           router.push(`/event/${event.id}?source=search` as never);
         }}
       />
-      {reason ? <Text style={[styles.reason, { color: roles.fgMuted }]}>{reason}</Text> : null}
     </View>
   );
 }
@@ -559,14 +558,6 @@ const styles = StyleSheet.create({
   moreBtn: { alignItems: 'center', justifyContent: 'center', paddingVertical: 13, borderRadius: 8, marginTop: 6 },
   moreLabel: { fontFamily: fontFamily.bold, fontSize: 15 },
   eventBlock: { marginHorizontal: -22 },
-  reason: {
-    fontFamily: fontFamily.body,
-    fontSize: 12,
-    lineHeight: 16,
-    paddingHorizontal: 22,
-    marginTop: -4,
-    marginBottom: 6,
-  },
   hint: { fontFamily: fontFamily.body, fontSize: 14, lineHeight: 20 },
   aiNote: { gap: 8, marginTop: 24, paddingTop: 24, borderTopWidth: StyleSheet.hairlineWidth * 2 },
   link: { fontFamily: fontFamily.bold, fontSize: 14 },

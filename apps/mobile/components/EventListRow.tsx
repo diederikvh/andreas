@@ -73,6 +73,9 @@ type Props = {
       compositie gelden. De rechter rotated-tick gebruikt 'm nooit —
       die bevat alleen `time` zodat 'ie smal en leesbaar blijft. */
   dateLabel?: string;
+  /** Optioneel: een regel onder de labels, bv. waarom dit event bij je
+      zoekopdracht past ("zaal die je volgt"). */
+  note?: string;
   onPress?: () => void;
 };
 
@@ -102,6 +105,7 @@ export function EventListRow({
   thumbSize,
   dateAbove = false,
   dateLabel,
+  note,
   onPress,
   onTicketPress,
 }: Props) {
@@ -289,6 +293,11 @@ export function EventListRow({
               )}
             </View>
           )}
+          {note ? (
+            <Text numberOfLines={2} style={[styles.rowNote, { color: roles.fgMuted }]}>
+              {note}
+            </Text>
+          ) : null}
         </View>
         {showTimeRight && (
           <View style={styles.rowTimeCol}>
@@ -486,6 +495,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.9,
     textTransform: 'uppercase',
   },
+  rowNote: { fontFamily: fontFamily.body, fontSize: 13, lineHeight: 18 },
   rowTags: {
     flexDirection: 'row',
     gap: 6,
