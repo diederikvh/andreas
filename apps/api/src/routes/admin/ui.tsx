@@ -4087,10 +4087,6 @@ interface SocialPostRow {
 }
 
 // ─── Gebruikers ─────────────────────────────────────────────────────────
-// Beheer van de gids-toegang (per-user opt-in) + zicht op het dagelijkse
-// gids-gebruik t.o.v. de kill-switch-drempel.
-
-const GUIDE_DAILY_MAX = Number(process.env.ZOEK_DAILY_MAX_REQUESTS ?? 330);
 
 adminUi.get('/users', async (c) => {
   const q = (c.req.query('q') ?? '').trim();
@@ -4107,7 +4103,6 @@ adminUi.get('/users', async (c) => {
       handle: schema.users.handle,
       name: schema.users.name,
       phoneNumber: schema.users.phoneNumber,
-      guideEnabled: schema.users.guideEnabled,
       createdAt: schema.users.createdAt,
     })
     .from(schema.users)
@@ -4127,7 +4122,7 @@ adminUi.get('/users', async (c) => {
           )
         : eq(schema.users.isAnonymous, false)
     )
-    .orderBy(desc(schema.users.guideEnabled), desc(schema.users.createdAt))
+    .orderBy(desc(schema.users.createdAt))
     .limit(100);
 
   // Uitkomst van een selectie-push, teruggegeven via de redirect.
@@ -4172,46 +4167,12 @@ adminUi.get('/users', async (c) => {
   );
   const canReceive = rows.filter((u) => u.tokens > 0).length;
 
-  const [enabledCount] = await db
-    .select({ n: count() })
-    .from(schema.users)
-    .where(eq(schema.users.guideEnabled, true));
-
-  // Gids-gebruik laatste 24u t.o.v. de kill-switch-drempel.
-  const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
-  const [usage] = await db
-    .select({ n: count() })
-    .from(schema.zoekLogs)
-    .where(gte(schema.zoekLogs.createdAt, since));
-  const used = usage?.n ?? 0;
 
   return c.html(
     <Layout title="Gebruikers" active="users">
       <div class="toolbar">
         <h2>Gebruikers</h2>
         <a href="/admin/insights" role="button" class="outline">Insights →</a>
-      </div>
-
-      <div class="grid-3">
-        <div class="stat">
-          <small>Gids-toegang</small>
-          <strong>{enabledCount?.n ?? 0}</strong>
-          <span style="font-size:12px;opacity:0.7;">gebruikers met toegang</span>
-        </div>
-        <div class="stat">
-          <small>Gids vandaag</small>
-          <strong>
-            {used}/{GUIDE_DAILY_MAX}
-          </strong>
-          <span style="font-size:12px;opacity:0.7;">
-            vragen (24u) · {used >= GUIDE_DAILY_MAX ? 'limiet bereikt' : 'binnen limiet'}
-          </span>
-        </div>
-        <div class="stat">
-          <small>Dag-budget</small>
-          <strong>≈ €{(GUIDE_DAILY_MAX * 0.015).toFixed(0)}</strong>
-          <span style="font-size:12px;opacity:0.7;">bovengrens (~1,5 ct/vraag)</span>
-        </div>
       </div>
 
       <form method="get" action="/admin/users" style="margin:1.5rem 0 0.5rem;">
@@ -4276,8 +4237,6 @@ adminUi.get('/users', async (c) => {
               <th>Gebruiker</th>
               <th>Telefoon</th>
               <th>Push</th>
-              <th>Gids</th>
-              <th>Actie</th>
             </tr>
           </thead>
           <tbody>
@@ -4304,31 +4263,11 @@ adminUi.get('/users', async (c) => {
                     {u.tokens > 0 ? `${u.tokens} device` : 'geen'}
                   </span>
                 </td>
-                <td>
-                  <span class={`pill ${u.guideEnabled ? 'pill-pub' : 'pill-unpub'}`}>
-                    {u.guideEnabled ? 'aan' : 'uit'}
-                  </span>
-                </td>
-                <td class="actions">
-                  {/* `formaction` in plaats van een eigen form: nested
-                      forms mogen niet in HTML en deze rij zit al in het
-                      selectie-form. De vinkjes gaan mee in de POST maar
-                      de toggle-handler negeert ze. */}
-                  <button
-                    type="submit"
-                    formaction={`/admin/users/${encodeURIComponent(u.id)}/toggle-guide`}
-                    formnovalidate
-                    class={u.guideEnabled ? 'secondary outline' : 'outline'}
-                    style="font-size:12px;padding:4px 10px;"
-                  >
-                    {u.guideEnabled ? 'Toegang intrekken' : 'Toegang geven'}
-                  </button>
-                </td>
               </tr>
             ))}
             {visible.length === 0 ? (
               <tr>
-                <td colspan={6} style="opacity:0.6;">
+                <td colspan={4} style="opacity:0.6;">
                   Geen gebruikers gevonden{q ? ` voor “${q}”` : ''}.
                 </td>
               </tr>
@@ -4392,22 +4331,6 @@ adminUi.post('/push/selection', async (c) => {
     picked: String(userIds.length),
   });
   return c.redirect(`/admin/users?${qs.toString()}`);
-});
-
-adminUi.post('/users/:id/toggle-guide', async (c) => {
-  const id = c.req.param('id');
-  const [u] = await db
-    .select({ guideEnabled: schema.users.guideEnabled })
-    .from(schema.users)
-    .where(eq(schema.users.id, id))
-    .limit(1);
-  if (u) {
-    await db
-      .update(schema.users)
-      .set({ guideEnabled: !u.guideEnabled, updatedAt: new Date() })
-      .where(eq(schema.users.id, id));
-  }
-  return c.redirect(c.req.header('referer') ?? '/admin/users');
 });
 
 adminUi.get('/social', async (c) => {

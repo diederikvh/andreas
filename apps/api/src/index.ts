@@ -36,7 +36,6 @@ import { oAuthDiscoveryMetadata, oAuthProtectedResourceMetadata } from 'better-a
 import { mcpRoute } from './routes/mcp.js';
 import { mcpLoginRoute } from './routes/mcp-login.js';
 import { searchRoute } from './routes/search.js';
-import { zoekRoute } from './routes/zoek.js';
 import { seriesRoute } from './routes/series.js';
 import { aiConnectRoute } from './routes/ai-connect.js';
 import { getAppRoute } from './routes/get-app.js';
@@ -402,7 +401,6 @@ app.route('/events', eventsRoute);
 app.route('/artists', artistsRoute);
 app.route('/venues', venuesRoute);
 app.route('/search', searchRoute);
-app.route('/zoek', zoekRoute);
 app.route('/mcp', mcpRoute);
 app.route('/series', seriesRoute);
 app.route('/saves', savesRoute);

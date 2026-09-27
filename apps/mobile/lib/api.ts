@@ -424,57 +424,6 @@ export async function search(
   return authedRequest<SearchResponse>(`/search?${params.toString()}`);
 }
 
-// ─── De gids: zoeken met filters ────────────────────────────────────────────
-// Backend: POST /zoek (apps/api/src/routes/zoek.ts). Geen model: de app
-// stuurt vaste velden, de server zoekt precies dat.
-
-/** De velden van een zoekopdracht. Datums als YYYY-MM-DD; een dag loopt tot
-    06:00 de volgende ochtend. */
-export type ZoekFields = {
-  from?: string;
-  to?: string;
-  cities?: string[];
-  categories?: string[];
-  genres?: string[];
-  /** Woord uit de titel of een naam in de line-up. */
-  query?: string;
-};
-
-export type ZoekResponse = {
-  /** Waarop gezocht is, in één zin. */
-  reply: string;
-  /** Volledige DB-events in `ApiEvent`-shape — bron van waarheid voor de UI. */
-  events: ApiEvent[];
-  reasonByEventId: Record<string, string>;
-  total?: number;
-};
-
-/** Eén zoekopdracht. Retry't bij netwerkfouten of 5xx (de API-machine kan
-    op Fly in slaap staan en koud opstarten → eerste poging faalt soms). Niet
-    bij 4xx (auth/validatie/limiet) — die lossen niet op met opnieuw proberen. */
-export async function postZoek(
-  fields: ZoekFields,
-  opts: { offset?: number; sort?: 'date' | 'personal' } = {},
-): Promise<ZoekResponse> {
-  const body = JSON.stringify({ fields, offset: opts.offset ?? 0, sort: opts.sort ?? 'personal' });
-  let lastErr: unknown;
-  for (let attempt = 0; attempt < 3; attempt++) {
-    try {
-      return await authedRequest<ZoekResponse>('/zoek', {
-        method: 'POST',
-        body,
-      });
-    } catch (e) {
-      lastErr = e;
-      const status = e instanceof ApiError ? e.status : 0;
-      const retryable = !(e instanceof ApiError) || status >= 500;
-      if (!retryable || attempt === 2) break;
-      await new Promise((r) => setTimeout(r, 1200 * (attempt + 1)));
-    }
-  }
-  throw lastErr;
-}
-
 /**
  * Laatste N events sowieso — fallback-query voor /new wanneer er sinds
  * de vorige sessie 0 nieuwe items zijn. Default 10.

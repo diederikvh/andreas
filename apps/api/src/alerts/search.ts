@@ -1,9 +1,8 @@
 /**
- * Zoeken op vaste velden: de motor onder `search_events` (MCP) en de gids in
- * de app (`POST /zoek`).
+ * Zoeken op vaste velden: de motor onder `search_events` (MCP).
  *
  * Geen model aan onze kant. De vraag is al vertaald naar velden (door de AI
- * van de gebruiker, of één Haiku-vertaling in de app); wij zoeken precies
+ * van de gebruiker); wij zoeken precies
  * dat, met dezelfde regels als de meldingen (`ALERT_MATCH`): geblokkeerde
  * zalen, niet-leuk-genres, kinder- en workshopaanbod vallen weg. Terug komt
  * rijke data (beschrijving, line-up met de genres van de artiesten) zodat
@@ -230,7 +229,7 @@ export async function venueIdsByName(names: string[]): Promise<{ ids: string[]; 
   return { ids: [...new Set(ids)], unknown };
 }
 
-// ─── Velden zoals een AI ze invult (MCP-tool, Haiku-vertaling in de app) ────
+// ─── Velden zoals een AI ze invult (MCP-tool) ──────────────────────────────
 
 export type SearchEventsArgs = {
   from?: string;
@@ -291,7 +290,7 @@ export async function searchEvents(userId: string | null, args: SearchEventsArgs
 
 /**
  * Log een MCP-zoekopdracht van een ingelogde gebruiker (OAuth) — zelfde
- * `zoek_logs`-tabel als de in-app gids, zodat MCP-zoekgedrag ook het
+ * `zoek_logs`-tabel (vroeger ook van de gids in de app), zodat MCP-zoekgedrag ook het
  * smaakprofiel in "Voor jou" voedt (en de cap/§10-telling). Niet-blokkerend.
  */
 export async function logSearch(

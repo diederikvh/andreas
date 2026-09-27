@@ -908,7 +908,7 @@ eventsRoute.get('/for-you', async (c) => {
   const followedVenueIds = new Set(followedRaw);
   const blockedSet = new Set(blockedRaw);
 
-  // Zoek-signaal — wat de gebruiker recent via de gids/MCP zocht. `want`-
+  // Zoek-signaal — wat de gebruiker recent via de MCP zocht. `want`-
   // termen (genres/sferen) zijn expliciete intentie en voeden "Voor jou";
   // `avoid`-termen drukken matches. Laatste 90 dagen, recentheids-gewogen.
   const SEARCH_HALF_LIFE_MS = 45 * 24 * 3600 * 1000;
