@@ -333,9 +333,9 @@ function FollowedShowRow({ show }: { show: ApiFollowedShow }) {
  * Spotify-toegang wordt daarna weggegooid. Zolang de Spotify-app in
  * development mode staat, kan alleen wie is toegevoegd koppelen.
  */
-// ponytail: uit tot het Spotify-dashboard weer werkt en de redirect-URI en
-// testgebruikers erin staan. Dan op true, testen, en de schakelaar weg.
-const SPOTIFY_READY = false;
+// ponytail: schakelaar voor de Spotify-knop. Aan sinds 27 sep 2026 (redirect-
+// URI en testgebruikers staan in het dashboard). Werkt het, dan mag hij weg.
+const SPOTIFY_READY = true;
 
 function SpotifyImport() {
   const roles = useRoles();
