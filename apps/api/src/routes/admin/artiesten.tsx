@@ -13,6 +13,7 @@
 import { sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 
+import { GENRES, GENRE_KEYS, type GenreKey } from '../../alerts/genres.js';
 import { EVENT_HAS_TASTE_GENRE, GENRE_ALIAS_CTE } from '../../alerts/match.js';
 import { db } from '../../db/index.js';
 import { lastfmArtist } from '../../lastfm.js';
@@ -24,6 +25,51 @@ export const artiestenUi = new Hono();
 artiestenUi.use('*', requireAdminCookie);
 
 const DAYS = 90;
+
+/** De genres om zelf te kiezen: muziek, zonder de soorten om uit te sluiten. */
+const PICKABLE = GENRE_KEYS.filter(
+  (k) => (GENRES[k].categories as string[]).includes('Muziek') && !['familie', 'workshop', 'tribute'].includes(k)
+);
+
+/** Het label dat we bij een artiest opslaan voor een gekozen genre: een
+    patroon uit de lijst zonder %, zodat de matching het exact herkent
+    ("wave" wordt "newwave"). */
+const tagFor = (k: GenreKey) => GENRES[k].match.find((p) => !p.includes('%')) ?? k;
+
+/**
+ * Opslaan en "geen artiest" gaan via fetch, zonder de pagina te herladen:
+ * je blijft op je plek in de lijst en de rij toont meteen wat eruit kwam.
+ * Kent Last.fm de artiest niet, dan verschijnt het genre-menu met de vraag
+ * om er zelf een te kiezen.
+ */
+const ROW_SCRIPT = `
+document.querySelectorAll('form[data-row]').forEach(function (form) {
+  form.addEventListener('submit', async function (ev) {
+    ev.preventDefault();
+    var row = form.closest('tr');
+    var out = row.querySelector('[data-out]');
+    var btn = ev.submitter || form.querySelector('button');
+    btn.disabled = true;
+    out.textContent = 'Bezig…';
+    try {
+      var res = await fetch(form.action, { method: 'POST', body: new FormData(form), headers: { Accept: 'application/json' } });
+      var data = await res.json();
+      out.textContent = data.message;
+      if (data.done) {
+        row.style.opacity = '0.45';
+        row.querySelectorAll('input,select,button').forEach(function (el) { el.disabled = true; });
+      } else {
+        btn.disabled = false;
+        var pick = row.querySelector('input[name=genre]');
+        if (data.needGenre && pick) { pick.focus(); pick.style.outline = '2px solid var(--andreas-acid, #d4ff3f)'; }
+      }
+    } catch (e) {
+      out.textContent = 'Dat lukte niet, probeer het nog eens.';
+      btn.disabled = false;
+    }
+  });
+});
+`;
 
 /** Het concert heeft geen genre: niet van de zaal, niet via een artiest. */
 const NO_GENRE = sql`
@@ -114,28 +160,50 @@ artiestenUi.get('/', async (c) => {
               </td>
               <td style="white-space:nowrap;font-size:13px;">{fmtDate(r.starts_at)}</td>
               <td class="actions">
-                <form method="post" action={`/admin/artiesten/${r.id}`} style="display:flex;gap:6px;margin:0;">
+                {/* De titel staat er al in: meestal is dat gewoon de band. */}
+                <form data-row method="post" action={`/admin/artiesten/${r.id}`} style="display:flex;gap:6px;margin:0;flex-wrap:wrap;">
                   <input
                     type="text"
                     name="names"
-                    placeholder={r.lineup?.[0] ?? r.title}
-                    style="margin:0;min-width:12rem;"
+                    value={r.lineup?.[0] ?? r.title}
+                    style="margin:0;min-width:12rem;flex:1;"
+                  />
+                  <input
+                    type="text"
+                    name="genre"
+                    list="genres"
+                    placeholder="genre (optioneel)"
+                    aria-label="Genre (optioneel), meerdere met komma's"
+                    style="margin:0;width:11rem;"
                   />
                   <button type="submit" style="width:auto;margin:0;">Opslaan</button>
                 </form>
-                <form method="post" action={`/admin/artiesten/${r.id}/geen`} style="margin:6px 0 0;">
+                <form data-row method="post" action={`/admin/artiesten/${r.id}/geen`} style="margin:6px 0 0;">
                   <button type="submit" class="secondary outline" style="width:auto;margin:0;font-size:13px;">
                     Geen artiest
                   </button>
                 </form>
+                <div data-out style="font-size:13px;margin-top:6px;opacity:0.8;"></div>
               </td>
             </tr>
           ))}
         </tbody>
       </table>
+      <datalist id="genres">
+        {PICKABLE.map((k) => (
+          <option value={GENRES[k].label} />
+        ))}
+      </datalist>
+      <script dangerouslySetInnerHTML={{ __html: ROW_SCRIPT }} />
     </Layout>
   );
 });
+
+/** Antwoord als JSON (vanuit de pagina) of als redirect (zonder script). */
+function reply(c: any, body: { message: string; done: boolean; needGenre?: boolean }) {
+  if ((c.req.header('accept') ?? '').includes('application/json')) return c.json(body);
+  return c.redirect('/admin/artiesten?done=' + encodeURIComponent(body.message));
+}
 
 artiestenUi.post('/:id', async (c) => {
   const eventId = c.req.param('id');
@@ -145,39 +213,62 @@ artiestenUi.post('/:id', async (c) => {
     .map((n) => n.trim())
     .filter((n) => n.length >= 2 && n.length <= 120)
     .slice(0, 12);
-  if (names.length === 0) return c.redirect('/admin/artiesten?done=' + encodeURIComponent('Geen naam ingevuld.'));
+  // Zelf ingevulde genres, met komma's. Een genre uit de lijst (label of
+  // sleutel) wordt het label dat de matching herkent; iets anders bewaren we
+  // zoals het is: "shoegaze" wordt dan indie.
+  const picked = String(form.genre ?? '')
+    .split(',')
+    .map((g) => g.trim().toLowerCase())
+    .filter((g) => g.length >= 2 && g.length <= 40)
+    .slice(0, 5)
+    .map((g) => {
+      const key = PICKABLE.find((k) => k === g || GENRES[k].label.toLowerCase() === g);
+      return key ? tagFor(key) : g;
+    });
+  if (names.length === 0) return reply(c, { message: 'Geen naam ingevuld.', done: false });
 
   const lineup: { name: string; artistId: string }[] = [];
   const found: string[] = [];
-  for (const name of names) {
+  let headlinerGenres: string[] = [];
+  for (const [i, name] of names.entries()) {
     const artistId = await ensureArtistByName(name);
     if (!artistId) continue;
     lineup.push({ name, artistId });
-    // Genres meteen ophalen: jij hebt bevestigd wie het is, dus op naam.
     const [row] = (
       await db.execute<{ genres: string[] }>(sql`SELECT genres FROM artists WHERE id = ${artistId}`)
     ).rows;
     let genres = row?.genres ?? [];
+    // Jij hebt bevestigd wie het is, dus Last.fm op naam.
     if (genres.length === 0) {
       const hit = await lastfmArtist(name);
       genres = hit?.tags.slice(0, 5) ?? [];
-      await db.execute(sql`
-        UPDATE artists SET genres_tried_at = NOW()
-          ${genres.length ? sql`, genres = ${sql`ARRAY[${sql.join(genres.map((g) => sql`${g}`), sql`, `)}]::text[]`}` : sql``}
-        WHERE id = ${artistId}
-      `);
     }
-    found.push(`${name}: ${genres.length ? genres.join(', ') : 'geen genres gevonden'}`);
+    // Zelf ingevulde genres gaan voor, en gelden voor de hoofdact.
+    if (i === 0 && picked.length) genres = [...picked, ...genres.filter((g) => !picked.includes(g))].slice(0, 5);
+    await db.execute(sql`
+      UPDATE artists SET genres_tried_at = NOW()
+        ${genres.length ? sql`, genres = ${sql`ARRAY[${sql.join(genres.map((g) => sql`${g}`), sql`, `)}]::text[]`}` : sql``}
+      WHERE id = ${artistId}
+    `);
+    if (i === 0) headlinerGenres = genres;
+    found.push(`${name}: ${genres.length ? genres.join(', ') : 'geen genres'}`);
   }
   // De line-up op alle komende data; jij bent hier de bron.
   await db.execute(sql`
     UPDATE occurrences SET lineup = ${JSON.stringify(lineup)}::jsonb
     WHERE event_id = ${eventId} AND starts_at > NOW()
   `);
-  return c.redirect('/admin/artiesten?done=' + encodeURIComponent(found.join(' · ')));
+  if (headlinerGenres.length === 0) {
+    return reply(c, {
+      message: `Opgeslagen, maar Last.fm kent ${names[0]} niet. Vul een genre in (bv. hiphop, Nederlandstalig) en klik nog eens op Opslaan.`,
+      done: false,
+      needGenre: true,
+    });
+  }
+  return reply(c, { message: `✓ ${found.join(' · ')}`, done: true });
 });
 
 artiestenUi.post('/:id/geen', async (c) => {
   await db.execute(sql`UPDATE events SET no_artist = true WHERE id = ${c.req.param('id')}`);
-  return c.redirect('/admin/artiesten?done=' + encodeURIComponent('Gemarkeerd als geen artiest.'));
+  return reply(c, { message: '✓ Geen artiest', done: true });
 });
