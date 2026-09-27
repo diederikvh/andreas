@@ -495,7 +495,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.9,
     textTransform: 'uppercase',
   },
-  rowNote: { fontFamily: fontFamily.body, fontSize: 13, lineHeight: 18 },
+  rowNote: { fontFamily: fontFamily.body, fontSize: 13, lineHeight: 18, marginTop: 6 },
   rowTags: {
     flexDirection: 'row',
     gap: 6,
