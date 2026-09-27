@@ -46,6 +46,7 @@ import { RunningStrip } from '@/components/RunningStrip';
 import { SpinningCross } from '@/components/SpinningCross';
 import type {
   ApiEvent,
+  ApiFollowedShow,
   PendingEvent,
   SavedApiEvent,
   VenueType,
@@ -150,6 +151,18 @@ function seededRandom(seed: number) {
     let x = Math.imul(a ^ (a >>> 15), 1 | a);
     x = (x + Math.imul(x ^ (x >>> 7), 61 | x)) ^ x;
     return ((x ^ (x >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/** Een artiest-avond als hero-rij. De hero leest alleen titel, beeld,
+    categorie, tijd en zaal. */
+// ponytail: halve ApiEvent; leest de hero meer velden, vul die dan hier aan.
+function showToRow(show: ApiFollowedShow): OccurrenceRow {
+  const venue = { ...show.venue, imageUrl: null };
+  return {
+    id: `${show.id}::${show.occurrence.id}`,
+    event: { id: show.id, title: show.title, imageUrl: show.imageUrl, category: show.category, venue } as unknown as ApiEvent,
+    occurrence: { ...show.occurrence, priceCents: null, venue } as unknown as OccurrenceRow['occurrence'],
   };
 }
 
@@ -293,6 +306,12 @@ export default function Avond() {
     weekOnly: true,
   });
   const { data: going } = useMyGoing({ enabled: authed });
+  // Artiest-avonden waar je nog niet heen gaat: wat al in je plannen
+  // staat, staat daar al, en anders toont de home het twee keer.
+  const openArtistShows = useMemo(() => {
+    const planned = new Set((going ?? []).map((g) => g.id));
+    return (followedShows ?? []).filter((s) => !planned.has(s.id));
+  }, [followedShows, going]);
   // Drie kaarten in beeld plus een zichtbaar stukje van de vierde: een
   // volle agenda moet er vól uitzien, anders lijkt 'ie af terwijl er nog
   // vier avonden achter zitten. Afgeleid van de schermbreedte zodat het
@@ -496,9 +515,9 @@ export default function Avond() {
   //   1. Eén redactionele keuze — `featured` in de admin. Zijn er meer,
   //      dan wisselen ze. Nooit alle drie: dan zou de carousel op een goed
   //      geprogrammeerde dag nooit persoonlijk zijn.
-  //   2. Twee uit een persoonlijke pool: `/for-you`, avonden van artiesten
-  //      die je volgt en van zalen die je volgt, de komende twee weken.
-  //      Geschud op `featuredSeed`, zodat het per sessie, na een
+  //   2. Twee persoonlijke: eerst avonden van artiesten die je volgt (die
+  //      wegen zwaarder dan een zaal), dan pas zalen die je volgt (komende
+  //      twee weken) en `/for-you`. Elke groep geschud op `featuredSeed`, zodat het per sessie, na een
   //      pull-to-refresh en bij terugkeer in de app wisselt. Eerder waren
   //      dit altijd de bovenste twee van `/for-you`: dag in dag uit
   //      dezelfde kaarten.
@@ -507,8 +526,9 @@ export default function Avond() {
   const leads = useMemo<Lead[]>(() => {
     const out: Lead[] = [];
     const seen = new Set<string>();
+    const planned = new Set((going ?? []).map((g) => g.id));
     const push = (row: OccurrenceRow, kicker: string) => {
-      if (out.length >= 3 || seen.has(row.event.id)) return;
+      if (out.length >= 3 || seen.has(row.event.id) || planned.has(row.event.id)) return;
       seen.add(row.event.id);
       out.push({ ...row, kicker });
     };
@@ -519,20 +539,23 @@ export default function Avond() {
       push(editorials[Math.floor(rand() * editorials.length)], t('Onze keuze', 'Our pick'));
     }
 
+    const artists: Lead[] = [];
     const personal: Lead[] = [];
     const inPool = new Set<string>();
-    const add = (row: OccurrenceRow, kicker: string) => {
+    const add = (row: OccurrenceRow, kicker: string, into = personal) => {
       if (inPool.has(row.event.id)) return;
       inPool.add(row.event.id);
-      personal.push({ ...row, kicker });
+      into.push({ ...row, kicker });
     };
-    const artistShows = new Set((followedShows ?? []).map((s) => s.id));
+    // Uit de eigen lijst, niet uit `leadsPool`: die dekt maar een paar
+    // dagen, en een artiest die je volgt speelt meestal verder weg.
+    for (const show of openArtistShows) add(showToRow(show), t('Jouw artiest', 'Your artist'), artists);
     const venueSlugs = new Set(followedVenues.map((v) => v.slug));
     const horizon = Date.now() + 14 * 86_400_000;
     for (const row of leadsPool) {
-      if (new Date(row.occurrence.startsAt).getTime() > horizon) break;
-      if (artistShows.has(row.event.id)) add(row, t('Jouw artiest', 'Your artist'));
-      else if (venueSlugs.has(row.event.venue.slug)) add(row, t('Jouw venue', 'Your venue'));
+      if (venueSlugs.has(row.event.venue.slug) && new Date(row.occurrence.startsAt).getTime() <= horizon) {
+        add(row, t('Jouw venue', 'Your venue'));
+      }
     }
     for (const ev of forYouEvents ?? []) {
       const occ = ev.occurrencesInRange?.[0];
@@ -542,12 +565,12 @@ export default function Avond() {
         ev.venueFollowed ? t('Jouw venue', 'Your venue') : t('Voor jou', 'For you'),
       );
     }
-    for (const lead of shuffled(personal, rand)) push(lead, lead.kicker);
+    for (const lead of [...shuffled(artists, rand), ...shuffled(personal, rand)]) push(lead, lead.kicker);
 
     const rest = featuredFallbackPool.filter((r) => !seen.has(r.event.id));
     for (const row of shuffled(rest, rand)) push(row, t('Uitgelicht', 'Featured'));
     return out;
-  }, [leadsPool, featuredFallbackPool, forYouEvents, followedShows, followedVenues, featuredSeed, t]);
+  }, [leadsPool, featuredFallbackPool, forYouEvents, openArtistShows, going, followedVenues, featuredSeed, t]);
 
   // Voor 'expo'-rails: events-pool die exhibitions wél meeneemt.
   // Filtering: mode-mapping (cat ∈ expo), overrule via expliciete cats,
@@ -818,14 +841,14 @@ export default function Avond() {
         {/* Tussen je plannen en je zalen: wat eraan komt van artiesten die
             je volgt. Zelfde tegels als je plannen, want het is dezelfde
             vraag: wanneer en waar. */}
-        {(followedShows ?? []).length > 0 && (
+        {openArtistShows.length > 0 && (
           <Rail
             kicker={t('Van artiesten die je volgt', 'From artists you follow')}
             moreLabel={t('Alles →', 'See all →')}
             onMore={() => router.push('/komt-eraan' as never)}
             cardWidth={goingCardW}
           >
-            {(followedShows ?? []).slice(0, 12).map((show) => (
+            {openArtistShows.slice(0, 12).map((show) => (
               <GoingRailCard
                 key={show.occurrence.id}
                 entry={{
