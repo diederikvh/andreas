@@ -125,6 +125,13 @@ export default function MeerScreen() {
   // Volgorde: eerst de mensen, dan wat ze je vragen, dan wat jullie leuk
   // vinden. Uitnodigingen stonden als derde kopje op /social — één scherm
   // met vier soorten rijen terwijl je er maar één ding komt doen.
+  // Het bovenste blok werd te lang: splitsen in je eigen agenda (waar je
+  // heen gaat, je kaartjes, iets toevoegen) en wat er voor jou binnenkomt
+  // (nieuw, artiesten, meldingen).
+  const AGENDA_KEYS = ['going', 'tickets', 'scan'];
+  const agenda = doen.filter((e) => AGENDA_KEYS.includes(e.key));
+  const voorJou = doen.filter((e) => !AGENDA_KEYS.includes(e.key));
+
   const vrienden: Entry[] = [
     {
       key: 'social',
@@ -212,7 +219,8 @@ export default function MeerScreen() {
         }}
         showsVerticalScrollIndicator={false}
       >
-        <Group entries={doen} />
+        <Group entries={agenda} />
+        <Group entries={voorJou} label={t('Voor jou', 'For you')} />
         <Group entries={vrienden} label={t('Vrienden', 'Friends')} />
         <Group entries={bladeren} label={t('Bladeren', 'Browse')} />
       </ScrollView>
