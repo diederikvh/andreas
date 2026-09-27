@@ -104,7 +104,7 @@ export function buildMcpServer(userId: string | null = null): McpServer {
           .array(z.string())
           .optional()
           .describe('Hele woorden in titel of beschrijving, bv. "90s", "grunge". Samen met genres: beide moeten passen.'),
-        query: z.string().optional().describe('Woord uit de titel of een naam in de line-up, bv. "Hamlet".'),
+        query: z.string().optional().describe('Woord uit de titel, een naam in de line-up of een zaal, bv. "Hamlet".'),
         limit: z.number().int().min(1).max(50).optional().describe('Aantal events (default 15, max 50).'),
       },
       outputSchema: {

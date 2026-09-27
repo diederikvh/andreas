@@ -10,7 +10,7 @@
  */
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
-import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import {
   Keyboard,
   Linking,
@@ -107,6 +107,18 @@ export function GuideOverlay({
   const { data: genreOptions } = useGenreOptions();
 
   const [mounted, setMounted] = useState(visible);
+  // Na het zoeken klappen de filters in tot één regel, zodat je meteen de
+  // resultaten ziet. Tik op die regel om ze weer open te klappen.
+  const [filtersOpen, setFiltersOpen] = useState(() => !useZoekStore.getState().result);
+  const scrollRef = useRef<ScrollView>(null);
+  const runSearch = async () => {
+    Keyboard.dismiss();
+    await search();
+    if (!useZoekStore.getState().error) {
+      setFiltersOpen(false);
+      scrollRef.current?.scrollTo({ y: 0, animated: false });
+    }
+  };
   const backdrop = useSharedValue(0);
   const sheet = useSharedValue(0);
 
@@ -169,7 +181,10 @@ export function GuideOverlay({
           </Pressable>
           <Text style={[styles.title, { color: roles.fg }]}>{t('Gids', 'Guide')}</Text>
           <Pressable
-            onPress={reset}
+            onPress={() => {
+              reset();
+              setFiltersOpen(true);
+            }}
             hitSlop={8}
             style={[styles.headerBtn, { backgroundColor: roles.bgLift }]}
             accessibilityLabel={t('Filters wissen', 'Clear filters')}
@@ -179,11 +194,53 @@ export function GuideOverlay({
         </View>
 
         <ScrollView
+          ref={scrollRef}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
           automaticallyAdjustKeyboardInsets
           contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 40 }]}
         >
+          {!filtersOpen && result ? (
+            <Pressable
+              onPress={() => {
+                softTap();
+                setFiltersOpen(true);
+              }}
+              style={[styles.summary, { backgroundColor: roles.bgChip }]}
+              accessibilityLabel={t('Filters aanpassen', 'Change filters')}
+            >
+              <Text style={[styles.summaryText, { color: roles.fg }]}>{result.reply}</Text>
+              <View style={styles.summaryEdit}>
+                <Text style={[styles.summaryEditText, { color: roles.fgMuted }]}>{t('Filters', 'Filters')}</Text>
+                <Ionicons name="chevron-down" size={16} color={roles.fgMuted} />
+              </View>
+            </Pressable>
+          ) : (
+          <>
+          {/* Bovenaan: wie een naam weet, hoeft niet eerst langs alle chips. */}
+          <Text style={[styles.label, { color: roles.fg }]}>{t('Artiest, titel of zaal', 'Artist, title or venue')}</Text>
+          <TextInput
+            value={filters.query}
+            onChangeText={(v) =>
+              // Een naam zoek je over het hele jaar; staat de periode nog op
+              // de standaard, dan springt hij naar "Alles".
+              setFilters(!filters.query && v && filters.when === 'week' ? { query: v, when: 'any' } : { query: v })
+            }
+            placeholder={t('Bijv. Fontaines D.C. of Paradiso', 'E.g. Fontaines D.C. or Paradiso')}
+            placeholderTextColor={roles.fgPlaceholder}
+            autoCorrect={false}
+            returnKeyType="search"
+            onSubmitEditing={() => void runSearch()}
+            style={[
+              styles.input,
+              {
+                color: roles.fg,
+                borderColor: isNacht ? '#2a2a2d' : palette.paper,
+                backgroundColor: isNacht ? palette.noir2 : palette.paper2,
+              },
+            ]}
+          />
+
           <Text style={[styles.label, { color: roles.fg }]}>{t('Wanneer', 'When')}</Text>
           <ChipRow>
             {WHENS.map((w) => (
@@ -256,36 +313,18 @@ export function GuideOverlay({
             ))}
           </ChipRow>
 
-          <Text style={[styles.label, { color: roles.fg }]}>{t('Artiest of titel', 'Artist or title')}</Text>
-          <TextInput
-            value={filters.query}
-            onChangeText={(v) => setFilters({ query: v })}
-            placeholder={t('Bijv. Fontaines D.C.', 'E.g. Fontaines D.C.')}
-            placeholderTextColor={roles.fgPlaceholder}
-            autoCorrect={false}
-            returnKeyType="search"
-            onSubmitEditing={() => void search()}
-            style={[
-              styles.input,
-              {
-                color: roles.fg,
-                borderColor: isNacht ? '#2a2a2d' : palette.paper,
-                backgroundColor: isNacht ? palette.noir2 : palette.paper2,
-              },
-            ]}
-          />
-
           <Pressable
             onPress={() => {
               softTap();
-              Keyboard.dismiss();
-              void search();
+              void runSearch();
             }}
             disabled={sending}
             style={[styles.bigBtn, { backgroundColor: roles.accent }]}
           >
             <Text style={[styles.bigLabel, { color: roles.onAccent }]}>{t('Zoek', 'Search')}</Text>
           </Pressable>
+          </>
+          )}
 
           {sending ? (
             <View style={styles.waiting}>
@@ -296,7 +335,7 @@ export function GuideOverlay({
 
           {result && !sending ? (
             <View style={styles.results}>
-              <Text style={[styles.reply, { color: roles.fg }]}>{result.reply}</Text>
+              {filtersOpen ? <Text style={[styles.reply, { color: roles.fg }]}>{result.reply}</Text> : null}
               {result.events.length > 1 ? (
                 // Volgorde: eerst wat bij je past (zalen en artiesten die je
                 // volgt, genres die je leuk vindt), of gewoon op datum.
@@ -493,6 +532,10 @@ const styles = StyleSheet.create({
   results: { gap: 8, paddingTop: 10 },
   reply: { fontFamily: fontFamily.medium, fontSize: 15, lineHeight: 21 },
   sortRow: { flexDirection: 'row', gap: 6 },
+  summary: { borderRadius: 12, padding: 14, gap: 6 },
+  summaryText: { fontFamily: fontFamily.medium, fontSize: 15, lineHeight: 21 },
+  summaryEdit: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  summaryEditText: { fontFamily: fontFamily.bold, fontSize: 13 },
   moreBtn: { alignItems: 'center', justifyContent: 'center', paddingVertical: 13, borderRadius: 8, marginTop: 6 },
   moreLabel: { fontFamily: fontFamily.bold, fontSize: 15 },
   eventBlock: { marginHorizontal: -22 },

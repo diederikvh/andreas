@@ -138,7 +138,9 @@ function summarize(
   ].filter(Boolean);
   const a = dayFmt.format(new Date(window.from));
   const b = dayFmt.format(new Date(Date.parse(window.to) - 6 * 3_600_000 - 1));
-  const period = a === b ? a : `${a} – ${b}`;
+  // Een jaar vooruit (zoeken op naam) leest als "zo 27 sep – zo 26 sep".
+  const long = Date.parse(window.to) - Date.parse(window.from) > 60 * 86_400_000;
+  const period = long ? 'komend jaar' : a === b ? a : `${a} – ${b}`;
   const head = `${parts.join(' ')}, ${period}`;
   const unknown = unknownVenues.length ? ` ${unknownVenues.join(', ')} ken ik niet.` : '';
   if (total === 0) return `${head}: niets gevonden.${unknown} Probeer een langere periode of minder eisen.`;

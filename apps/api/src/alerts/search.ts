@@ -30,7 +30,7 @@ export type StructuredQuery = {
   artists?: string[];
   /** Hele woorden in titel of beschrijving ("90s"). */
   keywords?: string[];
-  /** Woord uit de titel of een naam in de line-up. */
+  /** Woord uit de titel, een naam in de line-up, of de zaal. */
   text?: string;
   priceMaxCents?: number;
   limit?: number;
@@ -135,7 +135,7 @@ export async function searchStructured(
     JOIN events e ON e.id = o.event_id AND e.published
     JOIN venues v ON v.id = COALESCE(o.venue_id, e.venue_id) AND v.published
     WHERE ${ALERT_MATCH}
-      ${like ? sql`AND (e.title ILIKE ${like} OR EXISTS (
+      ${like ? sql`AND (e.title ILIKE ${like} OR v.name ILIKE ${like} OR EXISTS (
         SELECT 1 FROM jsonb_array_elements(
           CASE WHEN jsonb_typeof(o.lineup) = 'array' THEN o.lineup ELSE '[]'::jsonb END) le
         WHERE le->>'name' ILIKE ${like}))` : sql``}
@@ -200,7 +200,7 @@ function whyOf(
   }
   if (q.keywords?.length) parts.push(`met ${q.keywords.map((k) => `"${k}"`).join(' of ')}`);
   if (q.venueIds?.length) parts.push(`in ${r.venue}`);
-  if (text) parts.push(`"${text}" in titel of line-up`);
+  if (text) parts.push(`"${text}" in titel, line-up of zaal`);
   if (parts.length === 0) parts.push([r.category, r.genres?.[0]].filter(Boolean).join(' · '));
   return parts.join(' · ');
 }
