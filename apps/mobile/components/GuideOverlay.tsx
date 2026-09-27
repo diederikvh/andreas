@@ -403,7 +403,8 @@ export function GuideOverlay({
             </View>
           ) : null}
 
-          <View style={styles.aiNote}>
+          {/* Een lijn erboven: dit is een andere weg, geen deel van je resultaten. */}
+          <View style={[styles.aiNote, { borderTopColor: roles.bgChip }]}>
             <Text style={[styles.hint, { color: roles.fgMuted }]}>
               {t(
                 'Liever in eigen woorden zoeken, zoals "iets met een jaren-90-vibe dit weekend"? Vraag het je eigen AI, zoals Claude of ChatGPT, met Andreas gekoppeld.',
@@ -567,6 +568,6 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   hint: { fontFamily: fontFamily.body, fontSize: 14, lineHeight: 20 },
-  aiNote: { gap: 8, paddingTop: 24 },
+  aiNote: { gap: 8, marginTop: 24, paddingTop: 24, borderTopWidth: StyleSheet.hairlineWidth * 2 },
   link: { fontFamily: fontFamily.bold, fontSize: 14 },
 });
