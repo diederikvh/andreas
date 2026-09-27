@@ -143,7 +143,7 @@ async function followNew(userId: string, artists: SpotifyArtist[], seen: string[
   for (const a of artists) {
     const key = a.name.trim().toLowerCase();
     if (known.has(key)) continue;
-    if (await followArtistByName(userId, a.name.trim(), a.external_urls?.spotify)) added++;
+    if (await followArtistByName(userId, a.name.trim(), a.external_urls?.spotify, 'spotify')) added++;
     known.add(key);
   }
   return { added, seen: [...known] };

@@ -1159,6 +1159,8 @@ export type ApiFollowedArtist = {
   name: string;
   imageUrl: string | null;
   genres: string[];
+  /** 'spotify' als hij via de Spotify-koppeling kwam; leeg = zelf gevolgd. */
+  source?: string | null;
   followedAt: string;
 };
 

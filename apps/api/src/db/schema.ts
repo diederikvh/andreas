@@ -1531,6 +1531,8 @@ export const artistFollows = pgTable(
     artistId: text()
       .notNull()
       .references(() => artists.id, { onDelete: 'cascade' }),
+    /** 'spotify' als hij via de Spotify-koppeling kwam; leeg = zelf gevolgd. */
+    source: text(),
     createdAt: timestamp({ withTimezone: true })
       .notNull()
       .default(sql`now()`),

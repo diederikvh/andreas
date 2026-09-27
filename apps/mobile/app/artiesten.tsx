@@ -1,4 +1,4 @@
-import { Ionicons } from '@expo/vector-icons';
+import { FontAwesome, Ionicons } from '@expo/vector-icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import * as WebBrowser from 'expo-web-browser';
 import { router } from 'expo-router';
@@ -231,12 +231,25 @@ export default function ArtiestenScreen() {
                   size={44}
                 />
                 <View style={{ flex: 1, gap: 2 }}>
-                  <Text
-                    numberOfLines={1}
-                    style={[styles.artistName, { color: roles.fg }]}
-                  >
-                    {artist.name}
-                  </Text>
+                  <View style={styles.artistNameRow}>
+                    <Text
+                      numberOfLines={1}
+                      style={[styles.artistName, { color: roles.fg, flexShrink: 1 }]}
+                    >
+                      {artist.name}
+                    </Text>
+                    {/* Via Spotify binnengekomen: ontvolgen mag, maar dan
+                        zie je dat het een keuze is tegen je Spotify in. */}
+                    {artist.source === 'spotify' ? (
+                      <FontAwesome
+                        name="spotify"
+                        size={14}
+                        // Spotify wil z'n logo in groen, wit of zwart: de tekstkleur.
+                        color={roles.fg}
+                        accessibilityLabel={t('Via Spotify', 'Via Spotify')}
+                      />
+                    ) : null}
+                  </View>
                   {artist.genres.length > 0 ? (
                     <Text
                       numberOfLines={1}
@@ -453,6 +466,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   spotifyText: { fontFamily: fontFamily.bold, fontSize: 15 },
+  artistNameRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   spotifyLinked: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
   spotifyUnlink: { fontFamily: fontFamily.medium, fontSize: 13, textAlign: 'center', textDecorationLine: 'underline' },
   root: { flex: 1 },

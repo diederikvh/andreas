@@ -35,6 +35,7 @@ artistFollowsRoute.get('/', async (c) => {
       name: schema.artists.name,
       imageUrl: schema.artists.imageUrl,
       genres: schema.artists.genres,
+      source: schema.artistFollows.source,
       followedAt: schema.artistFollows.createdAt,
     })
     .from(schema.artistFollows)
@@ -185,14 +186,21 @@ artistFollowsRoute.post('/by-name', async (c) => {
 export async function followArtistByName(
   userId: string,
   name: string,
-  spotifyUrl?: string
+  spotifyUrl?: string,
+  source?: 'spotify'
 ): Promise<string | null> {
   const artistId = await ensureArtistByName(name, spotifyUrl);
   if (!artistId) return null;
   await db
     .insert(schema.artistFollows)
-    .values({ userId, artistId })
-    .onConflictDoNothing();
+    .values({ userId, artistId, source: source ?? null })
+    // Volgde je hem al: de bron alleen invullen als die nog leeg was, zodat
+    // ook wie bij de eerste Spotify-import (zonder bron) binnenkwam het
+    // icoontje krijgt.
+    .onConflictDoUpdate({
+      target: [schema.artistFollows.userId, schema.artistFollows.artistId],
+      set: { source: sql`COALESCE(${schema.artistFollows.source}, excluded.source)` },
+    });
   return artistId;
 }
 
