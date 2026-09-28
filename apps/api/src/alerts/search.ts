@@ -40,6 +40,9 @@ export type StructuredQuery = {
   sort?: 'date' | 'personal';
 };
 
+/** Woorden in een titel die op een tribute wijzen. */
+const TRIBUTE_TITLE = 'tribute|eerbetoon|the music of|songs of|rumours of|a night of|celebrating';
+
 export type FoundEvent = {
   id: string;
   title: string;
@@ -58,6 +61,9 @@ export type FoundEvent = {
   lineup: { name: string; genres: string[] }[];
   /** Waarom het erbij zit, feitelijk: welk veld matchte. */
   why: string;
+  /** Een tribute-avond ("Smells Like Nirvana"), ook als de zaal dat er
+      niet bij zet. */
+  tribute: boolean;
 };
 
 export type StructuredResult = {
@@ -110,8 +116,15 @@ export async function searchStructured(
     followed_venue: boolean;
     liked_genre: boolean;
     followed_artist: string | null;
+    tribute: boolean;
   }>(sql`
-    WITH ${GENRE_ALIAS_CTE}
+    WITH ${GENRE_ALIAS_CTE},
+    -- Titels die ergens als tribute gelabeld staan. "Smells Like Nirvana"
+    -- heet bij Podium DE FLUX tribute, bij de Melkweg indie/grunge.
+    tribute_titles AS (
+      SELECT DISTINCT lower(e2.title) AS t FROM events e2
+      WHERE EXISTS (SELECT 1 FROM unnest(e2.genres) g WHERE lower(g) = 'tribute')
+    )
     SELECT DISTINCT ON (e.id) e.id, e.title, e.category::text AS category, e.genres,
       -- Wat bij jou past, voor het sorteren "voor jou" en de reden erbij.
       EXISTS (SELECT 1 FROM venue_follows vf
@@ -121,8 +134,12 @@ export async function searchStructured(
        JOIN artists ar ON ar.id = ea.artist_id
        JOIN artist_follows af ON af.artist_id = ar.id AND af.user_id = a.user_id
        WHERE ea.event_id = e.id
-       ORDER BY array_position(ARRAY['optreden', 'tribute', 'werk_van'], ea.role)
+       ORDER BY array_position(ARRAY['optreden', 'tribute', 'werk_van', 'covers'], ea.role)
        LIMIT 1) AS followed_artist,
+      (e.title ~* ${TRIBUTE_TITLE}
+        OR EXISTS (SELECT 1 FROM unnest(e.genres) g WHERE lower(g) = 'tribute')
+        OR lower(e.title) IN (SELECT t FROM tribute_titles)
+        OR EXISTS (SELECT 1 FROM event_artists ea WHERE ea.event_id = e.id AND ea.role = 'tribute')) AS tribute,
       COALESCE(e.poster_url, e.image_url, v.image_url) AS image,
       v.name AS venue, v.city::text AS city, v.wijk,
       o.starts_at, o.ends_at, o.price_cents, o.ticket_url,
@@ -165,6 +182,7 @@ export async function searchStructured(
       description: extra?.description?.replace(/\s+/g, ' ').trim().slice(0, 400) || null,
       lineup: extra?.lineup ?? [],
       why: whyOf(r, q, text),
+      tribute: r.tribute,
     };
   });
   return { events, total: rows.length, window: { from, to } };

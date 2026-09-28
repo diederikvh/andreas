@@ -77,7 +77,7 @@ artistFollowsRoute.get('/upcoming', async (c) => {
     venue_name: string;
     venue_type: string | null;
     artist_name: string;
-    role: 'optreden' | 'tribute' | 'werk_van';
+    role: 'optreden' | 'tribute' | 'werk_van' | 'covers';
   }>(sql`
     SELECT DISTINCT ON (e.id)
       e.id AS event_id, e.title, e.image_url, e.category::text AS category,
@@ -97,7 +97,7 @@ artistFollowsRoute.get('/upcoming', async (c) => {
       AND o.starts_at > NOW()
       AND o.status <> 'cancelled'
     -- Volg je er twee en is het voor de een een tribute: het optreden wint.
-    ORDER BY e.id, o.starts_at, array_position(ARRAY['optreden', 'tribute', 'werk_van'], ea.role)
+    ORDER BY e.id, o.starts_at, array_position(ARRAY['optreden', 'tribute', 'werk_van', 'covers'], ea.role)
   `);
 
   const events = (rows.rows ?? [])

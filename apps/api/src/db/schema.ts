@@ -647,7 +647,7 @@ export const eventArtists = pgTable(
   {
     eventId: text().notNull().references(() => events.id, { onDelete: 'cascade' }),
     artistId: text().notNull().references(() => artists.id, { onDelete: 'cascade' }),
-    role: text().$type<'optreden' | 'tribute' | 'werk_van'>().notNull(),
+    role: text().$type<'optreden' | 'tribute' | 'werk_van' | 'covers'>().notNull(),
     source: text().$type<'lineup' | 'titel' | 'programma' | 'admin'>().notNull(),
     createdAt: timestamp({ withTimezone: true }).notNull().default(sql`now()`),
   },

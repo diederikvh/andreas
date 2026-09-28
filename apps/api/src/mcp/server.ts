@@ -40,6 +40,7 @@ const EVENT_SHAPE = {
   description: z.string().nullable(),
   lineup: z.array(z.object({ name: z.string(), genres: z.array(z.string()) })),
   why: z.string(),
+  tribute: z.boolean(),
 };
 
 const INSTRUCTIONS =
@@ -204,7 +205,7 @@ function summarize(events: McpEvent[], total: number, label: string, offset: num
       e.city !== 'amsterdam'
         ? ` (${e.city.split('-').map((p) => p[0].toUpperCase() + p.slice(1)).join(' ')})`
         : '';
-    const genres = e.genres.length ? ` · ${e.genres.slice(0, 2).join(', ')}` : '';
+    const genres = (e.tribute ? ' · tribute' : '') + (e.genres.length ? ` · ${e.genres.slice(0, 2).join(', ')}` : '');
     if (!details) {
       // Eén regel: hooguit drie acts, zonder hun genres.
       const acts = e.lineup.length

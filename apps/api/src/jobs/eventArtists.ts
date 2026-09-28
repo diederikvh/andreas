@@ -39,19 +39,29 @@ const CLASSICAL_TAGS = `ARRAY['classical', 'contemporary classical', 'modern cla
 // op o.created_at als dit met de catalogus meegroeit tot tientallen seconden.
 export async function linkEventArtists(): Promise<{ linked: number; removed: number }> {
   const res = await db.execute<{ linked: number; removed: number }>(sql`
-    WITH upcoming AS (
-      SELECT DISTINCT ON (o.event_id) o.event_id, o.lineup
+    WITH upcoming_occ AS (
+      SELECT o.event_id, o.lineup
       FROM occurrences o
       WHERE o.starts_at > NOW() AND o.status <> 'cancelled'
-      ORDER BY o.event_id, o.starts_at
     ),
+    -- Eén rij per event voor de titel en het programma; de line-up per
+    -- avond, want een festival heeft per dag een andere.
+    upcoming AS (SELECT DISTINCT event_id FROM upcoming_occ),
     found AS (
-      -- Line-up: exact, voor iedereen.
+      -- Line-up: exact, voor iedereen. Behalve een kleine line-up waarvan
+      -- geen naam in de titel staat: dat is meestal de bezetting van de
+      -- act, niet een rij acts. "Jack & Jack" heeft als line-up Jack
+      -- Gilinsky en Jack Johnson, en dat is niet de Jack Johnson die je volgt.
       SELECT u.event_id, le->>'artistId' AS artist_id, 'optreden' AS role, 'lineup' AS source
-      FROM upcoming u
+      FROM upcoming_occ u
+      JOIN events e ON e.id = u.event_id
       CROSS JOIN LATERAL jsonb_array_elements(
         CASE WHEN jsonb_typeof(u.lineup) = 'array' THEN u.lineup ELSE '[]'::jsonb END) le
       WHERE le->>'artistId' IS NOT NULL
+        AND (jsonb_array_length(u.lineup) > 3 OR EXISTS (
+          SELECT 1 FROM jsonb_array_elements(u.lineup) l2
+          WHERE position(${sql.raw(words("l2->>'name'"))} in ${sql.raw(words('e.title'))}) > 0
+        ))
       UNION ALL
       -- Titel: alleen gevolgde artiesten.
       SELECT e.id, ar.id,
@@ -63,6 +73,23 @@ export async function linkEventArtists(): Promise<{ linked: number; removed: num
       JOIN events e ON e.id = u.event_id AND e.published
       JOIN artists ar ON ar.id IN (SELECT artist_id FROM artist_follows)
       WHERE ${sql.raw(titleHasName('ar.name'))}
+      UNION ALL
+      -- Covers: een popartiest wiens nummers op het programma staan ("hits
+      -- van De Dijk", "liedjes van … Jacques Brel", "De Dijk-hits"). Niet
+      -- een naam in een bio ("werkte eerder samen met Rufus Wainwright").
+      SELECT e.id, ar.id, 'covers', 'programma'
+      FROM upcoming u
+      JOIN events e ON e.id = u.event_id AND e.published
+      JOIN artists ar ON ar.id IN (SELECT artist_id FROM artist_follows)
+      -- De naam als patroon: alles behalve letters, cijfers en spaties wordt '.'.
+      CROSS JOIN LATERAL (SELECT regexp_replace(lower(ar.name), '[^[:alnum:] ]', '.', 'g') AS rx) n
+      -- Alleen wie genres heeft en geen klassieke: zonder genres weten we
+      -- niet of het een popartiest is ("werk van Beethoven" is geen cover).
+      WHERE COALESCE(cardinality(ar.genres), 0) > 0 AND NOT (ar.genres && ${sql.raw(CLASSICAL_TAGS)})
+        AND ar.name ~ ' '
+        AND strpos(e.description, ar.name) > 0
+        AND (lower(e.description) ~ ('(hits|nummers|liedjes|songs|chansons|repertoire|covers|muziek|werk) (van|of|by) [^.]{0,40}' || n.rx)
+          OR lower(e.description) ~ (n.rx || '[- ]?(hits|nummers|liedjes|songs|covers)'))
       UNION ALL
       -- Programma: klassiek concert, componist in titel of beschrijving.
       -- Nooit een gezelschap: een ensemble in de tekst speelt, of staat in
@@ -80,10 +107,13 @@ export async function linkEventArtists(): Promise<{ linked: number; removed: num
         AND length(sn.surname) >= 4
         AND strpos(lower(e.title || ' ' || COALESCE(e.description, '')), sn.surname) > 0
         AND (
-          -- Volledige naam: minstens twee woorden, en zoals geschreven
-          -- ("Prince" of "Madness" in een lopende tekst is niets).
-          (ar.name ~ ' ' AND strpos(e.title || ' ' || COALESCE(e.description, ''), ar.name) > 0)
-          -- Achternaam: alleen bij een componist.
+          -- Alleen componisten; een popartiest hier is "covers" (hierboven)
+          -- of een naam in een bio. Volledige naam zoals geschreven, of
+          -- de achternaam.
+          -- Zonder genres (Beethoven is niet altijd getagd) mag het ook;
+          -- een popartiest heeft genres en valt hier dus af.
+          ((ar.genres && ${sql.raw(CLASSICAL_TAGS)} OR COALESCE(cardinality(ar.genres), 0) = 0)
+            AND ar.name ~ ' ' AND strpos(e.title || ' ' || COALESCE(e.description, ''), ar.name) > 0)
           OR (ar.genres && ${sql.raw(CLASSICAL_TAGS)}
               AND (position(' ' || sn.surname || ' ' in t.txt) > 0 OR position(' ' || sn.surname || 's ' in t.txt) > 0))
         )

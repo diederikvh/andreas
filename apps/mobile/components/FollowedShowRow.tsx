@@ -53,6 +53,8 @@ export function FollowedShowRow({ show }: { show: ApiFollowedShow }) {
       genreLabel={
         show.role === 'werk_van'
           ? `${show.artistName} · ${t('werk van', 'work by')}`
+          : show.role === 'covers'
+            ? `${show.artistName} · ${t('covers', 'covers')}`
           : show.tribute
             ? `${show.artistName} · tribute`
             : show.artistName

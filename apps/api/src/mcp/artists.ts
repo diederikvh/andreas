@@ -77,7 +77,7 @@ function showLine(r: { name: string; shows: Show[] | null }) {
   return (
     `- ${r.name}:\n` +
     shows
-      .map((s) => `    ${s.role === 'tribute' ? '(tribute) ' : s.role === 'werk_van' ? '(werk van) ' : ''}${link(s.event_id, s.title)} — ${s.venue} (${cityName(s.city)}), ${dayFmt.format(new Date(s.starts_at))}`)
+      .map((s) => `    ${s.role === 'tribute' ? '(tribute) ' : s.role === 'werk_van' ? '(werk van) ' : s.role === 'covers' ? '(covers van) ' : ''}${link(s.event_id, s.title)} — ${s.venue} (${cityName(s.city)}), ${dayFmt.format(new Date(s.starts_at))}`)
       .join('\n') +
     (more > 0 ? `\n    …en nog ${more}` : '')
   );
@@ -191,10 +191,26 @@ export function registerArtistTools(server: McpServer, userId: string): void {
         title: string;
         venue: string;
         starts_at: string;
+        genres: string[] | null;
+        tribute: boolean;
+        title_genres: string[] | null;
         acts: { name: string; genres: string[] }[] | null;
       }>(sql`
-        WITH ${GENRE_ALIAS_CTE}
-        SELECT DISTINCT ON (e.id) e.id, e.title, v.name AS venue, o.starts_at,
+        WITH ${GENRE_ALIAS_CTE},
+        tribute_titles AS (
+          SELECT DISTINCT lower(e2.title) AS t FROM events e2
+          WHERE EXISTS (SELECT 1 FROM unnest(e2.genres) g WHERE lower(g) = 'tribute')
+        )
+        SELECT DISTINCT ON (e.id) e.id, e.title, v.name AS venue, o.starts_at, e.genres,
+          -- Geen line-up: de titel is de act ("Wage War"). Kennen we die als
+          -- artiest, dan zijn eigen genres.
+          (SELECT ar.genres FROM artists ar WHERE lower(ar.name) = lower(e.title) LIMIT 1) AS title_genres,
+          -- Tribute, ook als de zaal dat er niet bij zet: dezelfde titel
+          -- staat elders als tribute, of de titel zegt het.
+          (e.title ~* 'tribute|eerbetoon|the music of|songs of|rumours of|a night of|celebrating'
+            OR EXISTS (SELECT 1 FROM unnest(e.genres) g WHERE lower(g) = 'tribute')
+            OR lower(e.title) IN (SELECT t FROM tribute_titles)
+            OR EXISTS (SELECT 1 FROM event_artists ea WHERE ea.event_id = e.id AND ea.role = 'tribute')) AS tribute,
           (
             SELECT jsonb_agg(DISTINCT jsonb_build_object('name', le->>'name', 'genres', COALESCE(to_jsonb(ar.genres), '[]'::jsonb)))
             FROM jsonb_array_elements(CASE WHEN jsonb_typeof(o.lineup) = 'array' THEN o.lineup ELSE '[]'::jsonb END) le
@@ -219,7 +235,11 @@ export function registerArtistTools(server: McpServer, userId: string): void {
 
       const kept = res.rows
         .map((r) => {
-          let acts = r.acts ?? [];
+          let acts = r.acts?.length
+            ? r.acts
+            : r.title_genres?.length
+              ? [{ name: r.title, genres: r.title_genres }]
+              : [];
           if (args.exclude_followed ?? true) acts = acts.filter((a) => !followedNames.has(a.name.toLowerCase()));
           if (args.similar_to_followed) acts = acts.filter((a) => keysOf(a.genres).some((k) => followedKeys.has(k)));
           return { ...r, acts, hadLineup: (r.acts?.length ?? 0) > 0 };
@@ -235,7 +255,10 @@ export function registerArtistTools(server: McpServer, userId: string): void {
           // een kinderconcert).
           if (!wanted.size) return true;
           const known = r.acts.filter((a) => a.genres.length > 0);
-          return known.length === 0 || known.some((a) => keysOf(a.genres).some((k) => wanted.has(k)));
+          // Geen act met eigen genres: dan die van de zaal, net als bij de
+          // meldingen. Anders glipt alles zonder artiest-genres erdoorheen.
+          if (known.length === 0) return genresOf('Muziek', r.genres ?? []).some((k) => wanted.has(k));
+          return known.some((a) => keysOf(a.genres).some((k) => wanted.has(k)));
         })
         .sort((x, y) => new Date(x.starts_at).getTime() - new Date(y.starts_at).getTime());
 
@@ -244,14 +267,21 @@ export function registerArtistTools(server: McpServer, userId: string): void {
       const rows = kept.slice(offset, offset + limit);
       if (rows.length === 0) return text(offset ? 'Geen verdere resultaten.' : 'Niets gevonden binnen deze filters.');
       // Eén regel per event, kort: hooguit drie acts met twee genres elk.
+      // Genres van de zaal als de act er zelf geen heeft: bij de hoofdact of
+      // als de titel de act is (Pomme, Jorge Drexler). Met "zaal:" ervoor,
+      // want die labels zijn grover dan die van de artiest.
+      const venueGenres = (r: (typeof rows)[number]) =>
+        (r.genres ?? []).length ? ` (zaal: ${(r.genres ?? []).slice(0, 2).join(', ')})` : '';
       const lines = rows.map((r) => {
         const acts = r.acts.length
           ? r.acts
               .slice(0, 3)
-              .map((a) => (a.genres.length ? `${a.name} (${a.genres.slice(0, 2).join(', ')})` : a.name))
+              .map((a, i) =>
+                a.genres.length ? `${a.name} (${a.genres.slice(0, 2).join(', ')})` : i === 0 ? `${a.name}${venueGenres(r)}` : a.name
+              )
               .join('; ') + (r.acts.length > 3 ? ` +${r.acts.length - 3}` : '')
-          : r.title;
-        return `- ${acts} — ${shortDay.format(new Date(r.starts_at))}, ${r.venue} [${r.id}]`;
+          : `${r.title}${venueGenres(r)}`;
+        return `- ${r.tribute ? '(tribute) ' : ''}${acts} — ${shortDay.format(new Date(r.starts_at))}, ${r.venue} [${r.id}]`;
       });
       const next = offset + rows.length < kept.length ? `\nMeer: cursor "${offset + rows.length}" (nog ${kept.length - offset - rows.length}).` : '';
       return text(`${offset + 1}–${offset + rows.length} van ${kept.length} events:\n${lines.join('\n')}${next}`);

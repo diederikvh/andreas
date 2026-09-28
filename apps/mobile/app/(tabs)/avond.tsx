@@ -556,6 +556,7 @@ export default function Avond() {
     const works: Lead[] = [];
     for (const show of openArtistShows) {
       if (show.role === 'werk_van') add(showToRow(show), t('Werk van', 'Work by'), works);
+      else if (show.role === 'covers') add(showToRow(show), 'Covers', works);
       else if (show.tribute) add(showToRow(show), 'Tribute', tributes);
       else add(showToRow(show), t('Jouw artiest', 'Your artist'), artists);
     }
@@ -878,6 +879,8 @@ export default function Avond() {
                   note:
                     show.role === 'werk_van'
                       ? t('Werk van', 'Work by')
+                      : show.role === 'covers'
+                        ? 'Covers'
                       : show.tribute
                         ? 'Tribute'
                         : undefined,
