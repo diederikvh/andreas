@@ -511,6 +511,8 @@ export const events = pgTable(
         (Avond/Agenda/Kaart/Gered/detail) zonder saves of invites
         kwijt te raken. Default true. */
     published: boolean().notNull().default(true),
+    /** Dubbel van dit event (zie jobs/dedupeEvents.ts); staat dan offline. */
+    duplicateOf: text(),
     createdAt: timestamp({ withTimezone: true })
       .notNull()
       .default(sql`now()`),

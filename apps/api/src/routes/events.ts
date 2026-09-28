@@ -1808,7 +1808,15 @@ eventsRoute.get('/new', async (c) => {
 });
 
 eventsRoute.get('/:id', async (c) => {
-  const id = c.req.param('id');
+  // Een dubbel event staat offline maar wijst naar het event dat bleef
+  // (jobs/dedupeEvents.ts): een oude link of save komt zo toch goed uit.
+  const asked = c.req.param('id');
+  const [dup] = await db
+    .select({ keeper: schema.events.duplicateOf })
+    .from(schema.events)
+    .where(eq(schema.events.id, asked))
+    .limit(1);
+  const id = dup?.keeper ?? asked;
 
   const [row] = await db
     .select({

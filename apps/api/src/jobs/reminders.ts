@@ -25,6 +25,7 @@ import { ALERT_MATCH, GENRE_ALIAS_CTE } from '../alerts/match.js';
 import { whyMatched } from '../alerts/service.js';
 import { db } from '../db/index.js';
 import { sendPushToUser } from '../push.js';
+import { hideDuplicateEvents } from './dedupeEvents.js';
 import { linkEventArtists } from './eventArtists.js';
 
 /** Hoe lang van tevoren "vanavond" vertrekt. Genoeg om je om te kleden,
@@ -544,7 +545,12 @@ export async function runReminders(
 ): Promise<{ added: number; sent: ReminderSend[] }> {
   // Eerst de koppelingen bijwerken: een event dat net binnenkwam moet
   // aan z'n artiest hangen voordat we kijken wie er een melding krijgt.
-  if (!opts.dryRun) await linkEventArtists();
+  if (!opts.dryRun) {
+    // Dubbele events eerst offline, anders krijg je voor hetzelfde
+    // optreden twee meldingen.
+    await hideDuplicateEvents();
+    await linkEventArtists();
+  }
   const added = opts.dryRun
     ? 0
     : (await ensureReminderRows()) +
