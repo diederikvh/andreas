@@ -1121,6 +1121,8 @@ export type ApiFollowedShow = {
   category: ApiEvent['category'];
   /** Om wie je het te danken hebt dat deze avond hier staat. */
   artistName: string;
+  /** Een tribute aan die artiest, niet de artiest zelf. Oudere API: afwezig. */
+  tribute?: boolean;
   occurrence: { id: string; startsAt: string; endsAt: string | null };
   venue: { slug: string; name: string; type: string | null };
 };

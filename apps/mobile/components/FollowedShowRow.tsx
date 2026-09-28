@@ -49,7 +49,7 @@ export function FollowedShowRow({ show }: { show: ApiFollowedShow }) {
       tags={[{ label: translateCategory(show.category, locale), tone }]}
       // Waarom deze avond hier staat. Zonder dat is het een willekeurige
       // rij tussen je andere lijsten.
-      genreLabel={show.artistName}
+      genreLabel={show.tribute ? `${show.artistName} · tribute` : show.artistName}
       tick={tone}
       onPress={() =>
         router.push(

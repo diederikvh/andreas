@@ -77,12 +77,13 @@ artistFollowsRoute.get('/upcoming', async (c) => {
     venue_name: string;
     venue_type: string | null;
     artist_name: string;
+    tribute: boolean;
   }>(sql`
     SELECT DISTINCT ON (e.id)
       e.id AS event_id, e.title, e.image_url, e.category::text AS category,
       o.id AS occ_id, o.starts_at, o.ends_at,
       v.slug AS venue_slug, v.name AS venue_name, v.type::text AS venue_type,
-      ar.name AS artist_name
+      ar.name AS artist_name, ea.role = 'tribute' AS tribute
     FROM artist_follows f
     JOIN artists ar ON ar.id = f.artist_id
     -- Line-up én titel, vooraf gekoppeld (jobs/eventArtists.ts). Alleen
@@ -95,7 +96,8 @@ artistFollowsRoute.get('/upcoming', async (c) => {
     WHERE f.user_id = ${userId}
       AND o.starts_at > NOW()
       AND o.status <> 'cancelled'
-    ORDER BY e.id, o.starts_at
+    -- Volg je er twee en is het voor de een een tribute: het optreden wint.
+    ORDER BY e.id, o.starts_at, ea.role = 'tribute'
   `);
 
   const events = (rows.rows ?? [])
@@ -105,6 +107,7 @@ artistFollowsRoute.get('/upcoming', async (c) => {
       imageUrl: r.image_url,
       category: r.category,
       artistName: r.artist_name,
+      tribute: r.tribute,
       // Met een rauwe query levert de driver "2026-09-25 21:00:00+00" op,
       // en dát parseert JavaScriptCore op iOS niet -- je krijgt een
       // Invalid Date en de rij klapt om bij het formatteren. Node is

@@ -549,7 +549,12 @@ export default function Avond() {
     };
     // Uit de eigen lijst, niet uit `leadsPool`: die dekt maar een paar
     // dagen, en een artiest die je volgt speelt meestal verder weg.
-    for (const show of openArtistShows) add(showToRow(show), t('Jouw artiest', 'Your artist'), artists);
+    // Tributes na de artiesten zelf, maar vóór zalen en "voor jou".
+    const tributes: Lead[] = [];
+    for (const show of openArtistShows) {
+      if (show.tribute) add(showToRow(show), 'Tribute', tributes);
+      else add(showToRow(show), t('Jouw artiest', 'Your artist'), artists);
+    }
     const venueSlugs = new Set(followedVenues.map((v) => v.slug));
     const horizon = Date.now() + 14 * 86_400_000;
     for (const row of leadsPool) {
@@ -565,7 +570,9 @@ export default function Avond() {
         ev.venueFollowed ? t('Jouw venue', 'Your venue') : t('Voor jou', 'For you'),
       );
     }
-    for (const lead of [...shuffled(artists, rand), ...shuffled(personal, rand)]) push(lead, lead.kicker);
+    for (const lead of [...shuffled(artists, rand), ...shuffled(tributes, rand), ...shuffled(personal, rand)]) {
+      push(lead, lead.kicker);
+    }
 
     const rest = featuredFallbackPool.filter((r) => !seen.has(r.event.id));
     for (const row of shuffled(rest, rand)) push(row, t('Uitgelicht', 'Featured'));
@@ -859,6 +866,7 @@ export default function Avond() {
                   title: show.title,
                   imageUrl: show.imageUrl,
                   venue: { name: show.venue.name },
+                  note: show.tribute ? 'Tribute' : undefined,
                 }}
                 width={goingCardW}
               />
@@ -1396,6 +1404,8 @@ type RailTileEntry = {
   title: string;
   imageUrl: string | null;
   venue: { name?: string; imageUrl?: string | null } | null;
+  /** Kort woord vóór de zaal, zoals "Tribute". */
+  note?: string;
 };
 
 function GoingRailCard({
@@ -1482,7 +1492,7 @@ function GoingRailCard({
           numberOfLines={1}
           style={[goingCardStyles.venue, { color: roles.fgMuted }]}
         >
-          {entry.venue?.name ?? ''}
+          {[entry.note, entry.venue?.name].filter(Boolean).join(' · ')}
         </Text>
       </View>
     </Pressable>
