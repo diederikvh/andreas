@@ -156,7 +156,7 @@ export const EXCLUDED_BY_DEFAULT: GenreKey[] = ['familie', 'workshop'];
 
 /** Titels die op kinderaanbod wijzen maar geen label hebben: "(4+)",
     "vanaf 8 jaar". Alleen 1–12, want "20+" op een feest is een leeftijdsgrens. */
-export const KIDS_TITLE_REGEX = String.raw`(^|[^0-9])([1-9]|1[0-2]) ?\+|vanaf [0-9]{1,2} jaar|schoolconcert`;
+export const KIDS_TITLE_REGEX = String.raw`(^|[^0-9])([1-9]|1[0-2]) ?\+|vanaf [0-9]{1,2} jaar|schoolconcert|babyconcert|peuterconcert|kinderconcert|t/m [0-9]{1,2} (maanden|jaar)`;
 
 // Postgres kent geen unaccent zonder extensie; deze tabel doet in SQL en TS
 // precies hetzelfde, zodat de test de échte matching dekt.

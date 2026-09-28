@@ -15,7 +15,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { sql } from 'drizzle-orm';
 import { z } from 'zod';
 
-import { GENRE_KEYS } from '../alerts/genres.js';
+import { GENRE_KEYS, genresOf, type GenreKey } from '../alerts/genres.js';
 import { ALERT_MATCH, GENRE_ALIAS_CTE, alertSource, titleHasName, titleTributeOf } from '../alerts/match.js';
 import { db, schema } from '../db/index.js';
 import { followArtistByName } from '../routes/artist-follows.js';
@@ -34,6 +34,7 @@ const dayFmt = new Intl.DateTimeFormat('nl-NL', {
   month: 'long',
   year: 'numeric',
 });
+const shortDay = new Intl.DateTimeFormat('nl-NL', { timeZone: 'Europe/Amsterdam', day: 'numeric', month: 'short', year: '2-digit' });
 const link = (id: string, title: string) => `[${title.replace(/[[\]]/g, '')}](${PUBLIC_BASE_URL}/e/${id})`;
 
 /** Gevolgde artiesten met hun komende avonden (tot vijf), in alle steden.
@@ -152,10 +153,11 @@ export function registerArtistTools(server: McpServer, userId: string): void {
     {
       title: 'Wie speelt er binnenkort',
       description:
-        'Acts met komende avonden in Andreas, met de genres die we van ze kennen. Bedoeld om artiesten voor ' +
-        'te stellen: haal list_followed_artists op, filter hier op zaal/stad/periode, en kies met je eigen ' +
-        'muziekkennis welke acts lijken op wie de gebruiker volgt of wat de gebruiker omschrijft. Wees ' +
-        'kritisch; noem alleen acts die hier staan.',
+        'Acts met komende avonden in Andreas, één regel per event: act(s) met hun genres, datum, zaal en ' +
+        'event-id. Bedoeld om artiesten voor te stellen. Wie de gebruiker al volgt, laten we standaard weg ' +
+        '(exclude_followed). similar_to_followed houdt alleen acts over die een genre delen met wie de ' +
+        'gebruiker volgt; kies daaruit met je eigen muziekkennis. Staat er onderaan een cursor, dan is er ' +
+        'meer: vraag dezelfde filters op met die cursor. Wees kritisch; noem alleen acts die hier staan.',
       inputSchema: {
         venues: z.array(z.string().min(2)).optional(),
         cities: z.array(z.enum(schema.city.enumValues)).optional(),
@@ -163,7 +165,13 @@ export function registerArtistTools(server: McpServer, userId: string): void {
         genres: z.array(z.enum(GENRE_KEYS)).optional().describe('Ruwe voorselectie; de labels zijn grof.'),
         from: DATE.optional(),
         to: DATE.optional(),
-        limit: z.number().int().min(1).max(300).optional().describe('Aantal events, default 150.'),
+        exclude_followed: z.boolean().optional().describe('Acts die de gebruiker al volgt weglaten. Default: true.'),
+        similar_to_followed: z
+          .boolean()
+          .optional()
+          .describe('Alleen acts met een genre dat ook bij gevolgde artiesten voorkomt. Default: false.'),
+        limit: z.number().int().min(1).max(300).optional().describe('Aantal events per pagina, default 150.'),
+        cursor: z.string().optional().describe('Van de vorige pagina, om verder te lezen.'),
       },
     },
     async (args) => {
@@ -201,19 +209,54 @@ export function registerArtistTools(server: McpServer, userId: string): void {
         WHERE ${ALERT_MATCH}
         ORDER BY e.id, o.starts_at
       `);
-      const rows = res.rows
-        .sort((x, y) => new Date(x.starts_at).getTime() - new Date(y.starts_at).getTime())
-        .slice(0, args.limit ?? 150);
-      if (rows.length === 0) return text('Niets gevonden binnen deze filters.');
-      // Eén regel per event: de line-up als die er is, anders de titel (bij
-      // concerten is dat meestal de act).
+      // Wie je volgt, en welke genres die hebben (de eerste twee labels,
+      // net als bij de meldingen).
+      const followed = await db.execute<{ name: string; genres: string[] | null }>(sql`
+        SELECT ar.name, ar.genres[1:2] AS genres FROM artist_follows f
+        JOIN artists ar ON ar.id = f.artist_id WHERE f.user_id = ${userId}`);
+      const followedNames = new Set(followed.rows.map((r) => r.name.toLowerCase()));
+      const followedKeys = new Set(followed.rows.flatMap((r) => genresOf('Muziek', r.genres ?? [])));
+      const keysOf = (tags: string[]) => genresOf('Muziek', tags.slice(0, 2));
+      const wanted = new Set<GenreKey>(args.genres ?? []);
+
+      const kept = res.rows
+        .map((r) => {
+          let acts = r.acts ?? [];
+          if (args.exclude_followed ?? true) acts = acts.filter((a) => !followedNames.has(a.name.toLowerCase()));
+          if (args.similar_to_followed) acts = acts.filter((a) => keysOf(a.genres).some((k) => followedKeys.has(k)));
+          return { ...r, acts, hadLineup: (r.acts?.length ?? 0) > 0 };
+        })
+        .filter((r) => {
+          // Zonder line-up is de titel de act. Die kunnen we niet op smaak
+          // toetsen, dus bij similar_to_followed valt hij af.
+          if (r.acts.length === 0) {
+            return !r.hadLineup && !args.similar_to_followed && !followedNames.has(r.title.toLowerCase());
+          }
+          // Scherper op genre: kennen we de genres van een act, dan moet
+          // die zelf passen. Het zaallabel alleen is te grof ("folk" bij
+          // een kinderconcert).
+          if (!wanted.size) return true;
+          const known = r.acts.filter((a) => a.genres.length > 0);
+          return known.length === 0 || known.some((a) => keysOf(a.genres).some((k) => wanted.has(k)));
+        })
+        .sort((x, y) => new Date(x.starts_at).getTime() - new Date(y.starts_at).getTime());
+
+      const offset = Number(args.cursor ?? 0) || 0;
+      const limit = args.limit ?? 150;
+      const rows = kept.slice(offset, offset + limit);
+      if (rows.length === 0) return text(offset ? 'Geen verdere resultaten.' : 'Niets gevonden binnen deze filters.');
+      // Eén regel per event, kort: hooguit drie acts met twee genres elk.
       const lines = rows.map((r) => {
-        const acts = r.acts?.length
-          ? r.acts.map((a) => (a.genres.length ? `${a.name} (${a.genres.slice(0, 4).join(', ')})` : a.name)).join('; ')
+        const acts = r.acts.length
+          ? r.acts
+              .slice(0, 3)
+              .map((a) => (a.genres.length ? `${a.name} (${a.genres.slice(0, 2).join(', ')})` : a.name))
+              .join('; ') + (r.acts.length > 3 ? ` +${r.acts.length - 3}` : '')
           : r.title;
-        return `- ${acts} — ${link(r.id, r.title)}, ${r.venue}, ${dayFmt.format(new Date(r.starts_at))}`;
+        return `- ${acts} — ${shortDay.format(new Date(r.starts_at))}, ${r.venue} [${r.id}]`;
       });
-      return text(`${rows.length} events:\n${lines.join('\n')}`);
+      const next = offset + rows.length < kept.length ? `\nMeer: cursor "${offset + rows.length}" (nog ${kept.length - offset - rows.length}).` : '';
+      return text(`${offset + 1}–${offset + rows.length} van ${kept.length} events:\n${lines.join('\n')}${next}`);
     }
   );
 }
