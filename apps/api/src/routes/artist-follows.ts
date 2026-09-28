@@ -14,6 +14,7 @@
 import { and, asc, eq, sql } from 'drizzle-orm';
 import { Hono, type Context } from 'hono';
 
+import { lineupHas, logicalDay, nameInTitle } from '../alerts/match.js';
 import { auth } from '../auth.js';
 import { db, schema } from '../db/index.js';
 import { ensureArtistByName } from '../artists.js';
@@ -80,7 +81,12 @@ artistFollowsRoute.get('/upcoming', async (c) => {
     artist_name: string;
     role: 'optreden' | 'tribute' | 'werk_van' | 'covers';
   }>(sql`
+    -- Eén avond per artiest per zaal per dag. Een festival zet dezelfde
+    -- act soms twee keer op de site (de dag, en een los kaartje voor een
+    -- deel ervan); dan het event met de naam in de titel.
+    SELECT DISTINCT ON (x.artist_id, x.venue_slug, x.day) x.* FROM (
     SELECT DISTINCT ON (e.id)
+      f.artist_id, ${sql.raw(logicalDay('o.starts_at'))} AS day,
       e.id AS event_id, e.title, e.image_url, e.category::text AS category,
       o.id AS occ_id, o.starts_at, o.ends_at,
       v.slug AS venue_slug, v.name AS venue_name, v.type::text AS venue_type,
@@ -98,7 +104,12 @@ artistFollowsRoute.get('/upcoming', async (c) => {
       AND o.starts_at > NOW()
       AND o.status <> 'cancelled'
     -- Volg je er twee en is het voor de een een tribute: het optreden wint.
-    ORDER BY e.id, o.starts_at, array_position(ARRAY['optreden', 'tribute', 'werk_van', 'covers'], ea.role)
+    -- De avond waarop de artiest in de line-up staat gaat voor (een
+    -- festival heeft per dag een andere), dan de vroegste.
+    ORDER BY e.id, ${sql.raw(lineupHas('o.lineup', 'f.artist_id'))} DESC, o.starts_at,
+      array_position(ARRAY['optreden', 'tribute', 'werk_van', 'covers'], ea.role)
+    ) x
+    ORDER BY x.artist_id, x.venue_slug, x.day, ${sql.raw(nameInTitle('x.artist_name', 'x.title'))} DESC, x.starts_at
   `);
 
   const events = (rows.rows ?? [])

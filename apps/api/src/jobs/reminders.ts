@@ -21,7 +21,7 @@
  */
 import { sql } from 'drizzle-orm';
 
-import { ALERT_MATCH, GENRE_ALIAS_CTE } from '../alerts/match.js';
+import { ALERT_MATCH, GENRE_ALIAS_CTE, lineupHas, logicalDay, nameInTitle } from '../alerts/match.js';
 import { whyMatched } from '../alerts/service.js';
 import { db } from '../db/index.js';
 import { sendPushToUser } from '../push.js';
@@ -142,28 +142,51 @@ export async function ensureArtistRows(): Promise<number> {
     -- bellen is de snelste manier om iemand z'n meldingen te laten
     -- uitzetten. We pakken de vroegste avond; de rest staat op de
     -- eventpagina waar de melding heen wijst.
-    SELECT DISTINCT ON (f.user_id, o.event_id)
-      gen_random_uuid()::text, f.user_id, o.id, 'artiest'::reminder_kind, ${NEXT_MORNING}
-    FROM artist_follows f
-    JOIN users u ON u.id = f.user_id AND u.push_artists
-    JOIN occurrences o ON o.created_at > f.created_at
-      AND o.created_at > NOW() - INTERVAL '7 days'
-      AND o.starts_at > NOW()
-      AND o.status <> 'cancelled'
-    JOIN events e ON e.id = o.event_id AND e.published
-    JOIN venues v ON v.id = COALESCE(o.venue_id, e.venue_id) AND v.published
-    -- Line-up of titel, vooraf gekoppeld (zie jobs/eventArtists.ts).
-    JOIN event_artists ea ON ea.event_id = o.event_id AND ea.artist_id = f.artist_id
-    -- Een werk van je componist is leuk om te zien, maar geen nieuwtje
-    -- om voor gebeld te worden: Beethoven staat elke week ergens.
-    -- Een coveravond ook niet: dat is niet de artiest zelf.
-    WHERE ea.role NOT IN ('werk_van', 'covers', 'geen')
-      -- Een regel vond dit event al: één melding per event is genoeg.
-      AND NOT EXISTS (
-        SELECT 1 FROM reminders r JOIN occurrences ro ON ro.id = r.occurrence_id
-        WHERE r.user_id = f.user_id AND ro.event_id = o.event_id AND r.kind = 'regel'
-      )
-    ORDER BY f.user_id, o.event_id, o.starts_at
+    --
+    -- En één per artiest per zaal per avond: een festival zet dezelfde act
+    -- soms twee keer op de site (de dag, en een los kaartje voor een deel
+    -- ervan). Dan het event met de naam in de titel, dat is het specifieke.
+    SELECT DISTINCT ON (c.user_id, c.artist_id, c.venue_id, c.day)
+      gen_random_uuid()::text, c.user_id, c.occ_id, 'artiest'::reminder_kind, ${NEXT_MORNING}
+    FROM (
+      SELECT DISTINCT ON (f.user_id, o.event_id)
+        f.user_id, f.artist_id, o.id AS occ_id, o.starts_at, v.id AS venue_id,
+        ${sql.raw(logicalDay('o.starts_at'))} AS day,
+        ${sql.raw(nameInTitle('ar.name', 'e.title'))} AS named
+      FROM artist_follows f
+      JOIN users u ON u.id = f.user_id AND u.push_artists
+      JOIN artists ar ON ar.id = f.artist_id
+      JOIN occurrences o ON o.created_at > f.created_at
+        AND o.created_at > NOW() - INTERVAL '7 days'
+        AND o.starts_at > NOW()
+        AND o.status <> 'cancelled'
+      JOIN events e ON e.id = o.event_id AND e.published
+      JOIN venues v ON v.id = COALESCE(o.venue_id, e.venue_id) AND v.published
+      -- Line-up of titel, vooraf gekoppeld (zie jobs/eventArtists.ts).
+      JOIN event_artists ea ON ea.event_id = o.event_id AND ea.artist_id = f.artist_id
+      -- Een werk van je componist is leuk om te zien, maar geen nieuwtje
+      -- om voor gebeld te worden: Beethoven staat elke week ergens.
+      -- Een coveravond ook niet: dat is niet de artiest zelf.
+      WHERE ea.role NOT IN ('werk_van', 'covers', 'geen')
+        -- Een regel vond dit event al: één melding per event is genoeg.
+        AND NOT EXISTS (
+          SELECT 1 FROM reminders r JOIN occurrences ro ON ro.id = r.occurrence_id
+          WHERE r.user_id = f.user_id AND ro.event_id = o.event_id AND r.kind = 'regel'
+        )
+      ORDER BY f.user_id, o.event_id, ${sql.raw(lineupHas('o.lineup', 'f.artist_id'))} DESC, o.starts_at
+    ) c
+    -- Kreeg je voor deze artiest in deze zaal op die avond al bericht (een
+    -- eerdere tik), dan niet nog een keer.
+    WHERE NOT EXISTS (
+      SELECT 1 FROM reminders r
+      JOIN occurrences ro ON ro.id = r.occurrence_id
+      JOIN events re ON re.id = ro.event_id
+      JOIN event_artists rea ON rea.event_id = ro.event_id AND rea.artist_id = c.artist_id
+      WHERE r.user_id = c.user_id AND r.kind = 'artiest'
+        AND COALESCE(ro.venue_id, re.venue_id) = c.venue_id
+        AND ${sql.raw(logicalDay('ro.starts_at'))} = c.day
+    )
+    ORDER BY c.user_id, c.artist_id, c.venue_id, c.day, c.named DESC, c.starts_at
     ON CONFLICT (user_id, occurrence_id, kind) DO NOTHING
     RETURNING id
   `);

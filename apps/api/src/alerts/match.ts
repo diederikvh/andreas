@@ -82,6 +82,22 @@ function artistHasGenre(keysExpr: string): string {
 const words = (expr: string) =>
   `(' ' || lower(trim(regexp_replace(${expr}, '[^[:alnum:]]+', ' ', 'g'))) || ' ')`;
 
+/** De logische dag van een tijdstip: een nacht tot 06:00 hoort bij de
+    avond ervoor (zoals overal in de app). */
+export const logicalDay = (expr: string) =>
+  `to_char((${expr} - INTERVAL '6 hours') AT TIME ZONE 'Europe/Amsterdam', 'YYYY-MM-DD')`;
+
+/** Staat de artiest in de line-up van deze avond? Om van een festival met
+    per dag een andere line-up de juiste dag te pakken. */
+export const lineupHas = (lineupExpr: string, artistIdExpr: string) =>
+  `(jsonb_typeof(${lineupExpr}) = 'array' AND EXISTS (SELECT 1 FROM jsonb_array_elements(${lineupExpr}) lh WHERE lh->>'artistId' = ${artistIdExpr}))`;
+
+/** Staat de artiestnaam in de titel? Om bij twee events van dezelfde
+    artiest op dezelfde avond in dezelfde zaal het specifieke te kiezen
+    ("Angine de Poitrine e.v.a. @ London Calling" boven "London Calling"). */
+export const nameInTitle = (nameExpr: string, titleExpr: string) =>
+  `(strpos(lower(${titleExpr}), lower(${nameExpr})) > 0)`;
+
 /** Kleine letters, zonder accenten en ®/™. Postgres heeft hier geen
     `unaccent`, dus een vaste vertaaltabel. */
 const plain = (expr: string) =>

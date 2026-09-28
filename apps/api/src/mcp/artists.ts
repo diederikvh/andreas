@@ -16,7 +16,7 @@ import { sql } from 'drizzle-orm';
 import { z } from 'zod';
 
 import { GENRE_KEYS, genresOf, type GenreKey } from '../alerts/genres.js';
-import { ALERT_MATCH, GENRE_ALIAS_CTE, alertSource } from '../alerts/match.js';
+import { ALERT_MATCH, GENRE_ALIAS_CTE, alertSource, lineupHas, logicalDay, nameInTitle } from '../alerts/match.js';
 import { db, schema } from '../db/index.js';
 import { linkEventArtists } from '../jobs/eventArtists.js';
 import { followArtistByName } from '../routes/artist-follows.js';
@@ -50,14 +50,18 @@ async function followedWithNextShow(userId: string, names?: string[]) {
     JOIN artists ar ON ar.id = f.artist_id
     LEFT JOIN LATERAL (
       SELECT jsonb_agg(s ORDER BY s.starts_at) AS shows FROM (
+      -- Eén per zaal per avond; dan het event met de naam in de titel.
+      SELECT DISTINCT ON (d.venue, d.day) d.* FROM (
       SELECT DISTINCT ON (e.id) e.id AS event_id, e.title, v.name AS venue, v.city::text AS city, o.starts_at,
-        ea.role
+        ea.role, ${sql.raw(logicalDay('o.starts_at'))} AS day
       FROM event_artists ea
       JOIN occurrences o ON o.event_id = ea.event_id AND ea.role <> 'geen'
       JOIN events e ON e.id = o.event_id AND e.published
       JOIN venues v ON v.id = COALESCE(o.venue_id, e.venue_id) AND v.published
       WHERE ea.artist_id = ar.id AND o.starts_at > NOW() AND o.status <> 'cancelled'
-      ORDER BY e.id, o.starts_at
+      ORDER BY e.id, ${sql.raw(lineupHas('o.lineup', 'ar.id'))} DESC, o.starts_at
+      ) d
+      ORDER BY d.venue, d.day, ${sql.raw(nameInTitle('ar.name', 'd.title'))} DESC, d.starts_at
       ) s
     ) nx ON TRUE
     WHERE f.user_id = ${userId} ${filter}
