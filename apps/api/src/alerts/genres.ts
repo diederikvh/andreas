@@ -139,6 +139,13 @@ export const GENRES = {
   // ── Wat standaard buiten elke regel valt ──
   familie: { label: 'kinderen & familie', categories: ALL, match: ['familie', 'family', 'kindertheater', 'jeugd', 'kinderen', 'kinderliedjes', 'kids', 'poppenspel'] },
   workshop: { label: 'workshop', categories: ALL, match: ['workshop', 'masterclass', 'cursus'] },
+  // Geen voorstelling maar iets om te doen: quiz, podcastopname,
+  // rondleiding, les. TivoliVredenburg zet die onder "Anders".
+  activiteit: {
+    label: 'activiteit (quiz, rondleiding, les)',
+    categories: ALL,
+    match: ['anders', 'quiz', 'pubquiz', 'popquiz', 'bingo', 'yoga', 'podcast', 'rondleiding', 'boekenclub', 'markt', 'spelavond'],
+  },
 } satisfies Record<string, GenreDef>;
 
 /** Hoeveel labels vooraan in `events.genres` meetellen voor een regel. */
@@ -152,11 +159,17 @@ export const GENRE_KEYS = Object.keys(GENRES) as [GenreKey, ...GenreKey[]];
 
 /** Een regel matcht deze nooit, tenzij de regel er zelf om vraagt: een
     hiphop-regel hoort geen kindervoorstelling of dansles op te leveren. */
-export const EXCLUDED_BY_DEFAULT: GenreKey[] = ['familie', 'workshop'];
+export const EXCLUDED_BY_DEFAULT: GenreKey[] = ['familie', 'workshop', 'activiteit'];
 
 /** Titels die op kinderaanbod wijzen maar geen label hebben: "(4+)",
     "vanaf 8 jaar". Alleen 1–12, want "20+" op een feest is een leeftijdsgrens. */
 export const KIDS_TITLE_REGEX = String.raw`(^|[^0-9])([1-9]|1[0-2]) ?\+|vanaf [0-9]{1,2} jaar|schoolconcert|babyconcert|peuterconcert|kinderconcert|t/m [0-9]{1,2} (maanden|jaar)`;
+
+/** Titels van iets om te doen in plaats van te zien, zonder dat label:
+    "Backstage rondleiding", "Popquiz", "Masterclass — Kian Soltani",
+    "Hagelslag de Podcast". Niet "karaoke" (vaak een band) en niet
+    "high tea" (vaak een festival). */
+export const ACTIVITY_TITLE_REGEX = String.raw`quiz|podcast|rondleiding|bingo|yoga|skateles|tarot|scrabble|boekenclub|proefles|\mmarkt\M|creatief met|dinner at|spelavond|masterclass|workshop|gear talk|\mcursus`;
 
 // Postgres kent geen unaccent zonder extensie; deze tabel doet in SQL en TS
 // precies hetzelfde, zodat de test de échte matching dekt.

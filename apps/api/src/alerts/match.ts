@@ -17,6 +17,7 @@ import {
   DEEP_LABEL_KEYS,
   EXCLUDED_BY_DEFAULT,
   GENRE_KEYS,
+  ACTIVITY_TITLE_REGEX,
   KIDS_TITLE_REGEX,
   MAIN_LABELS,
   genreAliasValuesSql,
@@ -167,6 +168,8 @@ export const ALERT_MATCH = sql.raw(`
   -- Kinder- en workshopaanbod valt erbuiten, tenzij de regel erom vraagt.
   AND NOT ${hasGenre(`ARRAY(SELECT x FROM unnest(${excluded}) x WHERE NOT x = ANY(COALESCE(a.genres, '{}')))`, false)}
   AND ('familie' = ANY(COALESCE(a.genres, '{}')) OR e.title !~* '${KIDS_TITLE_REGEX}')
+  AND ('activiteit' = ANY(COALESCE(a.genres, '{}')) OR 'workshop' = ANY(COALESCE(a.genres, '{}'))
+       OR e.title !~* '${ACTIVITY_TITLE_REGEX}')
   -- Genres die deze gebruiker niet leuk vindt (genre_prefs), en
   -- tributes ook aan de titel herkend: "Tribute to Adele" heeft zelden
   -- het label.
