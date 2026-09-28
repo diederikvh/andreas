@@ -1812,11 +1812,12 @@ eventsRoute.get('/:id', async (c) => {
   // (jobs/dedupeEvents.ts): een oude link of save komt zo toch goed uit.
   const asked = c.req.param('id');
   const [dup] = await db
-    .select({ keeper: schema.events.duplicateOf })
+    .select({ keeper: schema.events.duplicateOf, published: schema.events.published })
     .from(schema.events)
     .where(eq(schema.events.id, asked))
     .limit(1);
-  const id = dup?.keeper ?? asked;
+  // Weer online gezet in de admin: dan is het toch een eigen event.
+  const id = dup?.keeper && !dup.published ? dup.keeper : asked;
 
   const [row] = await db
     .select({

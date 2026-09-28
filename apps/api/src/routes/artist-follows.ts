@@ -89,7 +89,7 @@ artistFollowsRoute.get('/upcoming', async (c) => {
     -- Line-up én titel, vooraf gekoppeld (jobs/eventArtists.ts). Alleen
     -- de line-up miste de meeste concerten: die hebben er maar een op de
     -- vijf, en daar is de titel gewoon de naam.
-    JOIN event_artists ea ON ea.artist_id = f.artist_id
+    JOIN event_artists ea ON ea.artist_id = f.artist_id AND ea.role <> 'geen'
     JOIN occurrences o ON o.event_id = ea.event_id
     JOIN events e ON e.id = o.event_id AND e.published
     JOIN venues v ON v.id = COALESCE(o.venue_id, e.venue_id) AND v.published

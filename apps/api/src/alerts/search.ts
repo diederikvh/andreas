@@ -133,7 +133,7 @@ export async function searchStructured(
       (SELECT ar.name FROM event_artists ea
        JOIN artists ar ON ar.id = ea.artist_id
        JOIN artist_follows af ON af.artist_id = ar.id AND af.user_id = a.user_id
-       WHERE ea.event_id = e.id
+       WHERE ea.event_id = e.id AND ea.role <> 'geen'
        ORDER BY array_position(ARRAY['optreden', 'tribute', 'werk_van', 'covers'], ea.role)
        LIMIT 1) AS followed_artist,
       (e.title ~* ${TRIBUTE_TITLE}

@@ -53,7 +53,7 @@ async function followedWithNextShow(userId: string, names?: string[]) {
       SELECT DISTINCT ON (e.id) e.id AS event_id, e.title, v.name AS venue, v.city::text AS city, o.starts_at,
         ea.role
       FROM event_artists ea
-      JOIN occurrences o ON o.event_id = ea.event_id
+      JOIN occurrences o ON o.event_id = ea.event_id AND ea.role <> 'geen'
       JOIN events e ON e.id = o.event_id AND e.published
       JOIN venues v ON v.id = COALESCE(o.venue_id, e.venue_id) AND v.published
       WHERE ea.artist_id = ar.id AND o.starts_at > NOW() AND o.status <> 'cancelled'

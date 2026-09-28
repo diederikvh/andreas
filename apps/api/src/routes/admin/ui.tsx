@@ -17,6 +17,8 @@ import {
   fromDateTimeLocal,
   toDateTimeLocal,
 } from './layout.js';
+import { linkEventArtists } from '../../jobs/eventArtists.js';
+import { ensureArtistByName } from '../artist-follows.js';
 import { generateCaption } from '../../social/caption.js';
 import { runGenerate, runPublish } from './social.js';
 import { publishReel } from '../../social/publisher.js';
@@ -753,6 +755,16 @@ adminUi.get('/events/:id', async (c) => {
     .innerJoin(schema.series, eq(schema.series.id, schema.eventsInSeries.seriesId))
     .where(eq(schema.eventsInSeries.eventId, id))
     .orderBy(asc(schema.series.name));
+  const linked = (
+    await db.execute<LinkedArtist>(sql`
+      SELECT ea.artist_id, ar.name, ea.role, ea.source FROM event_artists ea
+      JOIN artists ar ON ar.id = ea.artist_id
+      WHERE ea.event_id = ${id}
+      ORDER BY ea.source = 'admin' DESC, ea.role = 'geen', lower(ar.name)`)
+  ).rows;
+  const dupOf = event.duplicateOf
+    ? (await db.select({ id: schema.events.id, title: schema.events.title }).from(schema.events).where(eq(schema.events.id, event.duplicateOf)).limit(1))[0]
+    : undefined;
 
   return c.html(
     <Layout title={event.title} active="events">
@@ -760,6 +772,13 @@ adminUi.get('/events/:id', async (c) => {
         <h2>{event.title}</h2>
         <PublishedPill published={event.published} />
       </div>
+      {dupOf && (
+        <article style="padding:12px 16px;">
+          Offline gehaald als dubbel van <a href={`/admin/events/${encodeURIComponent(dupOf.id)}`}>{dupOf.title}</a>.
+          Toch apart? Zet hem hieronder weer online; de dubbelcheck laat hem dan met rust.
+        </article>
+      )}
+      <EventArtists eventId={event.id} rows={linked} />
       <EventForm event={event} occurrences={occurrences} venues={venues} />
       {linkedSeries.length > 0 && (
         <article style="margin-top:1.5rem;">
@@ -866,6 +885,103 @@ adminUi.post('/events/:id', async (c) => {
   });
   return c.redirect(`/admin/events/${encodeURIComponent(id)}`);
 });
+
+/**
+ * Welke artiest bij dit event hoort, met de hand bijsturen. Een keuze hier
+ * wordt een koppeling met bron `admin`, en die laat de koppeljob staan
+ * (jobs/eventArtists.ts). "geen" blokkeert een koppeling die de job wel
+ * zou maken (naamgenoot, een naam in een bio). "Automatisch" haalt de
+ * handmatige keuze weg; de job rekent het dan meteen opnieuw uit.
+ */
+adminUi.post('/events/:id/artists', async (c) => {
+  const eventId = c.req.param('id');
+  const form = await c.req.parseBody();
+  const role = String(form.role ?? '');
+  let artistId = String(form.artistId ?? '');
+  if (!artistId && String(form.name ?? '').trim()) {
+    artistId = (await ensureArtistByName(String(form.name).trim())) ?? '';
+  }
+  if (!artistId) return c.redirect(`/admin/events/${encodeURIComponent(eventId)}`);
+  if (role === 'auto') {
+    await db.execute(sql`DELETE FROM event_artists WHERE event_id = ${eventId} AND artist_id = ${artistId} AND source = 'admin'`);
+    await linkEventArtists();
+  } else if ((ARTIST_ROLES as readonly string[]).includes(role)) {
+    await db.execute(sql`
+      INSERT INTO event_artists (event_id, artist_id, role, source)
+      VALUES (${eventId}, ${artistId}, ${role}, 'admin')
+      ON CONFLICT (event_id, artist_id) DO UPDATE SET role = EXCLUDED.role, source = 'admin'`);
+  }
+  return c.redirect(`/admin/events/${encodeURIComponent(eventId)}#artiesten`);
+});
+
+type LinkedArtist = { artist_id: string; name: string; role: string; source: string };
+const ARTIST_ROLES = ['optreden', 'tribute', 'werk_van', 'covers', 'geen'] as const;
+const ROLE_LABEL: Record<string, string> = {
+  optreden: 'optreden',
+  tribute: 'tribute',
+  werk_van: 'werk van',
+  covers: 'covers van',
+  geen: 'geen (geblokkeerd)',
+};
+const SOURCE_LABEL: Record<string, string> = {
+  lineup: 'line-up',
+  titel: 'titel',
+  programma: 'programma',
+  admin: 'met de hand',
+};
+
+function EventArtists({ eventId, rows }: { eventId: string; rows: LinkedArtist[] }) {
+  const action = `/admin/events/${encodeURIComponent(eventId)}/artists`;
+  const roleSelect = (current?: string, withAuto = false) => (
+    <select name="role" style="margin:0;width:auto;">
+      {ARTIST_ROLES.map((r) => (
+        <option value={r} selected={r === current}>
+          {ROLE_LABEL[r]}
+        </option>
+      ))}
+      {withAuto && <option value="auto">automatisch</option>}
+    </select>
+  );
+  return (
+    <article id="artiesten" style="margin-bottom:1.5rem;">
+      <header>
+        Artiesten <small style="opacity:0.7;">— wie bij dit event hoort, voor meldingen, Komt eraan en de MCP</small>
+      </header>
+      {rows.length === 0 ? (
+        <p style="opacity:0.7;">Nog geen artiest gekoppeld.</p>
+      ) : (
+        <table>
+          <tbody>
+            {rows.map((r) => (
+              <tr>
+                <td>
+                  {r.role === 'geen' ? <s>{r.name}</s> : r.name}
+                  <div style="font-size:12px;opacity:0.6;">{SOURCE_LABEL[r.source] ?? r.source}</div>
+                </td>
+                <td class="actions">
+                  <form method="post" action={action} style="display:flex;gap:6px;margin:0;">
+                    <input type="hidden" name="artistId" value={r.artist_id} />
+                    {roleSelect(r.role, r.source === 'admin')}
+                    <button type="submit" class="secondary outline" style="width:auto;margin:0;font-size:13px;">
+                      Opslaan
+                    </button>
+                  </form>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      <form method="post" action={action} style="display:flex;gap:6px;margin:0;flex-wrap:wrap;">
+        <input type="text" name="name" placeholder="artiest toevoegen" aria-label="Artiest" style="margin:0;flex:1;min-width:12rem;" />
+        {roleSelect('optreden')}
+        <button type="submit" class="secondary outline" style="width:auto;margin:0;font-size:13px;">
+          + koppelen
+        </button>
+      </form>
+    </article>
+  );
+}
 
 adminUi.post('/events/:id/toggle', async (c) => {
   const id = c.req.param('id');

@@ -156,7 +156,7 @@ export async function ensureArtistRows(): Promise<number> {
     -- Een werk van je componist is leuk om te zien, maar geen nieuwtje
     -- om voor gebeld te worden: Beethoven staat elke week ergens.
     -- Een coveravond ook niet: dat is niet de artiest zelf.
-    WHERE ea.role NOT IN ('werk_van', 'covers')
+    WHERE ea.role NOT IN ('werk_van', 'covers', 'geen')
       -- Een regel vond dit event al: één melding per event is genoeg.
       AND NOT EXISTS (
         SELECT 1 FROM reminders r JOIN occurrences ro ON ro.id = r.occurrence_id
@@ -325,7 +325,7 @@ export async function sendDueReminders(
              SELECT ar.name FROM event_artists ea
              JOIN artists ar ON ar.id = ea.artist_id
              JOIN artist_follows af ON af.artist_id = ar.id AND af.user_id = r.user_id
-             WHERE ea.event_id = o.event_id
+             WHERE ea.event_id = o.event_id AND ea.role <> 'geen'
              ORDER BY array_position(ARRAY['optreden', 'tribute', 'werk_van', 'covers'], ea.role)
              LIMIT 1
            ) AS artist_name,
