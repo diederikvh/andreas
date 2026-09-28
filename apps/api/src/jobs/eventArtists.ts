@@ -24,9 +24,7 @@ import { sql } from 'drizzle-orm';
 
 import { titleHasName, titleTributeOf } from '../alerts/match.js';
 import { db } from '../db/index.js';
-// Kringverwijzing (artist-follows gebruikt ook deze job), maar alleen bij
-// het aanroepen, niet bij het laden: dat mag in ESM.
-import { ensureArtistByName } from '../routes/artist-follows.js';
+import { ensureArtistByName } from '../artists.js';
 
 /** Woorden van een tekst, met een spatie aan beide kanten. */
 const words = (e: string) => `(' ' || lower(trim(regexp_replace(${e}, '[^[:alnum:]]+', ' ', 'g'))) || ' ')`;
