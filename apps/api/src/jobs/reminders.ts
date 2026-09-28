@@ -21,10 +21,11 @@
  */
 import { sql } from 'drizzle-orm';
 
-import { ALERT_MATCH, GENRE_ALIAS_CTE, titleHasName } from '../alerts/match.js';
+import { ALERT_MATCH, GENRE_ALIAS_CTE } from '../alerts/match.js';
 import { whyMatched } from '../alerts/service.js';
 import { db } from '../db/index.js';
 import { sendPushToUser } from '../push.js';
+import { linkEventArtists } from './eventArtists.js';
 
 /** Hoe lang van tevoren "vanavond" vertrekt. Genoeg om je om te kleden,
     te weinig om het alweer vergeten te zijn. */
@@ -148,16 +149,9 @@ export async function ensureArtistRows(): Promise<number> {
       AND o.status <> 'cancelled'
     JOIN events e ON e.id = o.event_id AND e.published
     JOIN venues v ON v.id = COALESCE(o.venue_id, e.venue_id) AND v.published
-    JOIN artists ar ON ar.id = f.artist_id
-    WHERE (
-        (jsonb_typeof(o.lineup) = 'array' AND EXISTS (
-          SELECT 1 FROM jsonb_array_elements(o.lineup) le
-          WHERE le->>'artistId' = f.artist_id
-        ))
-        -- Maar een op de vijf avonden heeft een gekoppelde line-up; bij een
-        -- concert is de titel meestal gewoon de naam.
-        OR ${sql.raw(titleHasName('ar.name'))}
-      )
+    -- Line-up of titel, vooraf gekoppeld (zie jobs/eventArtists.ts).
+    JOIN event_artists ea ON ea.event_id = o.event_id AND ea.artist_id = f.artist_id
+    WHERE TRUE
       -- Een regel vond dit event al: één melding per event is genoeg.
       AND NOT EXISTS (
         SELECT 1 FROM reminders r JOIN occurrences ro ON ro.id = r.occurrence_id
@@ -320,23 +314,15 @@ export async function sendDueReminders(
            ) AS is_going,
            -- Bij een artiest-melding: wélke artiest het was. De eerste
            -- die je volgt is genoeg; staan er twee in de line-up, dan is
-           -- dat een detail dat de melding niet beter maakt. Geen line-up?
-           -- Dan de gevolgde artiest wiens naam in de titel staat.
-           COALESCE(
-             (
-               SELECT ar.name FROM jsonb_array_elements(o.lineup) le
-               JOIN artists ar ON ar.id = le->>'artistId'
-               JOIN artist_follows af
-                 ON af.artist_id = ar.id AND af.user_id = r.user_id
-               WHERE jsonb_typeof(o.lineup) = 'array'
-               LIMIT 1
-             ),
-             (
-               SELECT ar.name FROM artist_follows af
-               JOIN artists ar ON ar.id = af.artist_id
-               WHERE af.user_id = r.user_id AND ${sql.raw(titleHasName('ar.name'))}
-               LIMIT 1
-             )
+           -- dat een detail dat de melding niet beter maakt. Een optreden
+           -- gaat voor een tribute.
+           (
+             SELECT ar.name FROM event_artists ea
+             JOIN artists ar ON ar.id = ea.artist_id
+             JOIN artist_follows af ON af.artist_id = ar.id AND af.user_id = r.user_id
+             WHERE ea.event_id = o.event_id
+             ORDER BY ea.role = 'tribute'
+             LIMIT 1
            ) AS artist_name,
            (SELECT al.label FROM alerts al WHERE al.id = r.alert_id) AS alert_label
     FROM reminders r
@@ -556,6 +542,9 @@ function newsPayloadBase(items: NewsRow[]): {
 export async function runReminders(
   opts: { dryRun?: boolean } = {}
 ): Promise<{ added: number; sent: ReminderSend[] }> {
+  // Eerst de koppelingen bijwerken: een event dat net binnenkwam moet
+  // aan z'n artiest hangen voordat we kijken wie er een melding krijgt.
+  if (!opts.dryRun) await linkEventArtists();
   const added = opts.dryRun
     ? 0
     : (await ensureReminderRows()) +

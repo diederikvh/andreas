@@ -16,6 +16,7 @@ import { Hono, type Context } from 'hono';
 
 import { auth } from '../auth.js';
 import { db, schema } from '../db/index.js';
+import { linkEventArtists } from '../jobs/eventArtists.js';
 
 async function requireUserId(c: Context): Promise<string | Response> {
   const session = await auth.api.getSession({ headers: c.req.raw.headers });
@@ -84,12 +85,11 @@ artistFollowsRoute.get('/upcoming', async (c) => {
       ar.name AS artist_name
     FROM artist_follows f
     JOIN artists ar ON ar.id = f.artist_id
-    JOIN occurrences o
-      ON jsonb_typeof(o.lineup) = 'array'
-     AND EXISTS (
-       SELECT 1 FROM jsonb_array_elements(o.lineup) le
-       WHERE le->>'artistId' = f.artist_id
-     )
+    -- Line-up én titel, vooraf gekoppeld (jobs/eventArtists.ts). Alleen
+    -- de line-up miste de meeste concerten: die hebben er maar een op de
+    -- vijf, en daar is de titel gewoon de naam.
+    JOIN event_artists ea ON ea.artist_id = f.artist_id
+    JOIN occurrences o ON o.event_id = ea.event_id
     JOIN events e ON e.id = o.event_id AND e.published
     JOIN venues v ON v.id = COALESCE(o.venue_id, e.venue_id) AND v.published
     WHERE f.user_id = ${userId}
@@ -127,6 +127,13 @@ artistFollowsRoute.get('/upcoming', async (c) => {
   return c.json({ events });
 });
 
+/** Na een nieuwe volger de koppelingen bijwerken, zodat "Komt eraan" ook
+    de avonden toont waar de naam alleen in de titel staat. Op de
+    achtergrond: het antwoord hoeft er niet op te wachten. */
+export function relink(): void {
+  linkEventArtists().catch((err) => console.error('[event-artists] koppelen mislukt', err));
+}
+
 artistFollowsRoute.post('/:artistId', async (c) => {
   const userId = await requireUserId(c);
   if (typeof userId !== 'string') return userId;
@@ -144,6 +151,7 @@ artistFollowsRoute.post('/:artistId', async (c) => {
     .insert(schema.artistFollows)
     .values({ userId, artistId })
     .onConflictDoNothing();
+  relink();
 
   return c.json({ following: true });
 });
@@ -178,6 +186,7 @@ artistFollowsRoute.post('/by-name', async (c) => {
 
   const artistId = await followArtistByName(userId, name, body.spotifyUrl);
   if (!artistId) return c.json({ error: 'Kon de artiest niet vastleggen.' }, 500);
+  relink();
   return c.json({ following: true, artistId });
 });
 

@@ -16,8 +16,9 @@ import { sql } from 'drizzle-orm';
 import { z } from 'zod';
 
 import { GENRE_KEYS, genresOf, type GenreKey } from '../alerts/genres.js';
-import { ALERT_MATCH, GENRE_ALIAS_CTE, alertSource, titleHasName, titleTributeOf } from '../alerts/match.js';
+import { ALERT_MATCH, GENRE_ALIAS_CTE, alertSource } from '../alerts/match.js';
 import { db, schema } from '../db/index.js';
+import { linkEventArtists } from '../jobs/eventArtists.js';
 import { followArtistByName } from '../routes/artist-follows.js';
 import { parseAmsterdamLocal } from '../scrapers/_amsterdam-tz.js';
 import { resolveVenues } from './alerts.js';
@@ -50,17 +51,12 @@ async function followedWithNextShow(userId: string, names?: string[]) {
     LEFT JOIN LATERAL (
       SELECT jsonb_agg(s ORDER BY s.starts_at) AS shows FROM (
       SELECT DISTINCT ON (e.id) e.id AS event_id, e.title, v.name AS venue, v.city::text AS city, o.starts_at,
-        ${sql.raw(titleTributeOf('ar.name'))} AS tribute
-      FROM occurrences o
+        ea.role = 'tribute' AS tribute
+      FROM event_artists ea
+      JOIN occurrences o ON o.event_id = ea.event_id
       JOIN events e ON e.id = o.event_id AND e.published
       JOIN venues v ON v.id = COALESCE(o.venue_id, e.venue_id) AND v.published
-      WHERE o.starts_at > NOW() AND o.status <> 'cancelled'
-        AND (
-          (jsonb_typeof(o.lineup) = 'array' AND EXISTS (
-            SELECT 1 FROM jsonb_array_elements(o.lineup) le WHERE le->>'artistId' = ar.id
-          ))
-          OR ${sql.raw(titleHasName('ar.name'))}
-        )
+      WHERE ea.artist_id = ar.id AND o.starts_at > NOW() AND o.status <> 'cancelled'
       ORDER BY e.id, o.starts_at
       ) s
     ) nx ON TRUE
@@ -119,6 +115,8 @@ export function registerArtistTools(server: McpServer, userId: string): void {
       for (const raw of names) {
         if (!(await followArtistByName(userId, raw.trim()))) failed.push(raw);
       }
+      // Wachten, zodat de lijst hieronder de avonden al toont.
+      await linkEventArtists();
       const rows = await followedWithNextShow(userId, names.map((n) => n.trim()));
       const lines = [`Gevolgd:\n${rows.map(showLine).join('\n')}`];
       if (failed.length) lines.push(`Niet gelukt: ${failed.join(', ')}.`);

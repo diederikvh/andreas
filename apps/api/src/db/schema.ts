@@ -638,6 +638,20 @@ export const artists = pgTable(
   ]
 );
 
+/** Welke artiest bij welk event hoort, en hoe. Gevuld door
+    `jobs/eventArtists.ts`; zie migratie 0077. */
+export const eventArtists = pgTable(
+  'event_artists',
+  {
+    eventId: text().notNull().references(() => events.id, { onDelete: 'cascade' }),
+    artistId: text().notNull().references(() => artists.id, { onDelete: 'cascade' }),
+    role: text().$type<'optreden' | 'tribute'>().notNull(),
+    source: text().$type<'lineup' | 'titel' | 'admin'>().notNull(),
+    createdAt: timestamp({ withTimezone: true }).notNull().default(sql`now()`),
+  },
+  (t) => [primaryKey({ columns: [t.eventId, t.artistId] }), index('event_artists_artist_idx').on(t.artistId)]
+);
+
 /**
  * Per-user favoriete vrienden — een gerichte relatie ("ik markeer Alice
  * als favoriet"). Onafhankelijk van of Alice mij óók als favoriet ziet.

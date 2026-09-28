@@ -22,7 +22,7 @@ import { and, desc, eq, sql } from 'drizzle-orm';
 import { Hono, type Context } from 'hono';
 
 import { GENRES, GENRE_KEYS, type GenreKey } from '../alerts/genres.js';
-import { previewAlert, titleHasName, type AlertFilters } from '../alerts/match.js';
+import { previewAlert, type AlertFilters } from '../alerts/match.js';
 import { describeAlert } from '../alerts/service.js';
 import { auth } from '../auth.js';
 import { db, schema } from '../db/index.js';
@@ -244,14 +244,11 @@ alertsRoute.get('/found', async (c) => {
       r.kind::text AS kind, r.note AS reason, r.alert_id,
       a.label AS alert_label,
       (
-        SELECT ar.name FROM artist_follows af
-        JOIN artists ar ON ar.id = af.artist_id
-        WHERE af.user_id = r.user_id AND (
-          (jsonb_typeof(o.lineup) = 'array' AND EXISTS (
-            SELECT 1 FROM jsonb_array_elements(o.lineup) le WHERE le->>'artistId' = ar.id
-          ))
-          OR ${sql.raw(titleHasName('ar.name'))}
-        )
+        SELECT ar.name FROM event_artists ea
+        JOIN artists ar ON ar.id = ea.artist_id
+        JOIN artist_follows af ON af.artist_id = ar.id AND af.user_id = r.user_id
+        WHERE ea.event_id = o.event_id
+        ORDER BY ea.role = 'tribute'
         LIMIT 1
       ) AS artist_name,
       r.sent_at IS NOT NULL AS sent,

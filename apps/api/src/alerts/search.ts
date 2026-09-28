@@ -14,7 +14,7 @@ import { and, eq, inArray, sql } from 'drizzle-orm';
 
 import { db, schema } from '../db/index.js';
 import { GENRES, mainGenresOf, type Category, type GenreKey } from './genres.js';
-import { ALERT_MATCH, GENRE_ALIAS_CTE, alertSource, hasGenre, titleHasName } from './match.js';
+import { ALERT_MATCH, GENRE_ALIAS_CTE, alertSource, hasGenre } from './match.js';
 import { parseAmsterdamLocal } from '../scrapers/_amsterdam-tz.js';
 
 export const PUBLIC_BASE_URL = process.env.PUBLIC_BASE_URL ?? 'https://andreas.amsterdam';
@@ -117,12 +117,11 @@ export async function searchStructured(
       EXISTS (SELECT 1 FROM venue_follows vf
               WHERE vf.user_id = a.user_id AND vf.venue_id = v.id AND vf.state = 'volgen') AS followed_venue,
       ${sql.raw(hasGenre(`ARRAY(SELECT gp.genre FROM genre_prefs gp WHERE gp.user_id = a.user_id AND gp.sentiment = 'like')`, true))} AS liked_genre,
-      (SELECT ar.name FROM artist_follows af JOIN artists ar ON ar.id = af.artist_id
-       WHERE af.user_id = a.user_id AND (
-         EXISTS (SELECT 1 FROM jsonb_array_elements(
-           CASE WHEN jsonb_typeof(o.lineup) = 'array' THEN o.lineup ELSE '[]'::jsonb END) le
-           WHERE le->>'artistId' = ar.id)
-         OR ${sql.raw(titleHasName('ar.name'))})
+      (SELECT ar.name FROM event_artists ea
+       JOIN artists ar ON ar.id = ea.artist_id
+       JOIN artist_follows af ON af.artist_id = ar.id AND af.user_id = a.user_id
+       WHERE ea.event_id = e.id
+       ORDER BY ea.role = 'tribute'
        LIMIT 1) AS followed_artist,
       COALESCE(e.poster_url, e.image_url, v.image_url) AS image,
       v.name AS venue, v.city::text AS city, v.wijk,

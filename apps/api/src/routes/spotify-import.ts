@@ -29,7 +29,7 @@ import { Hono } from 'hono';
 
 import { auth } from '../auth.js';
 import { db } from '../db/index.js';
-import { followArtistByName } from './artist-follows.js';
+import { followArtistByName, relink } from './artist-follows.js';
 
 export const spotifyImportRoute = new Hono();
 
@@ -175,6 +175,7 @@ spotifyImportRoute.get('/callback', async (c) => {
         last_sync_at = NOW(), last_added = EXCLUDED.last_added
     `);
   }
+  if (added > 0) relink();
   return c.redirect(back({ added }));
 });
 
@@ -240,5 +241,6 @@ export async function syncSpotifyLinks(): Promise<{ users: number; added: number
     // Rustig aan: dezelfde app-sleutel als de zoek in de app.
     await new Promise((x) => setTimeout(x, 500));
   }
+  if (added > 0) relink();
   return { users: links.length, added, dropped };
 }
