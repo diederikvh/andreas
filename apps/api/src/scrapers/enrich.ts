@@ -12,6 +12,8 @@
  * 30 events/dag voor alle 5 Stager-venues = ~€0,15/maand aan API-kosten.
  */
 
+import { isActivity } from '../alerts/genres.js';
+
 const MODEL = 'claude-haiku-4-5';
 const ANTHROPIC_VERSION = '2023-06-01';
 
@@ -28,7 +30,7 @@ const SYSTEM_PROMPT =
   '- room: zaal binnen het venue (bv. "Grote Zaal", "Kleine Zaal", "Tomastheater") — alleen als zaal-naam expliciet vermeld. Adres of stad telt NIET. Bij twijfel: null.\n' +
   '- priceNote: ALLEEN als de tekst een notitie OVER PRIJS bevat: bv. "lidmaatschap vereist", "donatie", "pay-what-you-can", "CJP-korting", "studentenkorting beschikbaar", "vanaf €5". NIET voor leeftijdsgrenzen ("21+", "18+"), huisregels (geen telefoon, geen foto), of dresscode. Bij twijfel: null.\n' +
   '- kind: "show" voor concert/club/voorstelling/film/lezing/opening. "exhibition" voor doorlopende tentoonstelling. Default: "show".\n' +
-  '- category: kies altijd één van "Muziek" | "Theater" | "Literatuur" | "Film" | "Kunst" | "Lezing" op basis van titel + beschrijving + venue-context. Geef je BESTE GOK — niet null tenzij er ECHT helemaal geen aanknopingspunt is. Heuristiek: tentoonstelling/installatie/galerie-opening = "Kunst". Concert/feest/dj-set/album launch = "Muziek". Theatervoorstelling/dans/cabaret/performance = "Theater". Film/screening/cinema = "Film". Boekpresentatie/poëzie-avond/spoken word/literair = "Literatuur". Publiek debat/talkshow/lezing/college/in gesprek met/keynote = "Lezing" (Pakhuis de Zwijger, De Balie, SPUI25-stijl programma). Een lezing op een kunstgalerie blijft "Lezing" — kies op event, niet op venue.\n' +
+  '- category: kies altijd één van "Muziek" | "Theater" | "Literatuur" | "Film" | "Kunst" | "Lezing" | "Activiteit" op basis van titel + beschrijving + venue-context. Geef je BESTE GOK — niet null tenzij er ECHT helemaal geen aanknopingspunt is. Heuristiek: quiz/pubquiz/rondleiding/workshop/masterclass/cursus/les/podcastopname/yoga/bingo = "Activiteit" (iets om te doen, niet om te zien), ook als het in een concertzaal is. tentoonstelling/installatie/galerie-opening = "Kunst". Concert/feest/dj-set/album launch = "Muziek". Theatervoorstelling/dans/cabaret/performance = "Theater". Film/screening/cinema = "Film". Boekpresentatie/poëzie-avond/spoken word/literair = "Literatuur". Publiek debat/talkshow/lezing/college/in gesprek met/keynote = "Lezing" (Pakhuis de Zwijger, De Balie, SPUI25-stijl programma). Een lezing op een kunstgalerie blijft "Lezing" — kies op event, niet op venue.\n' +
   '- cleanedDescription: de description in plain text, zonder de lineup-block en zonder herhaalde meta-info (huisregels, ~~~~~~~ separators). NIET inkorten of herschrijven — alleen lineup-blok en boilerplate weghalen. Gebruik ECHTE newlines voor paragraph-breaks, NIET de literal 2 tekens backslash-n.';
 
 const TOOL_INPUT_SCHEMA = {
@@ -69,7 +71,7 @@ const TOOL_INPUT_SCHEMA = {
     },
     category: {
       type: ['string', 'null'],
-      enum: ['Muziek', 'Theater', 'Literatuur', 'Film', 'Kunst', 'Lezing', null],
+      enum: ['Muziek', 'Theater', 'Literatuur', 'Film', 'Kunst', 'Lezing', 'Activiteit', null],
       description:
         'Andreas-categorie. Bij echte twijfel: null — caller valt dan terug op venue-default.',
     },
@@ -126,7 +128,8 @@ export type EventCategory =
   | 'Literatuur'
   | 'Film'
   | 'Kunst'
-  | 'Lezing';
+  | 'Lezing'
+  | 'Activiteit';
 
 export type EnrichOutput = {
   genres: string[];
@@ -145,6 +148,7 @@ const ALLOWED_CATEGORIES: EventCategory[] = [
   'Film',
   'Kunst',
   'Lezing',
+  'Activiteit',
 ];
 
 const FALLBACK: EnrichOutput = {
@@ -168,7 +172,19 @@ const FALLBACK: EnrichOutput = {
  * Errors worden gevangen en als FALLBACK teruggegeven zodat de scraper-
  * pipeline blijft draaien als Claude tijdelijk down is.
  */
+/**
+ * Verrijk een event, en zet iets om te doen (quiz, rondleiding, workshop,
+ * les) altijd op Activiteit. Het model krijgt die categorie ook te kiezen,
+ * maar de vaste regel erachter maakt het voorspelbaar, ook als het model
+ * er niet is (geen sleutel, fout): dan valt de scraper anders terug op
+ * de categorie van de zaal.
+ */
 export async function enrichEvent(input: EnrichInput): Promise<EnrichOutput> {
+  const out = await enrichWithModel(input);
+  return isActivity(input.title, out.genres) ? { ...out, category: 'Activiteit' } : out;
+}
+
+async function enrichWithModel(input: EnrichInput): Promise<EnrichOutput> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
     return { ...FALLBACK, cleanedDescription: input.description };

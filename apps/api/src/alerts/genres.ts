@@ -169,6 +169,16 @@ export const KIDS_TITLE_REGEX = String.raw`(^|[^0-9])([1-9]|1[0-2]) ?\+|vanaf [0
     "Backstage rondleiding", "Popquiz", "Masterclass — Kian Soltani",
     "Hagelslag de Podcast". Niet "karaoke" (vaak een band) en niet
     "high tea" (vaak een festival). */
+/** Zaallabels die op een activiteit wijzen (genormaliseerd, kleine letters). */
+export const ACTIVITY_LABELS = ['anders', 'quiz', 'pubquiz', 'popquiz', 'bingo', 'yoga', 'podcast', 'rondleiding', 'boekenclub', 'markt', 'spelavond', 'workshop', 'masterclass', 'cursus'];
+
+/** Is dit iets om te doen in plaats van te zien? Dezelfde regel als in
+    SQL; Postgres' `\m`/`\M` (woordgrens) is in JavaScript `\b`. */
+export function isActivity(title: string, labels: string[]): boolean {
+  if (labels.some((l) => ACTIVITY_LABELS.includes(l.trim().toLowerCase()))) return true;
+  return new RegExp(ACTIVITY_TITLE_REGEX.replace(/\\[mM]/g, '\\b'), 'i').test(title);
+}
+
 export const ACTIVITY_TITLE_REGEX = String.raw`quiz|podcast|rondleiding|bingo|yoga|skateles|tarot|scrabble|boekenclub|proefles|\mmarkt\M|creatief met|dinner at|spelavond|masterclass|workshop|gear talk|\mcursus`;
 
 // Postgres kent geen unaccent zonder extensie; deze tabel doet in SQL en TS

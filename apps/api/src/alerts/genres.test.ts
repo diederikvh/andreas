@@ -70,3 +70,16 @@ test('techno en house tellen ook op plek 3, de rest niet', () => {
   assert.deepEqual(mainGenresOf('Muziek', ['soul', 'jazz', 'hip-hop']), ['soul', 'jazz']);
   assert.deepEqual(mainGenresOf('Muziek', ['a', 'b', 'c', 'techno']), []);
 });
+
+test('activiteit herkend aan titel of label, concerten niet', async () => {
+  const { isActivity } = await import('./genres.js');
+  assert.ok(isActivity('Backstage rondleiding 9 okt', []));
+  assert.ok(isActivity('Masterclass — Kian Soltani', []));
+  assert.ok(isActivity('Is This It? De Popquiz', []));
+  assert.ok(isActivity('Creatief met Eemhart', ['Anders']));
+  assert.ok(isActivity('Ik Wil Wat Doen Markt 2026', []));
+  assert.ok(!isActivity('Supermarkt Soundsystem', []));
+  assert.ok(!isActivity('Tante Joke Karaoke Band', ['Dance / By Night']));
+  assert.ok(!isActivity('London Calling - High Tea', ['indie', 'rock']));
+  assert.ok(!isActivity('Douwe Bob', ['pop']));
+});

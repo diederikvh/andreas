@@ -1,9 +1,10 @@
 /**
- * Events die iets om te doen zijn, niet om te zien, naar de categorie
- * Activiteit: quiz, podcastopname, rondleiding, workshop, masterclass, les.
- * Zalen zetten die onder Muziek, Theater of Lezing ("Backstage
- * rondleiding" bij TivoliVredenburg, "Openbare rondleiding" bij een
- * theater), en dan staan ze in de agenda tussen de concerten.
+ * Vangnet voor de categorie Activiteit (quiz, podcastopname, rondleiding,
+ * workshop, masterclass, les). Normaal zet `enrichEvent` die al bij het
+ * binnenhalen; dit vangt de scrapers zonder die stap, en wat er daarna
+ * nog tussendoor glipt. Zalen zetten zulke events onder Muziek, Theater
+ * of Lezing ("Backstage rondleiding" bij TivoliVredenburg, "Openbare
+ * rondleiding" bij een theater), en dan staan ze tussen de concerten.
  *
  * Herkend aan het zaallabel of aan de titel (dezelfde regel als in de
  * meldingen, zie `ACTIVITY_TITLE_REGEX`).
@@ -13,11 +14,8 @@
  */
 import { sql } from 'drizzle-orm';
 
-import { ACTIVITY_TITLE_REGEX } from '../alerts/genres.js';
+import { ACTIVITY_LABELS, ACTIVITY_TITLE_REGEX } from '../alerts/genres.js';
 import { db } from '../db/index.js';
-
-/** Zaallabels die op een activiteit wijzen. */
-const LABELS = ['anders', 'quiz', 'pubquiz', 'popquiz', 'bingo', 'yoga', 'podcast', 'rondleiding', 'boekenclub', 'markt', 'spelavond', 'workshop', 'masterclass', 'cursus'];
 
 export async function classifyActivities(opts: { all?: boolean } = {}): Promise<number> {
   const res = await db.execute(sql`
@@ -25,7 +23,7 @@ export async function classifyActivities(opts: { all?: boolean } = {}): Promise<
     WHERE e.category <> 'Activiteit' AND e.published
       ${opts.all ? sql`` : sql`AND e.created_at > NOW() - INTERVAL '2 days'`}
       AND (e.title ~* ${ACTIVITY_TITLE_REGEX}
-        OR EXISTS (SELECT 1 FROM unnest(e.genres) g WHERE lower(g) = ANY(${`{${LABELS.join(',')}}`}::text[])))
+        OR EXISTS (SELECT 1 FROM unnest(e.genres) g WHERE lower(g) = ANY(${`{${ACTIVITY_LABELS.join(',')}}`}::text[])))
       AND EXISTS (SELECT 1 FROM occurrences o WHERE o.event_id = e.id AND o.starts_at > NOW())
     RETURNING 1
   `);
