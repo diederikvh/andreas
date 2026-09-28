@@ -105,7 +105,13 @@ export function buildMcpServer(userId: string | null = null): McpServer {
           .optional()
           .describe('Hele woorden in titel of beschrijving, bv. "90s", "grunge". Samen met genres: beide moeten passen.'),
         query: z.string().optional().describe('Woord uit de titel, een naam in de line-up of een zaal, bv. "Hamlet".'),
-        limit: z.number().int().min(1).max(50).optional().describe('Aantal events (default 15, max 50).'),
+        limit: z.number().int().min(1).max(50).optional().describe('Aantal events per pagina (default 15, max 50).'),
+        cursor: z.string().optional().describe('Van de vorige pagina ("Meer: cursor …"), om verder te lezen.'),
+        details: z
+          .boolean()
+          .optional()
+          .describe('Beschrijving en volledige line-up erbij. Default: één korte regel per event.'),
+        card: z.boolean().optional().describe('Ook een HTML-kaart voor hosts die MCP-UI tonen. Default: nee.'),
       },
       outputSchema: {
         events: z.array(z.object(EVENT_SHAPE)),
@@ -114,8 +120,19 @@ export function buildMcpServer(userId: string | null = null): McpServer {
         window: z.object({ from: z.string(), to: z.string() }),
       },
     },
-    async (args) => {
-      const { events, total, window, unknownVenues } = await searchEvents(userId, args);
+    async ({ cursor, details, card, ...args }) => {
+      const offset = Number(cursor ?? 0) || 0;
+      const found = await searchEvents(userId, { ...args, offset });
+      const { total, window, unknownVenues } = found;
+      // Kort tenzij om details gevraagd: honderden tekens beschrijving per
+      // event is voor een lijst om uit te kiezen vooral ruis.
+      const events = details
+        ? found.events
+        : found.events.map((e) => ({
+            ...e,
+            description: e.description ? clip(e.description, 160) : e.description,
+            lineup: e.lineup.slice(0, 3).map((l) => ({ ...l, genres: l.genres.slice(0, 2) })),
+          }));
       if (userId) await logSearch(userId, `(mcp) ${JSON.stringify(args)}`.slice(0, 500), args, events);
       const label = periodLabel(window.from, window.to);
       const structuredContent = { events, count: events.length, total, window };
@@ -126,8 +143,10 @@ export function buildMcpServer(userId: string | null = null): McpServer {
       //  - structuredContent: machine-leesbaar voor programmatic clients
       return {
         content: [
-          { type: 'text' as const, text: unknown + summarize(events, total, label) },
-          buildEventsUiResource(events, label),
+          { type: 'text' as const, text: unknown + summarize(events, total, label, offset, Boolean(details)) },
+          // De kaart is HTML voor hosts die MCP-UI tonen. Andere hosts geven
+          // hem als tekst aan het model: tienduizenden tekens voor niets.
+          ...(card ? [buildEventsUiResource(events, label)] : []),
         ],
         structuredContent,
       };
@@ -161,8 +180,14 @@ function periodLabel(from: string, to: string): string {
   return a === b ? a : `${a} – ${b}`;
 }
 
-function summarize(events: McpEvent[], total: number, label: string): string {
-  if (events.length === 0) return `Geen events gevonden voor ${label}. Zoek breder: minder velden of een langere periode.`;
+const clip = (t: string, n: number) => (t.length > n ? `${t.slice(0, n).replace(/\s+\S*$/, '')}…` : t);
+
+function summarize(events: McpEvent[], total: number, label: string, offset: number, details: boolean): string {
+  if (events.length === 0) {
+    return offset
+      ? 'Geen verdere resultaten.'
+      : `Geen events gevonden voor ${label}. Zoek breder: minder velden of een langere periode.`;
+  }
   const lines = events.map((e) => {
     const day = new Date(e.start).toLocaleString('nl-NL', {
       timeZone: 'Europe/Amsterdam',
@@ -179,16 +204,24 @@ function summarize(events: McpEvent[], total: number, label: string): string {
       e.city !== 'amsterdam'
         ? ` (${e.city.split('-').map((p) => p[0].toUpperCase() + p.slice(1)).join(' ')})`
         : '';
+    const genres = e.genres.length ? ` · ${e.genres.slice(0, 2).join(', ')}` : '';
+    if (!details) {
+      // Eén regel: hooguit drie acts, zonder hun genres.
+      const acts = e.lineup.length
+        ? ` · ${e.lineup.slice(0, 3).map((l) => l.name).join(', ')}${e.lineup.length > 3 ? ` +${e.lineup.length - 3}` : ''}`
+        : '';
+      return `- [${title}](${e.url}) — ${e.venue}${city}, ${day}${genres}${acts}`;
+    }
     const lineup = e.lineup.length
-      ? `\n  Line-up: ${e.lineup.map((l) => (l.genres.length ? `${l.name} (${l.genres.slice(0, 4).join(', ')})` : l.name)).join('; ')}`
+      ? `\n  Line-up: ${e.lineup.map((l) => (l.genres.length ? `${l.name} (${l.genres.slice(0, 3).join(', ')})` : l.name)).join('; ')}`
       : '';
     const about = e.description ? `\n  ${e.description}` : '';
-    const genres = e.genres.length ? ` · ${e.genres.slice(0, 3).join(', ')}` : '';
     return `- [${title}](${e.url}) — ${e.venue}${city}, ${day}${genres}${lineup}${about}`;
   });
-  const more = total > events.length ? ` (van ${total}; verfijn of verhoog limit voor meer)` : '';
+  const end = offset + events.length;
+  const more = total > end ? `\nMeer: cursor "${end}" (nog ${total - end}).` : '';
   return (
-    `${events.length} events voor ${label}${more}:\n${lines.join('\n')}\n\n` +
-    'Kies zelf wat past; presenteer elk event als [titel](url).'
+    `${offset + 1}–${end} van ${total} events voor ${label}:\n${lines.join('\n')}${more}\n\n` +
+    'Kies zelf wat past; presenteer elk event als [titel](url). Details over een event: details=true.'
   );
 }
