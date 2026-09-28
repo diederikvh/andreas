@@ -51,7 +51,7 @@ async function followedWithNextShow(userId: string, names?: string[]) {
     LEFT JOIN LATERAL (
       SELECT jsonb_agg(s ORDER BY s.starts_at) AS shows FROM (
       SELECT DISTINCT ON (e.id) e.id AS event_id, e.title, v.name AS venue, v.city::text AS city, o.starts_at,
-        ea.role = 'tribute' AS tribute
+        ea.role
       FROM event_artists ea
       JOIN occurrences o ON o.event_id = ea.event_id
       JOIN events e ON e.id = o.event_id AND e.published
@@ -66,7 +66,7 @@ async function followedWithNextShow(userId: string, names?: string[]) {
   return res.rows;
 }
 
-type Show = { event_id: string; title: string; venue: string; city: string; starts_at: string; tribute: boolean };
+type Show = { event_id: string; title: string; venue: string; city: string; starts_at: string; role: string };
 
 const cityName = (c: string) => c.split('-').map((p) => p[0].toUpperCase() + p.slice(1)).join(' ');
 
@@ -77,7 +77,7 @@ function showLine(r: { name: string; shows: Show[] | null }) {
   return (
     `- ${r.name}:\n` +
     shows
-      .map((s) => `    ${s.tribute ? '(tribute) ' : ''}${link(s.event_id, s.title)} — ${s.venue} (${cityName(s.city)}), ${dayFmt.format(new Date(s.starts_at))}`)
+      .map((s) => `    ${s.role === 'tribute' ? '(tribute) ' : s.role === 'werk_van' ? '(werk van) ' : ''}${link(s.event_id, s.title)} — ${s.venue} (${cityName(s.city)}), ${dayFmt.format(new Date(s.starts_at))}`)
       .join('\n') +
     (more > 0 ? `\n    …en nog ${more}` : '')
   );

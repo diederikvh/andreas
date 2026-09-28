@@ -248,7 +248,7 @@ alertsRoute.get('/found', async (c) => {
         JOIN artists ar ON ar.id = ea.artist_id
         JOIN artist_follows af ON af.artist_id = ar.id AND af.user_id = r.user_id
         WHERE ea.event_id = o.event_id
-        ORDER BY ea.role = 'tribute'
+        ORDER BY array_position(ARRAY['optreden', 'tribute', 'werk_van'], ea.role)
         LIMIT 1
       ) AS artist_name,
       r.sent_at IS NOT NULL AS sent,

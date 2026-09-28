@@ -1123,6 +1123,9 @@ export type ApiFollowedShow = {
   artistName: string;
   /** Een tribute aan die artiest, niet de artiest zelf. Oudere API: afwezig. */
   tribute?: boolean;
+  /** Hoe de artiest erbij hoort: zelf, als tribute, of als componist
+      ("werk van"). Oudere API: afwezig. */
+  role?: 'optreden' | 'tribute' | 'werk_van';
   occurrence: { id: string; startsAt: string; endsAt: string | null };
   venue: { slug: string; name: string; type: string | null };
 };

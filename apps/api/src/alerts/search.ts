@@ -121,7 +121,7 @@ export async function searchStructured(
        JOIN artists ar ON ar.id = ea.artist_id
        JOIN artist_follows af ON af.artist_id = ar.id AND af.user_id = a.user_id
        WHERE ea.event_id = e.id
-       ORDER BY ea.role = 'tribute'
+       ORDER BY array_position(ARRAY['optreden', 'tribute', 'werk_van'], ea.role)
        LIMIT 1) AS followed_artist,
       COALESCE(e.poster_url, e.image_url, v.image_url) AS image,
       v.name AS venue, v.city::text AS city, v.wijk,

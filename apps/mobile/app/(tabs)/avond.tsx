@@ -549,10 +549,14 @@ export default function Avond() {
     };
     // Uit de eigen lijst, niet uit `leadsPool`: die dekt maar een paar
     // dagen, en een artiest die je volgt speelt meestal verder weg.
-    // Tributes na de artiesten zelf, maar vóór zalen en "voor jou".
+    // Tributes na de artiesten zelf, maar vóór zalen en "voor jou". Een
+    // werk van je componist helemaal achteraan: Beethoven staat elke week
+    // ergens, en zou anders elke hero vullen.
     const tributes: Lead[] = [];
+    const works: Lead[] = [];
     for (const show of openArtistShows) {
-      if (show.tribute) add(showToRow(show), 'Tribute', tributes);
+      if (show.role === 'werk_van') add(showToRow(show), t('Werk van', 'Work by'), works);
+      else if (show.tribute) add(showToRow(show), 'Tribute', tributes);
       else add(showToRow(show), t('Jouw artiest', 'Your artist'), artists);
     }
     const venueSlugs = new Set(followedVenues.map((v) => v.slug));
@@ -570,7 +574,12 @@ export default function Avond() {
         ev.venueFollowed ? t('Jouw venue', 'Your venue') : t('Voor jou', 'For you'),
       );
     }
-    for (const lead of [...shuffled(artists, rand), ...shuffled(tributes, rand), ...shuffled(personal, rand)]) {
+    for (const lead of [
+      ...shuffled(artists, rand),
+      ...shuffled(tributes, rand),
+      ...shuffled(personal, rand),
+      ...shuffled(works, rand),
+    ]) {
       push(lead, lead.kicker);
     }
 
@@ -866,7 +875,12 @@ export default function Avond() {
                   title: show.title,
                   imageUrl: show.imageUrl,
                   venue: { name: show.venue.name },
-                  note: show.tribute ? 'Tribute' : undefined,
+                  note:
+                    show.role === 'werk_van'
+                      ? t('Werk van', 'Work by')
+                      : show.tribute
+                        ? 'Tribute'
+                        : undefined,
                 }}
                 width={goingCardW}
               />

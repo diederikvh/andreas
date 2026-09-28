@@ -53,13 +53,15 @@ export async function fillArtistGenres(
   let filled = 0;
   let fromTitles = 0;
 
-  // 1. Artiesten in komende line-ups. Hoofdacts (de eerste naam) eerst: dat
-  // is wie het genre van de avond bepaalt, en wie op Last.fm getagd is. De
-  // begeleiders van een orkest komen daarna.
+  // 1. Artiesten die iemand volgt, en artiesten in komende line-ups.
+  // Gevolgde eerst: die staan in een lijst in de app, en een componist
+  // als Beethoven staat in geen enkele line-up. Dan hoofdacts (de eerste
+  // naam): dat is wie het genre van de avond bepaalt, en wie op Last.fm
+  // getagd is. De begeleiders van een orkest komen daarna.
   const artists = await db.execute<{ id: string; name: string; mbid: string | null }>(sql`
     SELECT a.id, a.name, a.mbid
     FROM artists a
-    JOIN (
+    LEFT JOIN (
       SELECT le.v->>'artistId' AS id, count(*) AS n, bool_or(le.pos = 1) AS headliner
       FROM occurrences o
       CROSS JOIN LATERAL jsonb_array_elements(
@@ -67,8 +69,11 @@ export async function fillArtistGenres(
       WHERE o.starts_at > NOW() AND le.v->>'artistId' IS NOT NULL
       GROUP BY 1
     ) u ON u.id = a.id
-    WHERE (a.genres_tried_at IS NULL OR a.genres_tried_at < NOW() - make_interval(days => ${RETRY_DAYS}))
-    ORDER BY a.genres_tried_at NULLS FIRST, u.headliner DESC, cardinality(a.genres) = 0 DESC, u.n DESC
+    CROSS JOIN LATERAL (SELECT EXISTS (SELECT 1 FROM artist_follows f WHERE f.artist_id = a.id) AS followed) fl
+    WHERE (u.id IS NOT NULL OR fl.followed)
+      AND (a.genres_tried_at IS NULL OR a.genres_tried_at < NOW() - make_interval(days => ${RETRY_DAYS}))
+    ORDER BY a.genres_tried_at NULLS FIRST, fl.followed DESC, u.headliner DESC NULLS LAST,
+      cardinality(a.genres) = 0 DESC, u.n DESC NULLS LAST
     LIMIT ${limit - titleShare}
   `);
   for (const a of artists.rows) {

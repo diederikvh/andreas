@@ -10,13 +10,14 @@ import {
   rowTimeLabel,
   translateCategory,
 } from '@/lib/eventDisplay';
-import { useLocale } from '@/lib/i18n';
+import { useLocale, useT } from '@/lib/i18n';
 import type { BadgeToneKey } from '@/theme/tones';
 
 /** Een komende avond van een artiest die je volgt: gedeeld door de pagina
     "Komt eraan" en (vroeger) het tabblad op Artiesten. */
 export function FollowedShowRow({ show }: { show: ApiFollowedShow }) {
   const locale = useLocale();
+  const t = useT();
   const venueTone =
     show.venue.type &&
     (VENUE_TYPE_TICK as Record<string, BadgeToneKey>)[show.venue.type]
@@ -49,7 +50,13 @@ export function FollowedShowRow({ show }: { show: ApiFollowedShow }) {
       tags={[{ label: translateCategory(show.category, locale), tone }]}
       // Waarom deze avond hier staat. Zonder dat is het een willekeurige
       // rij tussen je andere lijsten.
-      genreLabel={show.tribute ? `${show.artistName} · tribute` : show.artistName}
+      genreLabel={
+        show.role === 'werk_van'
+          ? `${show.artistName} · ${t('werk van', 'work by')}`
+          : show.tribute
+            ? `${show.artistName} · tribute`
+            : show.artistName
+      }
       tick={tone}
       onPress={() =>
         router.push(

@@ -647,8 +647,8 @@ export const eventArtists = pgTable(
   {
     eventId: text().notNull().references(() => events.id, { onDelete: 'cascade' }),
     artistId: text().notNull().references(() => artists.id, { onDelete: 'cascade' }),
-    role: text().$type<'optreden' | 'tribute'>().notNull(),
-    source: text().$type<'lineup' | 'titel' | 'admin'>().notNull(),
+    role: text().$type<'optreden' | 'tribute' | 'werk_van'>().notNull(),
+    source: text().$type<'lineup' | 'titel' | 'programma' | 'admin'>().notNull(),
     createdAt: timestamp({ withTimezone: true }).notNull().default(sql`now()`),
   },
   (t) => [primaryKey({ columns: [t.eventId, t.artistId] }), index('event_artists_artist_idx').on(t.artistId)]
