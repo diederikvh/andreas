@@ -191,7 +191,10 @@ export function TabBar({ state, navigation }: BottomTabBarProps) {
         <View style={[StyleSheet.absoluteFill, { backgroundColor: tint }]} />
       <Animated.View
         pointerEvents="none"
-        style={[styles.blob, blobStyle, { backgroundColor: roles.accent }]}
+        // Actieve tab: een vlak net lichter (nacht) of donkerder (dag) dan
+        // de balk; de kleur zit alleen in het icoon. Een vol accentvlak
+        // schreeuwde te hard naast de rest van de app.
+        style={[styles.blob, blobStyle, { backgroundColor: mode === 'nacht' ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.06)' }]}
       />
       {state.routes.map((route, index) => {
         const Icon = TAB_ICONS[route.name];
@@ -225,7 +228,7 @@ export function TabBar({ state, navigation }: BottomTabBarProps) {
             style={styles.button}
           >
             <View>
-              <Icon color={focused ? roles.onAccent : idle} />
+              <Icon color={focused ? roles.accent : idle} />
               {showBadge && (
                 <View
                   style={[
