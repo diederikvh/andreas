@@ -196,16 +196,24 @@ export const ALERT_MATCH = sql.raw(`
   -- alleen als hij rock is én "90s" in titel of beschrijving heeft.
   AND (
     (a.genres IS NULL AND a.artist_names IS NULL AND a.keywords IS NULL)
-    -- Artiest: in de line-up op naam, of als hele woorden in de titel.
+    -- Artiest: gekoppeld in event_artists (line-up, titel, programma,
+    -- admin; zie jobs/eventArtists.ts), en anders de naam in de titel voor
+    -- wie nog niet gekoppeld is (een losse zoekvraag). Met de hand op
+    -- "geen" gezet telt nooit. Werk van en covers tellen hier wel: wie
+    -- zelf een regel "Beethoven" maakt, wil die concerten zien.
     OR (a.artist_names IS NOT NULL AND EXISTS (
       SELECT 1 FROM unnest(a.artist_names) an
-      WHERE EXISTS (
-          SELECT 1 FROM jsonb_array_elements(
-            CASE WHEN jsonb_typeof(o.lineup) = 'array' THEN o.lineup ELSE '[]'::jsonb END
-          ) le
-          WHERE lower(le->>'name') = lower(an)
+      WHERE NOT EXISTS (
+          SELECT 1 FROM event_artists ea JOIN artists ar ON ar.id = ea.artist_id
+          WHERE ea.event_id = e.id AND ea.role = 'geen' AND lower(ar.name) = lower(an)
         )
-        OR ${titleHasName('an')}
+        AND (
+          EXISTS (
+            SELECT 1 FROM event_artists ea JOIN artists ar ON ar.id = ea.artist_id
+            WHERE ea.event_id = e.id AND ea.role <> 'geen' AND lower(ar.name) = lower(an)
+          )
+          OR ${titleHasName('an')}
+        )
     ))
     OR ((a.genres IS NOT NULL OR a.keywords IS NOT NULL)
       AND (a.genres IS NULL OR ${hasGenre('a.genres', true)} OR ${artistHasGenre('a.genres')})

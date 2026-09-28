@@ -24,6 +24,9 @@ import { sql } from 'drizzle-orm';
 
 import { titleHasName, titleTributeOf } from '../alerts/match.js';
 import { db } from '../db/index.js';
+// Kringverwijzing (artist-follows gebruikt ook deze job), maar alleen bij
+// het aanroepen, niet bij het laden: dat mag in ESM.
+import { ensureArtistByName } from '../routes/artist-follows.js';
 
 /** Woorden van een tekst, met een spatie aan beide kanten. */
 const words = (e: string) => `(' ' || lower(trim(regexp_replace(${e}, '[^[:alnum:]]+', ' ', 'g'))) || ' ')`;
@@ -38,6 +41,14 @@ const CLASSICAL_TAGS = `ARRAY['classical', 'contemporary classical', 'modern cla
 // ponytail: volledige ronde per tik (~1 s bij 3.900 koppelingen); incrementeel
 // op o.created_at als dit met de catalogus meegroeit tot tientallen seconden.
 export async function linkEventArtists(): Promise<{ linked: number; removed: number }> {
+  // Namen uit meldingsregels die we nog niet als artiest kennen: aanmaken,
+  // anders kunnen ze nergens aan hangen. Zelfde weg als volgen op naam.
+  const missing = await db.execute<{ an: string }>(sql`
+    SELECT DISTINCT an FROM alerts CROSS JOIN LATERAL unnest(artist_names) an
+    WHERE artist_names IS NOT NULL AND length(trim(an)) >= 2
+      AND NOT EXISTS (SELECT 1 FROM artists ar WHERE lower(ar.name) = lower(trim(an)))`);
+  for (const { an } of missing.rows) await ensureArtistByName(an.trim());
+
   const res = await db.execute<{ linked: number; removed: number }>(sql`
     WITH upcoming_occ AS (
       SELECT o.event_id, o.lineup
@@ -47,6 +58,15 @@ export async function linkEventArtists(): Promise<{ linked: number; removed: num
     -- Eén rij per event voor de titel en het programma; de line-up per
     -- avond, want een festival heeft per dag een andere.
     upcoming AS (SELECT DISTINCT event_id FROM upcoming_occ),
+    -- Voor wie we titels en programma's doorzoeken: gevolgde artiesten en
+    -- namen uit meldingsregels.
+    watched AS (
+      SELECT artist_id AS id FROM artist_follows
+      UNION
+      SELECT ar.id FROM alerts al CROSS JOIN LATERAL unnest(al.artist_names) an
+      JOIN artists ar ON lower(ar.name) = lower(an)
+      WHERE al.artist_names IS NOT NULL
+    ),
     found AS (
       -- Line-up: exact, voor iedereen. Behalve een kleine line-up waarvan
       -- geen naam in de titel staat: dat is meestal de bezetting van de
@@ -71,7 +91,7 @@ export async function linkEventArtists(): Promise<{ linked: number; removed: num
         'titel'
       FROM upcoming u
       JOIN events e ON e.id = u.event_id AND e.published
-      JOIN artists ar ON ar.id IN (SELECT artist_id FROM artist_follows)
+      JOIN artists ar ON ar.id IN (SELECT id FROM watched)
       WHERE ${sql.raw(titleHasName('ar.name'))}
       UNION ALL
       -- Covers: een popartiest wiens nummers op het programma staan ("hits
@@ -80,7 +100,7 @@ export async function linkEventArtists(): Promise<{ linked: number; removed: num
       SELECT e.id, ar.id, 'covers', 'programma'
       FROM upcoming u
       JOIN events e ON e.id = u.event_id AND e.published
-      JOIN artists ar ON ar.id IN (SELECT artist_id FROM artist_follows)
+      JOIN artists ar ON ar.id IN (SELECT id FROM watched)
       -- De naam als patroon: alles behalve letters, cijfers en spaties wordt '.'.
       CROSS JOIN LATERAL (SELECT regexp_replace(lower(ar.name), '[^[:alnum:] ]', '.', 'g') AS rx) n
       -- Alleen wie genres heeft en geen klassieke: zonder genres weten we
@@ -97,7 +117,7 @@ export async function linkEventArtists(): Promise<{ linked: number; removed: num
       SELECT e.id, ar.id, 'werk_van', 'programma'
       FROM upcoming u
       JOIN events e ON e.id = u.event_id AND e.published
-      JOIN artists ar ON ar.id IN (SELECT artist_id FROM artist_follows)
+      JOIN artists ar ON ar.id IN (SELECT id FROM watched)
       CROSS JOIN LATERAL (SELECT ${sql.raw(words(`e.title || ' ' || COALESCE(e.description, '')`))} AS txt) t
       CROSS JOIN LATERAL (SELECT lower(regexp_replace(ar.name, '^.* ', '')) AS surname) sn
       WHERE ${sql.raw(CLASSICAL)}
