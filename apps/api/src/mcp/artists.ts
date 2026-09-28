@@ -16,7 +16,7 @@ import { sql } from 'drizzle-orm';
 import { z } from 'zod';
 
 import { GENRE_KEYS } from '../alerts/genres.js';
-import { ALERT_MATCH, GENRE_ALIAS_CTE, alertSource, titleHasName } from '../alerts/match.js';
+import { ALERT_MATCH, GENRE_ALIAS_CTE, alertSource, titleHasName, titleTributeOf } from '../alerts/match.js';
 import { db, schema } from '../db/index.js';
 import { followArtistByName } from '../routes/artist-follows.js';
 import { parseAmsterdamLocal } from '../scrapers/_amsterdam-tz.js';
@@ -48,7 +48,8 @@ async function followedWithNextShow(userId: string, names?: string[]) {
     JOIN artists ar ON ar.id = f.artist_id
     LEFT JOIN LATERAL (
       SELECT jsonb_agg(s ORDER BY s.starts_at) AS shows FROM (
-      SELECT DISTINCT ON (e.id) e.id AS event_id, e.title, v.name AS venue, v.city::text AS city, o.starts_at
+      SELECT DISTINCT ON (e.id) e.id AS event_id, e.title, v.name AS venue, v.city::text AS city, o.starts_at,
+        ${sql.raw(titleTributeOf('ar.name'))} AS tribute
       FROM occurrences o
       JOIN events e ON e.id = o.event_id AND e.published
       JOIN venues v ON v.id = COALESCE(o.venue_id, e.venue_id) AND v.published
@@ -68,7 +69,7 @@ async function followedWithNextShow(userId: string, names?: string[]) {
   return res.rows;
 }
 
-type Show = { event_id: string; title: string; venue: string; city: string; starts_at: string };
+type Show = { event_id: string; title: string; venue: string; city: string; starts_at: string; tribute: boolean };
 
 const cityName = (c: string) => c.split('-').map((p) => p[0].toUpperCase() + p.slice(1)).join(' ');
 
@@ -79,7 +80,7 @@ function showLine(r: { name: string; shows: Show[] | null }) {
   return (
     `- ${r.name}:\n` +
     shows
-      .map((s) => `    ${link(s.event_id, s.title)} — ${s.venue} (${cityName(s.city)}), ${dayFmt.format(new Date(s.starts_at))}`)
+      .map((s) => `    ${s.tribute ? '(tribute) ' : ''}${link(s.event_id, s.title)} — ${s.venue} (${cityName(s.city)}), ${dayFmt.format(new Date(s.starts_at))}`)
       .join('\n') +
     (more > 0 ? `\n    …en nog ${more}` : '')
   );

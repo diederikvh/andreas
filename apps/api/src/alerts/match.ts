@@ -81,14 +81,77 @@ function artistHasGenre(keysExpr: string): string {
 const words = (expr: string) =>
   `(' ' || lower(trim(regexp_replace(${expr}, '[^[:alnum:]]+', ' ', 'g'))) || ' ')`;
 
-/** Staat deze artiestnaam als hele woorden in de titel? Alleen bij namen
-    van 4+ tekens ("Eve" zit ook in "New Year's Eve") en niet bij tributes
-    ("Tribute to Adele" is geen Adele). Line-ups zijn maar bij een op de
-    vijf avonden gekoppeld; bij concerten is de titel vaak gewoon de naam. */
+/** Kleine letters, zonder accenten en ®/™. Postgres heeft hier geen
+    `unaccent`, dus een vaste vertaaltabel. */
+const plain = (expr: string) =>
+  `regexp_replace(translate(lower(${expr}), 'áàâäãåéèêëíìîïóòôöõúùûüñçøý', 'aaaaaaeeeeiiiiooooouuuuncoy'), '[®™]', '', 'g')`;
+
+/** Een naam als woorden: "The Afghan Whigs" → "afghan whigs", "Simon &
+    Garfunkel" → "simon and garfunkel". */
+const nameWords = (expr: string) =>
+  `regexp_replace(trim(regexp_replace(replace(${plain(expr)}, '&', ' and '), '[^[:alnum:]]+', ' ', 'g')), '^the ', '')`;
+
+/** De titel in stukken: gescheiden door ":" "," "+" "(" " - " "—" "/"
+    "presents", "feat." enz., elk stuk als woorden met een "| " ervoor.
+    "KINK presents Come As You Are: The Afghan Whigs, shame" →
+    "| kink | come as you are | afghan whigs | shame |". */
+const titleSegments = (expr: string) =>
+  `regexp_replace(' | ' || trim(regexp_replace(replace(regexp_replace(${plain(expr)},
+    '\\s[-–—]\\s|[:,+|/()\\[\\]–—•·;]|\\s(x|vs\\.?|presents|pres\\.|w/|feat\\.?|featuring|ft\\.?|b2b)\\s', ' | ', 'g'),
+    '&', ' and '), '[^[:alnum:]|]+', ' ', 'g')) || ' ', '\\| the ', '| ', 'g')`;
+
+/** Woorden die op een tribute of eerbetoon wijzen. */
+const TRIBUTE_RE = `tribute|eerbetoon|the music of|music of|songs of|rumours of|celebrat|salute to|a night of|legacy of|on tour|plays the|performs the|\\d+ jaar `;
+
+/** Staat er letterlijk "tribute", dan is het nooit de artiest zelf, ook
+    niet vooraan ("Adele Tribute"). */
+const TRIBUTE_WORD = `tribute|eerbetoon`;
+
+/** Goedkope voorfilter: staat het eerste woord van de naam ergens in de
+    titel? De regels hieronder zijn regex-zwaar; zonder dit duurt een
+    ronde over alle gevolgde artiesten en alle komende avonden een halve
+    minuut. */
+const firstWordIn = (nameExpr: string, titleExpr: string) =>
+  `strpos(lower(${titleExpr}), lower(split_part(regexp_replace(${nameExpr}, '^[Tt]he ', ''), ' ', 1))) > 0`;
+
+/** Begint de titel (of een stuk ervan) met de naam? */
+const atSegmentStart = (nameExpr: string, titleExpr: string) =>
+  `position(' | ' || ${nameWords(nameExpr)} || ' ' in ${titleSegments(titleExpr)}) > 0`;
+const firstSegmentStart = (nameExpr: string, titleExpr: string) =>
+  `position(' | ' || ${nameWords(nameExpr)} || ' ' in ' | ' || split_part(${titleSegments(titleExpr)}, ' | ', 2) || ' ') > 0`;
+
+/** Een tribute aan deze artiest: tribute-woorden in de titel, de naam
+    ergens erin, en niet vooraan (tenzij er letterlijk "tribute" staat).
+    Vooraan is de artiest zelf, ook bij
+    "Alison Moyet - Songs of Yazoo" (dat is Moyet, en voor Yazoo een
+    tribute). */
+export function titleTributeOf(nameExpr: string, titleExpr = 'e.title'): string {
+  return `(length(${nameExpr}) >= 4
+    AND ${plain(titleExpr)} ~ '${TRIBUTE_RE}'
+    AND position(' ' || ${nameWords(nameExpr)} || ' ' in ${titleSegments(titleExpr)}) > 0
+    AND (${plain(titleExpr)} ~ '${TRIBUTE_WORD}' OR NOT (${firstSegmentStart(nameExpr, titleExpr)})))`;
+}
+
+/**
+ * Hoort dit event bij deze artiest, te zien aan de titel? Als de titel of
+ * een stuk ervan met de volledige naam begint, of als het een tribute is
+ * (wie van Adele houdt, wil ook "Adele Tribute" zien; `titleTributeOf`
+ * zegt welke van de twee het is):
+ *   - wel: "Jon Allen & the Luna Kings", "Angine De Poitrine (CAN) + …",
+ *     "KINK presents Come As You Are: The Afghan Whigs, shame",
+ *     "The Music of Prince"
+ *   - niet: "A Page of Madness" (Madness), "Future Palace" (Palace),
+ *     "Bonnie 'Prince' Billy" (Prince), "van guru tot shishya" (Guru)
+ * Een naam van minder dan 4 tekens nooit ("Eve"). Line-ups zijn maar bij
+ * een op de vijf avonden gekoppeld; bij concerten is de titel vaak
+ * gewoon de naam.
+ */
+// ponytail: "Prince Fatty" telt nog voor Prince (naam vooraan, woord erachter); een
+// lijst toegestane vervolgwoorden als dat in de praktijk vaak misgaat.
 export function titleHasName(nameExpr: string, titleExpr = 'e.title'): string {
   return `(length(${nameExpr}) >= 4
-    AND ${titleExpr} !~* 'tribute'
-    AND position(${words(nameExpr)} in ${words(titleExpr)}) > 0)`;
+    AND ${firstWordIn(nameExpr, titleExpr)}
+    AND (${atSegmentStart(nameExpr, titleExpr)} OR ${titleTributeOf(nameExpr, titleExpr)}))`;
 }
 
 const excluded = `ARRAY[${EXCLUDED_BY_DEFAULT.map((k) => `'${k}'`).join(',')}]`;
