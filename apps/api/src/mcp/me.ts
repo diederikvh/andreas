@@ -520,7 +520,7 @@ export function registerMeTools(server: McpServer, userId: string): void {
         'melding van te maken.',
       inputSchema: {
         cities: z.array(z.enum(schema.city.enumValues)).optional(),
-        categories: z.array(z.enum(['Muziek', 'Film', 'Theater', 'Kunst', 'Lezing', 'Literatuur'])).optional(),
+        categories: z.array(z.enum(['Muziek', 'Film', 'Theater', 'Kunst', 'Lezing', 'Literatuur', 'Activiteit'])).optional(),
         from: DATE.optional(),
         to: DATE.optional(),
         limit: z.number().int().min(1).max(50).optional().describe('Aantal kandidaten, default 30.'),

@@ -74,7 +74,7 @@ type HubConfig = {
   /** Bepaalt welke filter we toepassen op de events-query. */
   kind: HubKind;
   /** Voor kind=category: de event-categorie. */
-  category?: 'Muziek' | 'Theater' | 'Literatuur' | 'Film' | 'Kunst' | 'Lezing';
+  category?: 'Muziek' | 'Theater' | 'Literatuur' | 'Film' | 'Kunst' | 'Lezing' | 'Activiteit';
   /** Voor kind=venueType: het venue-type. */
   venueType?: 'club' | 'museum' | 'podium' | 'film' | 'galerie';
   /** Optioneel: alleen events met deze kind. Default: alle. */
@@ -410,7 +410,7 @@ type EventRow = {
   eventId: string;
   title: string;
   kind: 'show' | 'exhibition';
-  category: 'Muziek' | 'Theater' | 'Literatuur' | 'Film' | 'Kunst' | 'Lezing';
+  category: 'Muziek' | 'Theater' | 'Literatuur' | 'Film' | 'Kunst' | 'Lezing' | 'Activiteit';
   genres: string[];
   imageUrl: string | null;
   startsAt: Date;

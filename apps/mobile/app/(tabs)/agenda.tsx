@@ -93,6 +93,7 @@ const CATEGORIES: ApiEvent['category'][] = [
   'Lezing',
   'Literatuur',
   'Film',
+  'Activiteit',
 ];
 
 // Day-strip-item: 1 op 1 wat de UI nodig heeft om een chip te tekenen.

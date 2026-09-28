@@ -103,7 +103,7 @@ export type ApiEvent = {
   /** Full YouTube/Vimeo URL voor films met een official trailer.
       Alleen tonen als niet null. */
   trailerUrl?: string | null;
-  category: 'Muziek' | 'Theater' | 'Literatuur' | 'Film' | 'Kunst' | 'Lezing';
+  category: 'Muziek' | 'Theater' | 'Literatuur' | 'Film' | 'Kunst' | 'Lezing' | 'Activiteit';
   featured: boolean;
   /** Alleen gevuld door `/events/new`: in welke baan dit event valt. */
   lane?: Lane;
@@ -605,7 +605,7 @@ export async function getAgendaDay(input: {
 }
 
 export type VenueCategory =
-  'Muziek' | 'Theater' | 'Literatuur' | 'Film' | 'Kunst' | 'Lezing';
+  'Muziek' | 'Theater' | 'Literatuur' | 'Film' | 'Kunst' | 'Lezing' | 'Activiteit';
 
 export type VenueType =
   | 'galerie'
@@ -1987,7 +1987,7 @@ export type ApiFeedEvent = {
   description: string | null;
   kind: EventKind;
   imageUrl: string | null;
-  category: 'Muziek' | 'Theater' | 'Literatuur' | 'Film' | 'Kunst' | 'Lezing';
+  category: 'Muziek' | 'Theater' | 'Literatuur' | 'Film' | 'Kunst' | 'Lezing' | 'Activiteit';
   featured: boolean;
   /** Alleen gevuld door `/events/new`: in welke baan dit event valt. */
   lane?: Lane;

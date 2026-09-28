@@ -28,6 +28,7 @@ import { sendPushToUser } from '../push.js';
 import { hideDuplicateEvents } from './dedupeEvents.js';
 import { linkEventArtists } from './eventArtists.js';
 import { normalizeTitles } from './titles.js';
+import { classifyActivities } from './activities.js';
 
 /** Hoe lang van tevoren "vanavond" vertrekt. Genoeg om je om te kleden,
     te weinig om het alweer vergeten te zijn. */
@@ -553,6 +554,7 @@ export async function runReminders(
     // Dubbele events eerst offline, anders krijg je voor hetzelfde
     // optreden twee meldingen.
     await normalizeTitles();
+    await classifyActivities();
     await hideDuplicateEvents();
     await linkEventArtists();
   }

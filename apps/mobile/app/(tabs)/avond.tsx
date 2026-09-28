@@ -130,6 +130,7 @@ const CATEGORIES_ORDER: ApiEvent['category'][] = [
   'Lezing',
   'Literatuur',
   'Film',
+  'Activiteit',
 ];
 
 /**

@@ -24,6 +24,9 @@ export const eventCategory = pgEnum('event_category', [
   'Film',
   'Kunst',
   'Lezing',
+  // Iets om te doen in plaats van te zien: quiz, rondleiding, workshop,
+  // les. Zie jobs/activities.ts.
+  'Activiteit',
 ]);
 export const friendshipStatus = pgEnum('friendship_status', [
   'pending',

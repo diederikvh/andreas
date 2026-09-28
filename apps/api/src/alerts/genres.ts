@@ -36,7 +36,7 @@
  * wordt.
  */
 
-export type Category = 'Muziek' | 'Theater' | 'Literatuur' | 'Film' | 'Kunst' | 'Lezing';
+export type Category = 'Muziek' | 'Theater' | 'Literatuur' | 'Film' | 'Kunst' | 'Lezing' | 'Activiteit';
 
 type GenreDef = {
   label: string;
@@ -48,7 +48,7 @@ const HIPHOP = ['%hiphop%', 'hiphop/rap', 'rap', 'rapper', 'trap', 'drill', 'gri
 const TECHNO = ['%techno%'];
 const HOUSE = ['house', 'housemusic', '%house'];
 const DNB = ['drumandbass', 'drum&bass', 'dnb', 'jungle', 'dubstep', 'ukgarage', 'ukg'];
-const ALL: Category[] = ['Muziek', 'Theater', 'Literatuur', 'Film', 'Kunst', 'Lezing'];
+const ALL: Category[] = ['Muziek', 'Theater', 'Literatuur', 'Film', 'Kunst', 'Lezing', 'Activiteit'];
 
 export const GENRES = {
   // ── Muziek ──

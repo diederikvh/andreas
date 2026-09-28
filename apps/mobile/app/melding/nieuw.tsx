@@ -47,7 +47,7 @@ const CITIES: { key: string; label: string }[] = [
   { key: 'groningen', label: 'Groningen' },
   { key: 'antwerpen', label: 'Antwerpen' },
 ];
-const CATEGORIES = ['Muziek', 'Film', 'Theater', 'Kunst', 'Lezing', 'Literatuur'] as const;
+const CATEGORIES = ['Muziek', 'Film', 'Theater', 'Kunst', 'Lezing', 'Literatuur', 'Activiteit'] as const;
 
 const toggleIn = (list: string[], key: string) =>
   list.includes(key) ? list.filter((k) => k !== key) : [...list, key];

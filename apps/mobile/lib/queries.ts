@@ -728,7 +728,7 @@ export function useVenues(
   input: {
     q?: string;
     category?:
-      'Muziek' | 'Theater' | 'Literatuur' | 'Film' | 'Kunst' | 'Lezing';
+      'Muziek' | 'Theater' | 'Literatuur' | 'Film' | 'Kunst' | 'Lezing' | 'Activiteit';
     type?:
       | 'galerie'
       | 'museum'

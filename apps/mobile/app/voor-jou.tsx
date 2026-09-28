@@ -81,6 +81,7 @@ const CATEGORY_LABELS: Record<CategoryFilter, { nl: string; en: string }> = {
   Kunst: { nl: 'Kunst', en: 'Art' },
   Lezing: { nl: 'Lezing', en: 'Talk' },
   Literatuur: { nl: 'Literatuur', en: 'Literature' },
+  Activiteit: { nl: 'Activiteit', en: 'Activity' },
 };
 const CATEGORY_ORDER: CategoryFilter[] = [
   'Muziek',
@@ -89,6 +90,7 @@ const CATEGORY_ORDER: CategoryFilter[] = [
   'Kunst',
   'Lezing',
   'Literatuur',
+  'Activiteit',
 ];
 
 export default function VoorJouScreen() {

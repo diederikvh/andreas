@@ -18,7 +18,8 @@ export type BadgeToneKey =
   | 'plum'
   | 'azure'
   | 'saffron'
-  | 'cobalt';
+  | 'cobalt'
+  | 'stone';
 
 export const TONE: Record<'nacht' | 'dag', Record<BadgeToneKey, string>> = {
   nacht: {
@@ -28,6 +29,8 @@ export const TONE: Record<'nacht' | 'dag', Record<BadgeToneKey, string>> = {
     azure: palette.azure,
     saffron: palette.saffron,
     cobalt: palette.cobalt,
+    // Activiteit: bewust neutraal, iets om te doen, niet om uit te lichten.
+    stone: '#b9b3a6',
   },
   dag: {
     acid: palette.red,
@@ -46,6 +49,7 @@ export const TONE: Record<'nacht' | 'dag', Record<BadgeToneKey, string>> = {
     // Lezing — dieper navy dan plum zodat Kunst en Lezing uit elkaar
     // blijven.
     cobalt: '#1a3157',
+    stone: '#6b6357',
   },
 };
 

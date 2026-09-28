@@ -19,8 +19,8 @@ import {
 import { resolveWhenWindow } from '../zoek/retrieval-core.js';
 import type { PreferenceProfile } from '../zoek/types.js';
 
-type EventCategory = 'Muziek' | 'Theater' | 'Literatuur' | 'Film' | 'Kunst' | 'Lezing';
-const VALID_CATEGORIES = new Set(['Muziek', 'Theater', 'Literatuur', 'Film', 'Kunst', 'Lezing']);
+type EventCategory = 'Muziek' | 'Theater' | 'Literatuur' | 'Film' | 'Kunst' | 'Lezing' | 'Activiteit';
+const VALID_CATEGORIES = new Set(['Muziek', 'Theater', 'Literatuur', 'Film', 'Kunst', 'Lezing', 'Activiteit']);
 const VALID_CITIES = new Set([
   'amsterdam', 'amstelveen', 'diemen', 'zaandam', 'haarlem',
   'utrecht', 'rotterdam', 'den-haag', 'eindhoven', 'tilburg', 'nijmegen',
@@ -112,7 +112,7 @@ eventsRoute.get('/', async (c) => {
     eventConditions.push(
       eq(
         schema.events.category,
-        category as 'Muziek' | 'Theater' | 'Literatuur' | 'Film' | 'Kunst' | 'Lezing'
+        category as 'Muziek' | 'Theater' | 'Literatuur' | 'Film' | 'Kunst' | 'Lezing' | 'Activiteit'
       )
     );
   }
@@ -880,7 +880,7 @@ eventsRoute.get('/for-you', async (c) => {
     const tMs = Date.parse(t ?? '');
     if (!Number.isNaN(tMs) && id) cursor = { time: tMs, eventId: id };
   }
-  const allowedCategories = ['Muziek', 'Theater', 'Film', 'Kunst', 'Lezing', 'Literatuur'] as const;
+  const allowedCategories = ['Muziek', 'Theater', 'Film', 'Kunst', 'Lezing', 'Literatuur', 'Activiteit'] as const;
   type Cat = (typeof allowedCategories)[number];
   // `?category=Muziek,Film` voor multi-select. Onbekende waardes
   // worden weggefilterd; lege lijst (of geen param) = geen filter.

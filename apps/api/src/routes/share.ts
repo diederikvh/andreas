@@ -490,7 +490,7 @@ type EventRow = {
   description: string | null;
   kind: 'show' | 'exhibition';
   imageUrl: string | null;
-  category: 'Muziek' | 'Theater' | 'Literatuur' | 'Film' | 'Kunst' | 'Lezing';
+  category: 'Muziek' | 'Theater' | 'Literatuur' | 'Film' | 'Kunst' | 'Lezing' | 'Activiteit';
   genres: string[];
   venue: {
     id: string;
@@ -530,7 +530,7 @@ type RelatedEvent = {
   eventId: string;
   title: string;
   kind: 'show' | 'exhibition';
-  category: 'Muziek' | 'Theater' | 'Literatuur' | 'Film' | 'Kunst' | 'Lezing';
+  category: 'Muziek' | 'Theater' | 'Literatuur' | 'Film' | 'Kunst' | 'Lezing' | 'Activiteit';
   genres: string[];
   imageUrl: string | null;
   startsAt: Date;
@@ -1106,7 +1106,7 @@ type UpcomingEvent = {
   id: string;
   title: string;
   kind: 'show' | 'exhibition';
-  category: 'Muziek' | 'Theater' | 'Literatuur' | 'Film' | 'Kunst' | 'Lezing';
+  category: 'Muziek' | 'Theater' | 'Literatuur' | 'Film' | 'Kunst' | 'Lezing' | 'Activiteit';
   imageUrl: string | null;
   genres: string[];
   startsAt: Date;

@@ -155,6 +155,7 @@ export function titleHasName(nameExpr: string, titleExpr = 'e.title'): string {
     AND (${atSegmentStart(nameExpr, titleExpr)} OR ${titleTributeOf(nameExpr, titleExpr)}))`;
 }
 
+const WANTS_ACTIVITY = `'Activiteit' = ANY(COALESCE(a.categories::text[], '{}'))`;
 const excluded = `ARRAY[${EXCLUDED_BY_DEFAULT.map((k) => `'${k}'`).join(',')}]`;
 
 export const ALERT_MATCH = sql.raw(`
@@ -166,10 +167,15 @@ export const ALERT_MATCH = sql.raw(`
   -- Onbekende prijs telt als passend: dat is bij de helft van het aanbod zo.
   AND (a.price_max_cents IS NULL OR o.price_cents IS NULL OR o.price_cents <= a.price_max_cents)
   -- Kinder- en workshopaanbod valt erbuiten, tenzij de regel erom vraagt.
-  AND NOT ${hasGenre(`ARRAY(SELECT x FROM unnest(${excluded}) x WHERE NOT x = ANY(COALESCE(a.genres, '{}')))`, false)}
+  -- Vraagt de regel om de categorie Activiteit, dan tellen activiteit en
+  -- workshop als gevraagd.
+  AND NOT ${hasGenre(`ARRAY(SELECT x FROM unnest(${excluded}) x WHERE NOT x = ANY(COALESCE(a.genres, '{}'))
+    AND NOT (x IN ('activiteit', 'workshop') AND ${WANTS_ACTIVITY}))`, false)}
   AND ('familie' = ANY(COALESCE(a.genres, '{}')) OR e.title !~* '${KIDS_TITLE_REGEX}')
-  AND ('activiteit' = ANY(COALESCE(a.genres, '{}')) OR 'workshop' = ANY(COALESCE(a.genres, '{}'))
-       OR e.title !~* '${ACTIVITY_TITLE_REGEX}')
+  -- Iets om te doen (quiz, rondleiding, workshop), aan de titel of de
+  -- categorie, alleen als de regel erom vraagt.
+  AND (${WANTS_ACTIVITY} OR 'activiteit' = ANY(COALESCE(a.genres, '{}')) OR 'workshop' = ANY(COALESCE(a.genres, '{}'))
+       OR (e.title !~* '${ACTIVITY_TITLE_REGEX}' AND e.category <> 'Activiteit'))
   -- Genres die deze gebruiker niet leuk vindt (genre_prefs), en
   -- tributes ook aan de titel herkend: "Tribute to Adele" heeft zelden
   -- het label.

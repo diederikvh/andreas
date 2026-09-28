@@ -33,7 +33,7 @@ import { adminSocial } from './social.js';
  * onbekende ids → 404, validatie-fouten → 400.
  */
 
-const CATEGORIES = ['Muziek', 'Theater', 'Literatuur', 'Film', 'Kunst', 'Lezing'] as const;
+const CATEGORIES = ['Muziek', 'Theater', 'Literatuur', 'Film', 'Kunst', 'Lezing', 'Activiteit'] as const;
 type Category = (typeof CATEGORIES)[number];
 
 const VENUE_TYPES = [
@@ -1418,7 +1418,7 @@ adminApi.post('/import/exhibitions', async (c) => {
     description: string | null;
     imageUrl: string | null;
     sourceUrl: string | null;
-    category: 'Kunst' | 'Theater' | 'Literatuur' | 'Film' | 'Muziek' | 'Lezing';
+    category: 'Kunst' | 'Theater' | 'Literatuur' | 'Film' | 'Muziek' | 'Lezing' | 'Activiteit';
   };
 
   const items: Item[] = [];

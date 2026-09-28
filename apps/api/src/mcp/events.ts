@@ -15,6 +15,7 @@ export const CATEGORY_VALUES = [
   'Kunst',
   'Lezing',
   'Literatuur',
+  'Activiteit',
 ] as const;
 
 export type McpEvent = FoundEvent;
